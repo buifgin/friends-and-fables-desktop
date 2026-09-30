@@ -146,6 +146,7 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - Add some free music api or link player for all people at the company, near the dice button. With volume slider and mute option.
 - Add resizable map feature.
 - Add opacity for gradiend and chosing how much will fill with 1-st color and how much with second(custom ratio).
+- Add custom color of text under the dice (damage etc.)
 
 ## Stack
 
