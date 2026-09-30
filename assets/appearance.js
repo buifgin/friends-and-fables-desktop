@@ -28,7 +28,7 @@ function readStyle(role) {
   return { color: element(`${role}-color`).value, opacity: Number(element(`${role}-opacity`).value) / 100,
     textColor: element(`${role}-auto-text`).checked ? null : element(`${role}-text-color`).value,
     gradient: { enabled: element(`${role}-gradient`).checked, color: element(`${role}-gradient-color`).value,
-      angle: Number(element(`${role}-gradient-angle`).value), opacity: Number(element(`${role}-gradient-opacity`).value) / 100,
+      angle: Number(element(`${role}-gradient-angle`).value), secondOpacity: Number(element(`${role}-gradient-second-opacity`).value) / 100,
       balance: Number(element(`${role}-gradient-balance`).value) },
     border: { enabled: element(`${role}-border`).checked, color: element(`${role}-border-color`).value,
       width: Number(element(`${role}-border-width`).value), radius: Number(element(`${role}-border-radius`).value), variant: element(`${role}-border-variant`).value } };
@@ -77,7 +77,7 @@ function showSettings(settings) {
     element(`${role}-gradient`).checked = style.gradient.enabled;
     element(`${role}-gradient-color`).value = style.gradient.color;
     element(`${role}-gradient-angle`).value = style.gradient.angle;
-    element(`${role}-gradient-opacity`).value = Math.round(style.gradient.opacity * 100);
+    element(`${role}-gradient-second-opacity`).value = Math.round(style.gradient.secondOpacity * 100);
     element(`${role}-gradient-balance`).value = style.gradient.balance;
     element(`${role}-border`).checked = style.border.enabled;
     for (const part of ['color','width','radius','variant']) element(`${role}-border-${part}`).value = style.border[part];
@@ -95,8 +95,8 @@ function luminance(color, opacity, background) {
   }).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
   return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
 }
-function foreground(color, opacity = 1, background = '#010b0e', second = null, balance = 50) {
-  const values = [...(!second || balance > 0 ? [color] : []), ...(second && balance < 100 ? [second] : [])].map(c => luminance(c, opacity, background));
+function foreground(color, opacity = 1, background = '#010b0e', second = null, balance = 50, secondOpacity = opacity) {
+  const values = [...(!second || balance > 0 ? [[color,opacity]] : []), ...(second && balance < 100 ? [[second,secondOpacity]] : [])].map(([c,a]) => luminance(c, a, background));
   return Math.min(...values.map(l => 1.05 / (l + .05))) >= Math.min(...values.map(l => (l + .05) / .05)) ? '#ffffff' : '#000000';
 }
 function rgba(hex, opacity) { return `rgba(${[1,3,5].map(i => parseInt(hex.slice(i,i+2),16)).join(',')},${opacity})`; }
@@ -131,14 +131,14 @@ function updatePreview() {
         || (part.startsWith('gradient-') && !style.gradient.enabled)
         || (['border-color','border-width','border-variant'].includes(part) && !style.border.enabled);
     }
-    for (const [part, unit, value] of [['opacity','%',style.opacity*100], ['gradient-angle','°',style.gradient.angle], ['gradient-opacity','%',style.gradient.opacity*100],
+    element(`${role}-opacity-title`).textContent = style.gradient.enabled ? 'First color opacity' : 'Background opacity';
+    for (const [part, unit, value] of [['opacity','%',style.opacity*100], ['gradient-angle','°',style.gradient.angle], ['gradient-second-opacity','%',style.gradient.secondOpacity*100],
       ['border-width',' px',style.border.width], ['border-radius',' px',style.border.radius]]) element(`${role}-${part}-label`).value = `${Math.round(value)}${unit}`;
     element(`${role}-gradient-balance-label`).value = `${Math.round(style.gradient.balance)}% / ${Math.round(100-style.gradient.balance)}%`;
-    const opacity = style.opacity * (style.gradient.enabled ? style.gradient.opacity : 1);
-    const first = rgba(style.color, opacity);
-    const bg = style.gradient.enabled ? `linear-gradient(${style.gradient.angle}deg,${first} ${Math.max(0,style.gradient.balance*2-100)}%,${rgba(style.gradient.color,opacity)} ${Math.min(100,style.gradient.balance*2)}%)` : first;
+    const first = rgba(style.color, style.opacity);
+    const bg = style.gradient.enabled ? `linear-gradient(${style.gradient.angle}deg,${first} ${Math.max(0,style.gradient.balance*2-100)}%,${rgba(style.gradient.color,style.gradient.secondOpacity)} ${Math.min(100,style.gradient.balance*2)}%)` : first;
     setPreview(`--${role}-bg`, enabled ? bg : role === 'context' ? '#1f2937' : '#1f2937cc');
-    setPreview(`--${role}-fg`, enabled ? style.textColor ?? foreground(style.color, opacity, color, style.gradient.enabled ? style.gradient.color : null, style.gradient.balance) : '#fff');
+    setPreview(`--${role}-fg`, enabled ? style.textColor ?? foreground(style.color, style.opacity, color, style.gradient.enabled ? style.gradient.color : null, style.gradient.balance, style.gradient.secondOpacity) : '#fff');
     setPreview(`--${role}-border`, enabled && style.border.enabled ? `${style.border.width}px solid ${style.border.color}` : '0 solid transparent');
     setPreview(`--${role}-radius`, enabled ? `${style.border.radius}px` : '8px');
     setPreview(`--${role}-ornament`, enabled && style.border.enabled ? borderImages(style.border) : 'none');

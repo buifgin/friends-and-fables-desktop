@@ -168,7 +168,7 @@
       </form>
     <template id="style-editor">
       <label class="setting-row">Background <input type="color" data-control="color" value="#101010"></label>
-      <label data-label="opacity">Background opacity <output data-control="opacity-label">100%</output></label>
+      <label data-label="opacity"><span data-control="opacity-title">Background opacity</span> <output data-control="opacity-label">100%</output></label>
       <input type="range" data-control="opacity" min="0" max="100" value="100">
       <label class="setting-row">Text &amp; icons <input type="color" data-control="text-color" value="#ffffff"></label>
       <label class="switch-row auto-text"><input type="checkbox" data-control="auto-text" checked> Automatic text color</label>
@@ -177,11 +177,11 @@
         <label class="setting-row">Second color <input type="color" data-control="gradient-color" value="#000000"></label>
         <label data-label="gradient-angle">Direction <output data-control="gradient-angle-label">90°</output></label>
         <input type="range" data-control="gradient-angle" min="0" max="360" value="90">
-        <label data-label="gradient-opacity">Gradient opacity <output data-control="gradient-opacity-label">100%</output></label>
-        <input type="range" data-control="gradient-opacity" min="0" max="100" value="100">
+        <label data-label="gradient-second-opacity">Second color opacity <output data-control="gradient-second-opacity-label">100%</output></label>
+        <input type="range" data-control="gradient-second-opacity" min="0" max="100" value="100">
         <label data-label="gradient-balance">First color share <output data-control="gradient-balance-label">50% / 50%</output></label>
         <input type="range" data-control="gradient-balance" min="0" max="100" value="50">
-        <p class="help">An even share blends across the whole surface. Increase a color's share to keep it solid for longer. Gradient opacity combines with background opacity.</p>
+        <p class="help">Each color has its own opacity. An even share blends across the whole surface; increase a color's share to keep it solid for longer.</p>
         <label class="switch-row border-switch"><input type="checkbox" data-control="border"> Show border</label>
         <label class="setting-row">Border style <select data-control="border-variant"><option value="plain">Plain</option><option value="ornate">Ornate corners</option><option value="arcane">Arcane diamonds</option><option value="runic">Runic corners</option></select></label>
         <label class="setting-row">Border color <input type="color" data-control="border-color" value="#555555"></label>

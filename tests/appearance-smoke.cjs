@@ -330,8 +330,9 @@ async function save(settings, window) {
   assert.equal(newStyles.gm.width,'3px'); assert.equal(newStyles.gm.border,'rgb(171, 205, 239)');
   assert.match(newStyles.gm.image,/135deg/); assert.match(newStyles.event.image,/linear-gradient/);
   assert.match(newStyles.gm.image,/rgba\(101, 67, 33, 0.35\) 50%/);
+  assert.equal((await settingsContents.executeJavaScript('window.appearance.get()')).messages.player.gradient.secondOpacity,0);
   const migratedGradient = await settingsContents.executeJavaScript('window.appearance.get().then(s => s.events.style.gradient)');
-  assert.equal(migratedGradient.opacity,1); assert.equal(migratedGradient.balance,50);
+  assert.equal(migratedGradient.secondOpacity,.8); assert.equal(migratedGradient.balance,50);
   assert.equal(newStyles.event.width,'2px'); assert.equal(newStyles.event.radius,'4px');
   assert.equal(newStyles.roll.bg,'rgb(8, 8, 8)'); assert.equal(newStyles.ornament,'none');
   assert.equal(newStyles.face,'rgb(124, 58, 237)'); assert.equal(newStyles.d8,newStyles.face);
@@ -364,7 +365,7 @@ async function save(settings, window) {
   await assert.rejects(save({...newSettings,backgroundEffects:{...newSettings.backgroundEffects,blur:Infinity}},settingsWindow),/between/);
   await assert.rejects(save({...newSettings,dice:{...newSettings.dice,faceColor:'red; fill:url(secret)'}},settingsWindow),/#RRGGBB/);
   await assert.rejects(save({...newSettings,dice:{...newSettings.dice,resultTextColor:'red; color:blue'}},settingsWindow),/#RRGGBB/);
-  for(const [key,value] of [['opacity',1.1],['balance',-1],['balance',101]]){
+  for(const [key,value] of [['secondOpacity',1.1],['secondOpacity',-1],['opacity',1.1],['balance',-1],['balance',101]]){
     await assert.rejects(save({...newSettings,events:{enabled:true,style:{...newSettings.events.style,gradient:{...newSettings.events.style.gradient,[key]:value}}}},settingsWindow),/between/);
   }
   await assert.rejects(save({...newSettings,context:{enabled:true,style:{...newSettings.context.style,border:{enabled:true,color:'#ffffff',width:100,radius:8}}}},settingsWindow),/between/);
@@ -372,7 +373,8 @@ async function save(settings, window) {
   await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
   await settingsContents.executeJavaScript(`
     document.querySelector('[data-panel="messages-panel"]').click();
-    element('gm-gradient-opacity').value=40;
+    element('gm-opacity').value=70;
+    element('gm-gradient-second-opacity').value=40;
     element('gm-gradient-balance').value=25;
     element('gm-gradient-balance').dispatchEvent(new Event('input',{bubbles:true}));
     updatePreview();
@@ -380,15 +382,28 @@ async function save(settings, window) {
   `);
   await until(settingsContents,"document.querySelector('#status').textContent.startsWith('Appearance applied')");
   const sliderState = await settingsContents.executeJavaScript(`({
-    opacity:selection().messages.gm.gradient.opacity,balance:selection().messages.gm.gradient.balance,
+    opacity:selection().messages.gm.opacity,secondOpacity:selection().messages.gm.gradient.secondOpacity,balance:selection().messages.gm.gradient.balance,
     label:element('gm-gradient-balance-label').value,bg:getComputedStyle(document.querySelector('.sample-gm')).backgroundImage})`);
-  assert.equal(sliderState.opacity,.4);assert.equal(sliderState.balance,25);assert.equal(sliderState.label,'25% / 75%');
-  assert.match(sliderState.bg,/rgba\(101, 67, 33, 0.28\) 0%/);
-  assert.match(sliderState.bg,/ 50%/);
+  assert.equal(sliderState.opacity,.7);assert.equal(sliderState.secondOpacity,.4);assert.equal(sliderState.balance,25);assert.equal(sliderState.label,'25% / 75%');
+  assert.match(sliderState.bg,/rgba\(101, 67, 33, 0.7\) 0%/);
+  assert.match(sliderState.bg,/rgba\(34, 34, 34, 0.4\) 50%/);
+  const savedEndpoints=await settingsContents.executeJavaScript('window.appearance.get().then(s=>s.messages.gm)');
+  assert.equal(savedEndpoints.opacity,.7);assert.equal(savedEndpoints.gradient.secondOpacity,.4);
+  assert.match(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('event-message-card-2')).backgroundImage"),/rgba\(34, 34, 34, 0.4\) 50%/);
   // At either extreme only the visible color should determine automatic text.
   for(const [balance,foreground] of [[0,'rgb(255, 255, 255)'],[100,'rgb(0, 0, 0)']]){
     await save({...newSettings,messages:{...newSettings.messages,gm:{...newSettings.messages.gm,color:'#ffffff',opacity:1,textColor:null,
       gradient:{enabled:true,color:'#000000',angle:90,opacity:1,balance}}}},settingsWindow);
+    assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('event-message-card-2')).color"),foreground);
+  }
+  await save(newSettings,settingsWindow);
+  // The visible endpoint's own alpha also determines automatic text color.
+  for(const [balance,opacity,secondOpacity,foreground] of [
+    [0,1,0,'rgb(255, 255, 255)'],[0,0,1,'rgb(0, 0, 0)'],
+    [100,0,1,'rgb(255, 255, 255)'],[100,1,0,'rgb(0, 0, 0)'],
+  ]){
+    await save({...newSettings,messages:{...newSettings.messages,gm:{...newSettings.messages.gm,color:'#ffffff',opacity,textColor:null,
+      gradient:{enabled:true,color:'#ffffff',angle:90,secondOpacity,balance}}}},settingsWindow);
     assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('event-message-card-2')).color"),foreground);
   }
   await save(newSettings,settingsWindow);
@@ -461,7 +476,7 @@ async function save(settings, window) {
   const shared=JSON.parse(await readFile(themeFile,'utf8'));
   assert.equal(shared.version,1);assert(shared.image.pngBase64);assert.equal(shared.appearance.backgroundImage,null);
   assert.equal(shared.appearance.linuxBlackMenu,undefined);assert.equal(shared.appearance.linuxFloatingAppearance,undefined);
-  assert.equal(shared.appearance.messages.gm.gradient.opacity,.5);assert.equal(shared.appearance.messages.gm.gradient.balance,75);
+  assert.equal(shared.appearance.messages.gm.opacity,.35);assert.equal(shared.appearance.messages.gm.gradient.secondOpacity,.35);assert.equal(shared.appearance.messages.gm.gradient.opacity,undefined);assert.equal(shared.appearance.messages.gm.gradient.balance,75);
   assert.equal(shared.appearance.dice.resultTextColor,'#23e2ab');
   dialog.showSaveDialog=async()=>({canceled:false,filePath:themeFile});
   await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(decorated)},false)`);
@@ -619,8 +634,16 @@ async function save(settings, window) {
       contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/menu-preload.js')}});
     const view = new WebContentsView({webPreferences:{session:testSession,sandbox:true,nodeIntegration:false}});
     frame.contentView.addChildView(view);
-    let reloads = 0;
-    const menu = Menu.buildFromTemplate([{id:'view',label:'View',submenu:[{id:'reload',label:'Reload',click:()=>reloads++}]}]);
+    let reloads = 0, appearances = 0, minimizes = 0;
+    frame.minimize = () => minimizes++;
+    const menu = Menu.buildFromTemplate([
+      {id:'file',label:'File',submenu:[{label:'Home',click(){}},{type:'separator'},{label:'Disabled',enabled:false}]},
+      {id:'edit',label:'Edit',submenu:Array.from({length:7},(_,i)=>({label:`Edit command ${i}`,click(){}}))},
+      {id:'appearance',label:'Appearance',submenu:[{label:'Customize Appearance…',click:()=>appearances++}]},
+      {id:'view',label:'View',submenu:[{id:'reload',label:'Reload',accelerator:'CmdOrCtrl+R',click:()=>reloads++},
+        ...Array.from({length:8},(_,i)=>({label:`View command ${i}`,click(){}}))]},
+      {id:'window',label:'Window',submenu:[{role:'minimize'},{role:'close'}]},
+    ]);
     const bar = new LinuxMenuBar(frame,view,menu);
     bar.setBlack(true);
     await frame.loadURL(MENU_URL);
@@ -634,6 +657,46 @@ async function save(settings, window) {
     frame.getContentSize = originalContentSize;
     frame.emit('leave-full-screen');
     assert.equal(view.getBounds().height,height-32);
+    const overlay = frame.contentView.children.find(child => child.webContents && child !== view);
+    assert(overlay, 'The local dropdown view must be above the website.');
+    for (const id of ['file','edit','appearance','view','window']) {
+      await frame.webContents.executeJavaScript(`window.desktopMenu.open('${id}',120)`);
+      await until(overlay.webContents, `active==='${id}' && !dropdown.hidden`);
+      const geometry = await overlay.webContents.executeJavaScript(`(()=>{
+        const box=dropdown.getBoundingClientRect();return {bg:getComputedStyle(dropdown).backgroundColor,
+          height:box.height,bottom:box.bottom,viewport:innerHeight,scroll:dropdown.scrollHeight>dropdown.clientHeight,
+          count:dropdown.querySelectorAll('button').length,node:typeof window.require,settings:typeof window.appearance};})()`);
+      assert.equal(geometry.bg,'rgb(0, 0, 0)');assert(geometry.height>=44);assert(geometry.bottom<geometry.viewport);
+      assert.equal(geometry.scroll,false);assert.equal(geometry.node,'undefined');assert.equal(geometry.settings,'undefined');
+      assert.equal(geometry.count,menu.getMenuItemById(id).submenu.items.filter(item=>item.type!=='separator').length);
+    }
+    await overlay.webContents.executeJavaScript("dropdown.querySelector('button').click()");
+    await until(overlay.webContents,'dropdown.hidden || !document.hasFocus()');
+    assert.equal(minimizes,1,'Native menu roles must target the owning window.');
+    await frame.webContents.executeJavaScript("window.desktopMenu.open('appearance',120)");
+    await until(overlay.webContents,"active==='appearance'");
+    await overlay.webContents.executeJavaScript("dropdown.querySelector('button').click()");
+    await new Promise(resolve=>setTimeout(resolve,30));assert.equal(appearances,1);
+    await frame.webContents.executeJavaScript("window.desktopMenu.open('view',200)");
+    await until(overlay.webContents,"active==='view'");
+    await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
+    assert.equal(await overlay.webContents.executeJavaScript('document.activeElement.dataset.index'),'1');
+    await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
+    await until(overlay.webContents,"active==='appearance'");
+    await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
+    await until(overlay.webContents,'dropdown.hidden');
+    await assert.rejects(frame.webContents.executeJavaScript('window.desktopMenu.choose(0)'),/Invalid menu command/);
+    await frame.webContents.executeJavaScript("window.desktopMenu.open('file',0)");
+    await until(overlay.webContents,"active==='file'");
+    await assert.rejects(overlay.webContents.executeJavaScript('window.desktopMenu.choose(2)'),/Unavailable menu command/);
+    await assert.rejects(overlay.webContents.executeJavaScript('window.desktopMenu.choose(999)'),/Unavailable menu command/);
+    await overlay.webContents.executeJavaScript("document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))");
+    await until(overlay.webContents,'dropdown.hidden');
+    const impostor = new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',sandbox:true,
+      contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/menu-preload.js')}});
+    await impostor.loadURL(MENU_URL);
+    await assert.rejects(impostor.webContents.executeJavaScript("window.desktopMenu.open('view',0)"),/only in the app menu bar/);
+    impostor.destroy();
     view.webContents.emit('before-input-event',{preventDefault(){}},{type:'keyDown',code:'KeyR',control:true,shift:false});
     assert.equal(reloads,1);
     bar.setBlack(false);
@@ -672,7 +735,7 @@ async function save(settings, window) {
   assert(fullscreenInput({code:'F11',alt:false}));assert(fullscreen);
   for(const extra of [{alt:false},{control:true},{shift:true},{meta:true},{isComposing:true},{type:'keyUp'}])assert(!fullscreenInput(extra));
   assert.equal(toggles,3);assert.equal(website.webContents.getZoomLevel(),0);
-  console.log('PASS: themes and gradient controls, WebP import and limits, image effects, persistent folder and picture library, theme sharing, reset undo across restarts, three context palettes, decorative borders and dice menus, picker performance, independent dice result text, SVG dice paint, text and inputs, navigation, IPC restrictions, Linux menu, zoom, and fullscreen shortcuts.');
+  console.log('PASS: themes and gradient controls, WebP import and limits, image effects, persistent folder and picture library, theme sharing, reset undo across restarts, three context palettes, decorative borders and dice menus, picker performance, independent dice result text, SVG dice paint, text and inputs, navigation, IPC restrictions, black Linux menus and independent endpoint opacity, zoom, and fullscreen shortcuts.');
 })().then(async () => {
   clearTimeout(timeout);
   for (const window of BrowserWindow.getAllWindows()) window.destroy();

@@ -3,3 +3,17 @@ body { margin: 0; background: #000; }
 nav { height: 32px; display: flex; align-items: stretch; background: #000; border-bottom: 1px solid #222; }
 button { background: #000; color: #eee; font: 13px system-ui, sans-serif; border: 0; padding: 0 10px; cursor: pointer; }
 button:hover, button:focus-visible { background: #252525; outline: none; }
+html, body { height: 100%; overflow: hidden; }
+html:has(body.menu-open), body.menu-open { background: transparent; }
+nav { box-sizing: border-box; position: relative; z-index: 1; }
+button[aria-expanded="true"] { background: #252525; }
+#dropdown { position: absolute; top: 32px; min-width: 230px; max-width: calc(100vw - 8px);
+  max-height: calc(100vh - 40px); overflow: auto; box-sizing: border-box; padding: 5px;
+  background: #000; color: #eee; border: 1px solid #444; border-radius: 0 0 6px 6px;
+  box-shadow: 0 8px 20px #0008; }
+#dropdown button { width: 100%; min-height: 32px; padding: 6px 10px; text-align: left;
+  display: flex; align-items: center; gap: 24px; border-radius: 3px; white-space: nowrap; }
+#dropdown button:disabled { color: #777; cursor: default; background: #000; }
+#dropdown .label { flex: 1; }
+#dropdown .accelerator { color: #aaa; font-size: 12px; }
+#dropdown hr { border: 0; border-top: 1px solid #333; margin: 5px 7px; }
