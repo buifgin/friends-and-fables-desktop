@@ -2,7 +2,9 @@ const form = document.getElementById('translation-form');
 const element = id => document.getElementById(id);
 let busy = false;
 window.translation.onChange(settings => { if (!busy) show(settings); });
+window.translation.onTheme(theme => window.settingsTheme.apply(theme));
 function show(settings) {
+  window.settingsTheme.apply(settings.theme);
   window.settingsLocale.set(settings.enabled && !settings.showOriginal ? 'ru' : 'en');
   element('enabled').checked = settings.enabled;
   element('show-original').checked = settings.showOriginal;

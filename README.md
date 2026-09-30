@@ -109,6 +109,8 @@ In **Sharing**, click **Export theme…** to save the current preview as a `.fab
 
 The Appearance editor follows the selected app theme, including light and custom colors. In **App**, enable **Pin Appearance to the main interface** and apply. A button opens the settings in a resizable panel on the left of the game, including in fullscreen. Drag its right edge to resize, or focus the separator and use the arrow keys. Closing the panel preserves its draft; disabling the pin restores the separate window. The panel width is saved locally and stays out of shared themes.
 
+Appearance and Translation settings both follow the saved app theme. Changing the theme keeps unsaved translation choices intact.
+
 Enabling Russian translation also switches Appearance and Translation settings to their built-in Russian labels, help text, and dialogs. This works without the model service. **Show original text** restores English labels and keeps unsaved settings intact.
 
 In **App** on Linux, **Black Linux menu bar** replaces the File/Edit/Appearance/Translation/View/Window strip with a black app-owned bar and black dropdown menus. Menus fit both windowed and fullscreen views; Escape or clicking outside closes them, and arrow keys navigate their options. Turn it off to use the system menu bar. Window decorations are still managed by your desktop. **Floating Appearance window** is enabled by default: on Hyprland, the app targets only its own Appearance window through `hyprctl`; other Linux desktops receive a dialog-window hint. This does not edit compositor configuration. On Hyprland, turning it off and applying tiles the current Appearance window.
@@ -134,7 +136,7 @@ Zoom in with **Ctrl+=** or **Ctrl+Shift+=** (the `+` key), zoom out with **Ctrl+
 11. Browse a folder with more than 12 pictures, restart, and confirm the same folder appears. Add/remove a picture and reopen the browser to refresh the list. Check that imported pictures remain after removal/reset.
 12. Reset appearance, restart, and undo the reset. Export a theme with a picture and import it on another profile or machine; check preview and application.
 
-Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. The user reported successful v0.1.0 runs on Arch and Windows with no bugs spotted. The corrected black dropdowns were verified in windowed and fullscreen Hyprland views, with every menu fully visible. Separate gradient color opacity, theme migration, persistence, and preview have offline Electron checks. The user confirmed the corrected v0.1.1 build works. The v0.2.0 translation prototype, themed settings, and pinned Appearance panel have offline regression checks and a real local-model benchmark; it still needs a signed-in campaign check on both systems.
+Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. The user reported successful v0.1.0 runs on Arch and Windows with no bugs spotted. The corrected black dropdowns were verified in windowed and fullscreen Hyprland views, with every menu fully visible. Separate gradient color opacity, theme migration, persistence, and preview have offline Electron checks. The user confirmed the corrected v0.1.1 build works. The v0.2.1 translation fix overrides the website’s page-wide browser translation opt-out and includes matching Translation-window themes. Regression checks cover this document flag, local exclusions, home/game labels, drafts, persistence, and theme changes; the engine also has a real local-model benchmark. The new build still needs a signed-in campaign check on both systems.
 
 Website permissions such as camera, microphone, and notifications are disabled in this initial starter. They can be added when needed.
 
@@ -144,6 +146,7 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - [x] Preserve Russian passages and editable fields.
 - [x] Cache translations and provide a way to view original text.
 - [x] Apply translations locally to the displayed page without changing campaign records or typed messages.
+- Make big glossary. For example, dnd 5 redaction eng vs rus. dnd wiki eng vs rus. baldurs gate wiki eng vs rus. For better understanding of dnd texts
 - Add command /me for cursive sentences and /gm will set # mark at start and end of sentece
 - Add some special mark that we will not see. 
 - Add admin version app for me. Private ofc (or just add some commands)

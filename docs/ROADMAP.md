@@ -44,7 +44,8 @@
 - [x] User confirmed the corrected v0.1.1 build works.
 - [x] Sync Appearance settings to the app theme and add a resizable pinned panel beside the game, compatible with fullscreen.
 - [x] Add a built-in Russian interface for Appearance and Translation settings tied to the translation switch.
-- [ ] Retest the v0.2.0 translation build in signed-in campaigns on both operating systems.
+- [x] Correct the website-wide `translate="no"` flag blocking translation; preserve nested exclusions and match Translation settings to app colors.
+- [ ] Retest the v0.2.1 translation build in signed-in campaigns on both operating systems.
 
 ## 3. Local translation feasibility
 

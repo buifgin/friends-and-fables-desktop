@@ -10,11 +10,16 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   const entries = new Map<number, Entry>();
   const nodes = new WeakMap<Text, Entry>();
   const roots = new Set<Node>([document.body]);
-  const protectedSelector = 'script,style,noscript,template,svg,math,textarea,input,select,option,code,pre,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[translate="no"],[data-ff-translation-ignore],form:has(input[type="password"]),form:has(input[type="email"])';
+  const protectedSelector = 'script,style,noscript,template,svg,math,textarea,input,select,option,code,pre,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[data-ff-translation-ignore],form:has(input[type="password"]),form:has(input[type="email"])';
   let next = 0, timer: ReturnType<typeof setTimeout> | undefined;
   function eligible(node: Text): boolean {
     const parent = node.parentElement;
+    // Friends & Fables disables browser translation on its entire document.
+    // The user's app toggle overrides that page-wide flag. Local exclusions
+    // (names, editors, individual blocks) still protect their original text.
+    const exclusion = parent?.closest('[translate="no"],.notranslate');
     return !!parent && node.isConnected && !parent.closest(protectedSelector)
+      && (!exclusion || exclusion === document.documentElement || exclusion === document.body)
       && !parent.closest('[hidden],[aria-hidden="true"]') && parent.getClientRects().length > 0
       && getComputedStyle(parent).visibility !== 'hidden';
   }

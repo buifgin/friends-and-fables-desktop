@@ -1,13 +1,17 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { TranslationSettings } from './translation-core';
+import type { TranslationState } from './translation';
 
 // Available only in the bundled local settings window.
 contextBridge.exposeInMainWorld('translation', {
-  get: (): Promise<TranslationSettings & { cacheEntries: number }> => ipcRenderer.invoke('translation:get'),
-  save: (value: TranslationSettings): Promise<TranslationSettings & { cacheEntries: number }> => ipcRenderer.invoke('translation:save', value),
+  get: (): Promise<TranslationState> => ipcRenderer.invoke('translation:get'),
+  save: (value: TranslationSettings): Promise<TranslationState> => ipcRenderer.invoke('translation:save', value),
   check: (): Promise<{ available: boolean; message: string }> => ipcRenderer.invoke('translation:check'),
-  clearCache: (): Promise<TranslationSettings & { cacheEntries: number }> => ipcRenderer.invoke('translation:clear-cache'),
-  onChange: (callback: (settings: TranslationSettings & { cacheEntries: number }) => void): void => {
-    ipcRenderer.on('translation:changed', (_event, settings) => callback(settings));
+  clearCache: (): Promise<TranslationState> => ipcRenderer.invoke('translation:clear-cache'),
+  onTheme: (callback: (theme: TranslationState['theme']) => void): void => {
+    ipcRenderer.on('translation:theme', (_event, theme: TranslationState['theme']) => callback(theme));
+  },
+  onChange: (callback: (settings: TranslationState) => void): void => {
+    ipcRenderer.on('translation:changed', (_event, settings: TranslationState) => callback(settings));
   },
 });

@@ -183,7 +183,7 @@ function hsl(color: RGB): string {
   return `${hue.toFixed(3)} ${(saturation * 100).toFixed(3)}% ${(lightness * 100).toFixed(3)}%`;
 }
 
-export function themeBackground(settings: AppearanceSettings): string {
+export function themeBackground(settings: Pick<AppearanceSettings, 'preset' | 'customColor'>): string {
   return settings.preset === 'website' ? '#010b0e' : settings.preset === 'amoled' ? '#000000'
     : settings.preset === 'black' ? '#101010'
     : settings.preset === 'light' ? '#f5f5f5' : settings.customColor;

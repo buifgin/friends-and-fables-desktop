@@ -237,7 +237,11 @@ if (!app.requestSingleInstanceLock()) {
     translation = new TranslationManager();
     await translation.initialize();
     if (process.platform === 'linux') nativeTheme.themeSource = 'dark';
-    appearance.onChange = (settings) => linuxMenu?.setBlack(settings.linuxBlackMenu);
+    translation.setAppearance(appearance.getSettings());
+    appearance.onChange = (settings) => {
+      linuxMenu?.setBlack(settings.linuxBlackMenu);
+      translation.setAppearance(settings);
+    };
     const websiteSession = session.fromPartition(SESSION_PARTITION);
     // Additional site permissions can be introduced when those features are added.
     websiteSession.setPermissionRequestHandler((_contents, _permission, callback) => {

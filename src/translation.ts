@@ -9,11 +9,17 @@ import { TranslationCache } from './translation-cache';
 import { installTranslationDom } from './translation-dom';
 import { LocalTranslator } from './local-translator';
 import { floatSettingsWindow } from './floating-appearance';
+import { DEFAULT_APPEARANCE, themeBackground } from './themes';
+import type { AppearanceSettings } from './themes';
 
 export const TRANSLATION_URL = 'fables-desktop://settings/translation.html';
 const DOM_KEY = '__friendsFablesDesktopTranslation';
 interface Website { contents: WebContents; token: string; pending: Promise<void> }
 interface TextRequest { id: number; version: number; text: string }
+export interface TranslationState extends TranslationSettings {
+  cacheEntries: number;
+  theme: Pick<AppearanceSettings, 'preset' | 'customColor'>;
+}
 export class TranslationManager {
   private settings = structuredClone(DEFAULT_TRANSLATION);
   private file: string;
@@ -26,6 +32,7 @@ export class TranslationManager {
   private busy = false;
   private retryAfter = 0;
   private stopped = false;
+  private theme = { preset: DEFAULT_APPEARANCE.preset, customColor: DEFAULT_APPEARANCE.customColor };
   onChange: ((settings: TranslationSettings) => void) | undefined;
   constructor(folder = app.getPath('userData')) {
     this.file = path.join(folder, 'translation.json');
@@ -48,7 +55,14 @@ export class TranslationManager {
     this.timer = setInterval(() => { void this.pump(); }, 700);
   }
   getSettings(): TranslationSettings { return structuredClone(this.settings); }
-  private state(): TranslationSettings & { cacheEntries: number } { return { ...this.getSettings(), cacheEntries: this.cache.size }; }
+  private state(): TranslationState { return { ...this.getSettings(), cacheEntries: this.cache.size, theme: { ...this.theme } }; }
+  setAppearance(settings: AppearanceSettings): void {
+    this.theme = { preset: settings.preset, customColor: settings.customColor };
+    if (this.window && !this.window.isDestroyed()) {
+      this.window.setBackgroundColor(themeBackground(this.theme));
+      this.window.webContents.send('translation:theme', this.theme);
+    }
+  }
   async check(): Promise<{ available: boolean; message: string }> {
     try {
       const available = await this.engine.available();
@@ -147,7 +161,7 @@ export class TranslationManager {
   async open(parent: BrowserWindow): Promise<BrowserWindow> {
     if (this.window && !this.window.isDestroyed()) { this.window.show(); this.window.focus(); return this.window; }
     const window = this.window = new BrowserWindow({ parent, title: 'Translation — Friends & Fables Desktop',
-      width: 720, height: 750, minWidth: 580, minHeight: 600, backgroundColor: '#101116', autoHideMenuBar: true,
+      width: 720, height: 750, minWidth: 580, minHeight: 600, backgroundColor: themeBackground(this.theme), autoHideMenuBar: true,
       ...(process.platform === 'linux' ? { type: 'dialog' } : {}),
       webPreferences: { partition: 'fables-appearance', preload: path.join(__dirname, 'translation-preload.js'),
         sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true },

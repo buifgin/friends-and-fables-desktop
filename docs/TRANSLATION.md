@@ -1,10 +1,12 @@
 # Local Russian translation
 
-The v0.2.0 prototype translates displayed website text into Russian. It starts disabled. Open **Translation → Translate into Russian**; use **Show original text** to restore the original display without reloading or contacting the model.
+The v0.2.1 prototype translates displayed website text into Russian. It starts disabled. Open **Translation → Translate into Russian**; use **Show original text** to restore the original display without reloading or contacting the model.
 
 **Translation Settings…** controls machine-translated descriptions, a numeric local service port, names whose exact spelling should be preserved, and the cache. With descriptions disabled, the built-in interface dictionary still translates common labels and game terms. Russian passages, URLs, dice notation, and listed names are preserved. Short unknown labels and unknown headings stay original so names are not guessed. Editable fields, code, hidden content, and login forms are excluded; newly visible text is revisited. Text-node attributes and link destinations remain original. Text nodes over 4,000 characters stay original in this first version.
 
-The bundled Appearance and Translation settings use a pre-built Russian interface when translation is enabled, including help text, color/picture dialogs, previews, and the pinned Appearance button. These labels never require the model. **Show original text** switches them back to English without resetting unsaved appearance choices.
+The bundled Appearance and Translation settings use a pre-built Russian interface when translation is enabled, including help text, color/picture dialogs, previews, and the pinned Appearance button. These labels never require the model. Both settings windows follow the selected app theme, including live theme changes without losing an unsaved settings draft. **Show original text** switches them back to English without resetting unsaved appearance choices.
+
+The site sets `translate="no"` on its document to disable browser translation. The app’s explicit translation toggle overrides this page-wide flag. Individual `translate="no"` / `notranslate` blocks, editors, names, and login fields remain protected. Version 0.2.1 corrects the earlier behavior that skipped the entire website because of this flag.
 
 ## Start the local model
 
@@ -58,6 +60,6 @@ Machine prose remains imperfect: the model translated “innkeeper” as “по
 
 ## Verification
 
-`npm test` runs core/client/cache tests, the appearance regression suite, an isolated Electron translation suite, and the themed/pinned Appearance panel suite. Tests cover mixed Russian, protected names/URLs/dice, editable drafts, unchanged campaign records, original restoration, event listeners, late/streaming nodes, model failure/recovery, restart persistence, strict origins, restricted settings IPC, response limits, redirects, timeouts, and non-executable model output. CI also checks all three Electron suites against packaged resources.
+`npm test` runs core/client/cache tests, the appearance regression suite, an isolated Electron translation suite, and the themed/pinned Appearance panel suite. Tests cover the actual site-wide translation flags, home/game labels, theme synchronization and unsaved drafts, mixed Russian, protected names/URLs/dice, editable drafts, unchanged campaign records, original restoration, event listeners, late/streaming nodes, model failure/recovery, restart persistence, strict origins, restricted settings IPC, response limits, redirects, timeouts, and non-executable model output. CI also checks all three Electron suites against packaged resources.
 
 References: [LibreTranslate installation](https://docs.libretranslate.com/guides/installation/), [translation API](https://docs.libretranslate.com/api/operations/translate/), [v1.9.6 release](https://github.com/LibreTranslate/LibreTranslate/releases/tag/v1.9.6).

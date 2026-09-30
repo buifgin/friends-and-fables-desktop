@@ -31,6 +31,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const appearance=new AppearanceManager();await appearance.initialize();
  manager=new TranslationManager();await manager.initialize();
+ appearance.onChange=value=>manager.setAppearance(value);manager.setAppearance(appearance.getSettings());
  assert.equal(manager.getSettings().enabled,false);
  const preferences={...manager.getSettings(),port:server.address().port,preservedNames:['Franz','Aria Moonwhisper']};
  await manager.save(preferences);
@@ -46,9 +47,23 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  const original=await contents.executeJavaScript('document.body.innerHTML');
  const settings=await manager.open(website);settings.hide();
  await until(settings.webContents,'!document.getElementById("apply").disabled');
+ await appearance.save({...appearance.getSettings(),preset:'amoled'});
+ await until(settings.webContents,'getComputedStyle(document.documentElement).backgroundColor === "rgb(0, 0, 0)"');
+ await settings.webContents.executeJavaScript("document.getElementById('preserved-names').value='Aria Moonwhisper\\nUnsaved Place'");
+ await appearance.save({...appearance.getSettings(),preset:'light'});
+ await until(settings.webContents,'getComputedStyle(document.documentElement).backgroundColor === "rgb(245, 245, 245)"');
+ assert.equal(await settings.webContents.executeJavaScript('getComputedStyle(document.getElementById("apply")).color'),'rgb(255, 255, 255)');
+ assert.equal(await settings.webContents.executeJavaScript('document.getElementById("preserved-names").value'),'Aria Moonwhisper\nUnsaved Place');
+ await appearance.save({...appearance.getSettings(),preset:'custom',customColor:'#234567'});
+ await until(settings.webContents,'getComputedStyle(document.documentElement).backgroundColor === "rgb(35, 69, 103)"');
+ await settings.webContents.executeJavaScript(`document.getElementById('preserved-names').value=${JSON.stringify(preferences.preservedNames.join('\n'))}`);
  await settings.webContents.executeJavaScript("document.getElementById('enabled').checked=true;document.getElementById('translation-form').requestSubmit()");
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");
  assert.equal(await contents.executeJavaScript("document.getElementById('term').textContent"),'Спасбросок Мудрости');
+ for(const [id,text] of Object.entries({home:'Главная',create:'Создать',discover:'Обзор',workshop:'Мастерская',studio:'Студия изображений','skill-check':'Проверка Акробатики',stats:'Характеристики',alignment:'Законно-добрый'}))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text);
+ assert.equal(await contents.executeJavaScript('document.documentElement.getAttribute("translate")'),'no');
+ assert.equal(await contents.executeJavaScript('document.documentElement.classList.contains("notranslate")'),true);
+ assert.equal(await contents.executeJavaScript('document.getElementById("untranslated-name").textContent'),'The Protected Name');
  assert.equal(await contents.executeJavaScript("document.getElementById('mixed').textContent"),'Дверь открывается. Привет, путник! Присаживайся.');
  assert.equal(await contents.executeJavaScript("document.getElementById('character-name').textContent"),'Aria Moonwhisper');
  assert(!calls.some(value=>/Franz|Aria Moonwhisper|https:\/\/|1d20/.test(value)));
@@ -67,6 +82,8 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  // Restoring originals retains HTML structure and event listeners.
  await manager.save({...manager.getSettings(),showOriginal:true});
  assert.equal(await contents.executeJavaScript("document.body.innerHTML"),original);
+ // Body-level browser translation flags are also overridden by explicit opt-in.
+ await contents.executeJavaScript('document.body.setAttribute("translate","no");document.body.classList.add("notranslate")');
  await contents.executeJavaScript("document.getElementById('save').click()");assert.equal(await contents.executeJavaScript('window.saveClicks'),2);
  const count=calls.length;await manager.save({...manager.getSettings(),showOriginal:false});
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");assert.equal(calls.length,count,'Previously translated text should use the cache.');
@@ -107,5 +124,5 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.querySelector('#story strong').textContent"),'The forest is quiet.');
  assert.equal((await reopened.webContents.executeJavaScript('window.translation.clearCache()')).cacheEntries,0);
  if(process.env.FABLES_TEST_SCREENSHOT){reopened.show();await sleep(150);await writeFile(process.env.FABLES_TEST_SCREENSHOT,(await reopened.webContents.capturePage()).toPNG());}
- console.log('PASS: translation controls, dictionary, mixed Russian, names/URLs/dice preservation, immutable drafts/records, reversible DOM, late/streaming content, model failure/recovery, restart cache, exact origins, and restricted IPC.');
+ console.log('PASS: site-wide browser opt-outs, preserved nested opt-outs, themed translation settings and unsaved drafts, home/game labels, translation controls, dictionary, mixed Russian, names/URLs/dice preservation, immutable drafts/records, reversible DOM, late/streaming content, model failure/recovery, restart cache, exact origins, and restricted IPC.');
 })().then(async()=>{clearTimeout(timer);await manager?.shutdown();for(const window of BrowserWindow.getAllWindows())window.destroy();server?.closeAllConnections();await new Promise(resolve=>server?server.close(resolve):resolve());if(profile)await rm(profile,{recursive:true,force:true});app.exit(0);}).catch(async error=>{console.error(error);clearTimeout(timer);await manager?.shutdown();for(const window of BrowserWindow.getAllWindows())window.destroy();server?.closeAllConnections();if(server)server.close();if(profile)await rm(profile,{recursive:true,force:true});app.exit(1);});
