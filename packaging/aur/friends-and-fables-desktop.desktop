@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Friends & Fables Desktop
+Comment=Unofficial Friends & Fables desktop app
+Exec=friends-and-fables-desktop %U
+Icon=friends-and-fables-desktop
+Terminal=false
+Type=Application
+Categories=Game;
+Keywords=RPG;DnD;Friends;Fables;
+StartupWMClass=friends-and-fables-desktop

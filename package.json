@@ -6,7 +6,7 @@
   "private": true,
   "main": "dist/main.js",
   "author": "buifgin",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/buifgin/friends-and-fables-desktop.git"
@@ -24,7 +24,9 @@
     "prepackage": "npm run build",
     "package": "electron-forge package",
     "premake": "npm run build",
-    "make": "electron-forge make"
+    "make": "electron-forge make",
+    "dist:linux": "npm run build && electron-builder --config electron-builder.config.cjs --linux AppImage --x64 --publish never",
+    "dist:windows": "npm run build && electron-builder --config electron-builder.config.cjs --win portable --x64 --publish never"
   },
   "config": {
     "forge": "./forge.config.cjs"
@@ -34,6 +36,8 @@
     "@electron-forge/maker-zip": "8.0.1",
     "@types/node": "26.6.3",
     "electron": "44.5.1",
+    "electron-builder": "26.15.3",
     "typescript": "7.0.2"
-  }
+  },
+  "desktopName": "friends-and-fables-desktop.desktop"
 }

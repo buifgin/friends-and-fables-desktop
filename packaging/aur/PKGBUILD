@@ -1,0 +1,42 @@
+# Maintainer: buifgin
+pkgname=friends-and-fables-desktop-bin
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Unofficial Friends & Fables desktop app with local appearance customization'
+arch=('x86_64')
+url='https://github.com/buifgin/friends-and-fables-desktop'
+license=('MIT')
+depends=('alsa-lib' 'at-spi2-core' 'cairo' 'dbus' 'expat' 'glib2' 'gtk3'
+         'libcups' 'libdrm' 'libx11' 'libxcb' 'libxcomposite' 'libxdamage'
+         'libxext' 'libxfixes' 'libxkbcommon' 'libxrandr' 'mesa' 'nspr'
+         'nss' 'pango' 'systemd-libs')
+optdepends=('hyprland: automatic floating mode for the Appearance window')
+provides=('friends-and-fables-desktop')
+conflicts=('friends-and-fables-desktop')
+options=('!strip' '!debug')
+_image="friends-and-fables-desktop-${pkgver}-linux-x86_64.AppImage"
+source=("${url}/releases/download/v${pkgver}/${_image}"
+        'friends-and-fables-desktop.desktop'
+        'friends-and-fables-desktop')
+noextract=("${_image}")
+sha256sums=('a495c0a827bca1b75764c3e8ce84837f1e8e8e31b1570fc82502bb8e76856521'
+            '462dcce05e630e78f5c2cd1e19436d5c50e0762fcf20fdf755d114826901c63a'
+            '5a59b5ebb4ce705764d9f85e28299094ec888871c1a849abd4a255e12420442b')
+
+prepare() {
+  chmod +x "${_image}"
+  "./${_image}" --appimage-extract > /dev/null
+}
+
+package() {
+  local destination="${pkgdir}/opt/friends-and-fables-desktop"
+  install -dm755 "${destination}"
+  cp -a squashfs-root/. "${destination}/"
+  # Installed as root by pacman; keep Chromium's sandbox helper available.
+  chmod 4755 "${destination}/chrome-sandbox"
+  install -Dm755 friends-and-fables-desktop "${pkgdir}/usr/bin/friends-and-fables-desktop"
+  install -Dm644 friends-and-fables-desktop.desktop "${pkgdir}/usr/share/applications/friends-and-fables-desktop.desktop"
+  install -Dm644 squashfs-root/usr/share/icons/hicolor/512x512/apps/friends-and-fables-desktop.png \
+    "${pkgdir}/usr/share/icons/hicolor/512x512/apps/friends-and-fables-desktop.png"
+  install -Dm644 squashfs-root/resources/LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

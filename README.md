@@ -22,9 +22,24 @@ The app opens the existing website and adds local themes, campaign chat pictures
 - Undo the last appearance reset, including the selected picture, even after restarting.
 - Export and import themes, optionally including the selected picture for friends.
 - Use a black application menu bar on Linux, with an option to restore the system menu bar. Open Appearance as a floating window on Hyprland.
-- Package a portable ZIP for Linux or Windows.
+- Build a Linux x86_64 AppImage and Windows x64 portable EXE; keep the development ZIP option.
 
-## Run the app
+## Download the app
+
+Download the Linux AppImage or Windows portable EXE from [GitHub Releases](https://github.com/buifgin/friends-and-fables-desktop/releases). No Node.js installation is needed to run these files.
+
+On Arch/Linux, make the AppImage executable and run it:
+
+```sh
+chmod +x friends-and-fables-desktop-0.1.0-linux-x86_64.AppImage
+./friends-and-fables-desktop-0.1.0-linux-x86_64.AppImage
+```
+
+On Windows, run `friends-and-fables-desktop-0.1.0-windows-x64.exe`. The first build is unsigned and still needs manual Windows verification.
+
+The [AUR guide](docs/AUR.md) includes a prepared binary-package recipe and submission steps. AUR publication requires an AUR account and SSH key.
+
+## Run the app from source
 
 Install Node.js 24 LTS with npm, then from the repository root run:
 
@@ -53,7 +68,7 @@ npm run make
 
 `make` builds the application and writes the packaged folder and portable ZIP under `out/`. It targets the current operating system by default. On Windows, run the commands in PowerShell.
 
-The initial ZIP is a development distribution; installers, signing, and AUR packaging come later.
+For single-file releases, use `npm run dist:linux` or `npm run dist:windows`. See [release instructions](docs/RELEASING.md) for builds, checksums, and GitHub uploads. The AppImage and portable EXE are written to `out/releases/`; signing and automatic updates are deferred.
 
 ## Appearance and zoom
 
@@ -154,4 +169,4 @@ See the [roadmap](docs/ROADMAP.md) for the implementation order.
 - [LibreTranslate installation](https://docs.libretranslate.com/guides/installation/)
 - [LibreTranslate API](https://docs.libretranslate.com/guides/api_usage/)
 
-This project is independent of the Friends & Fables service. A project license has not been selected yet.
+This project is independent of the Friends & Fables service. The desktop wrapper is [MIT licensed](LICENSE); bundled Electron/Chromium components retain their own license notices.

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /opt/friends-and-fables-desktop/friends-and-fables-desktop "$@"

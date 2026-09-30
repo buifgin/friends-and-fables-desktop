@@ -59,9 +59,13 @@
 
 ## 5. Distribution
 
-- Choose a project license and account for the licenses of distributed dependencies and models.
+- [x] License the wrapper under MIT and preserve bundled Electron/Chromium notices.
+- [x] Build Linux x86_64 AppImage and Windows x64 portable EXE releases.
+- [x] Prepare the AUR binary-package recipe and publishing guide.
+- [ ] Submit the prepared recipe through an AUR maintainer account.
+- [ ] Account for translation model licenses before bundling them.
 - Evaluate how to package and manage the local translation engine on Windows and Arch.
 - Aim for a user setup that does not require Docker.
 - Build Windows and Linux artifacts through GitHub Actions.
 - Test packaged releases on both operating systems using dual boot.
-- Investigate an AUR package after the Arch release is verified.
+- Verify AUR installation on a clean Arch system and maintain package updates.

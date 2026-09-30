@@ -1,0 +1,31 @@
+module.exports = {
+  appId: 'io.github.buifgin.friendsandfablesdesktop',
+  productName: 'Friends & Fables Desktop',
+  directories: { output: 'out/releases', buildResources: 'build' },
+  asar: true,
+  npmRebuild: false,
+  files: ['dist/**/*', 'assets/**/*', 'package.json', 'LICENSE'],
+  extraResources: [{ from: 'LICENSE', to: 'LICENSE' }],
+  publish: null,
+  linux: {
+    syncDesktopName: true,
+    target: [{ target: 'AppImage', arch: ['x64'] }],
+    executableName: 'friends-and-fables-desktop',
+    icon: 'build/icon.png',
+    category: 'Game',
+    desktop: { entry: {
+      Name: 'Friends & Fables Desktop',
+      Comment: 'Unofficial Friends & Fables desktop app',
+      StartupWMClass: 'friends-and-fables-desktop',
+      Keywords: 'RPG;DnD;Friends;Fables;',
+    } },
+  },
+  toolsets: { appimage: '1.0.3' },
+  appImage: { artifactName: 'friends-and-fables-desktop-${version}-linux-${arch}.AppImage' },
+  win: {
+    target: [{ target: 'portable', arch: ['x64'] }],
+    executableName: 'friends-and-fables-desktop',
+    icon: 'build/icon.ico',
+  },
+  portable: { artifactName: 'friends-and-fables-desktop-${version}-windows-${arch}.exe' },
+};
