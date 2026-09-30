@@ -8,22 +8,23 @@ export interface AppearanceSettings {
   backgroundFit: 'cover' | 'contain';
   backgroundEffects: { blur: number; opacity: number; overlayColor: string; overlayOpacity: number };
   messages: { enabled: boolean; player: MessageStyle; gm: MessageStyle };
-  context: { enabled: boolean; style: MessageStyle };
+  context: { enabled: boolean; style: MessageStyle; blocks: MessageStyle; bar: MessageStyle };
   events: { enabled: boolean; style: MessageStyle };
   dice: { enabled: boolean; style: MessageStyle; colorsEnabled: boolean; faceColor: string; edgeColor: string; numberColor: string };
   linuxBlackMenu: boolean;
+  linuxFloatingAppearance: boolean;
 }
 
 export interface MessageStyle {
   color: string; opacity: number; textColor: string | null;
   gradient: { enabled: boolean; color: string; angle: number };
-  border: { enabled: boolean; color: string; width: number; radius: number };
+  border: { enabled: boolean; color: string; width: number; radius: number; variant: 'plain' | 'ornate' | 'arcane' | 'runic' };
 }
-export interface AppearanceState extends AppearanceSettings { imagePreview: string | null; platform: string }
+export interface AppearanceState extends AppearanceSettings { imagePreview: string | null; platform: string; canUndoReset: boolean }
 
 const baseStyle = (color: string, opacity: number): MessageStyle => ({ color, opacity, textColor: null,
   gradient: { enabled: false, color: '#000000', angle: 90 },
-  border: { enabled: false, color: '#555555', width: 1, radius: 8 } });
+  border: { enabled: false, color: '#555555', width: 1, radius: 8, variant: 'plain' } });
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   preset: 'website',
   customColor: '#161616',
@@ -32,11 +33,14 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   backgroundFit: 'cover',
   backgroundEffects: { blur: 0, opacity: 1, overlayColor: '#000000', overlayOpacity: 0 },
   messages: { enabled: false, player: baseStyle('#16202a', .85), gm: baseStyle('#101010', .85) },
-  context: { enabled: false, style: { ...baseStyle('#101010', 1), border: { enabled: true, color: '#444444', width: 1, radius: 8 } } },
+  context: { enabled: false, style: baseStyle('#101010', 1),
+    blocks: { ...baseStyle('#101010', 1), border: { enabled: true, color: '#444444', width: 1, radius: 8, variant: 'plain' } },
+    bar: baseStyle('#101010', 1) },
   events: { enabled: false, style: { ...baseStyle('#17172b', 1), gradient: { enabled: true, color: '#000000', angle: 90 } } },
   dice: { enabled: false, style: baseStyle('#101010', 1), colorsEnabled: false,
     faceColor: '#7c3aed', edgeColor: '#d8bb82', numberColor: '#ffffff' },
   linuxBlackMenu: true,
+  linuxFloatingAppearance: true,
 };
 
 const PRESETS: ThemePreset[] = ['website', 'amoled', 'black', 'light', 'custom'];
@@ -77,9 +81,11 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     }
     const gradient = record(style.gradient ?? baseStyle('#000000', 1).gradient);
     const border = record(style.border ?? baseStyle('#000000', 1).border);
+    const variant = border.variant ?? 'plain';
+    if (!['plain', 'ornate', 'arcane', 'runic'].includes(String(variant))) throw new Error('Choose a supported border style.');
     return { color: style.color.toLowerCase(), opacity: style.opacity, textColor: textColor?.toLowerCase() ?? null,
       gradient: { enabled: flag(gradient.enabled), color: hex(gradient.color), angle: range(gradient.angle, 0, 360) },
-      border: { enabled: flag(border.enabled), color: hex(border.color), width: range(border.width, 1, 8), radius: range(border.radius, 0, 40) } };
+      border: { enabled: flag(border.enabled), color: hex(border.color), width: range(border.width, 1, 8), radius: range(border.radius, 0, 40), variant: variant as MessageStyle['border']['variant'] } };
   }
   function record(raw: unknown): Record<string, unknown> {
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid appearance options.');
@@ -104,17 +110,21 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   const effects = record(input.backgroundEffects ?? DEFAULT_APPEARANCE.backgroundEffects);
   const linuxBlackMenu = input.linuxBlackMenu ?? true;
   if (typeof linuxBlackMenu !== 'boolean') throw new Error('Invalid menu bar preference.');
+  const contextStyle = messageStyle(context.style);
+  const linuxFloatingAppearance = input.linuxFloatingAppearance ?? true;
+  if (typeof linuxFloatingAppearance !== 'boolean') throw new Error('Invalid floating window preference.');
   return {
     preset: preset as ThemePreset, customColor: customColor.toLowerCase(),
     backgroundImage, backgroundName, backgroundFit,
     backgroundEffects: { blur: range(effects.blur, 0, 30), opacity: range(effects.opacity, 0, 1),
       overlayColor: hex(effects.overlayColor), overlayOpacity: range(effects.overlayOpacity, 0, 1) },
     messages: { enabled: styles.enabled, player: messageStyle(styles.player), gm: messageStyle(styles.gm) },
-    context: { enabled: flag(context.enabled), style: messageStyle(context.style) },
+    context: { enabled: flag(context.enabled), style: contextStyle,
+      blocks: messageStyle(context.blocks ?? { ...contextStyle, opacity: 1 }), bar: messageStyle(context.bar ?? contextStyle) },
     events: { enabled: flag(events.enabled), style: messageStyle(events.style) },
     dice: { enabled: flag(dice.enabled), style: messageStyle(dice.style), colorsEnabled: flag(dice.colorsEnabled),
       faceColor: hex(dice.faceColor), edgeColor: hex(dice.edgeColor), numberColor: hex(dice.numberColor) },
-    linuxBlackMenu,
+    linuxBlackMenu, linuxFloatingAppearance,
   };
 }
 

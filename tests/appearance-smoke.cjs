@@ -1,5 +1,5 @@
 const assert = require('node:assert/strict');
-const { mkdtemp, readFile, rm, writeFile } = require('node:fs/promises');
+const { mkdir, mkdtemp, readFile, rename, rm, writeFile } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, WebContentsView } = require('electron');
@@ -11,7 +11,7 @@ const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/linux-menu')
 registerAppearanceScheme();
 app.on('window-all-closed', () => {});
 let userData;
-const timeout = setTimeout(() => { console.error('Appearance smoke test timed out.'); app.exit(1); }, 30000);
+const timeout = setTimeout(() => { console.error('Appearance smoke test timed out.'); app.exit(1); }, 45000);
 
 async function until(contents, expression) {
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -110,6 +110,7 @@ async function save(settings, window) {
       </div>
     </div>
     <form id="character-form"><input name="name" type="text" value="Character"><input name="max_hp" type="text" value="24"><input name="strength" type="number" value="12"></form>
+    <div role="dialog" id="roll-breakdown" class="w-80 bg-slate-900/95 border-amber-600/50 text-amber-100"><span class="text-amber-200">Base Roll</span><b>17</b><div class="border-amber-600/50">Total 21</div></div>
     <script>
       document.getElementById('event-message-card-1').__reactFiber$test = {memoizedProps:{event:{role:'player'}}};
       document.getElementById('event-message-card-2').__reactFiber$test = {memoizedProps:{event:{role:'dm'}}};
@@ -354,6 +355,105 @@ async function save(settings, window) {
   await until(settingsContents,"!document.getElementById('apply').disabled");
   assert.equal(await settingsContents.executeJavaScript('window.appearance.get().then(s=>s.dice.faceColor)'),'#eeeeee');
   await save(chatSettings, settingsWindow);
+  // Three independent context surfaces and decorated dice popovers.
+  const separateContext={enabled:true,
+    style:{color:'#223344',opacity:1,textColor:'#abcdef',border:{enabled:true,color:'#aa7722',width:1,radius:8,variant:'ornate'}},
+    blocks:{color:'#556677',opacity:.6,textColor:'#ffeeaa',border:{enabled:true,color:'#cc9955',width:2,radius:6,variant:'arcane'}},
+    bar:{color:'#112233',opacity:.9,textColor:'#eeddcc',border:{enabled:true,color:'#bbbbbb',width:1,radius:10,variant:'runic'}}};
+  const decorated={...newSettings,context:separateContext,dice:{...newSettings.dice,style:{...newSettings.dice.style,border:{enabled:true,color:'#cdaa55',width:2,radius:12,variant:'ornate'}}}};
+  await save(decorated,settingsWindow);
+  const surfaces=await website.webContents.executeJavaScript(`(()=>{
+    const get=(id)=>{const e=document.getElementById(id),c=getComputedStyle(e);return {bg:c.backgroundColor,fg:c.color,ornament:getComputedStyle(e,'::after').backgroundImage,events:getComputedStyle(e,'::after').pointerEvents};};
+    return {panel:get('context-panel-root'),block:get('context-block'),bar:get('context-bar'),menu:get('roll-breakdown'),text:getComputedStyle(document.querySelector('#roll-breakdown span')).color};
+  })()`);
+  assert.equal(surfaces.panel.bg,'rgb(34, 51, 68)');assert.equal(surfaces.block.bg,'rgba(85, 102, 119, 0.6)');assert.equal(surfaces.bar.bg,'rgba(17, 34, 51, 0.9)');
+  assert.equal(surfaces.panel.fg,'rgb(171, 205, 239)');assert.equal(surfaces.block.fg,'rgb(255, 238, 170)');assert.equal(surfaces.bar.fg,'rgb(238, 221, 204)');
+  for(const surface of Object.values(surfaces).filter(v=>typeof v==='object')){assert.match(surface.ornament,/data:image\/svg\+xml/);assert.equal(surface.events,'none');}
+  assert.equal(surfaces.menu.bg,'rgb(8, 8, 8)');assert.equal(surfaces.text,'rgb(221, 221, 221)');
+  if(process.env.FABLES_TEST_SCREENSHOT){
+    await settingsContents.executeJavaScript("window.appearance.get().then(showSettings);document.querySelector('[data-panel=\"context-panel\"]').click()");
+    website.show();settingsWindow.show();
+    const {floatAppearance}=require(path.join(appRoot,'dist/floating-appearance'));
+    await floatAppearance(settingsWindow,true);await new Promise(resolve=>setTimeout(resolve,250));
+    await writeFile(process.env.FABLES_TEST_SCREENSHOT.replace(/\.png$/,'-ornaments.png'),(await settingsContents.capturePage()).toPNG());
+    settingsWindow.hide();
+  }
+  // Expanding the header switches it from the bar palette to the panel palette.
+  await website.webContents.executeJavaScript("document.querySelector('[aria-label=\"Expand working context\"]').remove()");
+  await until(website.webContents,"document.getElementById('context-bar').dataset.ffDesktopContext==='panel'");
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('context-bar')).backgroundColor"),'rgb(34, 51, 68)');
+  await website.webContents.executeJavaScript(`document.getElementById('context-bar').insertAdjacentHTML('beforeend','<button aria-label="Expand working context"></button>')`);
+  await until(website.webContents,"document.getElementById('context-bar').dataset.ffDesktopContext==='bar'");
+  // Export/import includes a portable picture without paths or machine preferences.
+  const saveDialog=dialog.showSaveDialog;
+  const themeFile=path.join(userData,'shared.fables-theme.json');
+  dialog.showSaveDialog=async()=>({canceled:false,filePath:themeFile});
+  assert.equal(await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(decorated)},true)`),true);
+  dialog.showSaveDialog=saveDialog;
+  const shared=JSON.parse(await readFile(themeFile,'utf8'));
+  assert.equal(shared.version,1);assert(shared.image.pngBase64);assert.equal(shared.appearance.backgroundImage,null);
+  assert.equal(shared.appearance.linuxBlackMenu,undefined);assert.equal(shared.appearance.linuxFloatingAppearance,undefined);
+  dialog.showSaveDialog=async()=>({canceled:false,filePath:themeFile});
+  await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(decorated)},false)`);
+  assert.equal(JSON.parse(await readFile(themeFile,'utf8')).image,null);
+  dialog.showOpenDialog=async()=>({canceled:false,filePaths:[themeFile]});
+  const colorOnly=await settingsContents.executeJavaScript('window.appearance.importTheme()');
+  assert.equal(colorOnly.backgroundImage,decorated.backgroundImage);
+  assert.equal(colorOnly.linuxFloatingAppearance,manager.getSettings().linuxFloatingAppearance);
+  await writeFile(themeFile,JSON.stringify(shared));dialog.showSaveDialog=saveDialog;
+  dialog.showOpenDialog=async()=>({canceled:false,filePaths:[themeFile]});
+  const importedTheme=await settingsContents.executeJavaScript('window.appearance.importTheme()');
+  assert.deepEqual(importedTheme.context, (await settingsContents.executeJavaScript('window.appearance.get()')).context);
+  assert.equal(importedTheme.imagePreview,imported.preview);
+  dialog.showOpenDialog=showDialog;
+  const invalidTheme=path.join(userData,'bad-theme.json');
+  await writeFile(invalidTheme,JSON.stringify({...shared,appearance:{...shared.appearance,context:{...shared.appearance.context,style:{...shared.appearance.context.style,border:{...shared.appearance.context.style.border,variant:'url(secret)'}}}}}));
+  dialog.showOpenDialog=async()=>({canceled:false,filePaths:[invalidTheme]});
+  await assert.rejects(settingsContents.executeJavaScript('window.appearance.importTheme()'),/supported border/);
+  dialog.showOpenDialog=showDialog;
+  // The selected folder survives restarts and paginates all supported files.
+  const folder=path.join(userData,'background-options');await mkdir(folder);
+  for(let i=0;i<14;i++)await writeFile(path.join(folder,`picture-${String(i).padStart(2,'0')}.png`),nativeImage.createFromBitmap(Buffer.from([i,120,240,255]),{width:1,height:1}).toPNG());
+  await writeFile(path.join(folder,'notes.txt'),'not a picture');
+  dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});
+  const folderPage=await settingsContents.executeJavaScript('window.appearance.chooseFolder()');
+  dialog.showOpenDialog=showDialog;
+  assert.equal(folderPage.folderName,'background-options');assert.equal(folderPage.total,14);assert.equal(folderPage.items.length,12);assert.equal(folderPage.nextOffset,12);
+  const secondPage=await settingsContents.executeJavaScript('window.appearance.folderPictures(12)');assert.equal(secondPage.items.length,2);assert.equal(secondPage.nextOffset,null);
+  await writeFile(path.join(folder,'new.png'),nativeImage.createFromBitmap(Buffer.from([250,10,30,255]),{width:1,height:1}).toPNG());
+  assert.equal((await settingsContents.executeJavaScript('window.appearance.folderPictures()')).total,15);
+  await rm(path.join(folder,'new.png'));
+  await rename(folder,`${folder}-moved`);
+  await assert.rejects(settingsContents.executeJavaScript('window.appearance.folderPictures()'),/ENOENT/);
+  await rename(`${folder}-moved`,folder);
+  const folderPicture=await settingsContents.executeJavaScript(`window.appearance.selectFolderPicture(${JSON.stringify(folderPage.items[0].id)})`);
+  assert.match(folderPicture.id,/^[a-f0-9]{64}\.png$/);
+  await assert.rejects(settingsContents.executeJavaScript("window.appearance.selectFolderPicture('../private')"),/selected folder/);
+  await assert.rejects(settingsContents.executeJavaScript("window.appearance.selectPicture('../../private')"),/Invalid imported/);
+  const library=await settingsContents.executeJavaScript('window.appearance.pictures()');assert(library.items.some(item=>item.id===folderPicture.id));
+  await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
+  await settingsContents.executeJavaScript("document.querySelector('[data-panel=\"picture-panel\"]').click();document.getElementById('browse-images').click()");
+  await until(settingsContents,"document.querySelectorAll('#picture-grid .picture-choice').length===12 && !document.getElementById('choose-folder').disabled");
+  assert.equal(await settingsContents.executeJavaScript("document.getElementById('browser-status').textContent"),'background-options · 14 pictures');
+  if(process.env.FABLES_TEST_SCREENSHOT){
+    website.show();settingsWindow.show();
+    const {floatAppearance}=require(path.join(appRoot,'dist/floating-appearance'));
+    await floatAppearance(settingsWindow,true);await new Promise(resolve=>setTimeout(resolve,250));
+    await writeFile(process.env.FABLES_TEST_SCREENSHOT.replace(/\.png$/,'-gallery.png'),(await settingsContents.capturePage()).toPNG());
+    settingsWindow.hide();
+  }
+  await settingsContents.executeJavaScript("document.querySelector('#picture-grid .picture-choice').click()");
+  await until(settingsContents,"!document.getElementById('picture-browser').open");
+  assert.equal(await settingsContents.executeJavaScript('selection().backgroundImage'),folderPicture.id);
+  // Reset is reversible, including picture and all three context palettes.
+  const beforeReset=await save(decorated,settingsWindow);
+  const reset=await settingsContents.executeJavaScript(`window.appearance.reset(${JSON.stringify(decorated)})`);
+  assert.equal(reset.backgroundImage,null);assert.equal(reset.canUndoReset,true);
+  const afterUndo=await settingsContents.executeJavaScript('window.appearance.undoReset()');
+  assert.deepEqual({...afterUndo,canUndoReset:beforeReset.canUndoReset},beforeReset);
+  assert.equal(afterUndo.canUndoReset,false);
+  assert((await settingsContents.executeJavaScript('window.appearance.pictures()')).items.some(item=>item.id===imported.id));
+  await save(chatSettings,settingsWindow);
   // SPA route changes must not keep campaign styles on other screens.
   await website.webContents.executeJavaScript("history.pushState({}, '', '/account'); document.body.append(document.createElement('span'))");
   await until(website.webContents, "!document.querySelector('[data-ff-desktop-message]')");
@@ -382,6 +482,9 @@ async function save(settings, window) {
   manager.attach(outsider.webContents);
   await outsider.loadURL('https://example.invalid/test');
   await assert.rejects(outsider.webContents.executeJavaScript('window.appearance.get()'), /only in the app settings window/);
+  for(const method of ['pictures()','folderPictures()','chooseFolder()','undoReset()','importTheme()']){
+    await assert.rejects(outsider.webContents.executeJavaScript(`window.appearance.${method}`),/only in the app settings window/);
+  }
   await save({ preset: 'amoled', customColor: '#123456' }, settingsWindow);
   assert.equal((await colors(outsider.webContents)).background, original.background);
 
@@ -407,27 +510,30 @@ async function save(settings, window) {
   if (process.env.FABLES_TEST_SCREENSHOT) {
     await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
     settingsWindow.show();
-    for (const panel of ['picture', 'messages', 'context', 'events', 'dice', 'app']) {
+    for (const panel of ['picture', 'messages', 'context', 'events', 'dice', 'sharing', 'app']) {
       await settingsContents.executeJavaScript(`document.querySelector('[data-panel="${panel}-panel"]').click(); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
       await new Promise(resolve => setTimeout(resolve, 100));
       await writeFile(process.env.FABLES_TEST_SCREENSHOT.replace(/\.png$/, `-${panel}.png`), (await settingsContents.capturePage()).toPNG());
     }
     settingsWindow.hide();
   }
-  const { imagePreview: _preview, platform: _platform, ...persisted } = finalState;
+  // Leave a reset backup on disk to exercise Undo after a fresh manager starts.
+  await settingsContents.executeJavaScript(`window.appearance.reset(${JSON.stringify(finalState)})`);
+  await save(finalState,settingsWindow);
+  const { imagePreview: _preview, platform: _platform, canUndoReset: _undo, ...persisted } = finalState;
   assert.deepEqual(JSON.parse(await readFile(path.join(userData, 'appearance.json'), 'utf8')),
     persisted);
   settingsWindow.destroy();
-  ipcMain.removeHandler('appearance:get');
-  ipcMain.removeHandler('appearance:save');
-  ipcMain.removeHandler('appearance:import-image');
+  for(const method of ['get','save','import-image','pictures','select-picture','folder-pictures','choose-folder','select-folder-picture','reset','undo-reset','export-theme','import-theme'])ipcMain.removeHandler(`appearance:${method}`);
   session.fromPartition('fables-appearance').protocol.unhandle('fables-desktop');
   const restarted = new AppearanceManager();
   await restarted.initialize();
   const reopened = await restarted.open(website);
   reopened.hide();
   assert.deepEqual(await reopened.webContents.executeJavaScript('window.appearance.get()'),
-    finalState);
+    {...finalState,canUndoReset:true});
+  assert.equal((await reopened.webContents.executeJavaScript('window.appearance.folderPictures()')).folderName,'background-options');
+  const restoredUndo=await reopened.webContents.executeJavaScript('window.appearance.undoReset()');assert.equal(restoredUndo.canUndoReset,false);assert.equal(restoredUndo.backgroundImage,finalState.backgroundImage);
   const restoredWebsite = new BrowserWindow({ show: false, webPreferences: {
     session: testSession, sandbox: true, contextIsolation: true, nodeIntegration: false,
   } });
@@ -471,7 +577,7 @@ async function save(settings, window) {
     assert(prevented);
     assert.equal(website.webContents.getZoomLevel(), input.expected);
   }
-  console.log('PASS: themes, pictures and effects, in-app picker and drag performance, independent expanded context, message/event/roll gradients and borders, SVG dice paint, text and icons, character fields, dynamic messages, reset, persistence, IPC restrictions, Linux menu, and zoom.');
+  console.log('PASS: themes, image effects, persistent folder and picture library, theme sharing, reset undo across restarts, three context palettes, decorative borders and dice menus, picker performance, SVG dice paint, text and inputs, navigation, IPC restrictions, Linux menu, and zoom.');
 })().then(async () => {
   clearTimeout(timeout);
   for (const window of BrowserWindow.getAllWindows()) window.destroy();

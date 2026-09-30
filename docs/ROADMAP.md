@@ -28,7 +28,13 @@
 - [x] Add roll card styling and custom/preset face, edge, and number colors for all six SVG dice shapes.
 - [x] Add chat picture blur, image opacity, and a color overlay.
 - [x] Replace the native picker with in-app HSL/hex controls and avoid reparsing the image during color dragging.
-- [ ] Verify expanded context, dice animations, picture effects, and picker responsiveness in a signed-in campaign.
+- [x] Separate expanded context window, block-card, and collapsed-bar colors, opacity, gradients, and borders.
+- [x] Add Ornate, Arcane, and Runic corner decorations and style dice breakdown/selection menus.
+- [x] Keep imported pictures in a browseable library and remember a selected image folder across restarts.
+- [x] Undo appearance reset across restarts, restoring settings and the selected picture.
+- [x] Export/import portable themes with an optional embedded picture.
+- [x] Add and verify floating/tiled Appearance switching on Hyprland, targeting only the app's settings window.
+- [ ] Verify expanded context, decorative borders, dice menus/animations, gallery/sharing, picture effects, and picker responsiveness in a signed-in campaign.
 - [ ] Review themes on logged-in campaign screens, NPC details, and menus.
 - [ ] Check chat pictures, player/GM/NPC styles, message editors, and opacity in a signed-in campaign.
 - [ ] Verify readable text and handle any components with fixed neutral colors.

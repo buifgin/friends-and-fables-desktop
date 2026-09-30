@@ -12,14 +12,16 @@ The app opens the existing website and adds local themes, campaign chat pictures
 - Allow HTTPS navigation and sandboxed sign-in popups in the same session.
 - Provide standard menus for reload, zoom, copy/paste, developer tools, and opening the website in your browser.
 - Choose AMOLED black, soft black, light, or a custom background color, with saved preferences.
-- Import a local picture behind campaign chat, with cover/contain sizing, blur, image opacity, and a color overlay.
+- Import a local picture behind campaign chat, with cover/contain sizing, blur, image opacity, and a color overlay. Browse previously imported pictures or a permanently selected image folder.
 - Set separate colors, opacity, gradients, and borders for player and GM/NPC messages. Campaign inputs and bottom buttons use the player style; battle summaries use the GM palette.
-- Customize the working-context panel independently, including expanded content, search, tabs, and block cards. Its default is opaque even when player messages are transparent.
-- Customize movement/action cards and dice roll card backgrounds, gradients, and borders.
+- Set independent colors, opacity, gradients, and borders for the expanded context window, its block cards, and the collapsed bar above the input.
+- Customize movement/action cards, dice roll cards, and dice menus. Choose plain borders or Ornate, Arcane, and Runic corner decorations for messages, inputs, context surfaces, events, and dice.
 - Choose black, white, purple, or custom SVG dice face/edge/number colors while preserving animations and results.
 - Use an in-app color picker with hue, saturation, lightness, and hex controls. Preview updates are coalesced, and color dragging does not reload the picture.
 - Keep character editor fields readable using the app theme's foreground color.
-- Use a black application menu bar on Linux, with an option to restore the system menu bar.
+- Undo the last appearance reset, including the selected picture, even after restarting.
+- Export and import themes, optionally including the selected picture for friends.
+- Use a black application menu bar on Linux, with an option to restore the system menu bar. Open Appearance as a floating window on Hyprland.
 - Package a portable ZIP for Linux or Windows.
 
 ## Run the app
@@ -47,7 +49,7 @@ npm test
 npm run make
 ```
 
-`check` verifies TypeScript without emitting files. `test` runs an Electron smoke test with an offline page and a temporary profile; it checks themes, image import and effects, the background switch, independent expanded context, message/event/roll gradients and borders, SVG dice paint, the in-app picker and drag performance, text and icon colors, character fields, newly rendered components, campaign navigation, reset, reload, preference storage, the Linux menu bar, IPC access restrictions, and zoom handling. Its invalid-input and unauthorized-window cases deliberately produce rejection messages before the final PASS result.
+`check` verifies TypeScript without emitting files. `test` runs an Electron smoke test with an offline page and a temporary profile; it checks themes, image import and effects, the background switch, three independent context surfaces, decorative borders, dice menus, SVG dice paint, the in-app picker and drag performance, text and icon colors, character fields, newly rendered components, campaign navigation, reset and undo across restarts, folder persistence and pagination, picture-library browsing, portable theme export/import, reload, preference storage, the Linux menu bar, IPC access restrictions, and zoom handling. Its invalid-input and unauthorized-window cases deliberately produce rejection messages before the final PASS result.
 
 `make` builds the application and writes the packaged folder and portable ZIP under `out/`. It targets the current operating system by default. On Windows, run the commands in PowerShell.
 
@@ -55,7 +57,7 @@ The initial ZIP is a development distribution; installers, signing, and AUR pack
 
 ## Appearance and zoom
 
-Open **Appearance → Customize Appearance…** from the application menu. The window has seven tabs: **Theme**, **Chat picture**, **Messages**, **Context**, **Events**, **Dice**, and **App**.
+Open **Appearance → Customize Appearance…** from the application menu. The window has eight tabs: **Theme**, **Chat picture**, **Messages**, **Context**, **Events**, **Dice**, **Sharing**, and **App**.
 
 In **Theme**, choose one of these presets:
 
@@ -65,7 +67,9 @@ In **Theme**, choose one of these presets:
 - **Custom color:** choose a color with the picker or enter a `#RRGGBB` value.
 - **Website default:** restore the site's original colors.
 
-In **Chat picture**, click **Choose picture…** to import a PNG or JPEG from your computer. Pictures must be at most 20 MB and 16 million pixels; the stored PNG must also fit within 20 MB. Choose **Cover the chat area** to fill the area, or **Show the whole picture** to keep the entire image visible. **Remove picture** restores the campaign's existing background when applied. The picture is copied into the app's local profile and used only in this desktop app.
+In **Chat picture**, click **Choose picture…** to import a PNG or JPEG from your computer. Pictures must be at most 20 MB and 16 million pixels; the stored PNG must also fit within 20 MB. Choose **Cover the chat area** to fill the area, or **Show the whole picture** to keep the entire image visible. **Remove picture** restores the campaign's existing background when applied. The picture is copied into the app's local profile and used only in this desktop app. Removing or resetting it deselects it; the copy stays in the picture library.
+
+Click **Browse pictures…** to see **Imported pictures** or **Selected folder**. **Choose folder…** saves a permanent folder choice: after restarting, the browser opens that folder again until you choose another one or the folder is moved/deleted. It lists the folder's PNG/JPEG files, loads more thumbnails with **Show more**, and refreshes the list each time you open it. Subfolders are not scanned. Choosing a folder picture copies it into the library, so an applied theme keeps its picture even if the source folder later moves. If the folder is unavailable, use the library or select another folder.
 
 Use **Image blur**, **Image opacity**, **Overlay color**, and **Overlay opacity** to soften the picture or tint it. For a blurred image under black, choose a black overlay and increase its opacity. Message text and controls stay sharp. These effects apply only to your uploaded chat picture.
 
@@ -75,17 +79,19 @@ In **Messages**, enable **Customize message backgrounds**, then choose separate 
 
 **Automatic text color** chooses black or white based on the message background's opacity over the app theme. To choose your own color, disable it and set **Text & icons** for player or GM messages. This is useful over pictures with bright or dark areas. GM text settings also cover the **Thoughts** control and bold headings. Battle summaries and character damage cards use the GM background and text settings, while damage/healing/distance colors are preserved.
 
-Open **Gradient & border** inside either message editor to enable a second background color and direction, or choose a border color, width, and corner radius. A disabled border removes the card outline; backgrounds can still be transparent.
+Open **Gradient & border** inside either message editor to enable a second background color and direction, or choose a border color, width, and corner radius. Choose **Plain**, **Ornate corners**, **Arcane diamonds**, or **Runic corners** as the border style. The three decorative variants use your border color and width. A disabled border removes the card outline; backgrounds can still be transparent.
 
-In **Context**, enable customization to style the bar and expanded panel separately from player messages. It starts with a solid dark background. Panel opacity is adjustable; block cards remain solid so text cannot overlap with the story behind them. The search row, tabs, footer, and formerly blue/purple block surfaces follow this palette. Category dots and the usage meter retain their category colors.
+In **Context**, enable customization and use **Customize** to switch between **Expanded window**, **Messages / block cards**, and **Collapsed bar above input**. Each has its own background, opacity, text color, gradient, and border. They start with solid dark backgrounds; keeping the expanded window opaque prevents the story from showing through it when player messages are transparent. The expanded window palette covers its header, search, tabs, and footer; the block palette covers the formerly blue/purple cards. Category dots and the usage meter retain their category colors.
 
-In **Events**, customize the compact movement/action cards with their own colors, opacity, gradient, and border. In **Dice**, customize the roll card background and border independently, and optionally enable dice colors. The **Black**, **White**, and **Purple** buttons set face, edge, and number colors; the individual pickers allow any color. D4, D6, D8, D10, D12, and D20 keep their geometry, roll values, and animations.
+In **Events**, customize the compact movement/action cards with their own colors, opacity, gradient, and border. In **Dice**, customize the roll card background and border independently, and optionally enable dice colors. The roll breakdown popup and dice-selection dialog use the same roll-card palette and decorative border. The **Black**, **White**, and **Purple** buttons set face, edge, and number colors; the individual pickers allow any color. D4, D6, D8, D10, D12, and D20 keep their geometry, roll values, and animations.
 
 Color swatches open an in-app picker. Drag hue, saturation, or lightness, or enter a hex color; **Use color** keeps the draft and **Cancel** restores the previous color. Click **Apply changes** in Appearance to save it.
 
-In **App** on Linux, **Black Linux menu bar** replaces the File/Edit/Appearance/View/Window strip with a black app-owned bar and native dropdown menus. Turn it off to use the system menu bar. Window decorations are still managed by your desktop.
+In **Sharing**, click **Export theme…** to save the current preview as a `.fables-theme.json` file. **Include the selected chat picture** embeds that picture so friends can import the same look without copying a separate file. **Import theme…** loads a theme into the preview; click **Apply changes** to use it. A theme without an embedded picture keeps the recipient's selected picture. Login, campaign data, folder paths, and Linux window/menu preferences are not exported.
 
-Click **Apply changes** to update the app and save your choices. Settings reapply after page reloads and application restarts. **Reset appearance** restores the website theme, campaign artwork, and original message/input/context/event/dice styling; it keeps your menu-bar preference. Closing the settings window without applying keeps the previous choices.
+In **App** on Linux, **Black Linux menu bar** replaces the File/Edit/Appearance/View/Window strip with a black app-owned bar and native dropdown menus. Turn it off to use the system menu bar. Window decorations are still managed by your desktop. **Floating Appearance window** is enabled by default: on Hyprland, the app targets only its own Appearance window through `hyprctl`; other Linux desktops receive a dialog-window hint. This does not edit compositor configuration. On Hyprland, turning it off and applying tiles the current Appearance window.
+
+Click **Apply changes** to update the app and save your choices. Settings reapply after page reloads and application restarts. **Reset appearance** restores the website theme, campaign artwork, and original message/input/context/event/dice styling; it keeps your menu-bar and floating-window preferences. **Undo last reset** restores all previous choices and the picture, including after a restart. The saved image folder and imported-picture library are retained. Closing the settings window without applying keeps the previous choices.
 
 Color themes use the website's shared neutral color variables and preserve artwork unless you import a chat picture. Message and input styling targets the current campaign page components, so website changes may require updates to those selectors. Components with fixed colors may need further adjustments after checking logged-in pages.
 
@@ -100,12 +106,13 @@ Zoom in with **Ctrl+=** or **Ctrl+Shift+=** (the `+` key), zoom out with **Ctrl+
 5. Launch the packaged executable and repeat the checks.
 6. In a campaign, import a picture and try both sizing options. Turn the website's background-image button off and on, and check that the uploaded picture follows it while other campaign artwork is preserved.
 7. Set player and GM colors and opacity, including 0% and 100%. Try gradients, borders, and automatic/custom text colors. Check messages, editor text/placeholder, bottom buttons/icons, GM Thoughts/headings, and battle summaries. Open character editors and check names, HP, and stats under dark/light themes.
-8. Expand context with transparent player messages. Check the solid panel, block cards, search, tabs, and footer. Try a separate context palette, and movement/roll card styles. Try black/white/purple and custom dice colors during and after a roll.
+8. Expand context with transparent player messages. Try different palettes for the expanded window, block cards, and collapsed bar. Check search, tabs, and footer; try all three decorative border styles on messages and movement/roll cards. Open a dice breakdown popup and dice-selection dialog. Try black/white/purple and custom dice colors during and after a roll.
 9. Drag the in-app color controls with a large chat picture selected. Check blur, picture opacity, and overlay tint without blurring the text.
-10. On Linux, switch the black menu bar off and on. Check resizing, menu commands, and zoom shortcuts.
-11. Reload, restart, remove the picture, and reset appearance to check persistence and restoration.
+10. On Linux, switch the black menu bar off and on. Check resizing, menu commands, and zoom shortcuts. On Hyprland, switch Appearance between floating and tiled.
+11. Browse a folder with more than 12 pictures, restart, and confirm the same folder appears. Add/remove a picture and reopen the browser to refresh the list. Check that imported pictures remain after removal/reset.
+12. Reset appearance, restart, and undo the reset. Export a theme with a picture and import it on another profile or machine; check preview and application.
 
-Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The expanded context, event/dice controls, background effects, and new picker still need a check in a signed-in campaign. Windows verification remains pending.
+Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. Windows verification remains pending.
 
 Website permissions such as camera, microphone, and notifications are disabled in this initial starter. They can be added when needed.
 
@@ -123,6 +130,7 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - Add custom color dice with menu at top of screen with picker of variants.
 - Add some free music api or link player for all people at the company, near the dice button. With volume slider and mute option.
 - Add resizable map feature.
+- Add opacity for gradiend and chosing how much will fill with 1-st color and how much with second(custom ratio).
 
 ## Stack
 
@@ -131,7 +139,7 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - LibreTranslate with its Argos translation engine for planned local English-to-Russian translation.
 - Local storage for settings and the translation cache.
 
-`src/main.ts` manages the website window, session, and menus. `src/themes.ts` validates settings and builds theme colors; `src/appearance.ts` applies styles and stores preferences. `src/backgrounds.ts` imports pictures, and `src/chat-appearance.ts` styles campaign messages and inputs. `assets/` contains the bundled appearance window and black Linux menu strip, with their own isolated preloads. The appearance bridge exposes preference loading/saving and the app's image picker; the menu bridge opens only predefined application menus. The remote website has no preload or application IPC bridge. `src/zoom.ts` handles zoom shortcuts.
+`src/main.ts` manages the website window, session, and menus. `src/themes.ts` validates settings and builds theme colors; `src/appearance.ts` applies styles and stores preferences. `src/backgrounds.ts` maintains the picture library, `src/image-folder.ts` stores the selected folder, and `src/theme-files.ts` handles portable themes. `src/chat-appearance.ts` styles campaign components; `src/borders.ts` builds decorative corners, and `src/floating-appearance.ts` targets the Appearance window on Hyprland. `assets/` contains the bundled appearance window and black Linux menu strip, with their own isolated preloads. The appearance bridge exposes validated preferences, reset/undo, native file/folder pickers, opaque picture IDs, and theme import/export; the menu bridge opens only predefined application menus. The remote website has no preload or application IPC bridge. `src/zoom.ts` handles zoom shortcuts.
 
 Local translation will use LibreTranslate/Argos. Its setup and integration are deferred until the Electron starter works on both operating systems.
 

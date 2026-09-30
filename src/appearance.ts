@@ -1,11 +1,14 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session } from 'electron';
 import type { IpcMainInvokeEvent, WebContents } from 'electron';
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_APPEARANCE, themeCss, validateAppearance } from './themes';
 import type { AppearanceSettings, AppearanceState } from './themes';
-import { backgroundPreview, importBackground } from './backgrounds';
+import { backgroundLibrary, backgroundPreview, importBackground, selectBackground } from './backgrounds';
 import { chatCss, configureChatAppearance } from './chat-appearance';
+import { exportTheme, importTheme } from './theme-files';
+import { APPEARANCE_TITLE, floatAppearance } from './floating-appearance';
+import { ImageFolder } from './image-folder';
 
 const SCHEME = 'fables-desktop';
 const SETTINGS_ORIGIN = `${SCHEME}://settings`;
@@ -33,6 +36,9 @@ export class AppearanceManager {
   private saves: Promise<unknown> = Promise.resolve();
   private file = path.join(app.getPath('userData'), 'appearance.json');
   private images = path.join(app.getPath('userData'), 'backgrounds');
+  private backupFile = path.join(app.getPath('userData'), 'appearance-before-reset.json');
+  private resetBackup: AppearanceSettings | null = null;
+  private folder = new ImageFolder(path.join(app.getPath('userData'), 'background-folder.json'));
   onChange: ((settings: AppearanceSettings) => void) | undefined;
 
   async initialize(): Promise<void> {
@@ -43,6 +49,11 @@ export class AppearanceManager {
         console.warn('Unable to read appearance preferences; using the website theme:', error);
       }
     }
+    try {
+      this.resetBackup = validateAppearance(JSON.parse(await readFile(this.backupFile, 'utf8')));
+      await backgroundPreview(this.images, this.resetBackup.backgroundImage);
+    } catch { this.resetBackup = null; }
+    await this.folder.initialize();
     try {
       await backgroundPreview(this.images, this.settings.backgroundImage);
     } catch (error) {
@@ -87,12 +98,45 @@ export class AppearanceManager {
       if (result.canceled || !result.filePaths[0]) return null;
       return importBackground(result.filePaths[0], this.images);
     });
+    ipcMain.handle('appearance:pictures', (event, offset: unknown = 0) => { this.assertTrusted(event); return backgroundLibrary(this.images,offset,this.imageNames()); });
+    ipcMain.handle('appearance:select-picture', (event, id: unknown) => { this.assertTrusted(event); return selectBackground(this.images,id,this.imageNames()); });
+    ipcMain.handle('appearance:folder-pictures', (event, offset: unknown = 0) => { this.assertTrusted(event); return this.folder.page(offset); });
+    ipcMain.handle('appearance:choose-folder', async event => {
+      this.assertTrusted(event);
+      const result=await dialog.showOpenDialog(this.window!,{title:'Choose a background image folder',properties:['openDirectory']});
+      return result.canceled || !result.filePaths[0] ? null : this.folder.choose(result.filePaths[0]);
+    });
+    ipcMain.handle('appearance:select-folder-picture', (event, id: unknown) => { this.assertTrusted(event); return this.folder.select(id,this.images); });
+    ipcMain.handle('appearance:reset', (event, value: unknown) => { this.assertTrusted(event); return this.reset(value); });
+    ipcMain.handle('appearance:undo-reset', event => {
+      this.assertTrusted(event);
+      if (!this.resetBackup) throw new Error('There is no reset to undo.');
+      return this.persist(this.resetBackup,undefined,true);
+    });
+    ipcMain.handle('appearance:export-theme', async (event, value: unknown, includePicture: unknown) => {
+      this.assertTrusted(event);
+      const settings=validateAppearance(value);
+      if (typeof includePicture !== 'boolean') throw new Error('Invalid picture export option.');
+      const result=await dialog.showSaveDialog(this.window!,{title:'Export appearance theme',defaultPath:'Friends-and-Fables.fables-theme.json',filters:[{name:'Friends & Fables theme',extensions:['json']}]});
+      if (result.canceled || !result.filePath) return false;
+      await exportTheme(result.filePath,settings,includePicture,this.images);return true;
+    });
+    ipcMain.handle('appearance:import-theme', async event => {
+      this.assertTrusted(event);
+      const result=await dialog.showOpenDialog(this.window!,{title:'Import appearance theme',properties:['openFile'],filters:[{name:'Friends & Fables theme',extensions:['json']}]});
+      if (result.canceled || !result.filePaths[0]) return null;
+      const imported=await importTheme(result.filePaths[0],this.settings,this.images);
+      return {...imported,imagePreview:await backgroundPreview(this.images,imported.backgroundImage),platform:process.platform,canUndoReset:!!this.resetBackup};
+    });
   }
 
   getSettings(): AppearanceSettings { return this.settings; }
 
   private async state(): Promise<AppearanceState> {
-    return { ...this.settings, imagePreview: await backgroundPreview(this.images, this.settings.backgroundImage), platform: process.platform };
+    return { ...this.settings, imagePreview: await backgroundPreview(this.images, this.settings.backgroundImage), platform: process.platform, canUndoReset: !!this.resetBackup };
+  }
+  private imageNames(): Record<string,string> {
+    return Object.fromEntries([this.settings,this.resetBackup].filter(s=>s?.backgroundImage).map(s=>[s!.backgroundImage!,s!.backgroundName]));
   }
 
   private assertTrusted(event: IpcMainInvokeEvent): void {
@@ -108,11 +152,13 @@ export class AppearanceManager {
     if (this.window) {
       this.window.show();
       this.window.focus();
+      if (this.settings.linuxFloatingAppearance) await floatAppearance(this.window,true);
       return this.window;
     }
     const window = new BrowserWindow({
-      title: 'Appearance — Friends & Fables Desktop',
+      title: APPEARANCE_TITLE,
       parent,
+      type: process.platform === 'linux' && this.settings.linuxFloatingAppearance ? 'dialog' : undefined,
       width: 740,
       height: 900,
       minWidth: 520,
@@ -134,7 +180,9 @@ export class AppearanceManager {
     window.webContents.on('will-redirect', (event) => event.preventDefault());
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.on('closed', () => { this.window = null; });
+    window.on('show', () => { if (this.settings.linuxFloatingAppearance) void floatAppearance(window,true); });
     await window.loadURL(SETTINGS_URL);
+    if (this.settings.linuxFloatingAppearance) await floatAppearance(window,true);
     return window;
   }
 
@@ -144,13 +192,30 @@ export class AppearanceManager {
 
   save(value: unknown): Promise<AppearanceState> {
     const next = validateAppearance(value);
+    return this.persist(next);
+  }
+  reset(value: unknown): Promise<AppearanceState> {
+    const before=validateAppearance(value);
+    return this.persist({...before,preset:'website',backgroundImage:null,backgroundName:'',
+      messages:{...before.messages,enabled:false},context:{...before.context,enabled:false},events:{...before.events,enabled:false},dice:{...before.dice,enabled:false,colorsEnabled:false}},before);
+  }
+  private persist(next: AppearanceSettings, before?: AppearanceSettings, consumeReset = false): Promise<AppearanceState> {
     const save = this.saves.catch(() => undefined).then(async () => {
       // Verify an imported ID exists before saving it; renderers cannot supply paths.
       await backgroundPreview(this.images, next.backgroundImage);
+      if (before) await backgroundPreview(this.images,before.backgroundImage);
       await mkdir(path.dirname(this.file), { recursive: true });
+      if (before) {
+        await writeFile(`${this.backupFile}.tmp`,`${JSON.stringify(before,null,2)}\n`,'utf8');
+        await rename(`${this.backupFile}.tmp`,this.backupFile);
+      }
       await writeFile(`${this.file}.tmp`, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
       await rename(`${this.file}.tmp`, this.file);
+      const floatingChanged=this.settings.linuxFloatingAppearance!==next.linuxFloatingAppearance;
       this.settings = next;
+      if (before) this.resetBackup=before;
+      if (consumeReset) { await rm(this.backupFile,{force:true});this.resetBackup=null; }
+      if (floatingChanged && this.window) await floatAppearance(this.window,next.linuxFloatingAppearance);
       this.onChange?.(next);
       await Promise.all(Array.from(this.websites, (website) => this.apply(website)));
       return this.state();

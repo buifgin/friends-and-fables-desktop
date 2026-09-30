@@ -5,7 +5,7 @@ const hexInput = document.querySelector('#custom-hex');
 const preview = document.querySelector('#preview');
 const status = document.querySelector('#status');
 const element = id => document.getElementById(id);
-const roles = ['player', 'gm', 'context', 'event', 'roll'];
+const roles = ['player', 'gm', 'context', 'context-block', 'context-bar', 'event', 'roll'];
 let busy = true;
 let customColor = '#161616';
 let backgroundImage = null;
@@ -14,6 +14,7 @@ let imagePreview = null;
 let previousImage;
 let previewFrame = 0;
 let activePanel = 'theme-panel';
+let canUndoReset = false;
 const previousStyles = new Map();
 
 for (const field of document.querySelectorAll('[data-style]')) {
@@ -29,7 +30,7 @@ function readStyle(role) {
     gradient: { enabled: element(`${role}-gradient`).checked, color: element(`${role}-gradient-color`).value,
       angle: Number(element(`${role}-gradient-angle`).value) },
     border: { enabled: element(`${role}-border`).checked, color: element(`${role}-border-color`).value,
-      width: Number(element(`${role}-border-width`).value), radius: Number(element(`${role}-border-radius`).value) } };
+      width: Number(element(`${role}-border-width`).value), radius: Number(element(`${role}-border-radius`).value), variant: element(`${role}-border-variant`).value } };
 }
 function selection() {
   return {
@@ -38,14 +39,15 @@ function selection() {
     backgroundEffects: { blur: Number(element('image-blur').value), opacity: Number(element('image-opacity').value) / 100,
       overlayColor: element('image-overlay-color').value, overlayOpacity: Number(element('image-overlay-opacity').value) / 100 },
     messages: { enabled: element('message-styles').checked, player: readStyle('player'), gm: readStyle('gm') },
-    context: { enabled: element('context-styles').checked, style: readStyle('context') },
+    context: { enabled: element('context-styles').checked, style: readStyle('context'), blocks: readStyle('context-block'), bar: readStyle('context-bar') },
     events: { enabled: element('event-styles').checked, style: readStyle('event') },
     dice: { enabled: element('roll-styles').checked, style: readStyle('roll'), colorsEnabled: element('dice-colors').checked,
       faceColor: element('dice-face-color').value, edgeColor: element('dice-edge-color').value, numberColor: element('dice-number-color').value },
-    linuxBlackMenu: element('black-menu').checked,
+    linuxBlackMenu: element('black-menu').checked, linuxFloatingAppearance: element('floating-appearance').checked,
   };
 }
 function showSettings(settings) {
+  canUndoReset = settings.canUndoReset;
   form.elements.preset.value = settings.preset;
   customColor = settings.customColor;
   colorInput.value = customColor; hexInput.value = customColor;
@@ -63,7 +65,7 @@ function showSettings(settings) {
   for (const part of ['face','edge','number']) element(`dice-${part}-color`).value = settings.dice[`${part}Color`];
   for (const role of roles) {
     const style = role === 'player' || role === 'gm' ? settings.messages[role]
-      : role === 'context' ? settings.context.style : role === 'event' ? settings.events.style : settings.dice.style;
+      : role === 'context' ? settings.context.style : role === 'context-block' ? settings.context.blocks : role === 'context-bar' ? settings.context.bar : role === 'event' ? settings.events.style : settings.dice.style;
     element(`${role}-color`).value = style.color;
     element(`${role}-opacity`).value = Math.round(style.opacity * 100);
     element(`${role}-auto-text`).checked = !style.textColor;
@@ -72,9 +74,10 @@ function showSettings(settings) {
     element(`${role}-gradient-color`).value = style.gradient.color;
     element(`${role}-gradient-angle`).value = style.gradient.angle;
     element(`${role}-border`).checked = style.border.enabled;
-    for (const part of ['color','width','radius']) element(`${role}-border-${part}`).value = style.border[part];
+    for (const part of ['color','width','radius','variant']) element(`${role}-border-${part}`).value = style.border[part];
   }
   element('black-menu').checked = settings.linuxBlackMenu;
+  element('floating-appearance').checked = settings.linuxFloatingAppearance;
   element('linux-menu-setting').hidden = settings.platform !== 'linux';
   element('app-platform-note').hidden = settings.platform === 'linux';
   updatePreview();
@@ -100,7 +103,8 @@ function updatePreview() {
   cancelAnimationFrame(previewFrame); previewFrame = 0;
   const settings = selection();
   fieldset.disabled = busy;
-  for (const id of ['apply','reset','import-image','message-styles','context-styles','event-styles','roll-styles','dice-colors','black-menu']) element(id).disabled = busy;
+  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance']) element(id).disabled = busy;
+  element('undo-reset').hidden = !canUndoReset;
   colorInput.disabled = hexInput.disabled = busy || settings.preset !== 'custom';
   element('remove-image').disabled = element('image-fit').disabled = busy || !backgroundImage;
   for (const id of ['image-blur','image-opacity','image-overlay-color','image-overlay-opacity']) element(id).disabled = busy || !backgroundImage;
@@ -110,14 +114,14 @@ function updatePreview() {
   const colors = { website: '#010b0e', amoled: '#000000', black: '#101010', light: '#f5f5f5' };
   const color = colors[settings.preset] ?? customColor;
   for (const role of roles) {
-    const enabled = role === 'context' ? settings.context.enabled : role === 'event' ? settings.events.enabled
+    const enabled = role.startsWith('context') ? settings.context.enabled : role === 'event' ? settings.events.enabled
       : role === 'roll' ? settings.dice.enabled : settings.messages.enabled;
     const style = readStyle(role);
-    for (const control of document.querySelectorAll(`[data-style="${role}"] input`)) {
+    for (const control of document.querySelectorAll(`[data-style="${role}"] input, [data-style="${role}"] select`)) {
       const part = control.dataset.control;
       control.disabled = busy || !enabled || (part === 'text-color' && !style.textColor)
         || (part.startsWith('gradient-') && !style.gradient.enabled)
-        || (['border-color','border-width'].includes(part) && !style.border.enabled);
+        || (['border-color','border-width','border-variant'].includes(part) && !style.border.enabled);
     }
     for (const [part, unit, value] of [['opacity','%',style.opacity*100], ['gradient-angle','°',style.gradient.angle],
       ['border-width',' px',style.border.width], ['border-radius',' px',style.border.radius]]) element(`${role}-${part}-label`).value = `${Math.round(value)}${unit}`;
@@ -127,10 +131,14 @@ function updatePreview() {
     setPreview(`--${role}-fg`, enabled ? style.textColor ?? foreground(style.color, style.opacity, color, style.gradient.enabled ? style.gradient.color : null) : '#fff');
     setPreview(`--${role}-border`, enabled && style.border.enabled ? `${style.border.width}px solid ${style.border.color}` : '0 solid transparent');
     setPreview(`--${role}-radius`, enabled ? `${style.border.radius}px` : '8px');
-    if (role === 'context') {
-      setPreview('--context-card-bg', enabled ? style.gradient.enabled
-        ? `linear-gradient(${style.gradient.angle}deg,${style.color},${style.gradient.color})` : style.color : '#1f2937');
-      setPreview('--context-card-fg', enabled ? style.textColor ?? foreground(style.color,1,color,style.gradient.enabled ? style.gradient.color : null) : '#fff');
+    setPreview(`--${role}-ornament`, enabled && style.border.enabled ? borderImages(style.border) : 'none');
+    setPreview(`--${role}-inner-border`, enabled && style.border.enabled && style.border.variant==='ornate' ? `1px solid ${style.border.color}` : '0 solid transparent');
+    const decorated = enabled && style.border.enabled && style.border.variant !== 'plain';
+    setPreview(`--${role}-padding`, decorated ? role==='context-bar'?'12px':'20px' : role==='context-bar'?'8px 14px':role==='roll'?'12px':role==='event'?'14px':'10px');
+    setPreview(`--${role}-min-height`, decorated ? role==='context-bar'?'40px':'72px' : '0');
+    if(role==='player'){
+      setPreview('--input-padding',decorated?'12px':'10px');
+      setPreview('--input-min-height',decorated?'40px':'0');
     }
   }
   for (const part of ['face','edge','number']) {
@@ -147,7 +155,7 @@ function updatePreview() {
   setPreview('--preview-overlay', imagePreview ? rgba(settings.backgroundEffects.overlayColor,settings.backgroundEffects.overlayOpacity) : 'transparent');
   element('image-name').textContent = backgroundName || "Using the campaign's existing background.";
   for (const [selector, show] of [ ['.sample-message', !['context-panel','events-panel','dice-panel'].includes(activePanel)],
-    ['.sample-context',activePanel==='context-panel'], ['.sample-event',activePanel==='events-panel'],
+    ['.sample-context',activePanel==='context-panel'], ['.sample-context-bar',activePanel==='context-panel'], ['.sample-event',activePanel==='events-panel'],
     ['.sample-roll',activePanel==='dice-panel'], ['.sample-input',activePanel==='messages-panel'], ['.sample-controls',activePanel==='messages-panel'] ]) {
     for (const sample of preview.querySelectorAll(selector)) sample.hidden = !show;
   }
@@ -182,11 +190,29 @@ form.addEventListener('input', event => {
 });
 form.addEventListener('change', () => { schedulePreview(); notify('Preview ready. Apply to change the app.'); });
 form.addEventListener('submit', event => { event.preventDefault(); if (!busy) void save(selection()); });
-element('reset').addEventListener('click', () => {
+async function runAction(action, success) {
   if (busy) return;
-  const s = selection();
-  void save({ ...s, preset:'website', backgroundImage:null, backgroundName:'', messages:{...s.messages,enabled:false},
-    context:{...s.context,enabled:false},events:{...s.events,enabled:false},dice:{...s.dice,enabled:false,colorsEnabled:false} });
+  busy=true;updatePreview();
+  try {const state=await action();if(state)showSettings(state);notify(success);}
+  catch(error){notify(error.message.replace(/^Error invoking remote method '[^']+': Error: /,''),true);}
+  finally{busy=false;updatePreview();}
+}
+element('reset').addEventListener('click', () => void runAction(()=>window.appearance.reset(selection()),'Appearance reset. Undo last reset restores your choices and picture.'));
+element('undo-reset').addEventListener('click', () => void runAction(()=>window.appearance.undoReset(),'Previous appearance and picture restored.'));
+element('context-part').addEventListener('change',()=>{
+  for(const field of document.querySelectorAll('.context-editors fieldset'))field.hidden=field.dataset.style!==element('context-part').value;
+});
+element('export-theme').addEventListener('click', async()=>{
+  if(busy)return;busy=true;updatePreview();
+  try {const done=await window.appearance.exportTheme(selection(),element('export-picture').checked);notify(done?'Theme exported. Share the file with your friends.':'Export canceled.');}
+  catch(error){notify(error.message.replace(/^Error invoking remote method '[^']+': Error: /,''),true);}
+  finally{busy=false;updatePreview();}
+});
+element('import-theme').addEventListener('click', async()=>{
+  if(busy)return;busy=true;updatePreview();
+  try {const state=await window.appearance.importTheme();if(state){showSettings(state);notify('Theme imported into preview. Apply changes to use it.');}else notify('Import canceled.');}
+  catch(error){notify(error.message.replace(/^Error invoking remote method '[^']+': Error: /,''),true);}
+  finally{busy=false;updatePreview();}
 });
 element('import-image').addEventListener('click', async () => {
   if (busy) return;
@@ -206,6 +232,62 @@ for (const button of document.querySelectorAll('[data-dice-preset]')) button.add
   element('dice-colors').checked = true;
   ['face','edge','number'].forEach((part,index) => { element(`dice-${part}-color`).value = dicePresets[button.dataset.dicePreset][index]; });
   updatePreview(); notify('Dice colors previewed. Apply to save.');
+});
+
+function borderImages(border) {
+  const motifs={ornate:'<path d="M3 36V12Q3 3 12 3H36 M7 32V13Q7 7 13 7H32 M11 27V11H27 M34 3l6 6 M3 34l6 6"/>',arcane:'<path d="M3 33V3H33 M8 28V8H28 M15 3l6 6-6 6-6-6Z M3 15l6 6 6-6-6-6Z M30 3l7 7 M3 30l7 7"/>',runic:'<path d="M3 34V3H34 M8 29V8H29 M13 3v9l6 6v-9l-6-6 M3 13h9l6 6H9l-6-6 M25 3v7h7 M3 25h7v7"/>'};
+  if(border.variant==='plain')return 'none';
+  return ['', 'translate(42 0) scale(-1 1)', 'translate(0 42) scale(1 -1)', 'translate(42 42) scale(-1 -1)'].map(transform=>{
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 42"><g transform="${transform}" fill="none" stroke="${border.color}" stroke-width="${Math.max(.8,border.width/1.5)}" stroke-linecap="round" stroke-linejoin="round">${motifs[border.variant]}</g></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+  }).join(',');
+}
+const browser=element('picture-browser');
+let browserSource='recent',nextPictures=null,browserBusy=false;
+function setBrowserBusy(value){browserBusy=value;for(const button of browser.querySelectorAll('button'))button.disabled=value||button.dataset.unavailable==='true';}
+function renderPictures(page,append=false){
+  if(!append)element('picture-grid').replaceChildren();
+  nextPictures=page.nextOffset;element('more-pictures').hidden=nextPictures===null;
+  element('browser-status').textContent=browserSource==='folder'?(page.folderName?`${page.folderName} · ${page.total} pictures`:'Choose a folder to browse its pictures.'):`${page.total} imported pictures · newest first`;
+  for(const item of page.items){
+    const button=document.createElement('button');button.type='button';button.className='picture-choice';
+    if(item.thumbnail){const img=document.createElement('img');img.src=item.thumbnail;img.alt='';button.append(img);}
+    const label=document.createElement('span');label.textContent=item.name;button.append(label);
+    if(!item.thumbnail){button.disabled=true;button.dataset.unavailable='true';button.title='Picture cannot be read or exceeds the import limits.';}
+    button.addEventListener('click',async()=>{
+      if(browserBusy)return;setBrowserBusy(true);
+      try {const image=await (browserSource==='folder'?window.appearance.selectFolderPicture(item.id):window.appearance.selectPicture(item.id));backgroundImage=image.id;backgroundName=image.name;imagePreview=image.preview;browser.close();updatePreview();notify('Picture selected. Apply changes to use it.');}
+      catch(error){element('browser-status').textContent=error.message.replace(/^Error invoking remote method '[^']+': Error: /,'');}
+      finally{setBrowserBusy(false);}
+    });
+    element('picture-grid').append(button);
+  }
+}
+async function loadPictures(source,offset=0){
+  if(browserBusy)return;browserSource=source;setBrowserBusy(true);element('browser-status').textContent='Loading pictures…';
+  try {renderPictures(await(source==='folder'?window.appearance.folderPictures(offset):window.appearance.pictures(offset)),offset>0);}
+  catch(error){element('browser-status').textContent='Folder unavailable. Choose another folder, or browse imported pictures.';}
+  finally{setBrowserBusy(false);}
+}
+element('browse-images').addEventListener('click',async()=>{
+  if(busy)return;browser.showModal();setBrowserBusy(true);element('browser-status').textContent='Loading pictures…';
+  try {const folder=await window.appearance.folderPictures();browserSource=folder.folderName?'folder':'recent';renderPictures(folder.folderName?folder:await window.appearance.pictures());}
+  catch{
+    browserSource='recent';
+    try {renderPictures(await window.appearance.pictures());}
+    catch(error){element('browser-status').textContent=error.message.replace(/^Error invoking remote method '[^']+': Error: /,'');}
+  }
+  finally{setBrowserBusy(false);}
+});
+element('close-browser').addEventListener('click',()=>browser.close());
+element('recent-pictures').addEventListener('click',()=>void loadPictures('recent'));
+element('folder-pictures').addEventListener('click',()=>void loadPictures('folder'));
+element('more-pictures').addEventListener('click',()=>{if(nextPictures!==null)void loadPictures(browserSource,nextPictures);});
+element('choose-folder').addEventListener('click',async()=>{
+  if(browserBusy)return;setBrowserBusy(true);
+  try {const page=await window.appearance.chooseFolder();if(page){browserSource='folder';renderPictures(page);}}
+  catch(error){element('browser-status').textContent=error.message.replace(/^Error invoking remote method '[^']+': Error: /,'');}
+  finally{setBrowserBusy(false);}
 });
 
 // In-app HSL picker avoids a slow native color popup on Wayland and coalesces

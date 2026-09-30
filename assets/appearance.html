@@ -20,6 +20,7 @@
         <button type="button" role="tab" class="tab" data-panel="context-panel" aria-selected="false" tabindex="-1">Context</button>
         <button type="button" role="tab" class="tab" data-panel="events-panel" aria-selected="false" tabindex="-1">Events</button>
         <button type="button" role="tab" class="tab" data-panel="dice-panel" aria-selected="false" tabindex="-1">Dice</button>
+<button type="button" role="tab" class="tab" data-panel="sharing-panel" aria-selected="false" tabindex="-1">Sharing</button>
         <button type="button" role="tab" class="tab" data-panel="app-panel" aria-selected="false" tabindex="-1">App</button>
       </nav>
 
@@ -70,6 +71,7 @@
           <p class="help">Import a picture from your computer. It is saved locally for your desktop app. Use the background-image button at the top of the campaign to show or hide it.</p>
           <div class="image-actions">
             <button type="button" id="import-image" disabled>Choose picture…</button>
+            <button type="button" id="browse-images" class="secondary" disabled>Browse pictures…</button>
             <button type="button" id="remove-image" class="secondary" disabled>Remove picture</button>
           </div>
           <p id="image-name" class="help">Using the campaign's existing background.</p>
@@ -101,8 +103,9 @@
 
         <section id="context-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="context-styles"> Customize context panel &amp; blocks</label>
-          <p class="help">Independent from player transparency. The panel, tabs, search, and blocks share this palette. Category dots and usage bars keep their meaning. Block cards remain solid; panel opacity is adjustable.</p>
-          <div class="message-controls single"><fieldset data-style="context"><legend>Context panel</legend></fieldset></div>
+          <p class="help">Choose independent colors, opacity, and borders for each surface. Keep the expanded panel solid to prevent story text showing through. Category dots and usage bars keep their meaning.</p>
+          <label class="setting-row">Customize <select id="context-part"><option value="context">Expanded window</option><option value="context-block">Messages / block cards</option><option value="context-bar">Collapsed bar above input</option></select></label>
+          <div class="message-controls single context-editors"><fieldset data-style="context"><legend>Expanded context window</legend></fieldset><fieldset data-style="context-block" hidden><legend>Messages inside context</legend></fieldset><fieldset data-style="context-bar" hidden><legend>Collapsed context bar</legend></fieldset></div>
         </section>
         <section id="events-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="event-styles"> Customize movement &amp; action cards</label>
@@ -126,9 +129,18 @@
           <p class="help">D4, D6, D8, D10, D12, and D20 keep their original shapes, results, and animations.</p>
         </section>
 
+        <section id="sharing-panel" role="tabpanel" hidden>
+          <h2>Share a complete theme</h2>
+          <p class="help">Export your current choices to a theme file for friends. Import a file to preview it, then apply. Login and campaign data are never part of a theme.</p>
+          <label class="switch-row"><input type="checkbox" id="export-picture" checked> Include the selected chat picture</label>
+          <div class="image-actions sharing-actions"><button type="button" id="export-theme">Export theme…</button><button type="button" id="import-theme" class="secondary">Import theme…</button></div>
+          <p class="help">A theme without a picture keeps the recipient’s selected picture. Menu and floating-window preferences stay local.</p>
+        </section>
         <section id="app-panel" role="tabpanel" hidden>
           <div id="linux-menu-setting"><label class="switch-row"><input type="checkbox" id="black-menu" checked disabled> Black Linux menu bar</label>
             <p class="help">Keep File, Edit, Appearance, View, and Window on a black bar.</p>
+            <label class="switch-row"><input type="checkbox" id="floating-appearance" checked> Floating Appearance window</label>
+            <p class="help">On Hyprland, open Appearance as a floating window. Other Linux desktops use a dialog-window hint.</p>
           </div>
           <p class="help" id="app-platform-note" hidden>Menu bar customization is available on Linux.</p>
         </section>
@@ -137,6 +149,7 @@
           <span class="preview-label">PREVIEW</span>
           <div class="sample-message sample-gm"><small>GAME MASTER</small><span>The road disappears into the forest.</span></div>
           <div class="sample-message sample-player"><small>PLAYER</small><span>I take a closer look.</span></div>
+          <div class="sample-context-bar">Collapsed bar · 9 Active / 0 Idle</div>
           <div class="sample-context"><strong>Context blocks · 9 Active / 0 Idle</strong><div class="sample-block">Keep the story consistent with the campaign.</div></div>
           <div class="sample-event">Player moves 5 feet south to (7, 8)</div>
           <div class="sample-roll"><small>DEATH SAVE</small><svg class="sample-die" viewBox="0 0 100 110" aria-label="Dice color preview"><path class="die-face" d="M50 5 93 30 93 80 50 105 7 80 7 30Z"/><path class="die-edge" d="M50 5 93 30 93 80 50 105 7 80 7 30Z M50 5 20 75 80 75 50 5 M7 30 50 25 93 30 M7 80 20 75 50 105 80 75 93 80"/><text x="50" y="63" text-anchor="middle" class="die-number">16</text></svg><span>16 = 16</span></div>
@@ -144,7 +157,8 @@
           <div class="sample-controls"><span>Dice</span><span>Spell</span><span>Manual</span></div>
         </div>
         <div class="actions">
-          <button type="button" id="reset" class="secondary" disabled>Reset appearance</button>
+          <div class="reset-actions"><button type="button" id="undo-reset" class="secondary" hidden>Undo last reset</button>
+          <button type="button" id="reset" class="secondary" disabled>Reset appearance</button></div>
           <button type="submit" id="apply" disabled>Apply changes</button>
         </div>
         <p id="status" role="status" aria-live="polite">Loading preferences…</p>
@@ -161,6 +175,7 @@
         <label data-label="gradient-angle">Direction <output data-control="gradient-angle-label">90°</output></label>
         <input type="range" data-control="gradient-angle" min="0" max="360" value="90">
         <label class="switch-row border-switch"><input type="checkbox" data-control="border"> Show border</label>
+        <label class="setting-row">Border style <select data-control="border-variant"><option value="plain">Plain</option><option value="ornate">Ornate corners</option><option value="arcane">Arcane diamonds</option><option value="runic">Runic corners</option></select></label>
         <label class="setting-row">Border color <input type="color" data-control="border-color" value="#555555"></label>
         <label data-label="border-width">Border width <output data-control="border-width-label">1 px</output></label>
         <input type="range" data-control="border-width" min="1" max="8" value="1">
@@ -169,6 +184,13 @@
       </details>
     </template>
     </main>
+    <dialog id="picture-browser" aria-labelledby="picture-browser-title">
+      <div class="browser-heading"><h2 id="picture-browser-title">Picture browser</h2><button type="button" id="close-browser" class="secondary">Close</button></div>
+      <div class="image-actions"><button type="button" id="recent-pictures" class="secondary">Imported pictures</button><button type="button" id="folder-pictures" class="secondary">Selected folder</button><button type="button" id="choose-folder" class="secondary">Choose folder…</button></div>
+      <p id="browser-status" class="help" role="status"></p><div id="picture-grid"></div>
+      <button type="button" id="more-pictures" class="secondary" hidden>Show more</button>
+      <p class="help">PNG and JPEG · choosing a folder picture copies it into the app library. The selected folder is remembered after restarts.</p>
+    </dialog>
     <dialog id="color-picker" aria-labelledby="picker-title">
       <h2 id="picker-title">Choose color</h2>
       <div class="picker-top"><span id="picker-swatch"></span><label>Hex <input id="picker-hex" type="text" maxlength="7" pattern="#[0-9a-fA-F]{6}" spellcheck="false"></label></div>

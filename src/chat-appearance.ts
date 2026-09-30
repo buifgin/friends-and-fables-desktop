@@ -1,5 +1,6 @@
 import type { AppearanceSettings } from './themes';
 import { messageForeground, rgba, styleBackground } from './themes';
+import { borderCss } from './borders';
 
 // Runs in the website's renderer with ordinary DOM access and no Electron APIs.
 // Targets are based on the public play-route components.
@@ -73,7 +74,10 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       // The expanded content and the tab bar are sibling surfaces in this wrapper.
       for (const bar of composer.querySelectorAll('[class~="bottom-full"][class~="left-0"][class~="right-0"] > [class~="bg-gray-800"]')) {
         contextRoots.add(bar);
-        if (settings.context.enabled) mark(bar, 'data-ff-desktop-context', 'true');
+        if (settings.context.enabled) {
+          mark(bar, 'data-ff-desktop-context', bar.querySelector('[aria-label="Expand working context"]') ? 'bar' : 'panel');
+          for (const block of bar.querySelectorAll('.group.rounded-lg.border')) mark(block,'data-ff-desktop-context-block','true');
+        }
       }
     }
     const inContext = (element: Element): boolean => Array.from(contextRoots).some(root => root.contains(element));
@@ -127,13 +131,22 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         }
       }
     }
+    if (settings.dice.enabled) {
+      // This roll-breakdown popover is rendered in a Radix portal, outside its card.
+      for (const menu of document.querySelectorAll('[role="dialog"][class~="bg-slate-900/95"][class~="border-amber-600/50"]')) {
+        mark(menu,'data-ff-desktop-message','roll-menu');
+      }
+      for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+        if (dialog.querySelector('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) mark(dialog,'data-ff-desktop-message','roll-menu');
+      }
+    }
     reconcile();
   }
   function schedule(): void { if (!frame) frame = requestAnimationFrame(scan); }
   const observer = new MutationObserver(schedule);
   observer.observe(document.documentElement, {
     childList: true, subtree: true, attributes: true,
-    attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'aria-label', 'aria-pressed', 'data-state'],
+    attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state'],
   });
   window.addEventListener('popstate', schedule);
   window.addEventListener('storage', schedule);
@@ -161,10 +174,10 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
   {
     const roles = [
       ...(settings.messages.enabled ? ['player', 'gm', 'input', 'control', 'battle'] : []),
-      ...(settings.events.enabled ? ['event'] : []), ...(settings.dice.enabled ? ['roll'] : []),
+      ...(settings.events.enabled ? ['event'] : []), ...(settings.dice.enabled ? ['roll','roll-menu'] : []),
     ];
     for (const role of roles) {
-      const style = role === 'roll' ? settings.dice.style : role === 'event' ? settings.events.style
+      const style = role === 'roll' || role === 'roll-menu' ? settings.dice.style : role === 'event' ? settings.events.style
         : role === 'gm' || role === 'battle' ? settings.messages.gm : settings.messages.player;
       const foreground = messageForeground(style, settings);
       const target = `[data-ff-desktop-message="${role}"]`;
@@ -196,37 +209,38 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
       if (role === 'gm') css += `${target} :is(h1,h2,h3,h4,h5,h6,strong,b),
         ${target} button[aria-controls], ${target} button[aria-controls] :is(svg,span) { color: ${foreground} !important; }`;
       if (role === 'battle') css += `${target} [class~="bg-slate-700"] { background-color: color-mix(in srgb, ${foreground} 20%, transparent) !important; }`;
-      if (['player', 'gm', 'event', 'roll'].includes(role)) {
-        css += `${target} { border: ${style.border.enabled ? `${style.border.width}px solid ${style.border.color}` : '0 solid transparent'} !important;
-          border-radius: ${style.border.radius}px !important; }`;
-      }
-      if (role === 'event' || role === 'roll') css += `${target} :is(span,button,h1,h2,h3,h4,p) { color: ${foreground} !important; }`;
+      if (role !== 'control') css += borderCss(style,target,role === 'input');
+      if (role === 'event' || role === 'roll' || role === 'roll-menu') css += `${target} :is(span,button,h1,h2,h3,h4,p) { color: ${foreground} !important; }`;
+      if (role === 'roll-menu') css += `${target} :is([class*="bg-slate-"],[class*="bg-amber-"]) { background-color: transparent !important; background-image: none !important; }
+        ${target} [class*="border-amber-"] { border-color: ${style.border.color} !important; }`;
       if (role === 'roll') css += `${target} > [class~="absolute"][class~="inset-0"][class~="pointer-events-none"] { display: none !important; }
         [data-ff-desktop-roll-container] { background: transparent !important; border: 0 !important; }`;
     }
   }
   if (settings.context.enabled) {
-    const style = settings.context.style;
-    const fg = messageForeground(style, settings);
-    const cardFg = messageForeground({ ...style, opacity: 1 }, settings);
-    const root = '[data-ff-desktop-context]';
-    const border = style.border.enabled ? `${style.border.width}px solid ${style.border.color}` : '0 solid transparent';
-    css += `${root} { background-color: ${style.gradient.enabled ? 'transparent' : rgba(style.color, style.opacity)} !important;
-      background-image: ${styleBackground(style)} !important; color: ${fg} !important; border: ${border} !important;
-      border-radius: ${style.border.radius}px !important; }
+    for (const [part,style] of [['panel',settings.context.style],['bar',settings.context.bar]] as const) {
+      const fg = messageForeground(style,settings);
+      const root = `[data-ff-desktop-context="${part}"]`;
+      css += `${root} { background-color: ${style.gradient.enabled ? 'transparent' : rgba(style.color, style.opacity)} !important;
+        background-image: ${styleBackground(style)} !important; color: ${fg} !important; }
       ${root} :is([class*="bg-gray-"], [class*="bg-slate-"], [class*="bg-card"], button, input, textarea) {
         background-color: transparent !important; background-image: none !important; border-color: ${style.border.color} !important; }
-      ${root} .group.rounded-lg.border { background-color: ${rgba(style.color, 1)} !important;
-        background-image: ${styleBackground({ ...style, opacity: 1 })} !important; border: ${border} !important;
-        border-radius: ${style.border.radius}px !important; }
       ${root} :is(span,p,div,button,input,textarea,svg,h1,h2,h3,h4,label,a,strong) { color: ${fg} !important; }
       ${root} :is(input,textarea,[contenteditable]) { -webkit-text-fill-color: ${fg} !important; caret-color: ${fg} !important; }
       ${root} :is(input,textarea)::placeholder { color: ${fg} !important; opacity: .65; }
       ${root} button:hover { box-shadow: inset 0 0 0 1px ${style.border.color}; }
       ${root} [class*="text-"]:not(svg) { color: ${fg} !important; }`;
-    css += `${root} .group.rounded-lg.border, ${root} .group.rounded-lg.border :is(span,p,div,button,input,textarea,svg,label,a,strong) {
-      color: ${cardFg} !important; }
-      ${root} .group.rounded-lg.border :is(input,textarea,[contenteditable]) { -webkit-text-fill-color: ${cardFg} !important; caret-color: ${cardFg} !important; }`;
+      css += borderCss(style,root,part==='bar');
+    }
+    const block=settings.context.blocks;
+    const fg=messageForeground(block,settings);
+    const target='[data-ff-desktop-context] [data-ff-desktop-context-block].group.rounded-lg.border';
+    css += `${target} { background-color: ${block.gradient.enabled?'transparent':rgba(block.color,block.opacity)} !important;
+      background-image: ${styleBackground(block)} !important; color:${fg} !important; }
+      ${target} :is(span,p,div,button,input,textarea,svg,label,a,strong) { color:${fg} !important; }
+      ${target} :is(input,textarea,[contenteditable]) { -webkit-text-fill-color:${fg} !important; caret-color:${fg} !important; }
+      ${target} :is(input,textarea)::placeholder {color:${fg} !important;}`;
+    css += borderCss(block,target);
   }
   if (settings.dice.colorsEnabled) {
     const { faceColor: face, edgeColor: edge, numberColor: number } = settings.dice;
