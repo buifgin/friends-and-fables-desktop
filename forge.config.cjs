@@ -5,6 +5,7 @@ module.exports = {
     ignore: [
       /^\/src(?:\/|$)/,
       /^\/docs(?:\/|$)/,
+      /^\/tests(?:\/|$)/,
       /^\/tsconfig\.json$/,
       /^\/forge\.config\.cjs$/,
       /^\/compose\.translate\.yaml$/,

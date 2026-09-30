@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    <title>Appearance — Friends &amp; Fables Desktop</title>
+    <link rel="stylesheet" href="appearance.css">
+    <script src="appearance.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p>
+      <h1>Make it yours.</h1>
+      <p class="intro">Choose a background for your adventure. Custom artwork behind the chat stays as it is.</p>
+
+      <form id="appearance-form">
+        <fieldset id="theme-options" disabled>
+          <legend>Background theme</legend>
+          <div class="theme-grid">
+            <label class="theme-option">
+              <input type="radio" name="preset" value="website" checked>
+              <span class="swatch website"></span>
+              <span><strong>Website default</strong><small>Original Friends &amp; Fables colors</small></span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="preset" value="amoled">
+              <span class="swatch amoled"></span>
+              <span><strong>AMOLED black</strong><small>Pure black backgrounds and panels</small></span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="preset" value="black">
+              <span class="swatch black"></span>
+              <span><strong>Soft black</strong><small>Dark with subtle panel contrast</small></span>
+            </label>
+            <label class="theme-option">
+              <input type="radio" name="preset" value="light">
+              <span class="swatch light"></span>
+              <span><strong>Light</strong><small>Soft white with dark text</small></span>
+            </label>
+            <label class="theme-option custom-option">
+              <input type="radio" name="preset" value="custom">
+              <span class="swatch custom"></span>
+              <span><strong>Custom color</strong><small>Pick your own background</small></span>
+            </label>
+          </div>
+        </fieldset>
+
+        <div class="custom-controls">
+          <label for="custom-color">Background color</label>
+          <div class="color-inputs">
+            <input id="custom-color" type="color" value="#161616" disabled aria-label="Choose a custom background color">
+            <input id="custom-hex" type="text" value="#161616" maxlength="7" pattern="#[0-9a-fA-F]{6}" spellcheck="false" disabled aria-label="Custom background hex color">
+          </div>
+        </div>
+
+        <div class="preview" id="preview" aria-label="Theme preview">
+          <span class="preview-label">PREVIEW</span>
+          <strong>Your next adventure awaits.</strong>
+          <span>Text colors adapt to your background.</span>
+        </div>
+        <div class="actions">
+          <button type="button" id="reset" class="secondary" disabled>Use website theme</button>
+          <button type="submit" id="apply" disabled>Apply theme</button>
+        </div>
+        <p id="status" role="status" aria-live="polite">Loading preferences…</p>
+      </form>
+    </main>
+  </body>
+</html>

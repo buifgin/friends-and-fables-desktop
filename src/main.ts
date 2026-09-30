@@ -1,12 +1,16 @@
 import { app, BrowserWindow, dialog, Menu, session, shell } from 'electron';
+import { configureZoomShortcuts } from './zoom';
+import { AppearanceManager, registerAppearanceScheme } from './appearance';
 
 const APP_NAME = 'Friends & Fables Desktop';
 const WEBSITE_URL = 'https://play.fables.gg/';
 const SESSION_PARTITION = 'persist:friends-and-fables';
 
 app.setName(APP_NAME);
+registerAppearanceScheme();
 
 let mainWindow: BrowserWindow | null = null;
+let appearance: AppearanceManager;
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -18,6 +22,8 @@ function isHttpsUrl(value: string): boolean {
 }
 
 function configureWebsiteWindow(window: BrowserWindow): void {
+  configureZoomShortcuts(window.webContents);
+  appearance.attach(window.webContents);
   // Keep HTTPS authentication redirects in the sandboxed browser session.
   // The website has no preload script, Node access, or application IPC bridge.
   window.webContents.on('will-navigate', (event, url) => {
@@ -94,6 +100,7 @@ function createWindow(): void {
   configureWebsiteWindow(mainWindow);
   mainWindow.on('closed', () => {
     mainWindow = null;
+    appearance.close();
   });
   void loadWebsite(mainWindow);
 }
@@ -122,7 +129,29 @@ function createMenu(): void {
       ],
     },
     { role: 'editMenu' },
-    { role: 'viewMenu' },
+    {
+      label: 'Appearance',
+      submenu: [{
+        label: 'Background Theme…',
+        click: () => {
+          if (mainWindow) void appearance.open(mainWindow).catch(console.error);
+        },
+      }],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn', accelerator: 'CmdOrCtrl+=' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
     { role: 'windowMenu' },
   ]));
 }
@@ -137,7 +166,9 @@ if (!app.requestSingleInstanceLock()) {
     mainWindow.focus();
   });
 
-  void app.whenReady().then(() => {
+  void app.whenReady().then(async () => {
+    appearance = new AppearanceManager();
+    await appearance.initialize();
     const websiteSession = session.fromPartition(SESSION_PARTITION);
     // Additional site permissions can be introduced when those features are added.
     websiteSession.setPermissionRequestHandler((_contents, _permission, callback) => {

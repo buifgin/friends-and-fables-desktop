@@ -4,14 +4,20 @@
 
 - Build the minimal wrapper with TypeScript and Electron Forge.
 - Load Friends & Fables with sandboxing enabled and Node integration disabled for website content.
-- Verify the user's login method, persistent sessions, and external-link handling.
-- Test startup, resizing, and keyboard input under Hyprland and Windows.
+- Email login and persistent sessions confirmed on Hyprland.
+- Startup, resizing, copy/paste, and keyboard input confirmed on Hyprland.
+- Support Ctrl+= and Ctrl+Shift+= for zoom-in, including numpad shortcuts.
+- Verify external-link handling and test the starter on Windows.
 
 ## 2. Background customization
 
-- Add theme presets and a custom background color picker.
-- Save preferences and provide a reset-to-website-theme option.
-- Inspect actual website selectors and verify text contrast across affected surfaces.
+- [x] Add AMOLED black, soft black, light, and custom background colors.
+- [x] Save preferences and provide a reset-to-website-theme option.
+- [x] Use the website's shared neutral color variables and preserve chat artwork.
+- [x] Verify application, reset, reload, persistence, and IPC restrictions with an offline Electron smoke test.
+- [ ] Review themes on logged-in campaign screens, NPC details, and menus.
+- [ ] Verify readable text and handle any components with fixed neutral colors.
+- [ ] Test the packaged app and themes on Windows.
 
 ## 3. Local translation feasibility
 

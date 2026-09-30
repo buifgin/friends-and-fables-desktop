@@ -17,6 +17,8 @@
   "scripts": {
     "build": "tsc",
     "check": "tsc --noEmit",
+    "pretest": "npm run build",
+    "test": "electron tests/appearance-smoke.cjs",
     "prestart": "npm run build",
     "start": "electron-forge start",
     "prepackage": "npm run build",
