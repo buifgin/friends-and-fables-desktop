@@ -12,11 +12,14 @@
     <main>
       <p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p>
       <h1>Make it yours.</h1>
-      <p class="intro">Set your colors, chat picture, and message backgrounds.</p>
+      <p class="intro">Set your theme, chat picture, cards, and dice.</p>
       <nav class="tabs" role="tablist" aria-label="Appearance categories">
         <button type="button" role="tab" class="tab active" data-panel="theme-panel" aria-selected="true">Theme</button>
         <button type="button" role="tab" class="tab" data-panel="picture-panel" aria-selected="false" tabindex="-1">Chat picture</button>
         <button type="button" role="tab" class="tab" data-panel="messages-panel" aria-selected="false" tabindex="-1">Messages</button>
+        <button type="button" role="tab" class="tab" data-panel="context-panel" aria-selected="false" tabindex="-1">Context</button>
+        <button type="button" role="tab" class="tab" data-panel="events-panel" aria-selected="false" tabindex="-1">Events</button>
+        <button type="button" role="tab" class="tab" data-panel="dice-panel" aria-selected="false" tabindex="-1">Dice</button>
         <button type="button" role="tab" class="tab" data-panel="app-panel" aria-selected="false" tabindex="-1">App</button>
       </nav>
 
@@ -73,29 +76,54 @@
           <label class="setting-row" for="image-fit">Picture fit
             <select id="image-fit" disabled><option value="cover">Cover the chat area</option><option value="contain">Show the whole picture</option></select>
           </label>
+          <div class="effect-controls">
+            <label for="image-blur">Image blur <output id="image-blur-label">0 px</output></label>
+            <input type="range" id="image-blur" min="0" max="30" value="0">
+            <label for="image-opacity">Image opacity <output id="image-opacity-label">100%</output></label>
+            <input type="range" id="image-opacity" min="0" max="100" value="100">
+            <label class="setting-row">Overlay color <input type="color" id="image-overlay-color" value="#000000"></label>
+            <label for="image-overlay-opacity">Overlay opacity <output id="image-overlay-opacity-label">0%</output></label>
+            <input type="range" id="image-overlay-opacity" min="0" max="100" value="0">
+          </div>
+          <p class="help">Try a black overlay with a little blur to keep the picture subtle. These effects apply to your uploaded chat picture; text stays sharp.</p>
           <p class="help">PNG or JPEG · up to 20 MB and 16 million pixels.</p>
         </section>
 
         <section id="messages-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="message-styles" disabled> Customize message backgrounds</label>
-          <p class="help">Player styling also applies to campaign inputs, bottom buttons, and the context bar. GM styling includes battle summaries. Opacity changes the background only.</p>
+          <p class="help">Player styling also applies to campaign inputs and bottom buttons. Context has its own settings. GM styling includes battle summaries. Background opacity leaves text opaque.</p>
           <div class="message-controls">
-            <fieldset><legend>Player messages &amp; inputs</legend>
-              <label class="setting-row">Background <input type="color" id="player-color" value="#16202a" disabled></label>
-              <label for="player-opacity">Background opacity <output id="player-opacity-label">85%</output></label>
-              <input type="range" id="player-opacity" min="0" max="100" value="85" disabled>
-              <label class="setting-row">Text &amp; icons <input type="color" id="player-text-color" value="#ffffff" disabled></label>
-              <label class="switch-row auto-text"><input type="checkbox" id="player-auto-text" checked disabled> Automatic text color</label>
-            </fieldset>
-            <fieldset><legend>Game master &amp; NPC messages</legend>
-              <label class="setting-row">Background <input type="color" id="gm-color" value="#101010" disabled></label>
-              <label for="gm-opacity">Background opacity <output id="gm-opacity-label">85%</output></label>
-              <input type="range" id="gm-opacity" min="0" max="100" value="85" disabled>
-              <label class="setting-row">Text &amp; icons <input type="color" id="gm-text-color" value="#ffffff" disabled></label>
-              <label class="switch-row auto-text"><input type="checkbox" id="gm-auto-text" checked disabled> Automatic text color</label>
-            </fieldset>
+            <fieldset data-style="player"><legend>Player messages &amp; inputs</legend></fieldset>
+            <fieldset data-style="gm"><legend>Game master &amp; NPC messages</legend></fieldset>
           </div>
           <p class="help">Automatic text color accounts for your theme and background opacity. Turn it off to choose readable text over a picture.</p>
+        </section>
+
+        <section id="context-panel" role="tabpanel" hidden>
+          <label class="switch-row"><input type="checkbox" id="context-styles"> Customize context panel &amp; blocks</label>
+          <p class="help">Independent from player transparency. The panel, tabs, search, and blocks share this palette. Category dots and usage bars keep their meaning. Block cards remain solid; panel opacity is adjustable.</p>
+          <div class="message-controls single"><fieldset data-style="context"><legend>Context panel</legend></fieldset></div>
+        </section>
+        <section id="events-panel" role="tabpanel" hidden>
+          <label class="switch-row"><input type="checkbox" id="event-styles"> Customize movement &amp; action cards</label>
+          <p class="help">Style the compact combat event cards, such as “Moves 5 feet south”, separately from story messages.</p>
+          <div class="message-controls single"><fieldset data-style="event"><legend>Event cards</legend></fieldset></div>
+        </section>
+        <section id="dice-panel" role="tabpanel" hidden>
+          <label class="switch-row"><input type="checkbox" id="roll-styles"> Customize dice roll cards</label>
+          <div class="message-controls single"><fieldset data-style="roll"><legend>Roll background &amp; border</legend></fieldset></div>
+          <label class="switch-row dice-switch"><input type="checkbox" id="dice-colors"> Customize dice colors</label>
+          <div class="dice-presets" aria-label="Dice color presets">
+            <button type="button" class="secondary" data-dice-preset="black">Black</button>
+            <button type="button" class="secondary" data-dice-preset="white">White</button>
+            <button type="button" class="secondary" data-dice-preset="purple">Purple</button>
+          </div>
+          <div class="dice-paints">
+            <label class="setting-row">Faces <input type="color" id="dice-face-color" value="#7c3aed"></label>
+            <label class="setting-row">Edges <input type="color" id="dice-edge-color" value="#d8bb82"></label>
+            <label class="setting-row">Numbers <input type="color" id="dice-number-color" value="#ffffff"></label>
+          </div>
+          <p class="help">D4, D6, D8, D10, D12, and D20 keep their original shapes, results, and animations.</p>
         </section>
 
         <section id="app-panel" role="tabpanel" hidden>
@@ -109,7 +137,9 @@
           <span class="preview-label">PREVIEW</span>
           <div class="sample-message sample-gm"><small>GAME MASTER</small><span>The road disappears into the forest.</span></div>
           <div class="sample-message sample-player"><small>PLAYER</small><span>I take a closer look.</span></div>
-          <div class="sample-context">9 Active / 0 Idle</div>
+          <div class="sample-context"><strong>Context blocks · 9 Active / 0 Idle</strong><div class="sample-block">Keep the story consistent with the campaign.</div></div>
+          <div class="sample-event">Player moves 5 feet south to (7, 8)</div>
+          <div class="sample-roll"><small>DEATH SAVE</small><svg class="sample-die" viewBox="0 0 100 110" aria-label="Dice color preview"><path class="die-face" d="M50 5 93 30 93 80 50 105 7 80 7 30Z"/><path class="die-edge" d="M50 5 93 30 93 80 50 105 7 80 7 30Z M50 5 20 75 80 75 50 5 M7 30 50 25 93 30 M7 80 20 75 50 105 80 75 93 80"/><text x="50" y="63" text-anchor="middle" class="die-number">16</text></svg><span>16 = 16</span></div>
           <div class="sample-input">Message input preview…</div>
           <div class="sample-controls"><span>Dice</span><span>Spell</span><span>Manual</span></div>
         </div>
@@ -119,6 +149,33 @@
         </div>
         <p id="status" role="status" aria-live="polite">Loading preferences…</p>
       </form>
+    <template id="style-editor">
+      <label class="setting-row">Background <input type="color" data-control="color" value="#101010"></label>
+      <label data-label="opacity">Background opacity <output data-control="opacity-label">100%</output></label>
+      <input type="range" data-control="opacity" min="0" max="100" value="100">
+      <label class="setting-row">Text &amp; icons <input type="color" data-control="text-color" value="#ffffff"></label>
+      <label class="switch-row auto-text"><input type="checkbox" data-control="auto-text" checked> Automatic text color</label>
+      <details class="advanced"><summary>Gradient &amp; border</summary>
+        <label class="switch-row"><input type="checkbox" data-control="gradient"> Use a gradient</label>
+        <label class="setting-row">Second color <input type="color" data-control="gradient-color" value="#000000"></label>
+        <label data-label="gradient-angle">Direction <output data-control="gradient-angle-label">90°</output></label>
+        <input type="range" data-control="gradient-angle" min="0" max="360" value="90">
+        <label class="switch-row border-switch"><input type="checkbox" data-control="border"> Show border</label>
+        <label class="setting-row">Border color <input type="color" data-control="border-color" value="#555555"></label>
+        <label data-label="border-width">Border width <output data-control="border-width-label">1 px</output></label>
+        <input type="range" data-control="border-width" min="1" max="8" value="1">
+        <label data-label="border-radius">Corner radius <output data-control="border-radius-label">8 px</output></label>
+        <input type="range" data-control="border-radius" min="0" max="40" value="8">
+      </details>
+    </template>
     </main>
+    <dialog id="color-picker" aria-labelledby="picker-title">
+      <h2 id="picker-title">Choose color</h2>
+      <div class="picker-top"><span id="picker-swatch"></span><label>Hex <input id="picker-hex" type="text" maxlength="7" pattern="#[0-9a-fA-F]{6}" spellcheck="false"></label></div>
+      <label for="picker-h">Hue <output id="picker-h-label"></output></label><input id="picker-h" type="range" min="0" max="360" step="0.1">
+      <label for="picker-s">Saturation <output id="picker-s-label"></output></label><input id="picker-s" type="range" min="0" max="100" step="0.1">
+      <label for="picker-l">Lightness <output id="picker-l-label"></output></label><input id="picker-l" type="range" min="0" max="100" step="0.1">
+      <div class="actions"><button type="button" id="picker-cancel" class="secondary">Cancel</button><button type="button" id="picker-done">Use color</button></div>
+    </dialog>
   </body>
 </html>

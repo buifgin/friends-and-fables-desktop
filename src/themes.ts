@@ -6,20 +6,36 @@ export interface AppearanceSettings {
   backgroundImage: string | null;
   backgroundName: string;
   backgroundFit: 'cover' | 'contain';
+  backgroundEffects: { blur: number; opacity: number; overlayColor: string; overlayOpacity: number };
   messages: { enabled: boolean; player: MessageStyle; gm: MessageStyle };
+  context: { enabled: boolean; style: MessageStyle };
+  events: { enabled: boolean; style: MessageStyle };
+  dice: { enabled: boolean; style: MessageStyle; colorsEnabled: boolean; faceColor: string; edgeColor: string; numberColor: string };
   linuxBlackMenu: boolean;
 }
 
-export interface MessageStyle { color: string; opacity: number; textColor: string | null }
+export interface MessageStyle {
+  color: string; opacity: number; textColor: string | null;
+  gradient: { enabled: boolean; color: string; angle: number };
+  border: { enabled: boolean; color: string; width: number; radius: number };
+}
 export interface AppearanceState extends AppearanceSettings { imagePreview: string | null; platform: string }
 
+const baseStyle = (color: string, opacity: number): MessageStyle => ({ color, opacity, textColor: null,
+  gradient: { enabled: false, color: '#000000', angle: 90 },
+  border: { enabled: false, color: '#555555', width: 1, radius: 8 } });
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   preset: 'website',
   customColor: '#161616',
   backgroundImage: null,
   backgroundName: '',
   backgroundFit: 'cover',
-  messages: { enabled: false, player: { color: '#16202a', opacity: 0.85, textColor: null }, gm: { color: '#101010', opacity: 0.85, textColor: null } },
+  backgroundEffects: { blur: 0, opacity: 1, overlayColor: '#000000', overlayOpacity: 0 },
+  messages: { enabled: false, player: baseStyle('#16202a', .85), gm: baseStyle('#101010', .85) },
+  context: { enabled: false, style: { ...baseStyle('#101010', 1), border: { enabled: true, color: '#444444', width: 1, radius: 8 } } },
+  events: { enabled: false, style: { ...baseStyle('#17172b', 1), gradient: { enabled: true, color: '#000000', angle: 90 } } },
+  dice: { enabled: false, style: baseStyle('#101010', 1), colorsEnabled: false,
+    faceColor: '#7c3aed', edgeColor: '#d8bb82', numberColor: '#ffffff' },
   linuxBlackMenu: true,
 };
 
@@ -59,14 +75,45 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     if (textColor !== null && (typeof textColor !== 'string' || !/^#[\da-f]{6}$/i.test(textColor))) {
       throw new Error('Text colors need #RRGGBB format.');
     }
-    return { color: style.color.toLowerCase(), opacity: style.opacity, textColor: textColor?.toLowerCase() ?? null };
+    const gradient = record(style.gradient ?? baseStyle('#000000', 1).gradient);
+    const border = record(style.border ?? baseStyle('#000000', 1).border);
+    return { color: style.color.toLowerCase(), opacity: style.opacity, textColor: textColor?.toLowerCase() ?? null,
+      gradient: { enabled: flag(gradient.enabled), color: hex(gradient.color), angle: range(gradient.angle, 0, 360) },
+      border: { enabled: flag(border.enabled), color: hex(border.color), width: range(border.width, 1, 8), radius: range(border.radius, 0, 40) } };
   }
+  function record(raw: unknown): Record<string, unknown> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid appearance options.');
+    return raw as Record<string, unknown>;
+  }
+  function flag(raw: unknown): boolean {
+    if (typeof raw !== 'boolean') throw new Error('Invalid appearance switch.');
+    return raw;
+  }
+  function hex(raw: unknown): string {
+    if (typeof raw !== 'string' || !/^#[\da-f]{6}$/i.test(raw)) throw new Error('Colors need #RRGGBB format.');
+    return raw.toLowerCase();
+  }
+  function range(raw: unknown, min: number, max: number): number {
+    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < min || raw > max) throw new Error(`Appearance value must be between ${min} and ${max}.`);
+    return raw;
+  }
+  // Migrate existing message preferences to an independent, solid context panel.
+  const context = record(input.context ?? { ...DEFAULT_APPEARANCE.context, enabled: styles.enabled });
+  const events = record(input.events ?? DEFAULT_APPEARANCE.events);
+  const dice = record(input.dice ?? DEFAULT_APPEARANCE.dice);
+  const effects = record(input.backgroundEffects ?? DEFAULT_APPEARANCE.backgroundEffects);
   const linuxBlackMenu = input.linuxBlackMenu ?? true;
   if (typeof linuxBlackMenu !== 'boolean') throw new Error('Invalid menu bar preference.');
   return {
     preset: preset as ThemePreset, customColor: customColor.toLowerCase(),
     backgroundImage, backgroundName, backgroundFit,
+    backgroundEffects: { blur: range(effects.blur, 0, 30), opacity: range(effects.opacity, 0, 1),
+      overlayColor: hex(effects.overlayColor), overlayOpacity: range(effects.overlayOpacity, 0, 1) },
     messages: { enabled: styles.enabled, player: messageStyle(styles.player), gm: messageStyle(styles.gm) },
+    context: { enabled: flag(context.enabled), style: messageStyle(context.style) },
+    events: { enabled: flag(events.enabled), style: messageStyle(events.style) },
+    dice: { enabled: flag(dice.enabled), style: messageStyle(dice.style), colorsEnabled: flag(dice.colorsEnabled),
+      faceColor: hex(dice.faceColor), edgeColor: hex(dice.edgeColor), numberColor: hex(dice.numberColor) },
     linuxBlackMenu,
   };
 }
@@ -120,9 +167,16 @@ export function messageForeground(style: MessageStyle, settings: AppearanceSetti
   if (style.textColor) return style.textColor;
   // Account for opacity over the app color, rather than treating a transparent
   // white message as a solid white surface. Pictures can use a chosen text color.
-  const background = mix(rgb(themeBackground(settings)), rgb(style.color), style.opacity);
-  return contrast(background, [255, 255, 255]) >= contrast(background, [0, 0, 0]) ? '#ffffff' : '#000000';
+  const colors = [style.color, ...(style.gradient.enabled ? [style.gradient.color] : [])]
+    .map(color => mix(rgb(themeBackground(settings)), rgb(color), style.opacity));
+  const score = (foreground: RGB) => Math.min(...colors.map(background => contrast(background, foreground)));
+  return score([255, 255, 255]) >= score([0, 0, 0]) ? '#ffffff' : '#000000';
 }
+
+export function styleBackground(style: MessageStyle): string {
+  return style.gradient.enabled ? `linear-gradient(${style.gradient.angle}deg, ${rgba(style.color, style.opacity)}, ${rgba(style.gradient.color, style.opacity)})` : 'none';
+}
+export function rgba(color: string, opacity: number): string { return `rgba(${rgb(color).join(',')}, ${opacity})`; }
 
 export function themeCss(settings: AppearanceSettings): string {
   if (settings.preset === 'website') return '';

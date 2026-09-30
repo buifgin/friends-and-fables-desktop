@@ -113,9 +113,9 @@ export class AppearanceManager {
     const window = new BrowserWindow({
       title: 'Appearance — Friends & Fables Desktop',
       parent,
-      width: 580,
+      width: 740,
       height: 900,
-      minWidth: 480,
+      minWidth: 520,
       minHeight: 600,
       backgroundColor: '#111318',
       autoHideMenuBar: true,

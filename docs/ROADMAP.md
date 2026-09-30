@@ -20,9 +20,15 @@
 - [x] Add a black Linux menu bar with the existing menus and a system-menu option.
 - [x] Verify image import, new message styling, campaign navigation, input styling, and the Linux menu layout with offline Electron checks.
 - [x] Appearance presets confirmed by the user on Hyprland.
-- [x] Apply player styling to composer buttons/icons and the working-context bar, and GM styling to battle summaries.
+- [x] Apply player styling to composer buttons/icons, and GM styling to battle summaries.
 - [x] Add automatic/custom text colors, including GM Thoughts and headings, and keep character fields readable under app themes.
 - [x] Make the uploaded chat picture follow the website's background-image switch.
+- [x] Give the expanded context panel and its blocks an independent, opaque default palette.
+- [x] Add gradients and borders to player/GM messages and movement/action cards.
+- [x] Add roll card styling and custom/preset face, edge, and number colors for all six SVG dice shapes.
+- [x] Add chat picture blur, image opacity, and a color overlay.
+- [x] Replace the native picker with in-app HSL/hex controls and avoid reparsing the image during color dragging.
+- [ ] Verify expanded context, dice animations, picture effects, and picker responsiveness in a signed-in campaign.
 - [ ] Review themes on logged-in campaign screens, NPC details, and menus.
 - [ ] Check chat pictures, player/GM/NPC styles, message editors, and opacity in a signed-in campaign.
 - [ ] Verify readable text and handle any components with fixed neutral colors.
