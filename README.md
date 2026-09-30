@@ -1,10 +1,57 @@
 # Friends & Fables Desktop
 
-An unofficial desktop wrapper for [Friends & Fables](https://play.fables.gg/), targeting Windows and Arch Linux, including Wayland and Hyprland.
+An unofficial desktop wrapper for [Friends & Fables](https://play.fables.gg/), targeting Windows and Arch Linux.
 
-This repository currently contains the project plan and a local translation service configuration. The Electron app is not implemented yet.
+The first milestone is a minimal Electron app that opens the existing website. Themes and local English-to-Russian translation will follow after the wrapper is verified.
 
-## Initial scope
+## Current Electron starter
+
+- Open the existing website in a native window.
+- Use a persistent browser session for cookies and website storage.
+- Keep website content sandboxed, with Node integration disabled.
+- Allow HTTPS navigation and sandboxed sign-in popups in the same session.
+- Provide standard menus for reload, zoom, copy/paste, developer tools, and opening the website in your browser.
+- Package a portable ZIP for Linux or Windows.
+
+## Run the app
+
+Install Node.js 24 LTS with npm, then from the repository root run:
+
+```sh
+npm ci
+npm start
+```
+
+`npm start` compiles the TypeScript code, then opens Electron. When editing `src/main.ts`, stop the app and run `npm start` again to load the changes. End users of a packaged app will not need Node.js.
+
+On Arch, Electron automatically selects Wayland in a Wayland session. If you need to compare XWayland behavior while troubleshooting:
+
+```sh
+npm start -- -- --ozone-platform=x11
+```
+
+## Check and package
+
+```sh
+npm run check
+npm run make
+```
+
+`check` verifies TypeScript without emitting files. `make` builds the application and writes the packaged folder and portable ZIP under `out/`. It targets the current operating system by default. On Windows, run the commands in PowerShell.
+
+The initial ZIP is a development distribution; installers, signing, and AUR packaging come later.
+
+## Manual verification
+
+1. Start the app and confirm the Friends & Fables login page appears.
+2. Sign in using your usual method. Google sign-in still needs manual verification because providers may restrict embedded browsers.
+3. Close and reopen the app and check whether the website preserves the session.
+4. Check resize, zoom, reload, and copy/paste on Hyprland and Windows.
+5. Launch the packaged executable and repeat the checks.
+
+Website permissions such as camera, microphone, and notifications are disabled in this initial starter. They can be added when needed.
+
+## Planned features
 
 - Display the existing Friends & Fables website and preserve login between launches.
 - Offer theme presets and a color picker for background customization, with saved settings and a reset option.
@@ -13,47 +60,18 @@ This repository currently contains the project plan and a local translation serv
 - Cache translations and provide a way to view the original text.
 - Apply changes locally to the displayed page, without changing campaign data or typed messages.
 
-## Planned stack
+## Stack
 
 - Electron, TypeScript, and Electron Forge for the desktop app.
 - CSS for themes.
 - LibreTranslate with its Argos translation engine for local English-to-Russian translation.
 - Local storage for settings and the translation cache.
 
-For development, the translation service runs separately from Electron. Calls to it will go through the app's main process, while the website remains sandboxed. Packaging and automatically managing the translation engine will be evaluated before distributing the app.
+The app currently consists of `src/main.ts` (window, session, and menus), `tsconfig.json` (TypeScript compilation), and `forge.config.cjs` (packaging). There is no custom renderer or preload script yet.
+
+Local translation will use LibreTranslate/Argos. Its setup and integration are deferred until the Electron starter works on both operating systems.
 
 Translation can work offline after its models are installed. Friends & Fables itself still requires internet access.
-
-## Try local translation
-
-Install Docker and Docker Compose and start the Docker daemon. On Arch Linux, the packages are `docker` and `docker-compose`. Windows development can use Docker Desktop with Linux containers.
-
-From the repository root, run:
-
-```sh
-docker compose -f compose.translate.yaml up -d
-docker compose -f compose.translate.yaml logs -f translator
-```
-
-The first launch downloads the container image and the English/Russian models. Wait for the service to finish starting. Model data is kept in a named Docker volume and reused between launches.
-
-Test the service from another terminal:
-
-```sh
-curl http://127.0.0.1:5000/translate \
-  -H 'Content-Type: application/json' \
-  -d '{"q":"The wizard enters the tavern.","source":"en","target":"ru","format":"text"}'
-```
-
-The JSON response should contain `translatedText`. You can also open `http://127.0.0.1:5000` to try the translator's web interface. No API key is required for this development configuration.
-
-Stop the service with:
-
-```sh
-docker compose -f compose.translate.yaml down
-```
-
-The configuration exposes the service only on the host's loopback address. It uses the upstream `latest` image for initial experimentation; a tested image version will be pinned before release.
 
 See the [roadmap](docs/ROADMAP.md) for the implementation order.
 

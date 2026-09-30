@@ -1,0 +1,37 @@
+{
+  "name": "friends-and-fables-desktop",
+  "productName": "Friends & Fables Desktop",
+  "version": "0.1.0",
+  "description": "Unofficial Friends & Fables desktop wrapper for Windows and Arch Linux",
+  "private": true,
+  "main": "dist/main.js",
+  "author": "buifgin",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/buifgin/friends-and-fables-desktop.git"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "prestart": "npm run build",
+    "start": "electron-forge start",
+    "prepackage": "npm run build",
+    "package": "electron-forge package",
+    "premake": "npm run build",
+    "make": "electron-forge make"
+  },
+  "config": {
+    "forge": "./forge.config.cjs"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "8.0.1",
+    "@electron-forge/maker-zip": "8.0.1",
+    "@types/node": "26.6.3",
+    "electron": "44.5.1",
+    "typescript": "7.0.2"
+  }
+}

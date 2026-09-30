@@ -1,24 +1,24 @@
 # Roadmap
 
-## 1. Local translation feasibility
+## 1. Basic Electron wrapper
 
-- Start the LibreTranslate development service and install the English/Russian models.
-- Try actual NPC descriptions, game terms, names, and mixed English/Russian passages.
-- Measure translation latency and memory use on the target computer.
-- Select and pin a tested container version after the initial evaluation.
-
-## 2. Basic Electron wrapper
-
-- Scaffold Electron with TypeScript and Electron Forge.
+- Build the minimal wrapper with TypeScript and Electron Forge.
 - Load Friends & Fables with sandboxing enabled and Node integration disabled for website content.
 - Verify the user's login method, persistent sessions, and external-link handling.
 - Test startup, resizing, and keyboard input under Hyprland and Windows.
 
-## 3. Background customization
+## 2. Background customization
 
 - Add theme presets and a custom background color picker.
 - Save preferences and provide a reset-to-website-theme option.
 - Inspect actual website selectors and verify text contrast across affected surfaces.
+
+## 3. Local translation feasibility
+
+- Start a local LibreTranslate service and install the English/Russian models.
+- Try actual NPC descriptions, game terms, names, and mixed English/Russian passages.
+- Measure translation latency and memory use on the target computer.
+- Select and pin a tested service version after the initial evaluation.
 
 ## 4. Russian translation
 
