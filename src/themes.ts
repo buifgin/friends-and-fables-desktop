@@ -3,11 +3,24 @@ export type ThemePreset = 'website' | 'amoled' | 'black' | 'light' | 'custom';
 export interface AppearanceSettings {
   preset: ThemePreset;
   customColor: string;
+  backgroundImage: string | null;
+  backgroundName: string;
+  backgroundFit: 'cover' | 'contain';
+  messages: { enabled: boolean; player: MessageStyle; gm: MessageStyle };
+  linuxBlackMenu: boolean;
 }
+
+export interface MessageStyle { color: string; opacity: number }
+export interface AppearanceState extends AppearanceSettings { imagePreview: string | null; platform: string }
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   preset: 'website',
   customColor: '#161616',
+  backgroundImage: null,
+  backgroundName: '',
+  backgroundFit: 'cover',
+  messages: { enabled: false, player: { color: '#16202a', opacity: 0.85 }, gm: { color: '#101010', opacity: 0.85 } },
+  linuxBlackMenu: true,
 };
 
 const PRESETS: ThemePreset[] = ['website', 'amoled', 'black', 'light', 'custom'];
@@ -22,7 +35,36 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   if (typeof customColor !== 'string' || !/^#[\da-f]{6}$/i.test(customColor)) {
     throw new Error('Enter a color in #RRGGBB format.');
   }
-  return { preset: preset as ThemePreset, customColor: customColor.toLowerCase() };
+  const input = value as Record<string, unknown>;
+  const backgroundImage = input.backgroundImage ?? null;
+  if (backgroundImage !== null && (typeof backgroundImage !== 'string' || !/^[a-f0-9]{64}\.png$/.test(backgroundImage))) {
+    throw new Error('Choose an imported background image.');
+  }
+  const backgroundName = input.backgroundName ?? '';
+  if (typeof backgroundName !== 'string' || backgroundName.length > 150) throw new Error('Invalid image name.');
+  const backgroundFit = input.backgroundFit ?? 'cover';
+  if (backgroundFit !== 'cover' && backgroundFit !== 'contain') throw new Error('Choose cover or contain.');
+  const messages = input.messages ?? DEFAULT_APPEARANCE.messages;
+  if (!messages || typeof messages !== 'object') throw new Error('Invalid message styles.');
+  const styles = messages as Record<string, unknown>;
+  if (typeof styles.enabled !== 'boolean') throw new Error('Invalid message style switch.');
+  function messageStyle(raw: unknown): MessageStyle {
+    if (!raw || typeof raw !== 'object') throw new Error('Invalid message style.');
+    const style = raw as Record<string, unknown>;
+    if (typeof style.color !== 'string' || !/^#[\da-f]{6}$/i.test(style.color)
+      || typeof style.opacity !== 'number' || !Number.isFinite(style.opacity) || style.opacity < 0 || style.opacity > 1) {
+      throw new Error('Message colors need #RRGGBB format and opacity between 0 and 1.');
+    }
+    return { color: style.color.toLowerCase(), opacity: style.opacity };
+  }
+  const linuxBlackMenu = input.linuxBlackMenu ?? true;
+  if (typeof linuxBlackMenu !== 'boolean') throw new Error('Invalid menu bar preference.');
+  return {
+    preset: preset as ThemePreset, customColor: customColor.toLowerCase(),
+    backgroundImage, backgroundName, backgroundFit,
+    messages: { enabled: styles.enabled, player: messageStyle(styles.player), gm: messageStyle(styles.gm) },
+    linuxBlackMenu,
+  };
 }
 
 function rgb(hex: string): RGB {

@@ -53,4 +53,26 @@ button:not(:disabled):hover { filter: brightness(1.08); }
 button.secondary { background: transparent; color: #d3d4d9; border-color: #424650; }
 #status { min-height: 18px; font-size: 11px; line-height: 1.5; color: #adb0b9; margin: 12px 0 0; }
 #status.error { color: #efa199; }
+[hidden] { display: none !important; }
+h2 { font-size: 16px; margin: 0 0 10px; }
+.help { font-size: 12px; line-height: 1.5; color: #adb0b9; }
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid #32353e; margin-bottom: 20px; }
+button.tab { flex: 1; border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 10px 5px; background: transparent; color: #adb0b9; }
+button.tab.active { color: #f1d9a8; border-bottom-color: #d8bb82; }
+.image-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; margin: 12px 0; }
+select { max-width: 220px; padding: 8px; background: #191c23; border: 1px solid #424650; border-radius: 6px; color: inherit; }
+.switch-row { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+input[type=checkbox], input[type=range] { accent-color: #d8bb82; }
+input[type=range] { width: 100%; margin: 12px 0 0; }
+.message-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 20px; }
+.message-controls fieldset { border: 1px solid #32353e; padding: 12px; border-radius: 10px; }
+.message-controls label { font-size: 11px; }
+output { float: right; color: #d8bb82; }
+.preview { background-image: var(--preview-image, none); background-size: var(--preview-fit, cover); background-position: center; background-repeat: no-repeat; }
+.sample-message, .sample-input { border-radius: 7px; padding: 10px; font-size: 12px; }
+.sample-message small { display: block; font-size: 8px; letter-spacing: .1em; margin-bottom: 5px; }
+.sample-gm { background: var(--gm-bg, #1f2937cc); color: var(--gm-fg, #fff); }
+.sample-player, .sample-input { background: var(--player-bg, #1f2937cc); color: var(--player-fg, #fff); }
+.sample-input { font-size: 11px; }
 @media (max-width: 490px) { main { padding: 24px; } .theme-grid { grid-template-columns: 1fr; } }

@@ -9,13 +9,19 @@
 - Support Ctrl+= and Ctrl+Shift+= for zoom-in, including numpad shortcuts.
 - Verify external-link handling and test the starter on Windows.
 
-## 2. Background customization
+## 2. Appearance customization
 
 - [x] Add AMOLED black, soft black, light, and custom background colors.
 - [x] Save preferences and provide a reset-to-website-theme option.
 - [x] Use the website's shared neutral color variables and preserve chat artwork.
 - [x] Verify application, reset, reload, persistence, and IPC restrictions with an offline Electron smoke test.
+- [x] Import a local picture behind campaign chat, with cover/contain sizing and removal.
+- [x] Add separate player and GM/NPC message background colors and opacity; apply the player style to campaign text inputs.
+- [x] Add a black Linux menu bar with the existing menus and a system-menu option.
+- [x] Verify image import, new message styling, campaign navigation, input styling, and the Linux menu layout with offline Electron checks.
+- [x] Appearance presets confirmed by the user on Hyprland.
 - [ ] Review themes on logged-in campaign screens, NPC details, and menus.
+- [ ] Check chat pictures, player/GM/NPC styles, message editors, and opacity in a signed-in campaign.
 - [ ] Verify readable text and handle any components with fixed neutral colors.
 - [ ] Test the packaged app and themes on Windows.
 

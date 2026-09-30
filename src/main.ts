@@ -1,6 +1,9 @@
-import { app, BrowserWindow, dialog, Menu, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, Menu, nativeTheme, session, shell, webContents, WebContentsView } from 'electron';
+import type { WebContents, MenuItemConstructorOptions } from 'electron';
+import path from 'node:path';
 import { configureZoomShortcuts } from './zoom';
 import { AppearanceManager, registerAppearanceScheme } from './appearance';
+import { LinuxMenuBar, MENU_URL } from './linux-menu';
 
 const APP_NAME = 'Friends & Fables Desktop';
 const WEBSITE_URL = 'https://play.fables.gg/';
@@ -11,6 +14,9 @@ registerAppearanceScheme();
 
 let mainWindow: BrowserWindow | null = null;
 let appearance: AppearanceManager;
+let websiteContents: WebContents | null = null;
+let applicationMenu: Menu;
+let linuxMenu: LinuxMenuBar | undefined;
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -21,19 +27,19 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
-function configureWebsiteWindow(window: BrowserWindow): void {
-  configureZoomShortcuts(window.webContents);
-  appearance.attach(window.webContents);
+function configureWebsiteContents(contents: WebContents): void {
+  configureZoomShortcuts(contents);
+  appearance.attach(contents);
   // Keep HTTPS authentication redirects in the sandboxed browser session.
   // The website has no preload script, Node access, or application IPC bridge.
-  window.webContents.on('will-navigate', (event, url) => {
+  contents.on('will-navigate', (event, url) => {
     if (!isHttpsUrl(url)) event.preventDefault();
   });
-  window.webContents.on('will-redirect', (event, url) => {
+  contents.on('will-redirect', (event, url) => {
     if (!isHttpsUrl(url)) event.preventDefault();
   });
 
-  window.webContents.setWindowOpenHandler(({ url }) => {
+  contents.setWindowOpenHandler(({ url }) => {
     // Some sign-in flows create a blank popup before navigating it to HTTPS.
     if (url !== 'about:blank' && !isHttpsUrl(url)) return { action: 'deny' };
 
@@ -51,14 +57,14 @@ function configureWebsiteWindow(window: BrowserWindow): void {
       },
     };
   });
-  window.webContents.on('did-create-window', (childWindow) => {
-    configureWebsiteWindow(childWindow);
+  contents.on('did-create-window', (childWindow) => {
+    configureWebsiteContents(childWindow.webContents);
   });
 }
 
-async function loadWebsite(window: BrowserWindow): Promise<void> {
+async function loadWebsite(window: BrowserWindow, contents: WebContents): Promise<void> {
   try {
-    await window.loadURL(WEBSITE_URL);
+    await contents.loadURL(WEBSITE_URL);
   } catch (error) {
     if (window.isDestroyed()) return;
     // A newer navigation can cancel the previous one during authentication.
@@ -76,20 +82,23 @@ async function loadWebsite(window: BrowserWindow): Promise<void> {
     });
 
     if (window.isDestroyed()) return;
-    if (response === 0) void loadWebsite(window);
+    if (response === 0) void loadWebsite(window, contents);
     else window.close();
   }
 }
 
 function createWindow(): void {
+  const linux = process.platform === 'linux';
   mainWindow = new BrowserWindow({
     title: APP_NAME,
     width: 1280,
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    backgroundColor: '#000000',
     webPreferences: {
-      partition: SESSION_PARTITION,
+      partition: linux ? 'fables-appearance' : SESSION_PARTITION,
+      ...(linux ? { preload: path.join(__dirname, 'menu-preload.js') } : {}),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -97,24 +106,57 @@ function createWindow(): void {
     },
   });
 
-  configureWebsiteWindow(mainWindow);
+  if (linux) {
+    const view = new WebContentsView({ webPreferences: {
+      partition: SESSION_PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
+    } });
+    mainWindow.contentView.addChildView(view);
+    websiteContents = view.webContents;
+    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu);
+    linuxMenu.setBlack(appearance.getSettings().linuxBlackMenu);
+    mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+    mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
+    mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    void mainWindow.loadURL(MENU_URL).catch(console.error);
+  } else websiteContents = mainWindow.webContents;
+  const contents = websiteContents;
+  configureWebsiteContents(contents);
+  contents.once('did-finish-load', () => contents.focus());
   mainWindow.on('closed', () => {
     mainWindow = null;
     appearance.close();
+    linuxMenu = undefined;
+    if (!contents.isDestroyed()) contents.close();
+    websiteContents = null;
   });
-  void loadWebsite(mainWindow);
+  void loadWebsite(mainWindow, contents);
+}
+
+function targetContents(): WebContents | undefined {
+  const focused = webContents.getFocusedWebContents();
+  return focused && focused !== mainWindow?.webContents ? focused : websiteContents ?? undefined;
 }
 
 function createMenu(): void {
-  Menu.setApplicationMenu(Menu.buildFromTemplate([
+  const editItems: MenuItemConstructorOptions[] = [
+    { label: 'Undo', accelerator: 'CmdOrCtrl+Z', click: () => targetContents()?.undo() },
+    { label: 'Redo', accelerator: 'CmdOrCtrl+Shift+Z', click: () => targetContents()?.redo() },
+    { type: 'separator' },
+    { label: 'Cut', accelerator: 'CmdOrCtrl+X', click: () => targetContents()?.cut() },
+    { label: 'Copy', accelerator: 'CmdOrCtrl+C', click: () => targetContents()?.copy() },
+    { label: 'Paste', accelerator: 'CmdOrCtrl+V', click: () => targetContents()?.paste() },
+    { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => targetContents()?.selectAll() },
+  ];
+  applicationMenu = Menu.buildFromTemplate([
     {
-      label: 'File',
+      id: 'file', label: 'File',
       submenu: [
         {
           label: 'Friends & Fables Home',
+          id: 'home',
           accelerator: 'CmdOrCtrl+Home',
           click: () => {
-            if (mainWindow) void loadWebsite(mainWindow);
+            if (mainWindow && websiteContents) void loadWebsite(mainWindow, websiteContents);
           },
         },
         {
@@ -124,36 +166,37 @@ function createMenu(): void {
           },
         },
         { type: 'separator' },
-        { role: 'close' },
-        { role: 'quit' },
+        { id: 'close-window', label: 'Close Window', accelerator: 'CmdOrCtrl+W', click: () => BrowserWindow.getFocusedWindow()?.close() },
+        { id: 'quit', role: 'quit' },
       ],
     },
-    { role: 'editMenu' },
+    { id: 'edit', label: 'Edit', submenu: editItems },
     {
-      label: 'Appearance',
+      id: 'appearance', label: 'Appearance',
       submenu: [{
-        label: 'Background Theme…',
+        label: 'Customize Appearance…',
         click: () => {
           if (mainWindow) void appearance.open(mainWindow).catch(console.error);
         },
       }],
     },
     {
-      label: 'View',
+      id: 'view', label: 'View',
       submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { role: 'toggleDevTools' },
+        { id: 'reload', label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => targetContents()?.reload() },
+        { id: 'force-reload', label: 'Force Reload', accelerator: 'CmdOrCtrl+Shift+R', click: () => targetContents()?.reloadIgnoringCache() },
+        { id: 'devtools', label: 'Developer Tools', accelerator: 'F12', click: () => targetContents()?.toggleDevTools() },
         { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn', accelerator: 'CmdOrCtrl+=' },
-        { role: 'zoomOut' },
+        { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: () => targetContents()?.setZoomLevel(0) },
+        { label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: () => { const target = targetContents(); if (target) target.setZoomLevel(Math.min(5, target.getZoomLevel() + .5)); } },
+        { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => { const target = targetContents(); if (target) target.setZoomLevel(Math.max(-5, target.getZoomLevel() - .5)); } },
         { type: 'separator' },
-        { role: 'togglefullscreen' },
+        { id: 'fullscreen', role: 'togglefullscreen' },
       ],
     },
-    { role: 'windowMenu' },
-  ]));
+    { id: 'window', label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close' }] },
+  ]);
+  Menu.setApplicationMenu(applicationMenu);
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -169,6 +212,8 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     appearance = new AppearanceManager();
     await appearance.initialize();
+    if (process.platform === 'linux') nativeTheme.themeSource = 'dark';
+    appearance.onChange = (settings) => linuxMenu?.setBlack(settings.linuxBlackMenu);
     const websiteSession = session.fromPartition(SESSION_PARTITION);
     // Additional site permissions can be introduced when those features are added.
     websiteSession.setPermissionRequestHandler((_contents, _permission, callback) => {

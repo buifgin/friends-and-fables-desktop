@@ -1,9 +1,11 @@
-import { app, BrowserWindow, ipcMain, protocol, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, session } from 'electron';
 import type { IpcMainInvokeEvent, WebContents } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_APPEARANCE, themeCss, validateAppearance } from './themes';
-import type { AppearanceSettings } from './themes';
+import type { AppearanceSettings, AppearanceState } from './themes';
+import { backgroundPreview, importBackground } from './backgrounds';
+import { chatCss, configureChatAppearance } from './chat-appearance';
 
 const SCHEME = 'fables-desktop';
 const SETTINGS_ORIGIN = `${SCHEME}://settings`;
@@ -30,6 +32,8 @@ export class AppearanceManager {
   private websites = new Set<WebsiteTheme>();
   private saves: Promise<unknown> = Promise.resolve();
   private file = path.join(app.getPath('userData'), 'appearance.json');
+  private images = path.join(app.getPath('userData'), 'backgrounds');
+  onChange: ((settings: AppearanceSettings) => void) | undefined;
 
   async initialize(): Promise<void> {
     try {
@@ -39,6 +43,12 @@ export class AppearanceManager {
         console.warn('Unable to read appearance preferences; using the website theme:', error);
       }
     }
+    try {
+      await backgroundPreview(this.images, this.settings.backgroundImage);
+    } catch (error) {
+      console.warn('Saved background is unavailable; using the campaign background:', error);
+      this.settings = { ...this.settings, backgroundImage: null, backgroundName: '' };
+    }
 
     const settingsSession = session.fromPartition('fables-appearance');
     settingsSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
@@ -47,6 +57,9 @@ export class AppearanceManager {
       '/': ['appearance.html', 'text/html; charset=utf-8'],
       '/appearance.css': ['appearance.css', 'text/css; charset=utf-8'],
       '/appearance.js': ['appearance.js', 'text/javascript; charset=utf-8'],
+      '/menu.html': ['menu.html', 'text/html; charset=utf-8'],
+      '/menu.css': ['menu.css', 'text/css; charset=utf-8'],
+      '/menu.js': ['menu.js', 'text/javascript; charset=utf-8'],
     };
     settingsSession.protocol.handle(SCHEME, async (request) => {
       const url = new URL(request.url);
@@ -59,12 +72,27 @@ export class AppearanceManager {
 
     ipcMain.handle('appearance:get', (event) => {
       this.assertTrusted(event);
-      return this.settings;
+      return this.state();
     });
     ipcMain.handle('appearance:save', (event, value: unknown) => {
       this.assertTrusted(event);
       return this.save(value);
     });
+    ipcMain.handle('appearance:import-image', async (event) => {
+      this.assertTrusted(event);
+      const result = await dialog.showOpenDialog(this.window!, {
+        title: 'Choose a campaign chat background', properties: ['openFile'],
+        filters: [{ name: 'Pictures', extensions: ['png', 'jpg', 'jpeg'] }],
+      });
+      if (result.canceled || !result.filePaths[0]) return null;
+      return importBackground(result.filePaths[0], this.images);
+    });
+  }
+
+  getSettings(): AppearanceSettings { return this.settings; }
+
+  private async state(): Promise<AppearanceState> {
+    return { ...this.settings, imagePreview: await backgroundPreview(this.images, this.settings.backgroundImage), platform: process.platform };
   }
 
   private assertTrusted(event: IpcMainInvokeEvent): void {
@@ -86,7 +114,7 @@ export class AppearanceManager {
       title: 'Appearance — Friends & Fables Desktop',
       parent,
       width: 580,
-      height: 740,
+      height: 900,
       minWidth: 480,
       minHeight: 600,
       backgroundColor: '#111318',
@@ -114,15 +142,18 @@ export class AppearanceManager {
     this.window?.close();
   }
 
-  save(value: unknown): Promise<AppearanceSettings> {
+  save(value: unknown): Promise<AppearanceState> {
     const next = validateAppearance(value);
     const save = this.saves.catch(() => undefined).then(async () => {
+      // Verify an imported ID exists before saving it; renderers cannot supply paths.
+      await backgroundPreview(this.images, next.backgroundImage);
       await mkdir(path.dirname(this.file), { recursive: true });
       await writeFile(`${this.file}.tmp`, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
       await rename(`${this.file}.tmp`, this.file);
       this.settings = next;
+      this.onChange?.(next);
       await Promise.all(Array.from(this.websites, (website) => this.apply(website)));
-      return { ...next };
+      return this.state();
     });
     this.saves = save;
     return save;
@@ -142,7 +173,7 @@ export class AppearanceManager {
         if (key && !contents.isDestroyed()) await contents.removeInsertedCSS(key);
       });
     });
-    contents.on('dom-ready', () => {
+    contents.on('did-finish-load', () => {
       website.ready = true;
       void this.apply(website).catch(console.error);
     });
@@ -155,8 +186,11 @@ export class AppearanceManager {
       if (!website.ready || contents.isDestroyed()) return;
       if (new URL(contents.getURL()).origin !== WEBSITE_ORIGIN) return;
       const document = website.document;
+      const settings = this.settings;
       const previous = website.cssKey;
-      const css = themeCss(this.settings);
+      const image = await backgroundPreview(this.images, settings.backgroundImage);
+      if (contents.isDestroyed() || document !== website.document) return;
+      const css = themeCss(settings) + chatCss(settings, image);
       // Author styles can be removed reliably by this Electron version. User
       // styles remained active after removeInsertedCSS in the runtime check.
       const key = css ? await contents.insertCSS(css, { cssOrigin: 'author' }) : undefined;
@@ -167,6 +201,9 @@ export class AppearanceManager {
       }
       website.cssKey = key;
       if (previous) await contents.removeInsertedCSS(previous);
+      if (contents.isDestroyed() || document !== website.document) return;
+      // No IPC bridge or Node access is added to the remote website.
+      await contents.executeJavaScript(`(${configureChatAppearance.toString()})(${JSON.stringify(settings)})`);
     });
     website.pending = apply;
     return apply;

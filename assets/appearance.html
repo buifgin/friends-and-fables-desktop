@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Appearance — Friends &amp; Fables Desktop</title>
     <link rel="stylesheet" href="appearance.css">
     <script src="appearance.js" defer></script>
@@ -12,9 +12,16 @@
     <main>
       <p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p>
       <h1>Make it yours.</h1>
-      <p class="intro">Choose a background for your adventure. Custom artwork behind the chat stays as it is.</p>
+      <p class="intro">Set your colors, chat picture, and message backgrounds.</p>
+      <nav class="tabs" role="tablist" aria-label="Appearance categories">
+        <button type="button" role="tab" class="tab active" data-panel="theme-panel" aria-selected="true">Theme</button>
+        <button type="button" role="tab" class="tab" data-panel="picture-panel" aria-selected="false" tabindex="-1">Chat picture</button>
+        <button type="button" role="tab" class="tab" data-panel="messages-panel" aria-selected="false" tabindex="-1">Messages</button>
+        <button type="button" role="tab" class="tab" data-panel="app-panel" aria-selected="false" tabindex="-1">App</button>
+      </nav>
 
       <form id="appearance-form">
+        <section id="theme-panel" role="tabpanel">
         <fieldset id="theme-options" disabled>
           <legend>Background theme</legend>
           <div class="theme-grid">
@@ -53,15 +60,55 @@
             <input id="custom-hex" type="text" value="#161616" maxlength="7" pattern="#[0-9a-fA-F]{6}" spellcheck="false" disabled aria-label="Custom background hex color">
           </div>
         </div>
+        </section>
+
+        <section id="picture-panel" role="tabpanel" hidden>
+          <h2>Behind the campaign chat</h2>
+          <p class="help">Import a picture from your computer. It is saved locally for your desktop app.</p>
+          <div class="image-actions">
+            <button type="button" id="import-image" disabled>Choose picture…</button>
+            <button type="button" id="remove-image" class="secondary" disabled>Remove picture</button>
+          </div>
+          <p id="image-name" class="help">Using the campaign's existing background.</p>
+          <label class="setting-row" for="image-fit">Picture fit
+            <select id="image-fit" disabled><option value="cover">Cover the chat area</option><option value="contain">Show the whole picture</option></select>
+          </label>
+          <p class="help">PNG or JPEG · up to 20 MB and 16 million pixels.</p>
+        </section>
+
+        <section id="messages-panel" role="tabpanel" hidden>
+          <label class="switch-row"><input type="checkbox" id="message-styles" disabled> Customize message backgrounds</label>
+          <p class="help">Opacity changes the background only. Player colors also apply to campaign text inputs.</p>
+          <div class="message-controls">
+            <fieldset><legend>Player messages &amp; inputs</legend>
+              <label class="setting-row">Color <input type="color" id="player-color" value="#16202a" disabled></label>
+              <label for="player-opacity">Background opacity <output id="player-opacity-label">85%</output></label>
+              <input type="range" id="player-opacity" min="0" max="100" value="85" disabled>
+            </fieldset>
+            <fieldset><legend>Game master &amp; NPC messages</legend>
+              <label class="setting-row">Color <input type="color" id="gm-color" value="#101010" disabled></label>
+              <label for="gm-opacity">Background opacity <output id="gm-opacity-label">85%</output></label>
+              <input type="range" id="gm-opacity" min="0" max="100" value="85" disabled>
+            </fieldset>
+          </div>
+        </section>
+
+        <section id="app-panel" role="tabpanel" hidden>
+          <div id="linux-menu-setting"><label class="switch-row"><input type="checkbox" id="black-menu" checked disabled> Black Linux menu bar</label>
+            <p class="help">Keep File, Edit, Appearance, View, and Window on a black bar.</p>
+          </div>
+          <p class="help" id="app-platform-note" hidden>Menu bar customization is available on Linux.</p>
+        </section>
 
         <div class="preview" id="preview" aria-label="Theme preview">
           <span class="preview-label">PREVIEW</span>
-          <strong>Your next adventure awaits.</strong>
-          <span>Text colors adapt to your background.</span>
+          <div class="sample-message sample-gm"><small>GAME MASTER</small><span>The road disappears into the forest.</span></div>
+          <div class="sample-message sample-player"><small>PLAYER</small><span>I take a closer look.</span></div>
+          <div class="sample-input">Message input preview…</div>
         </div>
         <div class="actions">
-          <button type="button" id="reset" class="secondary" disabled>Use website theme</button>
-          <button type="submit" id="apply" disabled>Apply theme</button>
+          <button type="button" id="reset" class="secondary" disabled>Reset appearance</button>
+          <button type="submit" id="apply" disabled>Apply changes</button>
         </div>
         <p id="status" role="status" aria-live="polite">Loading preferences…</p>
       </form>
