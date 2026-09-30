@@ -54,13 +54,42 @@ async function save(settings, window) {
       [id^="event-message-card-"], .composer { background-color: #1f2937cc; }
       .prose { color: #f3f3f3; --tw-prose-body: #f3f3f3; }
       .prose p { color: var(--tw-prose-body); }
-    </style></head><body><div class="panel">Panel</div><div class="artwork">Campaign artwork</div>
+      input { color: #000; background: transparent; }
+      .text-gray-400, .text-muted-foreground { color: #6b7280; }
+      .fixed-white { color: #fff; }
+      .text-red-400 { color: #f87171; }
+      .bg-gray-800 { background: #1f2937; }
+      .bg-slate-700 { background: #334155; }
+      .tiptap [data-placeholder]::before { content: attr(data-placeholder); color: #777; }
+    </style></head><body><button id="background-toggle" title="Hide background image">Background</button>
+    <div class="panel">Panel</div><div class="artwork">Campaign artwork</div>
     <div class="flex-1 h-full w-full"><div id="events-list">
       <div id="event-container-1"><div id="event-message-card-1"><p>Player text</p></div></div>
-      <div id="event-container-2"><div id="event-message-card-2"><div class="prose"><p>GM text</p></div></div></div>
+      <div id="event-container-2"><div id="event-message-card-2">
+        <button id="thoughts" aria-controls="thoughts-content" class="text-gray-400"><svg></svg><span>Thoughts</span></button>
+        <div class="prose"><p>GM text</p><strong id="gm-heading" class="fixed-white">Бой завершён</strong></div>
+      </div></div>
+      <div id="event-result"><div id="battle-summary" class="bg-black/40 border-slate-700">
+        <h2 class="text-gray-400">Battle</h2>
+        <div id="battle-row" class="bg-slate-800/60 backdrop-blur-sm border-slate-700">
+          <h3>Character</h3><span>24 damage</span><svg id="damage-icon" class="text-red-400"></svg>
+          <div id="damage-track" class="bg-slate-700"><div id="damage-fill" style="background:red;width:50%"></div></div>
+        </div>
+      </div></div>
     </div><input type="text" value="Русский текст and English"><textarea>Input text</textarea>
-      <div class="composer bg-gray-800/80"><div class="tiptap" contenteditable="true"><p>Editor text</p></div></div>
+      <div class="grid relative" id="fixture-composer"><div id="working-context-bar-spacer"></div>
+        <div class="absolute bottom-full left-0 right-0"><div class="bg-gray-800" id="context-bar">
+          <span class="text-gray-400">9 Active / 0 Idle</span><button aria-label="Expand working context"><svg></svg></button>
+        </div></div>
+        <div class="composer bg-gray-800/80"><div class="tiptap prose" contenteditable="true"><p data-placeholder="Player says or does…">Editor text</p></div>
+          <button id="dice-button" aria-label="Roll dice" class="text-muted-foreground"><svg></svg><span>Dice</span></button>
+          <button id="spell-button" aria-label="Cast Spell"><svg></svg><span>Spell</span></button>
+          <button id="model-button"><span class="text-gray-400">Model</span></button>
+          <button id="manual-button"><svg class="text-gray-400"></svg><span>Manual</span></button>
+        </div>
+      </div>
     </div>
+    <form id="character-form"><input name="name" type="text" value="Character"><input name="max_hp" type="text" value="24"><input name="strength" type="number" value="12"></form>
     <script>
       document.getElementById('event-message-card-1').__reactFiber$test = {memoizedProps:{event:{role:'player'}}};
       document.getElementById('event-message-card-2').__reactFiber$test = {memoizedProps:{event:{role:'dm'}}};
@@ -161,6 +190,46 @@ async function save(settings, window) {
   assert(chat.image.includes(imported.preview));
   assert.equal(chat.fit, 'contain');
   assert.equal((await colors(website.webContents)).artwork, original.artwork);
+  // The site's existing background switch controls the local picture as well.
+  await website.webContents.executeJavaScript("document.getElementById('background-toggle').title = 'Show background image'");
+  await until(website.webContents, "!document.querySelector('[data-ff-desktop-chat]')");
+  assert.equal(await website.webContents.executeJavaScript("document.getElementById('event-message-card-1').dataset.ffDesktopMessage"), 'player');
+  await website.webContents.executeJavaScript("document.getElementById('background-toggle').title = 'Hide background image'");
+  await until(website.webContents, "!!document.querySelector('[data-ff-desktop-chat]')");
+  await website.webContents.executeJavaScript("document.getElementById('background-toggle').remove(); localStorage.setItem('play-show-poi-background-test', 'false')");
+  await until(website.webContents, "!document.querySelector('[data-ff-desktop-chat]')");
+  await website.webContents.executeJavaScript("localStorage.setItem('play-show-poi-background-test', 'true'); dispatchEvent(new StorageEvent('storage'))");
+  await until(website.webContents, "!!document.querySelector('[data-ff-desktop-chat]')");
+  const explicitText = {...chatSettings,messages:{enabled:true,
+    player:{color:'#123456',opacity:.4,textColor:'#aabbcc'},gm:{color:'#654321',opacity:.7,textColor:'#ffeeaa'}}};
+  await save(explicitText, settingsWindow);
+  const expanded = await website.webContents.executeJavaScript(`(() => {
+    const bg = id => getComputedStyle(document.getElementById(id)).backgroundColor;
+    const fg = selector => getComputedStyle(document.querySelector(selector)).color;
+    return {buttons:['dice-button','spell-button','model-button','manual-button'].map(bg),
+      icons:fg('#dice-button svg'),buttonText:fg('#model-button span'),context:bg('context-bar'),contextText:fg('#context-bar span'),
+      editor:fg('.tiptap p'),placeholder:getComputedStyle(document.querySelector('.tiptap [data-placeholder]'),'::before').color,
+      battle:bg('battle-row'),summary:bg('battle-summary'),damageIcon:fg('#damage-icon'),damageFill:bg('damage-fill'),
+      thoughts:fg('#thoughts span'),heading:fg('#gm-heading')};
+  })()`);
+  assert.deepEqual(expanded.buttons, Array(4).fill(chat.player));
+  for (const value of [expanded.icons,expanded.buttonText,expanded.contextText,expanded.editor,expanded.placeholder]) assert.equal(value, 'rgb(170, 187, 204)');
+  assert.equal(expanded.context, chat.player);
+  assert.equal(expanded.battle, chat.gm);
+  assert.equal(expanded.summary, chat.gm);
+  assert.equal(expanded.damageIcon, 'rgb(248, 113, 113)');
+  assert.equal(expanded.damageFill, 'rgb(255, 0, 0)');
+  assert.equal(expanded.thoughts, 'rgb(255, 238, 170)');
+  assert.equal(expanded.heading, 'rgb(255, 238, 170)');
+  await save({...explicitText,preset:'amoled',messages:{...explicitText.messages,
+    player:{color:'#ffffff',opacity:0,textColor:'#000000'}}}, settingsWindow);
+  assert.deepEqual(await website.webContents.executeJavaScript("Array.from(document.querySelectorAll('#character-form input'), input => getComputedStyle(input).color)"),
+    Array(3).fill('rgb(255, 255, 255)'));
+  assert.equal(await website.webContents.executeJavaScript("document.querySelector('#character-form input').hasAttribute('data-ff-desktop-message')"), false);
+  // Automatic text color uses the app color when the message is transparent.
+  await save({...chatSettings,preset:'amoled',messages:{...chatSettings.messages,player:{color:'#ffffff',opacity:0}}}, settingsWindow);
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('.tiptap')).color"), 'rgb(255, 255, 255)');
+  await save(chatSettings, settingsWindow);
   await save({...chatSettings,messages:{...chatSettings.messages,gm:{color:'#eeeeee',opacity:1}}}, settingsWindow);
   assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('#event-message-card-2 p')).color"), 'rgb(0, 0, 0)');
   await save(chatSettings, settingsWindow);
@@ -168,6 +237,10 @@ async function save(settings, window) {
   await settingsContents.executeJavaScript(`window.appearance.get().then(settings => {
     showSettings(settings);
     document.querySelector('[data-panel="messages-panel"]').click();
+    document.querySelector('#player-auto-text').click();
+    document.querySelector('#player-text-color').value = '#aabbcc';
+    document.querySelector('#gm-auto-text').click();
+    document.querySelector('#gm-text-color').value = '#ffeeaa';
     document.querySelector('#player-opacity').value = 0;
     document.querySelector('#player-opacity').dispatchEvent(new Event('input', {bubbles:true}));
     document.querySelector('#appearance-form').requestSubmit();
@@ -175,6 +248,8 @@ async function save(settings, window) {
   await until(settingsContents, "!document.querySelector('#apply').disabled");
   assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('.composer')).backgroundColor"), 'rgba(18, 52, 86, 0)');
   assert.equal(await settingsContents.executeJavaScript("document.querySelector('#player-opacity-label').value"), '0%');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('.tiptap p')).color"), 'rgb(170, 187, 204)');
+  assert.equal(await settingsContents.executeJavaScript('window.appearance.get().then(s => s.messages.gm.textColor)'), '#ffeeaa');
   await save(chatSettings, settingsWindow);
   // SPA route changes must not keep campaign styles on other screens.
   await website.webContents.executeJavaScript("history.pushState({}, '', '/account'); document.body.append(document.createElement('span'))");
@@ -189,6 +264,7 @@ async function save(settings, window) {
   await until(website.webContents, "document.getElementById('event-message-card-3').dataset.ffDesktopMessage === 'gm'");
   await assert.rejects(save({...chatSettings,backgroundImage:'../../secret.png'},settingsWindow), /imported background/);
   await assert.rejects(save({...chatSettings,messages:{...chatSettings.messages,player:{color:'#fff',opacity:2}}},settingsWindow), /opacity/);
+  await assert.rejects(save({...chatSettings,messages:{...chatSettings.messages,player:{color:'#ffffff',opacity:.5,textColor:'white; color:red'}}},settingsWindow), /Text colors/);
   await save({preset:'website',customColor:'#123456'},settingsWindow);
   assert.equal(await website.webContents.executeJavaScript("document.querySelector('[data-ff-desktop-chat]')"), null);
   assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('.composer')).backgroundColor"), 'rgba(31, 41, 55, 0.8)');
@@ -222,7 +298,7 @@ async function save(settings, window) {
   }
 
   // Simulate a fresh application manager reading preferences from disk.
-  const finalState = await save({ ...chatSettings, preset: 'custom', customColor: '#123456' }, settingsWindow);
+  const finalState = await save({ ...explicitText, preset: 'custom', customColor: '#123456' }, settingsWindow);
   if (process.env.FABLES_TEST_SCREENSHOT) {
     await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
     settingsWindow.show();
@@ -289,7 +365,7 @@ async function save(settings, window) {
     assert(prevented);
     assert.equal(website.webContents.getZoomLevel(), input.expected);
   }
-  console.log('PASS: themes, image import, player/GM/input styling, opacity, new messages, reset, saved preferences, IPC restrictions, Linux menu bar, and zoom.');
+  console.log('PASS: themes, image import and background toggle, player/GM/input/button/context/battle styling, text and icons, character fields, opacity, new messages, reset, saved preferences, IPC restrictions, Linux menu bar, and zoom.');
 })().then(async () => {
   clearTimeout(timeout);
   for (const window of BrowserWindow.getAllWindows()) window.destroy();

@@ -70,9 +70,13 @@ input[type=range] { width: 100%; margin: 12px 0 0; }
 .message-controls label { font-size: 11px; }
 output { float: right; color: #d8bb82; }
 .preview { background-image: var(--preview-image, none); background-size: var(--preview-fit, cover); background-position: center; background-repeat: no-repeat; }
-.sample-message, .sample-input { border-radius: 7px; padding: 10px; font-size: 12px; }
+.sample-message, .sample-input, .sample-context { border-radius: 7px; padding: 10px; font-size: 12px; }
 .sample-message small { display: block; font-size: 8px; letter-spacing: .1em; margin-bottom: 5px; }
 .sample-gm { background: var(--gm-bg, #1f2937cc); color: var(--gm-fg, #fff); }
-.sample-player, .sample-input { background: var(--player-bg, #1f2937cc); color: var(--player-fg, #fff); }
+.sample-player, .sample-input, .sample-context, .sample-controls span { background: var(--player-bg, #1f2937cc); color: var(--player-fg, #fff); }
 .sample-input { font-size: 11px; }
+.sample-context { padding: 7px 10px; font-size: 10px; }
+.sample-controls { display: flex; gap: 7px; font-size: 10px; }
+.sample-controls span { border: 1px solid currentColor; border-radius: 20px; padding: 5px 10px; }
+.auto-text { font-size: 10px; font-weight: 400; gap: 6px; }
 @media (max-width: 490px) { main { padding: 24px; } .theme-grid { grid-template-columns: 1fr; } }

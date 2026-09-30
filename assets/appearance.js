@@ -17,8 +17,10 @@ function selection() {
     preset: form.elements.preset.value, customColor,
     backgroundImage, backgroundName, backgroundFit: element('image-fit').value,
     messages: { enabled: element('message-styles').checked,
-      player: { color: element('player-color').value, opacity: Number(element('player-opacity').value) / 100 },
-      gm: { color: element('gm-color').value, opacity: Number(element('gm-opacity').value) / 100 } },
+      player: { color: element('player-color').value, opacity: Number(element('player-opacity').value) / 100,
+        textColor: element('player-auto-text').checked ? null : element('player-text-color').value },
+      gm: { color: element('gm-color').value, opacity: Number(element('gm-opacity').value) / 100,
+        textColor: element('gm-auto-text').checked ? null : element('gm-text-color').value } },
     linuxBlackMenu: element('black-menu').checked,
   };
 }
@@ -35,14 +37,19 @@ function showSettings(settings) {
   for (const role of ['player', 'gm']) {
     element(`${role}-color`).value = settings.messages[role].color;
     element(`${role}-opacity`).value = Math.round(settings.messages[role].opacity * 100);
+    element(`${role}-auto-text`).checked = !settings.messages[role].textColor;
+    element(`${role}-text-color`).value = settings.messages[role].textColor ?? '#ffffff';
   }
   element('black-menu').checked = settings.linuxBlackMenu;
   element('linux-menu-setting').hidden = settings.platform !== 'linux';
   element('app-platform-note').hidden = settings.platform === 'linux';
   updatePreview();
 }
-function foreground(color) {
-  const channels = [1, 3, 5].map(offset => parseInt(color.slice(offset, offset + 2), 16) / 255)
+function foreground(color, opacity = 1, background = '#010b0e') {
+  const channels = [1, 3, 5].map(offset => {
+    const base = parseInt(background.slice(offset, offset + 2), 16);
+    return Math.round(base + (parseInt(color.slice(offset, offset + 2), 16) - base) * opacity) / 255;
+  })
     .map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
   const lightness = channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
   return 1.05 / (lightness + .05) >= (lightness + .05) / .05 ? '#fff' : '#000';
@@ -53,16 +60,18 @@ function updatePreview() {
   for (const id of ['apply', 'reset', 'import-image', 'message-styles', 'black-menu']) element(id).disabled = busy;
   colorInput.disabled = hexInput.disabled = busy || settings.preset !== 'custom';
   element('remove-image').disabled = element('image-fit').disabled = busy || !backgroundImage;
+  const colors = { website: '#010b0e', amoled: '#000000', black: '#101010', light: '#f5f5f5' };
+  const color = colors[settings.preset] ?? customColor;
   for (const role of ['player', 'gm']) {
     element(`${role}-color`).disabled = element(`${role}-opacity`).disabled = busy || !settings.messages.enabled;
     element(`${role}-opacity-label`).value = `${Math.round(settings.messages[role].opacity * 100)}%`;
+    element(`${role}-auto-text`).disabled = busy || !settings.messages.enabled;
+    element(`${role}-text-color`).disabled = busy || !settings.messages.enabled || element(`${role}-auto-text`).checked;
     const style = settings.messages[role];
     const rgb = [1, 3, 5].map(offset => parseInt(style.color.slice(offset, offset + 2), 16));
     preview.style.setProperty(`--${role}-bg`, settings.messages.enabled ? `rgba(${rgb.join(',')},${style.opacity})` : '#1f2937cc');
-    preview.style.setProperty(`--${role}-fg`, settings.messages.enabled ? foreground(style.color) : '#fff');
+    preview.style.setProperty(`--${role}-fg`, settings.messages.enabled ? style.textColor ?? foreground(style.color, style.opacity, color) : '#fff');
   }
-  const colors = { website: '#010b0e', amoled: '#000000', black: '#101010', light: '#f5f5f5' };
-  const color = colors[settings.preset] ?? customColor;
   preview.style.setProperty('--preview-bg', color);
   preview.style.setProperty('--preview-fg', foreground(color));
   preview.style.setProperty('--preview-image', imagePreview ? `url("${imagePreview}")` : 'none');

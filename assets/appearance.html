@@ -64,7 +64,7 @@
 
         <section id="picture-panel" role="tabpanel" hidden>
           <h2>Behind the campaign chat</h2>
-          <p class="help">Import a picture from your computer. It is saved locally for your desktop app.</p>
+          <p class="help">Import a picture from your computer. It is saved locally for your desktop app. Use the background-image button at the top of the campaign to show or hide it.</p>
           <div class="image-actions">
             <button type="button" id="import-image" disabled>Choose picture…</button>
             <button type="button" id="remove-image" class="secondary" disabled>Remove picture</button>
@@ -78,19 +78,24 @@
 
         <section id="messages-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="message-styles" disabled> Customize message backgrounds</label>
-          <p class="help">Opacity changes the background only. Player colors also apply to campaign text inputs.</p>
+          <p class="help">Player styling also applies to campaign inputs, bottom buttons, and the context bar. GM styling includes battle summaries. Opacity changes the background only.</p>
           <div class="message-controls">
             <fieldset><legend>Player messages &amp; inputs</legend>
-              <label class="setting-row">Color <input type="color" id="player-color" value="#16202a" disabled></label>
+              <label class="setting-row">Background <input type="color" id="player-color" value="#16202a" disabled></label>
               <label for="player-opacity">Background opacity <output id="player-opacity-label">85%</output></label>
               <input type="range" id="player-opacity" min="0" max="100" value="85" disabled>
+              <label class="setting-row">Text &amp; icons <input type="color" id="player-text-color" value="#ffffff" disabled></label>
+              <label class="switch-row auto-text"><input type="checkbox" id="player-auto-text" checked disabled> Automatic text color</label>
             </fieldset>
             <fieldset><legend>Game master &amp; NPC messages</legend>
-              <label class="setting-row">Color <input type="color" id="gm-color" value="#101010" disabled></label>
+              <label class="setting-row">Background <input type="color" id="gm-color" value="#101010" disabled></label>
               <label for="gm-opacity">Background opacity <output id="gm-opacity-label">85%</output></label>
               <input type="range" id="gm-opacity" min="0" max="100" value="85" disabled>
+              <label class="setting-row">Text &amp; icons <input type="color" id="gm-text-color" value="#ffffff" disabled></label>
+              <label class="switch-row auto-text"><input type="checkbox" id="gm-auto-text" checked disabled> Automatic text color</label>
             </fieldset>
           </div>
+          <p class="help">Automatic text color accounts for your theme and background opacity. Turn it off to choose readable text over a picture.</p>
         </section>
 
         <section id="app-panel" role="tabpanel" hidden>
@@ -104,7 +109,9 @@
           <span class="preview-label">PREVIEW</span>
           <div class="sample-message sample-gm"><small>GAME MASTER</small><span>The road disappears into the forest.</span></div>
           <div class="sample-message sample-player"><small>PLAYER</small><span>I take a closer look.</span></div>
+          <div class="sample-context">9 Active / 0 Idle</div>
           <div class="sample-input">Message input preview…</div>
+          <div class="sample-controls"><span>Dice</span><span>Spell</span><span>Manual</span></div>
         </div>
         <div class="actions">
           <button type="button" id="reset" class="secondary" disabled>Reset appearance</button>

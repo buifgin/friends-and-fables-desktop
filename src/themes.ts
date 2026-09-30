@@ -10,7 +10,7 @@ export interface AppearanceSettings {
   linuxBlackMenu: boolean;
 }
 
-export interface MessageStyle { color: string; opacity: number }
+export interface MessageStyle { color: string; opacity: number; textColor: string | null }
 export interface AppearanceState extends AppearanceSettings { imagePreview: string | null; platform: string }
 
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
@@ -19,7 +19,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   backgroundImage: null,
   backgroundName: '',
   backgroundFit: 'cover',
-  messages: { enabled: false, player: { color: '#16202a', opacity: 0.85 }, gm: { color: '#101010', opacity: 0.85 } },
+  messages: { enabled: false, player: { color: '#16202a', opacity: 0.85, textColor: null }, gm: { color: '#101010', opacity: 0.85, textColor: null } },
   linuxBlackMenu: true,
 };
 
@@ -55,7 +55,11 @@ export function validateAppearance(value: unknown): AppearanceSettings {
       || typeof style.opacity !== 'number' || !Number.isFinite(style.opacity) || style.opacity < 0 || style.opacity > 1) {
       throw new Error('Message colors need #RRGGBB format and opacity between 0 and 1.');
     }
-    return { color: style.color.toLowerCase(), opacity: style.opacity };
+    const textColor = style.textColor ?? null;
+    if (textColor !== null && (typeof textColor !== 'string' || !/^#[\da-f]{6}$/i.test(textColor))) {
+      throw new Error('Text colors need #RRGGBB format.');
+    }
+    return { color: style.color.toLowerCase(), opacity: style.opacity, textColor: textColor?.toLowerCase() ?? null };
   }
   const linuxBlackMenu = input.linuxBlackMenu ?? true;
   if (typeof linuxBlackMenu !== 'boolean') throw new Error('Invalid menu bar preference.');
@@ -106,12 +110,24 @@ function hsl(color: RGB): string {
   return `${hue.toFixed(3)} ${(saturation * 100).toFixed(3)}% ${(lightness * 100).toFixed(3)}%`;
 }
 
+export function themeBackground(settings: AppearanceSettings): string {
+  return settings.preset === 'website' ? '#010b0e' : settings.preset === 'amoled' ? '#000000'
+    : settings.preset === 'black' ? '#101010'
+    : settings.preset === 'light' ? '#f5f5f5' : settings.customColor;
+}
+
+export function messageForeground(style: MessageStyle, settings: AppearanceSettings): string {
+  if (style.textColor) return style.textColor;
+  // Account for opacity over the app color, rather than treating a transparent
+  // white message as a solid white surface. Pictures can use a chosen text color.
+  const background = mix(rgb(themeBackground(settings)), rgb(style.color), style.opacity);
+  return contrast(background, [255, 255, 255]) >= contrast(background, [0, 0, 0]) ? '#ffffff' : '#000000';
+}
+
 export function themeCss(settings: AppearanceSettings): string {
   if (settings.preset === 'website') return '';
 
-  const color = settings.preset === 'amoled' ? '#000000'
-    : settings.preset === 'black' ? '#101010'
-    : settings.preset === 'light' ? '#f5f5f5' : settings.customColor;
+  const color = themeBackground(settings);
   const background = rgb(color);
   const lightness = luminance(background);
   const dark = (1.05 / (lightness + 0.05)) >= ((lightness + 0.05) / 0.05);
@@ -166,5 +182,10 @@ export function themeCss(settings: AppearanceSettings): string {
 
   // Only shared neutral colors change. Background images and campaign artwork
   // are deliberately left alone, as are status colors and primary buttons.
-  return `:root:root:root {\n${declarations}\ncolor-scheme: ${dark ? 'dark' : 'light'} !important;\n}`;
+  return `:root:root:root {\n${declarations}\ncolor-scheme: ${dark ? 'dark' : 'light'} !important;\n}
+    :where(input, textarea, select, [contenteditable="true"]) {
+      color: hsl(var(--foreground)) !important; -webkit-text-fill-color: hsl(var(--foreground)) !important;
+      caret-color: hsl(var(--foreground)) !important;
+    }
+    :where(input, textarea)::placeholder { color: hsl(var(--foreground-muted)) !important; }`;
 }

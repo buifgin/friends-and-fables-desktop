@@ -13,7 +13,8 @@ The app opens the existing website and adds local themes, campaign chat pictures
 - Provide standard menus for reload, zoom, copy/paste, developer tools, and opening the website in your browser.
 - Choose AMOLED black, soft black, light, or a custom background color, with saved preferences.
 - Import a local picture behind campaign chat, with cover or contain sizing.
-- Set separate background colors and opacity for player and GM/NPC messages. Campaign text inputs use the player style.
+- Set separate background colors, opacity, and text colors for player and GM/NPC messages. Campaign inputs, bottom buttons, and the context bar use the player style; battle summaries use the GM style.
+- Keep character editor fields readable using the app theme's foreground color.
 - Use a black application menu bar on Linux, with an option to restore the system menu bar.
 - Package a portable ZIP for Linux or Windows.
 
@@ -42,7 +43,7 @@ npm test
 npm run make
 ```
 
-`check` verifies TypeScript without emitting files. `test` runs an Electron smoke test with an offline page and a temporary profile; it checks themes, image import, player/GM/input styling, opacity, newly rendered messages, campaign navigation, reset, reload, preference storage, the Linux menu bar, IPC access restrictions, and zoom handling. Its invalid-input and unauthorized-window cases deliberately produce rejection messages before the final PASS result.
+`check` verifies TypeScript without emitting files. `test` runs an Electron smoke test with an offline page and a temporary profile; it checks themes, image import and the background switch, player/GM/input/button/context/battle styling, text and icon colors, character editor fields, opacity, newly rendered messages, campaign navigation, reset, reload, preference storage, the Linux menu bar, IPC access restrictions, and zoom handling. Its invalid-input and unauthorized-window cases deliberately produce rejection messages before the final PASS result.
 
 `make` builds the application and writes the packaged folder and portable ZIP under `out/`. It targets the current operating system by default. On Windows, run the commands in PowerShell.
 
@@ -62,7 +63,11 @@ In **Theme**, choose one of these presets:
 
 In **Chat picture**, click **Choose picture…** to import a PNG or JPEG from your computer. Pictures must be at most 20 MB and 16 million pixels; the stored PNG must also fit within 20 MB. Choose **Cover the chat area** to fill the area, or **Show the whole picture** to keep the entire image visible. **Remove picture** restores the campaign's existing background when applied. The picture is copied into the app's local profile and used only in this desktop app.
 
-In **Messages**, enable **Customize message backgrounds**, then choose separate colors and background opacity for **Player messages & inputs** and **Game master & NPC messages**. At 0%, the background is transparent; at 100%, it is solid. Text remains opaque. Campaign text fields, including the message editor, use the player settings.
+The uploaded picture follows the website's background-image button at the top of the campaign. Enable that button to show the picture; disable it to hide the picture. Your selected file stays saved while hidden.
+
+In **Messages**, enable **Customize message backgrounds**, then choose separate colors and background opacity for **Player messages & inputs** and **Game master & NPC messages**. At 0%, the background is transparent; at 100%, it is solid. Text remains opaque. The message editor, its placeholder, campaign text inputs, bottom buttons and their icons, and the working-context bar use the player settings. Character editor fields follow the app theme so chat transparency cannot hide their values.
+
+**Automatic text color** chooses black or white based on the message background's opacity over the app theme. To choose your own color, disable it and set **Text & icons** for player or GM messages. This is useful over pictures with bright or dark areas. GM text settings also cover the **Thoughts** control and bold headings. Battle summaries and character damage cards use the GM background and text settings, while damage/healing/distance colors are preserved.
 
 In **App** on Linux, **Black Linux menu bar** replaces the File/Edit/Appearance/View/Window strip with a black app-owned bar and native dropdown menus. Turn it off to use the system menu bar. Window decorations are still managed by your desktop.
 
@@ -79,8 +84,8 @@ Zoom in with **Ctrl+=** or **Ctrl+Shift+=** (the `+` key), zoom out with **Ctrl+
 3. Close and reopen the app and check whether the website preserves the session.
 4. Check resize, zoom, reload, and copy/paste on Hyprland and Windows.
 5. Launch the packaged executable and repeat the checks.
-6. In a campaign, import a picture and try both sizing options. Check that it stays behind chat while other campaign artwork is preserved.
-7. Set different player and GM colors and opacity, including 0% and 100%. Check existing and new messages, the message editor, text inputs, and NPC messages.
+6. In a campaign, import a picture and try both sizing options. Turn the website's background-image button off and on, and check that the uploaded picture follows it while other campaign artwork is preserved.
+7. Set different player and GM colors and opacity, including 0% and 100%. Try automatic and custom text colors. Check existing/new messages, the editor and its placeholder, bottom buttons/icons, context bar, GM Thoughts/headings, and battle summaries. Open the character editor and check names, HP, and stats under dark and light themes.
 8. On Linux, switch the black menu bar off and on. Check resizing, menu commands, and zoom shortcuts.
 9. Reload, restart, remove the picture, and reset appearance to check persistence and restoration.
 
@@ -101,6 +106,7 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - Text that not adressed to that char will not be seen by him
 - Add custom color dice with menu at top of screen with picker of variants.
 - Add some free music api or link player for all people at the company, near the dice button. With volume slider and mute option.
+- Add resizable map feature.
 
 ## Stack
 
