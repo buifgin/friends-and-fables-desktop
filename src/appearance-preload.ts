@@ -4,8 +4,12 @@ import type { ImportedBackground } from './backgrounds';
 import type { BackgroundPage } from './backgrounds';
 import type { FolderPage } from './image-folder';
 
-// This preload is used only by the bundled appearance window, never by the site.
+// Used only by the bundled Appearance window and embedded editor, never by the site.
 contextBridge.exposeInMainWorld('appearance', {
+  closePanel: (): Promise<void> => ipcRenderer.invoke('appearance:close-panel'),
+  resizePanel: (width: number, finish = false): Promise<number> => ipcRenderer.invoke('appearance:resize-panel', width, finish),
+  onInterface: (callback: (state: unknown) => void): void => { ipcRenderer.on('appearance:interface', (_event, state: unknown) => callback(state)); },
+  onSettings: (callback: (state: AppearanceState) => void): void => { ipcRenderer.on('appearance:settings', (_event, state: AppearanceState) => callback(state)); },
   get: (): Promise<AppearanceState> => ipcRenderer.invoke('appearance:get'),
   importImage: (): Promise<ImportedBackground | null> => ipcRenderer.invoke('appearance:import-image'),
   pictures: (offset = 0): Promise<BackgroundPage> => ipcRenderer.invoke('appearance:pictures',offset),

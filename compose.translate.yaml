@@ -1,12 +1,17 @@
 services:
   translator:
-    image: libretranslate/libretranslate:latest
+    image: libretranslate/libretranslate:v1.9.6@sha256:1de2d7056bb8ad607a412f4563d9abe324ff632b43b5be9428bcc8e213aebb32
     init: true
     ports:
       - "127.0.0.1:5000:5000"
     environment:
       LT_HOST: "0.0.0.0"
       LT_LOAD_ONLY: "en,ru"
+      LT_DISABLE_WEB_UI: "true"
+      LT_DISABLE_FILES_TRANSLATION: "true"
+      LT_THREADS: "2"
+      LT_BATCH_LIMIT: "16"
+      LT_CHAR_LIMIT: "2000"
     volumes:
       - translation-models:/home/libretranslate/.local
     healthcheck:

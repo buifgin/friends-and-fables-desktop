@@ -1,7 +1,7 @@
 {
   "name": "friends-and-fables-desktop",
   "productName": "Friends & Fables Desktop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Unofficial Friends & Fables desktop wrapper for Windows and Arch Linux",
   "private": true,
   "main": "dist/main.js",
@@ -18,7 +18,7 @@
     "build": "tsc",
     "check": "tsc --noEmit",
     "pretest": "npm run build",
-    "test": "electron tests/appearance-smoke.cjs",
+    "test": "npm run test:unit && npm run test:appearance && npm run test:translation && npm run test:panel",
     "prestart": "npm run build",
     "start": "electron-forge start",
     "prepackage": "npm run build",
@@ -27,7 +27,12 @@
     "make": "electron-forge make",
     "dist:linux": "npm run build && electron-builder --config electron-builder.config.cjs --linux AppImage --x64 --publish never",
     "dist:windows": "npm run build && electron-builder --config electron-builder.config.cjs --win portable --x64 --publish never",
-    "checksums": "node scripts/release-checksums.cjs"
+    "checksums": "node scripts/release-checksums.cjs",
+    "test:unit": "node --test tests/translation-core.test.cjs",
+    "test:appearance": "electron tests/appearance-smoke.cjs",
+    "test:translation": "electron tests/translation-smoke.cjs",
+    "benchmark:translation": "npm run build && node scripts/translation-benchmark.cjs",
+    "test:panel": "electron tests/appearance-panel-smoke.cjs"
   },
   "config": {
     "forge": "./forge.config.cjs"

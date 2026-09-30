@@ -5,6 +5,7 @@ import { configureZoomShortcuts } from './zoom';
 import { configureFullscreenShortcuts } from './window-shortcuts';
 import { AppearanceManager, registerAppearanceScheme } from './appearance';
 import { LinuxMenuBar, MENU_URL } from './linux-menu';
+import { TranslationManager } from './translation';
 
 const APP_NAME = 'Friends & Fables Desktop';
 const WEBSITE_URL = 'https://play.fables.gg/';
@@ -15,6 +16,7 @@ registerAppearanceScheme();
 
 let mainWindow: BrowserWindow | null = null;
 let appearance: AppearanceManager;
+let translation: TranslationManager;
 let websiteContents: WebContents | null = null;
 let applicationMenu: Menu;
 let linuxMenu: LinuxMenuBar | undefined;
@@ -32,6 +34,7 @@ function configureWebsiteContents(contents: WebContents, window: BrowserWindow):
   configureZoomShortcuts(contents);
   configureFullscreenShortcuts(contents, window);
   appearance.attach(contents);
+  translation.attach(contents);
   // Keep HTTPS authentication redirects in the sandboxed browser session.
   // The website has no preload script, Node access, or application IPC bridge.
   contents.on('will-navigate', (event, url) => {
@@ -99,7 +102,7 @@ function createWindow(): void {
     minHeight: 600,
     backgroundColor: '#000000',
     webPreferences: {
-      partition: linux ? 'fables-appearance' : SESSION_PARTITION,
+      partition: 'fables-appearance',
       ...(linux ? { preload: path.join(__dirname, 'menu-preload.js') } : {}),
       sandbox: true,
       contextIsolation: true,
@@ -108,26 +111,28 @@ function createWindow(): void {
     },
   });
 
+  const view = new WebContentsView({ webPreferences: {
+    partition: SESSION_PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
+  } });
+  mainWindow.contentView.addChildView(view);
+  websiteContents = view.webContents;
+  const dock = appearance.attachMain(mainWindow, view);
   if (linux) {
-    const view = new WebContentsView({ webPreferences: {
-      partition: SESSION_PARTITION, sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
-    } });
-    mainWindow.contentView.addChildView(view);
-    websiteContents = view.webContents;
-    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu);
+    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => dock.setInset(inset));
     linuxMenu.setBlack(appearance.getSettings().linuxBlackMenu);
-    mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
-    mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
-    mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    configureFullscreenShortcuts(mainWindow.webContents, mainWindow);
-    void mainWindow.loadURL(MENU_URL).catch(console.error);
-  } else websiteContents = mainWindow.webContents;
+  }
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  configureFullscreenShortcuts(mainWindow.webContents, mainWindow);
+  void mainWindow.loadURL(linux ? MENU_URL : 'about:blank').catch(console.error);
   const contents = websiteContents;
   configureWebsiteContents(contents, mainWindow);
   contents.once('did-finish-load', () => contents.focus());
   mainWindow.on('closed', () => {
     mainWindow = null;
     appearance.close();
+    translation.closeWindow();
     linuxMenu = undefined;
     if (!contents.isDestroyed()) contents.close();
     websiteContents = null;
@@ -184,6 +189,19 @@ function createMenu(): void {
       }],
     },
     {
+      id: 'translation', label: 'Translation',
+      submenu: [
+        { id: 'russian-translation', label: 'Translate into Russian', type: 'checkbox',
+          checked: translation.getSettings().enabled,
+          click: () => { void translation.save({ ...translation.getSettings(), enabled: !translation.getSettings().enabled, showOriginal: false }).catch(console.error); } },
+        { id: 'original-text', label: 'Show original text', type: 'checkbox',
+          enabled: translation.getSettings().enabled, checked: translation.getSettings().showOriginal,
+          click: () => { void translation.save({ ...translation.getSettings(), showOriginal: !translation.getSettings().showOriginal }).catch(console.error); } },
+        { type: 'separator' },
+        { label: 'Translation Settings…', click: () => { if (mainWindow) void translation.open(mainWindow).catch(console.error); } },
+      ],
+    },
+    {
       id: 'view', label: 'View',
       submenu: [
         { id: 'reload', label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => targetContents()?.reload() },
@@ -216,6 +234,8 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     appearance = new AppearanceManager();
     await appearance.initialize();
+    translation = new TranslationManager();
+    await translation.initialize();
     if (process.platform === 'linux') nativeTheme.themeSource = 'dark';
     appearance.onChange = (settings) => linuxMenu?.setBlack(settings.linuxBlackMenu);
     const websiteSession = session.fromPartition(SESSION_PARTITION);
@@ -225,7 +245,14 @@ if (!app.requestSingleInstanceLock()) {
     });
     websiteSession.setPermissionCheckHandler(() => false);
 
+    appearance.setLocale(translation.getSettings().enabled && !translation.getSettings().showOriginal ? 'ru' : 'en');
     createMenu();
+    translation.onChange = settings => {
+      appearance.setLocale(settings.enabled && !settings.showOriginal ? 'ru' : 'en');
+      applicationMenu.getMenuItemById('russian-translation')!.checked = settings.enabled;
+      applicationMenu.getMenuItemById('original-text')!.checked = settings.showOriginal;
+      applicationMenu.getMenuItemById('original-text')!.enabled = settings.enabled;
+    };
     createWindow();
   }).catch((error) => {
     console.error('Unable to start the application:', error);
@@ -237,5 +264,11 @@ if (!app.requestSingleInstanceLock()) {
   });
   app.on('window-all-closed', () => {
     app.quit();
+  });
+  let quitting = false;
+  app.on('before-quit', event => {
+    if (!translation || quitting) return;
+    event.preventDefault(); quitting = true;
+    void translation.shutdown().finally(() => app.quit());
   });
 }

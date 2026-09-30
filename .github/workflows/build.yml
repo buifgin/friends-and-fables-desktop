@@ -63,12 +63,12 @@ jobs:
         if: runner.os == 'Linux'
         env:
           FABLES_TEST_APP_ROOT: ${{ github.workspace }}/out/releases/${{ matrix.app }}/resources/app.asar
-        run: xvfb-run -a node_modules/.bin/electron tests/appearance-smoke.cjs
+        run: xvfb-run -a npm run test:appearance && xvfb-run -a npm run test:translation && xvfb-run -a npm run test:panel
       - name: Verify packaged resources on Windows
         if: runner.os == 'Windows'
         env:
           FABLES_TEST_APP_ROOT: ${{ github.workspace }}/out/releases/${{ matrix.app }}/resources/app.asar
-        run: node_modules/.bin/electron tests/appearance-smoke.cjs
+        run: npm run test:appearance && npm run test:translation && npm run test:panel
       - name: Generate checksums
         run: node scripts/release-checksums.cjs ${{ matrix.target }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

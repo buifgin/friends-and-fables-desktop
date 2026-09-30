@@ -15,6 +15,8 @@ let previousImage;
 let previewFrame = 0;
 let activePanel = 'theme-panel';
 let canUndoReset = false;
+let panelWidth = 420;
+let appliedRevision = -1;
 const previousStyles = new Map();
 
 for (const field of document.querySelectorAll('[data-style]')) {
@@ -28,7 +30,7 @@ function readStyle(role) {
   return { color: element(`${role}-color`).value, opacity: Number(element(`${role}-opacity`).value) / 100,
     textColor: element(`${role}-auto-text`).checked ? null : element(`${role}-text-color`).value,
     gradient: { enabled: element(`${role}-gradient`).checked, color: element(`${role}-gradient-color`).value,
-      angle: Number(element(`${role}-gradient-angle`).value), opacity: Number(element(`${role}-gradient-opacity`).value) / 100,
+      angle: Number(element(`${role}-gradient-angle`).value), secondOpacity: Number(element(`${role}-gradient-second-opacity`).value) / 100,
       balance: Number(element(`${role}-gradient-balance`).value) },
     border: { enabled: element(`${role}-border`).checked, color: element(`${role}-border-color`).value,
       width: Number(element(`${role}-border-width`).value), radius: Number(element(`${role}-border-radius`).value), variant: element(`${role}-border-variant`).value } };
@@ -45,11 +47,21 @@ function selection() {
     dice: { enabled: element('roll-styles').checked, style: readStyle('roll'), colorsEnabled: element('dice-colors').checked,
       faceColor: element('dice-face-color').value, edgeColor: element('dice-edge-color').value, numberColor: element('dice-number-color').value,
       resultTextColor: element('dice-result-auto').checked ? null : element('dice-result-color').value },
+    appearancePinned: element('pin-appearance').checked, appearancePanelWidth: panelWidth,
     linuxBlackMenu: element('black-menu').checked, linuxFloatingAppearance: element('floating-appearance').checked,
   };
 }
 function showSettings(settings) {
+  if (settings.revision < appliedRevision) return;
+  appliedRevision = settings.revision;
   canUndoReset = settings.canUndoReset;
+  panelWidth = settings.appearancePanelWidth;
+  element('pin-appearance').checked = settings.appearancePinned;
+  window.settingsLocale.set(settings.locale);
+  if (settings.presentation) {
+    document.body.classList.toggle('docked', settings.presentation === 'panel');
+    element('panel-toolbar').hidden = element('panel-resizer').hidden = settings.presentation !== 'panel';
+  }
   form.elements.preset.value = settings.preset;
   customColor = settings.customColor;
   colorInput.value = customColor; hexInput.value = customColor;
@@ -77,7 +89,7 @@ function showSettings(settings) {
     element(`${role}-gradient`).checked = style.gradient.enabled;
     element(`${role}-gradient-color`).value = style.gradient.color;
     element(`${role}-gradient-angle`).value = style.gradient.angle;
-    element(`${role}-gradient-opacity`).value = Math.round(style.gradient.opacity * 100);
+    element(`${role}-gradient-second-opacity`).value = Math.round(style.gradient.secondOpacity * 100);
     element(`${role}-gradient-balance`).value = style.gradient.balance;
     element(`${role}-border`).checked = style.border.enabled;
     for (const part of ['color','width','radius','variant']) element(`${role}-border-${part}`).value = style.border[part];
@@ -95,8 +107,8 @@ function luminance(color, opacity, background) {
   }).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
   return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
 }
-function foreground(color, opacity = 1, background = '#010b0e', second = null, balance = 50) {
-  const values = [...(!second || balance > 0 ? [color] : []), ...(second && balance < 100 ? [second] : [])].map(c => luminance(c, opacity, background));
+function foreground(color, opacity = 1, background = '#010b0e', second = null, balance = 50, secondOpacity = opacity) {
+  const values = [...(!second || balance > 0 ? [[color,opacity]] : []), ...(second && balance < 100 ? [[second,secondOpacity]] : [])].map(([c,a]) => luminance(c, a, background));
   return Math.min(...values.map(l => 1.05 / (l + .05))) >= Math.min(...values.map(l => (l + .05) / .05)) ? '#ffffff' : '#000000';
 }
 function rgba(hex, opacity) { return `rgba(${[1,3,5].map(i => parseInt(hex.slice(i,i+2),16)).join(',')},${opacity})`; }
@@ -108,8 +120,10 @@ function schedulePreview() { if (!previewFrame) previewFrame = requestAnimationF
 function updatePreview() {
   cancelAnimationFrame(previewFrame); previewFrame = 0;
   const settings = selection();
+  window.settingsTheme.apply(settings);
   fieldset.disabled = busy;
-  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance']) element(id).disabled = busy;
+  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance','pin-appearance']) element(id).disabled = busy;
+  element('floating-appearance').disabled = busy || settings.appearancePinned;
   element('undo-reset').hidden = !canUndoReset;
   element('dice-result-auto').disabled = busy;
   element('dice-result-color').disabled = busy || !settings.dice.resultTextColor;
@@ -131,14 +145,14 @@ function updatePreview() {
         || (part.startsWith('gradient-') && !style.gradient.enabled)
         || (['border-color','border-width','border-variant'].includes(part) && !style.border.enabled);
     }
-    for (const [part, unit, value] of [['opacity','%',style.opacity*100], ['gradient-angle','°',style.gradient.angle], ['gradient-opacity','%',style.gradient.opacity*100],
+    element(`${role}-opacity-title`).textContent = style.gradient.enabled ? 'First color opacity' : 'Background opacity';
+    for (const [part, unit, value] of [['opacity','%',style.opacity*100], ['gradient-angle','°',style.gradient.angle], ['gradient-second-opacity','%',style.gradient.secondOpacity*100],
       ['border-width',' px',style.border.width], ['border-radius',' px',style.border.radius]]) element(`${role}-${part}-label`).value = `${Math.round(value)}${unit}`;
     element(`${role}-gradient-balance-label`).value = `${Math.round(style.gradient.balance)}% / ${Math.round(100-style.gradient.balance)}%`;
-    const opacity = style.opacity * (style.gradient.enabled ? style.gradient.opacity : 1);
-    const first = rgba(style.color, opacity);
-    const bg = style.gradient.enabled ? `linear-gradient(${style.gradient.angle}deg,${first} ${Math.max(0,style.gradient.balance*2-100)}%,${rgba(style.gradient.color,opacity)} ${Math.min(100,style.gradient.balance*2)}%)` : first;
+    const first = rgba(style.color, style.opacity);
+    const bg = style.gradient.enabled ? `linear-gradient(${style.gradient.angle}deg,${first} ${Math.max(0,style.gradient.balance*2-100)}%,${rgba(style.gradient.color,style.gradient.secondOpacity)} ${Math.min(100,style.gradient.balance*2)}%)` : first;
     setPreview(`--${role}-bg`, enabled ? bg : role === 'context' ? '#1f2937' : '#1f2937cc');
-    setPreview(`--${role}-fg`, enabled ? style.textColor ?? foreground(style.color, opacity, color, style.gradient.enabled ? style.gradient.color : null, style.gradient.balance) : '#fff');
+    setPreview(`--${role}-fg`, enabled ? style.textColor ?? foreground(style.color, style.opacity, color, style.gradient.enabled ? style.gradient.color : null, style.gradient.balance, style.gradient.secondOpacity) : '#fff');
     setPreview(`--${role}-border`, enabled && style.border.enabled ? `${style.border.width}px solid ${style.border.color}` : '0 solid transparent');
     setPreview(`--${role}-radius`, enabled ? `${style.border.radius}px` : '8px');
     setPreview(`--${role}-ornament`, enabled && style.border.enabled ? borderImages(style.border) : 'none');
@@ -164,6 +178,7 @@ function updatePreview() {
   setPreview('--preview-blur', `${settings.backgroundEffects.blur}px`);
   setPreview('--preview-image-opacity', String(settings.backgroundEffects.opacity));
   setPreview('--preview-overlay', imagePreview ? rgba(settings.backgroundEffects.overlayColor,settings.backgroundEffects.overlayOpacity) : 'transparent');
+  element('image-name').toggleAttribute('data-no-localize',!!backgroundName);
   element('image-name').textContent = backgroundName || "Using the campaign's existing background.";
   for (const [selector, show] of [ ['.sample-message', !['context-panel','events-panel','dice-panel'].includes(activePanel)],
     ['.sample-context',activePanel==='context-panel'], ['.sample-context-bar',activePanel==='context-panel'], ['.sample-event',activePanel==='events-panel'],
@@ -330,7 +345,7 @@ function updatePicker(hex, sliders = false) {
 for (const input of document.querySelectorAll('input[type="color"]')) input.addEventListener('click', event => {
   event.preventDefault(); if (input.disabled || busy) return;
   pickerTarget = input; pickerOriginal = input.value;
-  element('picker-title').textContent = input.getAttribute('aria-label') ?? input.closest('label')?.textContent.trim() ?? 'Choose color';
+  element('picker-title').textContent = window.settingsLocale.source(input,'aria-label') ?? (input.closest('label') ? window.settingsLocale.source(input.closest('label')).trim() : null) ?? 'Choose color';
   updatePicker(input.value, true); picker.showModal();
 });
 function paintDraft(hex) {
@@ -355,3 +370,35 @@ element('picker-cancel').addEventListener('click', () => closePicker(true));
 picker.addEventListener('cancel', event => { event.preventDefault(); closePicker(true); });
 window.appearance.get().then(settings => { busy = false; showSettings(settings); notify('Choose your settings, then apply them.'); })
   .catch(error => { notify('Could not load preferences. Close this window and try again.', true); console.error(error); });
+
+window.appearance.onInterface(state => { window.settingsLocale.set(state.locale); panelWidth = state.width; });
+window.appearance.onSettings(showSettings);
+element('close-panel').addEventListener('click', () => { void window.appearance.closePanel().catch(console.error); });
+const resizer = element('panel-resizer');
+let drag = null, resizeFrame = 0, desiredWidth = 420;
+const resizePanel = async (width, finish = false) => {
+  try { panelWidth = await window.appearance.resizePanel(width, finish); resizer.setAttribute('aria-valuenow', String(panelWidth)); }
+  catch (error) { console.error(error); }
+};
+resizer.addEventListener('pointerdown', event => {
+  if (event.button !== 0) return;
+  event.preventDefault(); drag = { x: event.screenX, width: innerWidth }; desiredWidth = innerWidth;
+  resizer.setPointerCapture(event.pointerId);
+});
+resizer.addEventListener('pointermove', event => {
+  if (!drag) return;
+  desiredWidth = Math.max(320, Math.min(900, drag.width + event.screenX - drag.x));
+  if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; void resizePanel(desiredWidth); });
+});
+const finishResize = () => {
+  if (!drag) return;
+  drag = null; cancelAnimationFrame(resizeFrame); resizeFrame = 0; void resizePanel(desiredWidth, true);
+};
+resizer.addEventListener('pointerup', finishResize);
+resizer.addEventListener('pointercancel', finishResize);
+resizer.addEventListener('lostpointercapture', finishResize);
+resizer.addEventListener('keydown', event => {
+  if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+  event.preventDefault();
+  void resizePanel(event.key === 'Home' ? 320 : event.key === 'End' ? 900 : innerWidth + (event.key === 'ArrowLeft' ? -20 : 20), true);
+});

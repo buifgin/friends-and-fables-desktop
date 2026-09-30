@@ -6,9 +6,13 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
     <title>Appearance — Friends &amp; Fables Desktop</title>
     <link rel="stylesheet" href="appearance.css">
+    <script src="settings-theme.js" defer></script>
+    <script src="settings-locale.js" defer></script>
     <script src="appearance.js" defer></script>
   </head>
   <body>
+    <div class="panel-toolbar" id="panel-toolbar" hidden><strong>Appearance</strong><button type="button" id="close-panel" class="secondary">Close panel</button></div>
+    <div id="panel-resizer" role="separator" aria-label="Resize appearance panel" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="900" aria-valuenow="420" tabindex="0" hidden></div>
     <main>
       <p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p>
       <h1>Make it yours.</h1>
@@ -137,11 +141,13 @@
           <p class="help">Export your current choices to a theme file for friends. Import a file to preview it, then apply. Login and campaign data are never part of a theme.</p>
           <label class="switch-row"><input type="checkbox" id="export-picture" checked> Include the selected chat picture</label>
           <div class="image-actions sharing-actions"><button type="button" id="export-theme">Export theme…</button><button type="button" id="import-theme" class="secondary">Import theme…</button></div>
-          <p class="help">A theme without a picture keeps the recipient’s selected picture. Menu and floating-window preferences stay local.</p>
+          <p class="help">A theme without a picture keeps the recipient’s selected picture. Menu, floating-window, and pinned-panel preferences stay local.</p>
         </section>
         <section id="app-panel" role="tabpanel" hidden>
+          <label class="switch-row"><input type="checkbox" id="pin-appearance"> Pin Appearance to the main interface</label>
+          <p class="help">Add an Appearance button that opens these settings beside the game. Drag the panel’s right edge to resize it, including in fullscreen. Your panel width is remembered.</p>
           <div id="linux-menu-setting"><label class="switch-row"><input type="checkbox" id="black-menu" checked disabled> Black Linux menu bar</label>
-            <p class="help">Keep File, Edit, Appearance, View, and Window on a black bar.</p>
+            <p class="help">Keep File, Edit, Appearance, Translation, View, and Window on a black bar.</p>
             <label class="switch-row"><input type="checkbox" id="floating-appearance" checked> Floating Appearance window</label>
             <p class="help">On Hyprland, open Appearance as a floating window. Other Linux desktops use a dialog-window hint.</p>
           </div>
@@ -168,7 +174,7 @@
       </form>
     <template id="style-editor">
       <label class="setting-row">Background <input type="color" data-control="color" value="#101010"></label>
-      <label data-label="opacity">Background opacity <output data-control="opacity-label">100%</output></label>
+      <label data-label="opacity"><span data-control="opacity-title">Background opacity</span> <output data-control="opacity-label">100%</output></label>
       <input type="range" data-control="opacity" min="0" max="100" value="100">
       <label class="setting-row">Text &amp; icons <input type="color" data-control="text-color" value="#ffffff"></label>
       <label class="switch-row auto-text"><input type="checkbox" data-control="auto-text" checked> Automatic text color</label>
@@ -177,11 +183,11 @@
         <label class="setting-row">Second color <input type="color" data-control="gradient-color" value="#000000"></label>
         <label data-label="gradient-angle">Direction <output data-control="gradient-angle-label">90°</output></label>
         <input type="range" data-control="gradient-angle" min="0" max="360" value="90">
-        <label data-label="gradient-opacity">Gradient opacity <output data-control="gradient-opacity-label">100%</output></label>
-        <input type="range" data-control="gradient-opacity" min="0" max="100" value="100">
+        <label data-label="gradient-second-opacity">Second color opacity <output data-control="gradient-second-opacity-label">100%</output></label>
+        <input type="range" data-control="gradient-second-opacity" min="0" max="100" value="100">
         <label data-label="gradient-balance">First color share <output data-control="gradient-balance-label">50% / 50%</output></label>
         <input type="range" data-control="gradient-balance" min="0" max="100" value="50">
-        <p class="help">An even share blends across the whole surface. Increase a color's share to keep it solid for longer. Gradient opacity combines with background opacity.</p>
+        <p class="help">Each color has its own opacity. An even share blends across the whole surface; increase a color's share to keep it solid for longer.</p>
         <label class="switch-row border-switch"><input type="checkbox" data-control="border"> Show border</label>
         <label class="setting-row">Border style <select data-control="border-variant"><option value="plain">Plain</option><option value="ornate">Ornate corners</option><option value="arcane">Arcane diamonds</option><option value="runic">Runic corners</option></select></label>
         <label class="setting-row">Border color <input type="color" data-control="border-color" value="#555555"></label>

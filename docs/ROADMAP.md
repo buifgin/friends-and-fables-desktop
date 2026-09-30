@@ -39,26 +39,30 @@
 - [ ] Check chat pictures, player/GM/NPC styles, message editors, and opacity in a signed-in campaign.
 - [ ] Verify readable text and handle any components with fixed neutral colors.
 - [x] User confirmed v0.1.0 runs successfully on Arch and Windows with no bugs spotted.
-- [x] Add Alt+Enter/F11 fullscreen, gradient opacity/color proportions, independent dice result text, and WebP picture import.
+- [x] Add Alt+Enter/F11 fullscreen, separate gradient color opacity/proportions, independent dice result text, and WebP picture import.
 - [x] Add sample roll-component fixtures and exclude full local references from Git and packages.
-- [ ] Manually check the v0.1.1 changes in a signed-in campaign on Arch and Windows.
+- [x] User confirmed the corrected v0.1.1 build works.
+- [x] Sync Appearance settings to the app theme and add a resizable pinned panel beside the game, compatible with fullscreen.
+- [x] Add a built-in Russian interface for Appearance and Translation settings tied to the translation switch.
+- [ ] Retest the v0.2.0 translation build in signed-in campaigns on both operating systems.
 
 ## 3. Local translation feasibility
 
-- Start a local LibreTranslate service and install the English/Russian models.
-- Try actual NPC descriptions, game terms, names, and mixed English/Russian passages.
-- Measure translation latency and memory use on the target computer.
-- Select and pin a tested service version after the initial evaluation.
+- [x] Run the project’s local LibreTranslate service with English/Russian models.
+- [x] Evaluate sample NPC descriptions, game terms, preserved names, and mixed English/Russian passages.
+- [ ] Review translation quality on actual campaign descriptions.
+- [x] Measure local translation latency and memory use; record results in TRANSLATION.md.
+- [x] Pin tested LibreTranslate v1.9.6 by Docker digest; installed en/ru model packages are 1.9.
 
 ## 4. Russian translation
 
-- Add a local Russian dictionary for common interface text and game terminology.
-- Translate English descriptions and other displayed content while preserving Russian passages.
-- Handle mixed-language text and changes to text as the website renders it.
-- Keep typed messages, editable fields, and campaign data unchanged.
-- Route translation requests through a controlled main-process bridge.
-- Cache translations locally and support original-text display.
-- Handle an unavailable translator without preventing use of the website.
+- [x] Add a local Russian dictionary for common interface text and game terminology.
+- [x] Translate English descriptions and other displayed content while preserving Russian passages.
+- [x] Handle mixed-language text and changes to text as the website renders it.
+- [x] Keep typed messages, editable fields, and campaign data unchanged.
+- [x] Keep requests in the main process, connected only to numeric loopback; the website retains ordinary DOM access without a preload or IPC API.
+- [x] Cache translations locally and support original-text display.
+- [x] Handle an unavailable translator without preventing use of the website.
 
 ## 5. Distribution
 
@@ -72,5 +76,5 @@
 - [x] Prepare GitHub Actions checks, native Windows/Linux builds, packaged-resource tests, and checksums.
 - [ ] Run the workflow on GitHub after pushing it.
 - [x] Test v0.1.0 packaged releases on both operating systems using dual boot.
-- [ ] Publish v0.1.1 after its manual verification.
+- [ ] Publish verified builds; v0.2.0 adds the initial local translation prototype.
 - Verify AUR installation on a clean Arch system and maintain package updates.

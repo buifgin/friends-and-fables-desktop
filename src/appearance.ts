@@ -1,14 +1,16 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, WebContentsView } from 'electron';
 import type { IpcMainInvokeEvent, WebContents } from 'electron';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DEFAULT_APPEARANCE, themeCss, validateAppearance } from './themes';
+import { DEFAULT_APPEARANCE, themeBackground, themeCss, validateAppearance } from './themes';
 import type { AppearanceSettings, AppearanceState } from './themes';
 import { backgroundLibrary, backgroundPreview, importBackground, selectBackground } from './backgrounds';
 import { chatCss, configureChatAppearance } from './chat-appearance';
 import { exportTheme, importTheme } from './theme-files';
 import { APPEARANCE_TITLE, floatAppearance } from './floating-appearance';
 import { ImageFolder } from './image-folder';
+import { AppearanceDock } from './appearance-dock';
+import { configureFullscreenShortcuts } from './window-shortcuts';
 
 const SCHEME = 'fables-desktop';
 const SETTINGS_ORIGIN = `${SCHEME}://settings`;
@@ -32,6 +34,11 @@ interface WebsiteTheme {
 export class AppearanceManager {
   private settings: AppearanceSettings = { ...DEFAULT_APPEARANCE };
   private window: BrowserWindow | null = null;
+  private panel: WebContentsView | null = null;
+  private panelParent: BrowserWindow | null = null;
+  private dock: AppearanceDock | null = null;
+  private locale: 'en' | 'ru' = 'en';
+  private settingsRevision = 0;
   private websites = new Set<WebsiteTheme>();
   private saves: Promise<unknown> = Promise.resolve();
   private file = path.join(app.getPath('userData'), 'appearance.json');
@@ -68,9 +75,17 @@ export class AppearanceManager {
       '/': ['appearance.html', 'text/html; charset=utf-8'],
       '/appearance.css': ['appearance.css', 'text/css; charset=utf-8'],
       '/appearance.js': ['appearance.js', 'text/javascript; charset=utf-8'],
+      '/settings-theme.js': ['settings-theme.js', 'text/javascript; charset=utf-8'],
+      '/settings-locale.js': ['settings-locale.js', 'text/javascript; charset=utf-8'],
+      '/appearance-button.html': ['appearance-button.html', 'text/html; charset=utf-8'],
+      '/appearance-button.js': ['appearance-button.js', 'text/javascript; charset=utf-8'],
+      '/appearance-button.css': ['appearance-button.css', 'text/css; charset=utf-8'],
       '/menu.html': ['menu.html', 'text/html; charset=utf-8'],
       '/menu.css': ['menu.css', 'text/css; charset=utf-8'],
       '/menu.js': ['menu.js', 'text/javascript; charset=utf-8'],
+      '/translation.html': ['translation.html', 'text/html; charset=utf-8'],
+      '/translation.css': ['translation.css', 'text/css; charset=utf-8'],
+      '/translation.js': ['translation.js', 'text/javascript; charset=utf-8'],
     };
     settingsSession.protocol.handle(SCHEME, async (request) => {
       const url = new URL(request.url);
@@ -83,15 +98,33 @@ export class AppearanceManager {
 
     ipcMain.handle('appearance:get', (event) => {
       this.assertTrusted(event);
-      return this.state();
+      return this.state(event.sender);
     });
-    ipcMain.handle('appearance:save', (event, value: unknown) => {
+    ipcMain.handle('appearance:save', async (event, value: unknown) => {
       this.assertTrusted(event);
-      return this.save(value);
+      await this.save(value);
+      const result = await this.state(event.sender);
+      if (this.settings.appearancePinned && this.dock && event.sender === this.window?.webContents) {
+        await this.dock.open(true);
+        const oldWindow = this.window;
+        // Let the invoke response reach the old editor before closing it.
+        setTimeout(() => { if (oldWindow && !oldWindow.isDestroyed()) oldWindow.close(); }, 150);
+      } else if (!this.settings.appearancePinned && event.sender === this.panel?.webContents && this.panelParent) {
+        await this.open(this.panelParent);
+      }
+      return result;
+    });
+    ipcMain.handle('appearance:close-panel', event => { this.assertPanel(event); this.dock?.hide(); });
+    ipcMain.handle('appearance:resize-panel', async (event, width: unknown, finish: unknown) => {
+      this.assertPanel(event);
+      if (typeof width !== 'number' || !Number.isFinite(width) || width < 0 || width > 10000 || typeof finish !== 'boolean') throw new Error('Invalid panel resize.');
+      const actual = this.dock!.resize(width);
+      if (finish) await this.persist({ ...this.settings, appearancePanelWidth: actual });
+      return actual;
     });
     ipcMain.handle('appearance:import-image', async (event) => {
       this.assertTrusted(event);
-      const result = await dialog.showOpenDialog(this.window!, {
+      const result = await dialog.showOpenDialog(this.dialogParent(event), {
         title: 'Choose a campaign chat background', properties: ['openFile'],
         filters: [{ name: 'Pictures', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
       });
@@ -103,7 +136,7 @@ export class AppearanceManager {
     ipcMain.handle('appearance:folder-pictures', (event, offset: unknown = 0) => { this.assertTrusted(event); return this.folder.page(offset); });
     ipcMain.handle('appearance:choose-folder', async event => {
       this.assertTrusted(event);
-      const result=await dialog.showOpenDialog(this.window!,{title:'Choose a background image folder',properties:['openDirectory']});
+      const result=await dialog.showOpenDialog(this.dialogParent(event),{title:'Choose a background image folder',properties:['openDirectory']});
       return result.canceled || !result.filePaths[0] ? null : this.folder.choose(result.filePaths[0]);
     });
     ipcMain.handle('appearance:select-folder-picture', (event, id: unknown) => { this.assertTrusted(event); return this.folder.select(id,this.images); });
@@ -117,30 +150,33 @@ export class AppearanceManager {
       this.assertTrusted(event);
       const settings=validateAppearance(value);
       if (typeof includePicture !== 'boolean') throw new Error('Invalid picture export option.');
-      const result=await dialog.showSaveDialog(this.window!,{title:'Export appearance theme',defaultPath:'Friends-and-Fables.fables-theme.json',filters:[{name:'Friends & Fables theme',extensions:['json']}]});
+      const result=await dialog.showSaveDialog(this.dialogParent(event),{title:'Export appearance theme',defaultPath:'Friends-and-Fables.fables-theme.json',filters:[{name:'Friends & Fables theme',extensions:['json']}]});
       if (result.canceled || !result.filePath) return false;
       await exportTheme(result.filePath,settings,includePicture,this.images);return true;
     });
     ipcMain.handle('appearance:import-theme', async event => {
       this.assertTrusted(event);
-      const result=await dialog.showOpenDialog(this.window!,{title:'Import appearance theme',properties:['openFile'],filters:[{name:'Friends & Fables theme',extensions:['json']}]});
+      const result=await dialog.showOpenDialog(this.dialogParent(event),{title:'Import appearance theme',properties:['openFile'],filters:[{name:'Friends & Fables theme',extensions:['json']}]});
       if (result.canceled || !result.filePaths[0]) return null;
       const imported=await importTheme(result.filePaths[0],this.settings,this.images);
-      return {...imported,imagePreview:await backgroundPreview(this.images,imported.backgroundImage),platform:process.platform,canUndoReset:!!this.resetBackup};
+      return {...imported,imagePreview:await backgroundPreview(this.images,imported.backgroundImage),platform:process.platform,canUndoReset:!!this.resetBackup,presentation:event.sender===this.panel?.webContents?'panel':'window',locale:this.locale,revision:this.settingsRevision};
     });
   }
 
   getSettings(): AppearanceSettings { return this.settings; }
 
-  private async state(): Promise<AppearanceState> {
-    return { ...this.settings, imagePreview: await backgroundPreview(this.images, this.settings.backgroundImage), platform: process.platform, canUndoReset: !!this.resetBackup };
+  private async state(contents?: WebContents): Promise<AppearanceState> {
+    const settings = this.settings, revision = this.settingsRevision;
+    const imagePreview = await backgroundPreview(this.images, settings.backgroundImage);
+    return { ...settings, imagePreview, revision, platform: process.platform, canUndoReset: !!this.resetBackup,
+      presentation: (contents ? contents === this.panel?.webContents : this.dock?.isOpen()) ? 'panel' : 'window', locale: this.locale };
   }
   private imageNames(): Record<string,string> {
     return Object.fromEntries([this.settings,this.resetBackup].filter(s=>s?.backgroundImage).map(s=>[s!.backgroundImage!,s!.backgroundName]));
   }
 
   private assertTrusted(event: IpcMainInvokeEvent): void {
-    if (!this.window || event.sender !== this.window.webContents
+    if ((event.sender !== this.window?.webContents && event.sender !== this.panel?.webContents)
       || event.senderFrame !== event.sender.mainFrame
       || event.senderFrame.origin !== SETTINGS_ORIGIN
       || event.senderFrame.url !== SETTINGS_URL) {
@@ -148,7 +184,47 @@ export class AppearanceManager {
     }
   }
 
+  private assertPanel(event: IpcMainInvokeEvent): void {
+    this.assertTrusted(event);
+    if (!this.dock || event.sender !== this.panel?.webContents) throw new Error('Panel controls require the embedded Appearance editor.');
+  }
+  private dialogParent(event: IpcMainInvokeEvent): BrowserWindow {
+    return event.sender === this.panel?.webContents ? this.panelParent! : this.window!;
+  }
+  getLocale(): 'en' | 'ru' { return this.locale; }
+  async refreshPanel(): Promise<void> {
+    if (this.panel && !this.panel.webContents.isDestroyed()) this.panel.webContents.send('appearance:settings', await this.state(this.panel.webContents));
+  }
+  setLocale(locale: 'en' | 'ru'): void {
+    this.locale = locale;
+    this.sendInterface(); this.dock?.sync();
+  }
+  private sendInterface(): void {
+    for (const contents of [this.window?.webContents, this.panel?.webContents]) {
+      if (contents && !contents.isDestroyed()) contents.send('appearance:interface', { locale: this.locale, width: this.settings.appearancePanelWidth });
+    }
+  }
+  attachMain(window: BrowserWindow, website: WebContentsView): AppearanceDock {
+    this.dock = new AppearanceDock(window, website, this);
+    window.on('closed', () => { this.dock = null; this.panel = null; this.panelParent = null; });
+    return this.dock;
+  }
+  createPanel(parent: BrowserWindow): WebContentsView {
+    const view = new WebContentsView({ webPreferences: {
+      partition: 'fables-appearance', preload: path.join(__dirname, 'appearance-preload.js'),
+      sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
+    } });
+    this.panel = view; this.panelParent = parent;
+    view.setBackgroundColor(themeBackground(this.settings));
+    view.webContents.on('will-navigate', event => event.preventDefault());
+    view.webContents.on('will-redirect', event => event.preventDefault());
+    view.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    configureFullscreenShortcuts(view.webContents, parent);
+    return view;
+  }
+
   async open(parent: BrowserWindow): Promise<BrowserWindow> {
+    if (this.settings.appearancePinned && this.dock?.window === parent) { await this.dock.toggle(); return parent; }
     if (this.window) {
       this.window.show();
       this.window.focus();
@@ -163,7 +239,7 @@ export class AppearanceManager {
       height: 900,
       minWidth: 520,
       minHeight: 600,
-      backgroundColor: '#111318',
+      backgroundColor: themeBackground(this.settings),
       autoHideMenuBar: true,
       webPreferences: {
         partition: 'fables-appearance',
@@ -175,6 +251,7 @@ export class AppearanceManager {
       },
     });
     this.window = window;
+    configureFullscreenShortcuts(window.webContents, window);
     window.setMenu(null);
     window.webContents.on('will-navigate', (event) => event.preventDefault());
     window.webContents.on('will-redirect', (event) => event.preventDefault());
@@ -188,6 +265,7 @@ export class AppearanceManager {
 
   close(): void {
     this.window?.close();
+    this.dock?.hide();
   }
 
   save(value: unknown): Promise<AppearanceState> {
@@ -213,9 +291,13 @@ export class AppearanceManager {
       await rename(`${this.file}.tmp`, this.file);
       const floatingChanged=this.settings.linuxFloatingAppearance!==next.linuxFloatingAppearance;
       this.settings = next;
+      this.settingsRevision++;
       if (before) this.resetBackup=before;
       if (consumeReset) { await rm(this.backupFile,{force:true});this.resetBackup=null; }
       if (floatingChanged && this.window) await floatAppearance(this.window,next.linuxFloatingAppearance);
+      this.window?.setBackgroundColor(themeBackground(next));
+      this.panel?.setBackgroundColor(themeBackground(next));
+      this.dock?.sync(); this.sendInterface();
       this.onChange?.(next);
       await Promise.all(Array.from(this.websites, (website) => this.apply(website)));
       return this.state();

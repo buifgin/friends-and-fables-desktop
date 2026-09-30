@@ -1,0 +1,8 @@
+[
+  {"kind":"prose","text":"The ancient forest is quiet. Sunlight falls across the moss-covered stones beside a narrow stream."},
+  {"kind":"NPC","text":"Aria Moonwhisper is an elven ranger with silver hair and a worn green cloak. She watches the forest path carefully."},
+  {"kind":"terminology","text":"Make a Wisdom saving throw. On a failure, take 8 points of fire damage."},
+  {"kind":"mixed","text":"The door opens. Привет, путник! Take a seat."},
+  {"kind":"names and dice","text":"Franz offers Aria Moonwhisper a room. Roll 1d20 + 5."},
+  {"kind":"quality check","text":"The old innkeeper offers you a room for the night."}
+]

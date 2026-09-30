@@ -2,18 +2,19 @@
 
 An unofficial desktop wrapper for [Friends & Fables](https://play.fables.gg/), targeting Windows and Arch Linux.
 
-The app opens the existing website and adds local themes, campaign chat pictures, and message styling. English-to-Russian translation is planned for a later milestone.
+The app opens the existing website and adds local themes, campaign chat pictures, and message styling. Optional local English-to-Russian translation is available from the Translation menu.
 
 ## Current features
 
 - Open the existing website in a native window.
+- Translate displayed English into Russian with a built-in interface dictionary and a local LibreTranslate service. Preserve Russian passages, names, URLs, and dice notation; switch back to originals and cache translations locally.
 - Use a persistent browser session for cookies and website storage.
 - Keep website content sandboxed, with Node integration disabled.
 - Allow HTTPS navigation and sandboxed sign-in popups in the same session.
 - Provide standard menus for reload, zoom, copy/paste, developer tools, and opening the website in your browser.
 - Choose AMOLED black, soft black, light, or a custom background color, with saved preferences.
 - Import a local PNG, JPEG, or WebP picture behind campaign chat, with cover/contain sizing, blur, image opacity, and a color overlay. Browse previously imported pictures or a permanently selected image folder.
-- Set separate colors, opacity, gradients, gradient opacity/color proportions, and borders for player and GM/NPC messages. Campaign inputs and bottom buttons use the player style; battle summaries use the GM palette.
+- Set separate colors, opacity, gradients with separate opacity for each color, color proportions, and borders for player and GM/NPC messages. Campaign inputs and bottom buttons use the player style; battle summaries use the GM palette.
 - Set independent colors, opacity, gradients, and borders for the expanded context window, its block cards, and the collapsed bar above the input.
 - Customize movement/action cards, dice roll cards, and dice menus. Choose plain borders or Ornate, Arcane, and Runic corner decorations for messages, inputs, context surfaces, events, and dice.
 - Choose black, white, purple, or custom SVG dice face/edge/number colors while preserving animations and results. Set an independent color for calculations, outcomes, and damage beneath dice.
@@ -21,7 +22,7 @@ The app opens the existing website and adds local themes, campaign chat pictures
 - Keep character editor fields readable using the app theme's foreground color.
 - Undo the last appearance reset, including the selected picture, even after restarting.
 - Export and import themes, optionally including the selected picture for friends.
-- Use a black application menu bar on Linux, with an option to restore the system menu bar. Open Appearance as a floating window on Hyprland.
+- Use a black application menu bar and dropdowns on Linux, with an option to restore the system menu bar. Open Appearance as a floating window on Hyprland.
 - Build a Linux x86_64 AppImage and Windows x64 portable EXE; keep the development ZIP option.
 
 ## Download the app
@@ -72,7 +73,7 @@ For single-file releases, use `npm run dist:linux` or `npm run dist:windows`. Se
 
 ## Appearance and zoom
 
-Open **Appearance → Customize Appearance…** from the application menu. The window has eight tabs: **Theme**, **Chat picture**, **Messages**, **Context**, **Events**, **Dice**, **Sharing**, and **App**.
+Open **Appearance → Customize Appearance…** from the application menu. The editor has eight tabs: **Theme**, **Chat picture**, **Messages**, **Context**, **Events**, **Dice**, **Sharing**, and **App**.
 
 In **Theme**, choose one of these presets:
 
@@ -98,7 +99,7 @@ Open **Gradient & border** inside either message editor to enable a second backg
 
 In **Context**, enable customization and use **Customize** to switch between **Expanded window**, **Messages / block cards**, and **Collapsed bar above input**. Each has its own background, opacity, text color, gradient, and border. They start with solid dark backgrounds; keeping the expanded window opaque prevents the story from showing through it when player messages are transparent. The expanded window palette covers its header, search, tabs, and footer; the block palette covers the formerly blue/purple cards. Category dots and the usage meter retain their category colors.
 
-Each **Gradient & border** editor includes **Gradient opacity** and **First color share**. Gradient opacity combines with background opacity and leaves text opaque. A 50% / 50% share blends across the whole surface; increasing one color’s share gives it a longer solid region before or after the blend. Older themes default to 100% gradient opacity and an even share.
+When a gradient is enabled, **First color opacity** controls the main background color and **Second color opacity** controls the added color independently. Text remains opaque. Each **Gradient & border** editor also includes **First color share**. A 50% / 50% share blends across the whole surface; increasing one color’s share gives it a longer solid region before or after the blend. Older themes keep their current opacity and default to an even share.
 
 In **Events**, customize the compact movement/action cards with their own colors, opacity, gradient, and border. In **Dice**, customize the roll card background and border independently, and optionally enable dice colors. The roll breakdown popup and dice-selection dialog use the same roll-card palette and decorative border. The **Black**, **White**, and **Purple** buttons set face, edge, and number colors; the individual pickers allow any color. D4, D6, D8, D10, D12, and D20 keep their geometry, roll values, and animations. Disable **Use the current roll text color** to choose a separate **Text beneath dice** color for calculations, success/failure, and damage. This works even with roll-card and SVG customization disabled.
 
@@ -106,7 +107,11 @@ Color swatches open an in-app picker. Drag hue, saturation, or lightness, or ent
 
 In **Sharing**, click **Export theme…** to save the current preview as a `.fables-theme.json` file. **Include the selected chat picture** embeds that picture so friends can import the same look without copying a separate file. **Import theme…** loads a theme into the preview; click **Apply changes** to use it. A theme without an embedded picture keeps the recipient's selected picture. Login, campaign data, folder paths, and Linux window/menu preferences are not exported.
 
-In **App** on Linux, **Black Linux menu bar** replaces the File/Edit/Appearance/View/Window strip with a black app-owned bar and native dropdown menus. Turn it off to use the system menu bar. Window decorations are still managed by your desktop. **Floating Appearance window** is enabled by default: on Hyprland, the app targets only its own Appearance window through `hyprctl`; other Linux desktops receive a dialog-window hint. This does not edit compositor configuration. On Hyprland, turning it off and applying tiles the current Appearance window.
+The Appearance editor follows the selected app theme, including light and custom colors. In **App**, enable **Pin Appearance to the main interface** and apply. A button opens the settings in a resizable panel on the left of the game, including in fullscreen. Drag its right edge to resize, or focus the separator and use the arrow keys. Closing the panel preserves its draft; disabling the pin restores the separate window. The panel width is saved locally and stays out of shared themes.
+
+Enabling Russian translation also switches Appearance and Translation settings to their built-in Russian labels, help text, and dialogs. This works without the model service. **Show original text** restores English labels and keeps unsaved settings intact.
+
+In **App** on Linux, **Black Linux menu bar** replaces the File/Edit/Appearance/Translation/View/Window strip with a black app-owned bar and black dropdown menus. Menus fit both windowed and fullscreen views; Escape or clicking outside closes them, and arrow keys navigate their options. Turn it off to use the system menu bar. Window decorations are still managed by your desktop. **Floating Appearance window** is enabled by default: on Hyprland, the app targets only its own Appearance window through `hyprctl`; other Linux desktops receive a dialog-window hint. This does not edit compositor configuration. On Hyprland, turning it off and applying tiles the current Appearance window.
 
 Click **Apply changes** to update the app and save your choices. Settings reapply after page reloads and application restarts. **Reset appearance** restores the website theme, campaign artwork, and original message/input/context/event/dice styling; it keeps your menu-bar and floating-window preferences. **Undo last reset** restores all previous choices and the picture, including after a restart. The saved image folder and imported-picture library are retained. Closing the settings window without applying keeps the previous choices.
 
@@ -125,29 +130,29 @@ Zoom in with **Ctrl+=** or **Ctrl+Shift+=** (the `+` key), zoom out with **Ctrl+
 7. Set player and GM colors and opacity, including 0% and 100%. Try gradients, borders, and automatic/custom text colors. Check messages, editor text/placeholder, bottom buttons/icons, GM Thoughts/headings, and battle summaries. Open character editors and check names, HP, and stats under dark/light themes.
 8. Expand context with transparent player messages. Try different palettes for the expanded window, block cards, and collapsed bar. Check search, tabs, and footer; try all three decorative border styles on messages and movement/roll cards. Open a dice breakdown popup and dice-selection dialog. Try black/white/purple and custom dice colors during and after a roll.
 9. Drag the in-app color controls with a large chat picture selected. Check blur, picture opacity, and overlay tint without blurring the text.
-10. On Linux, switch the black menu bar off and on. Check resizing, menu commands, and zoom shortcuts. On Hyprland, switch Appearance between floating and tiled.
+10. On Linux, switch the black menu bar off and on. Check all six dropdowns in windowed and fullscreen views: options should be fully visible on a black background without scrolling. Check menu commands, arrow keys, Escape, clicking outside, and zoom shortcuts. On Hyprland, switch Appearance between floating and tiled.
 11. Browse a folder with more than 12 pictures, restart, and confirm the same folder appears. Add/remove a picture and reopen the browser to refresh the list. Check that imported pictures remain after removal/reset.
 12. Reset appearance, restart, and undo the reset. Export a theme with a picture and import it on another profile or machine; check preview and application.
 
-Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. The user reported successful v0.1.0 runs on Arch and Windows with no bugs spotted. The v0.1.1 fullscreen, gradient, result text, and WebP changes still need a manual campaign check on both systems.
+Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. The user reported successful v0.1.0 runs on Arch and Windows with no bugs spotted. The corrected black dropdowns were verified in windowed and fullscreen Hyprland views, with every menu fully visible. Separate gradient color opacity, theme migration, persistence, and preview have offline Electron checks. The user confirmed the corrected v0.1.1 build works. The v0.2.0 translation prototype, themed settings, and pinned Appearance panel have offline regression checks and a real local-model benchmark; it still needs a signed-in campaign check on both systems.
 
 Website permissions such as camera, microphone, and notifications are disabled in this initial starter. They can be added when needed.
 
 ## Planned features
 
-- Translate English menus, descriptions, and other displayed text into Russian using a local translation engine.
-- Preserve content already written in Russian, including player and GM messages.
-- Cache translations and provide a way to view the original text.
-- Apply changes locally to the displayed page, without changing campaign data or typed messages.
+- [x] Translate common English interface labels, descriptions, and displayed story text into Russian using a local translation engine (v0.2.0 prototype).
+- [x] Preserve Russian passages and editable fields.
+- [x] Cache translations and provide a way to view original text.
+- [x] Apply translations locally to the displayed page without changing campaign records or typed messages.
 - Add command /me for cursive sentences and /gm will set # mark at start and end of sentece
 - Add some special mark that we will not see. 
-- Add admin version app for me. Private ofc
-- Add some text after my message as a host. Only for admin version app. (Examples: always include info about separeted char and what happend with them, always check background and appearence of char, dont forget to base npcs reaction with it,)
+- Add admin version app for me. Private ofc (or just add some commands)
+- Add some text after my message as a host. Only for admin version app. (Examples: always include info about separeted char and what happend with them, always check background and appearence of char, dont forget to base npcs reaction with it,) (or command)
 - Text that not adressed to that char will not be seen by him
 - Add custom color dice with menu at top of screen with picker of variants.
 - Add some free music api or link player for all people at the company, near the dice button. With volume slider and mute option.
 - Add resizable map feature.
-- [x] Add gradient opacity and adjustable first/second color proportions (v0.1.1).
+- [x] Add separate opacity for each gradient color and adjustable first/second color proportions (v0.1.1).
 - [x] Add custom text color beneath dice, including damage (v0.1.1).
 - [x] Add Alt+Enter fullscreen (v0.1.1).
 
@@ -155,12 +160,14 @@ Website permissions such as camera, microphone, and notifications are disabled i
 
 - Electron, TypeScript, and Electron Forge for the desktop app.
 - CSS for themes.
-- LibreTranslate with its Argos translation engine for planned local English-to-Russian translation.
+- LibreTranslate with its Argos translation engine for local English-to-Russian translation.
 - Local storage for settings and the translation cache.
 
-`src/main.ts` manages the website window, session, and menus. `src/themes.ts` validates settings and builds theme colors; `src/appearance.ts` applies styles and stores preferences. `src/backgrounds.ts` maintains the picture library, `src/image-folder.ts` stores the selected folder, and `src/theme-files.ts` handles portable themes. `src/chat-appearance.ts` styles campaign components; `src/borders.ts` builds decorative corners, and `src/floating-appearance.ts` targets the Appearance window on Hyprland. `assets/` contains the bundled appearance window and black Linux menu strip, with their own isolated preloads. The appearance bridge exposes validated preferences, reset/undo, native file/folder pickers, opaque picture IDs, and theme import/export; the menu bridge opens only predefined application menus. The remote website has no preload or application IPC bridge. `src/zoom.ts` handles zoom shortcuts.
+`src/main.ts` manages the website window, session, and menus. `src/themes.ts` validates settings and builds theme colors; `src/appearance.ts` applies styles and stores preferences. `src/backgrounds.ts` maintains the picture library, `src/image-folder.ts` stores the selected folder, and `src/theme-files.ts` handles portable themes. `src/chat-appearance.ts` styles campaign components; `src/borders.ts` builds decorative corners, and `src/floating-appearance.ts` targets the Appearance window on Hyprland. `assets/` contains the bundled appearance window and black Linux menu strip, with their own isolated preloads. The appearance bridge, available only to the bundled window or panel, exposes validated preferences, reset/undo, native file/folder pickers, opaque picture IDs, and theme import/export; the menu bridge opens only predefined application menus. The remote website has no preload or application IPC bridge. `src/zoom.ts` handles zoom shortcuts. `src/translation.ts` manages local translation preferences, polling, and the settings window; `src/translation-dom.ts` changes only eligible displayed text nodes. `src/translation-core.ts` protects Russian/name/URL/dice fragments and supplies game terminology, `src/local-translator.ts` connects only to numeric loopback, and `src/translation-cache.ts` keeps a bounded local cache.
 
-Local translation will use LibreTranslate/Argos. Its setup and integration are deferred until the Electron starter works on both operating systems.
+Open **Translation → Translate into Russian** to enable translation. **Show original text** restores the English display. **Translation Settings…** lets you disable machine-translated prose for dictionary-only mode, preserve additional names, check the local service, and clear the cache. Translation starts disabled.
+
+The local service on this Linux computer was verified with English/Russian models. This first translation prototype requires a separate LibreTranslate service, including on Windows; the model is not bundled in the AppImage or EXE. See [translation setup and test results](docs/TRANSLATION.md).
 
 Translation can work offline after its models are installed. Friends & Fables itself still requires internet access.
 

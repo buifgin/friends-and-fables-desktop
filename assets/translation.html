@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Translation — Friends &amp; Fables Desktop</title>
+<link rel="stylesheet" href="appearance.css"><link rel="stylesheet" href="translation.css"><script src="settings-locale.js" defer></script><script src="translation.js" defer></script>
+</head><body><main>
+<p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p><h1>Read in Russian.</h1>
+<p class="intro">Translate displayed English text locally. Russian passages stay as written.</p>
+<form id="translation-form"><fieldset id="translation-options" disabled>
+<legend>English → Russian</legend>
+<label class="switch-row"><input id="enabled" type="checkbox"> Translate into Russian</label>
+<label class="switch-row"><input id="show-original" type="checkbox"> Show original text</label>
+<label class="switch-row"><input id="descriptions" type="checkbox" checked> Translate descriptions and story text</label>
+<p class="help">Common interface labels and game terms use a built-in dictionary. Descriptions use your local translation service. Turn descriptions off for dictionary-only translation.</p>
+<label for="preserved-names">Keep these names unchanged</label>
+<textarea id="preserved-names" rows="4" maxlength="2430" spellcheck="false" placeholder="One name per line"></textarea>
+<p class="help">Add character and place names here to preserve their spelling in translated text. Names may otherwise be transliterated by the model.</p>
+<label class="setting-row" for="port">Local service port <input id="port" type="number" min="1" max="65535" value="5000"></label>
+<p class="help">The app connects only to 127.0.0.1 on this computer. Translation starts disabled. The model is a separate service; ordinary app use does not need it.</p>
+<div class="service-actions"><button id="check" type="button" class="secondary">Check translator</button><button id="clear-cache" type="button" class="secondary">Clear translation cache</button></div>
+<p id="service-status" class="help" role="status">Checking local service…</p>
+<p id="cache-count" class="help"></p>
+</fieldset>
+<div class="actions"><button id="apply" type="submit" disabled>Apply translation settings</button></div>
+<p id="status" role="status" aria-live="polite">Loading preferences…</p>
+</form>
+<p class="help">Typed messages, editable fields, link targets, and campaign records are left unchanged. Translation affects the text displayed in this app. Use <strong>Translation → Show original text</strong> to switch back instantly.</p>
+</main></body></html>

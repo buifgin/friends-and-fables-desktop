@@ -1,0 +1,21 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><style>
+body{background:#101116;color:#eee;font:16px system-ui;padding:20px}button,input,textarea{margin:6px}p{line-height:1.5}
+</style></head><body>
+<h1>Characters</h1><h2 id="character-name">Aria Moonwhisper</h2>
+<button id="save" title="Hide background image">Save</button><span id="term">Wisdom saving throw</span>
+<p id="story"><strong>The forest is quiet.</strong> A lantern lights the road.</p>
+<p id="mixed">The door opens. Привет, путник! Take a seat.</p>
+<p id="russian">Путник идёт по тихой дороге.</p>
+<p id="names">Franz greets Aria Moonwhisper.</p>
+<p id="protected">Visit https://example.com/room and roll 1d20 + 5.</p>
+<p id="hidden" hidden>A hidden passage opens.</p>
+<p id="raw">Dangerous sample text.</p>
+<input id="typed" value="Hello, friends!"><textarea id="textarea">The original draft stays here.</textarea>
+<div id="editor" class="tiptap" contenteditable="true"><p>The editable draft stays here.</p></div>
+<pre id="code">The sample code stays here.</pre><div translate="no" id="ignored">The ignored story stays here.</div>
+<form><input type="password"><span id="login">Sign in with your account.</span></form>
+<div id="late"></div>
+<script>
+window.campaignRecord={text:'The forest is quiet.',name:'Aria Moonwhisper',message:'Hello, friends!'};
+window.saveClicks=0;document.getElementById('save').addEventListener('click',()=>window.saveClicks++);
+</script></body></html>
