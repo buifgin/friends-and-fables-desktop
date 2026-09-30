@@ -141,3 +141,10 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Local translation development
+.venv/
+__pycache__/
+*.py[cod]
+translation-cache/
+models/
