@@ -28,7 +28,8 @@ function readStyle(role) {
   return { color: element(`${role}-color`).value, opacity: Number(element(`${role}-opacity`).value) / 100,
     textColor: element(`${role}-auto-text`).checked ? null : element(`${role}-text-color`).value,
     gradient: { enabled: element(`${role}-gradient`).checked, color: element(`${role}-gradient-color`).value,
-      angle: Number(element(`${role}-gradient-angle`).value) },
+      angle: Number(element(`${role}-gradient-angle`).value), opacity: Number(element(`${role}-gradient-opacity`).value) / 100,
+      balance: Number(element(`${role}-gradient-balance`).value) },
     border: { enabled: element(`${role}-border`).checked, color: element(`${role}-border-color`).value,
       width: Number(element(`${role}-border-width`).value), radius: Number(element(`${role}-border-radius`).value), variant: element(`${role}-border-variant`).value } };
 }
@@ -42,7 +43,8 @@ function selection() {
     context: { enabled: element('context-styles').checked, style: readStyle('context'), blocks: readStyle('context-block'), bar: readStyle('context-bar') },
     events: { enabled: element('event-styles').checked, style: readStyle('event') },
     dice: { enabled: element('roll-styles').checked, style: readStyle('roll'), colorsEnabled: element('dice-colors').checked,
-      faceColor: element('dice-face-color').value, edgeColor: element('dice-edge-color').value, numberColor: element('dice-number-color').value },
+      faceColor: element('dice-face-color').value, edgeColor: element('dice-edge-color').value, numberColor: element('dice-number-color').value,
+      resultTextColor: element('dice-result-auto').checked ? null : element('dice-result-color').value },
     linuxBlackMenu: element('black-menu').checked, linuxFloatingAppearance: element('floating-appearance').checked,
   };
 }
@@ -62,6 +64,8 @@ function showSettings(settings) {
   element('event-styles').checked = settings.events.enabled;
   element('roll-styles').checked = settings.dice.enabled;
   element('dice-colors').checked = settings.dice.colorsEnabled;
+  element('dice-result-auto').checked = !settings.dice.resultTextColor;
+  element('dice-result-color').value = settings.dice.resultTextColor ?? '#ffffff';
   for (const part of ['face','edge','number']) element(`dice-${part}-color`).value = settings.dice[`${part}Color`];
   for (const role of roles) {
     const style = role === 'player' || role === 'gm' ? settings.messages[role]
@@ -73,6 +77,8 @@ function showSettings(settings) {
     element(`${role}-gradient`).checked = style.gradient.enabled;
     element(`${role}-gradient-color`).value = style.gradient.color;
     element(`${role}-gradient-angle`).value = style.gradient.angle;
+    element(`${role}-gradient-opacity`).value = Math.round(style.gradient.opacity * 100);
+    element(`${role}-gradient-balance`).value = style.gradient.balance;
     element(`${role}-border`).checked = style.border.enabled;
     for (const part of ['color','width','radius','variant']) element(`${role}-border-${part}`).value = style.border[part];
   }
@@ -89,8 +95,8 @@ function luminance(color, opacity, background) {
   }).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4);
   return channels[0] * .2126 + channels[1] * .7152 + channels[2] * .0722;
 }
-function foreground(color, opacity = 1, background = '#010b0e', second = null) {
-  const values = [color, ...(second ? [second] : [])].map(c => luminance(c, opacity, background));
+function foreground(color, opacity = 1, background = '#010b0e', second = null, balance = 50) {
+  const values = [...(!second || balance > 0 ? [color] : []), ...(second && balance < 100 ? [second] : [])].map(c => luminance(c, opacity, background));
   return Math.min(...values.map(l => 1.05 / (l + .05))) >= Math.min(...values.map(l => (l + .05) / .05)) ? '#ffffff' : '#000000';
 }
 function rgba(hex, opacity) { return `rgba(${[1,3,5].map(i => parseInt(hex.slice(i,i+2),16)).join(',')},${opacity})`; }
@@ -105,6 +111,8 @@ function updatePreview() {
   fieldset.disabled = busy;
   for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance']) element(id).disabled = busy;
   element('undo-reset').hidden = !canUndoReset;
+  element('dice-result-auto').disabled = busy;
+  element('dice-result-color').disabled = busy || !settings.dice.resultTextColor;
   colorInput.disabled = hexInput.disabled = busy || settings.preset !== 'custom';
   element('remove-image').disabled = element('image-fit').disabled = busy || !backgroundImage;
   for (const id of ['image-blur','image-opacity','image-overlay-color','image-overlay-opacity']) element(id).disabled = busy || !backgroundImage;
@@ -123,12 +131,14 @@ function updatePreview() {
         || (part.startsWith('gradient-') && !style.gradient.enabled)
         || (['border-color','border-width','border-variant'].includes(part) && !style.border.enabled);
     }
-    for (const [part, unit, value] of [['opacity','%',style.opacity*100], ['gradient-angle','°',style.gradient.angle],
+    for (const [part, unit, value] of [['opacity','%',style.opacity*100], ['gradient-angle','°',style.gradient.angle], ['gradient-opacity','%',style.gradient.opacity*100],
       ['border-width',' px',style.border.width], ['border-radius',' px',style.border.radius]]) element(`${role}-${part}-label`).value = `${Math.round(value)}${unit}`;
-    const first = rgba(style.color, style.opacity);
-    const bg = style.gradient.enabled ? `linear-gradient(${style.gradient.angle}deg,${first},${rgba(style.gradient.color,style.opacity)})` : first;
+    element(`${role}-gradient-balance-label`).value = `${Math.round(style.gradient.balance)}% / ${Math.round(100-style.gradient.balance)}%`;
+    const opacity = style.opacity * (style.gradient.enabled ? style.gradient.opacity : 1);
+    const first = rgba(style.color, opacity);
+    const bg = style.gradient.enabled ? `linear-gradient(${style.gradient.angle}deg,${first} ${Math.max(0,style.gradient.balance*2-100)}%,${rgba(style.gradient.color,opacity)} ${Math.min(100,style.gradient.balance*2)}%)` : first;
     setPreview(`--${role}-bg`, enabled ? bg : role === 'context' ? '#1f2937' : '#1f2937cc');
-    setPreview(`--${role}-fg`, enabled ? style.textColor ?? foreground(style.color, style.opacity, color, style.gradient.enabled ? style.gradient.color : null) : '#fff');
+    setPreview(`--${role}-fg`, enabled ? style.textColor ?? foreground(style.color, opacity, color, style.gradient.enabled ? style.gradient.color : null, style.gradient.balance) : '#fff');
     setPreview(`--${role}-border`, enabled && style.border.enabled ? `${style.border.width}px solid ${style.border.color}` : '0 solid transparent');
     setPreview(`--${role}-radius`, enabled ? `${style.border.radius}px` : '8px');
     setPreview(`--${role}-ornament`, enabled && style.border.enabled ? borderImages(style.border) : 'none');
@@ -146,6 +156,7 @@ function updatePreview() {
     setPreview(`--dice-${part}`, settings.dice.colorsEnabled ? settings.dice[`${part}Color`] : {face:'#203da6',edge:'#d8bb82',number:'#f8c134'}[part]);
   }
   for (const button of document.querySelectorAll('[data-dice-preset]')) button.disabled = busy;
+  setPreview('--roll-result-fg', settings.dice.resultTextColor ?? 'inherit');
   setPreview('--preview-bg', color); setPreview('--preview-fg', foreground(color));
   // Never rebuild or parse a multi-megabyte data URL during color dragging.
   if (previousImage !== imagePreview) { setPreview('--preview-image', imagePreview ? `url("${imagePreview}")` : 'none'); previousImage = imagePreview; }

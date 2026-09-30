@@ -141,6 +141,7 @@ dialog input[type=range]::-webkit-slider-thumb { appearance: none; width: 18px; 
 .sample-block { padding: var(--context-block-padding); min-height: var(--context-block-min-height); }
 .sample-event { padding: var(--event-padding); min-height: var(--event-min-height); }
 .sample-roll { padding: var(--roll-padding); min-height: var(--roll-min-height); }
+.sample-roll-result { color: var(--roll-result-fg, inherit); }
 #picture-browser { width: 660px; max-height: 85vh; overflow: auto; }
 .browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
 .browser-heading h2 { margin: 0; }

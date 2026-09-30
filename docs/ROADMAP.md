@@ -38,7 +38,10 @@
 - [ ] Review themes on logged-in campaign screens, NPC details, and menus.
 - [ ] Check chat pictures, player/GM/NPC styles, message editors, and opacity in a signed-in campaign.
 - [ ] Verify readable text and handle any components with fixed neutral colors.
-- [ ] Test the packaged app and themes on Windows.
+- [x] User confirmed v0.1.0 runs successfully on Arch and Windows with no bugs spotted.
+- [x] Add Alt+Enter/F11 fullscreen, gradient opacity/color proportions, independent dice result text, and WebP picture import.
+- [x] Add sample roll-component fixtures and exclude full local references from Git and packages.
+- [ ] Manually check the v0.1.1 changes in a signed-in campaign on Arch and Windows.
 
 ## 3. Local translation feasibility
 
@@ -66,6 +69,8 @@
 - [ ] Account for translation model licenses before bundling them.
 - Evaluate how to package and manage the local translation engine on Windows and Arch.
 - Aim for a user setup that does not require Docker.
-- Build Windows and Linux artifacts through GitHub Actions.
-- Test packaged releases on both operating systems using dual boot.
+- [x] Prepare GitHub Actions checks, native Windows/Linux builds, packaged-resource tests, and checksums.
+- [ ] Run the workflow on GitHub after pushing it.
+- [x] Test v0.1.0 packaged releases on both operating systems using dual boot.
+- [ ] Publish v0.1.1 after its manual verification.
 - Verify AUR installation on a clean Arch system and maintain package updates.

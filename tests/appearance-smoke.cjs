@@ -6,6 +6,7 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, WebCont
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..');
 const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance'));
 const { configureZoomShortcuts } = require(path.join(appRoot, 'dist/zoom'));
+const { configureFullscreenShortcuts } = require(path.join(appRoot, 'dist/window-shortcuts'));
 const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/linux-menu'));
 
 registerAppearanceScheme();
@@ -43,6 +44,8 @@ async function save(settings, window) {
   await app.whenReady();
   const manager = new AppearanceManager();
   await manager.initialize();
+  const rollResults = await readFile(path.join(__dirname, 'fixtures/roll-results.html'), 'utf8');
+  const webpBytes = await readFile(path.join(__dirname, 'fixtures/colors.webp'));
 
   const testSession = session.fromPartition('appearance-smoke');
   testSession.protocol.handle('https', () => new Response(`<!doctype html>
@@ -88,6 +91,7 @@ async function save(settings, window) {
         <div class="absolute inset-0 pointer-events-none" id="roll-ornament">Decoration</div><h3 class="text-amber-300">Death Save</h3>
         <svg id="d20" class="transition-all duration-700 ease-out"><defs><style>.cls-2 { fill: #203d73; }.cls-4 { fill: #203da6; }.cls-3 { fill: #203de3; }.cls-1 { fill: none; stroke: #c59045; }.cls-6 { fill: #DABD74; }.number-text { fill: #F8C134; }</style></defs><polygon class="cls-6" points="0,0 40,0 20,40"/><path class="cls-4" d="M0 0h40v40Z"/><path class="cls-2" d="M0 0h10v10Z"/><path class="cls-3" d="M10 10h10v10Z"/><polyline class="cls-1" points="0,0 40,40"/><text class="number-text">16</text></svg>
         <svg id="d8"><path class="d8-cls-4"/><path class="d8-cls-5"/><text class="d8-number-text">4</text></svg>
+        ${rollResults}
       </div></div></div>
     </div><input type="text" value="Русский текст and English"><textarea>Input text</textarea>
       <div class="grid relative" id="fixture-composer"><div id="working-context-bar-spacer"></div>
@@ -184,6 +188,26 @@ async function save(settings, window) {
   const jpegImport = await settingsContents.executeJavaScript('window.appearance.importImage()');
   assert.match(jpegImport.preview, /^data:image\/png;base64,/);
   assert.deepEqual(nativeImage.createFromDataURL(jpegImport.preview).getSize(), {width:2,height:2});
+  const webpPicture = path.join(userData, 'picture.WEBP');
+  await writeFile(webpPicture, webpBytes);
+  dialog.showOpenDialog = async (_window, options) => {
+    assert(options.filters[0].extensions.includes('webp'));
+    return { canceled: false, filePaths: [webpPicture] };
+  };
+  const windowsBeforeWebp = BrowserWindow.getAllWindows().length;
+  const webpImport = await settingsContents.executeJavaScript('window.appearance.importImage()');
+  assert.match(webpImport.preview, /^data:image\/png;base64,/);
+  assert.match(webpImport.id, /^[a-f0-9]{64}\.png$/);
+  assert.deepEqual(nativeImage.createFromDataURL(webpImport.preview).getSize(), {width:2,height:2});
+  assert.equal(nativeImage.createFromDataURL(webpImport.preview).toBitmap()[15],0,'WebP transparency must survive conversion.');
+  assert.equal(BrowserWindow.getAllWindows().length, windowsBeforeWebp, 'The temporary WebP decoder must close.');
+  const invalidWebp = path.join(userData, 'invalid.webp');
+  await writeFile(invalidWebp, Buffer.from('RIFF0000WEBPnot an image'));
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [invalidWebp] });
+  await assert.rejects(settingsContents.executeJavaScript('window.appearance.importImage()'), /could not be read as an image/);
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path.join(__dirname, 'fixtures/oversized.webp')] });
+  await assert.rejects(settingsContents.executeJavaScript('window.appearance.importImage()'), /16 million pixels/);
+  assert.equal(BrowserWindow.getAllWindows().length, windowsBeforeWebp);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [picture] });
   const imported = await settingsContents.executeJavaScript('window.appearance.importImage()');
   dialog.showOpenDialog = showDialog;
@@ -278,10 +302,10 @@ async function save(settings, window) {
     backgroundEffects:{blur:8,opacity:.7,overlayColor:'#000000',overlayOpacity:.6},
     messages:{enabled:true,
       player:{color:'#ffffff',opacity:0,textColor:'#aabbcc',border:{enabled:true,color:'#778899',width:2,radius:12}},
-      gm:{color:'#654321',opacity:.7,textColor:'#ffeeaa',gradient:{enabled:true,color:'#222222',angle:135},border:{enabled:true,color:'#abcdef',width:3,radius:10}}},
+      gm:{color:'#654321',opacity:.7,textColor:'#ffeeaa',gradient:{enabled:true,color:'#222222',angle:135,opacity:.5,balance:75},border:{enabled:true,color:'#abcdef',width:3,radius:10}}},
     context:{enabled:true,style:{color:'#111111',opacity:1,textColor:'#eeeeee',border:{enabled:true,color:'#555555',width:2,radius:6}}},
     events:{enabled:true,style:{color:'#303040',opacity:.8,textColor:'#ddeeff',gradient:{enabled:true,color:'#010101',angle:90},border:{enabled:true,color:'#aa77ff',width:2,radius:4}}},
-    dice:{enabled:true,style:{color:'#080808',opacity:1,textColor:'#dddddd',border:{enabled:true,color:'#777777',width:1,radius:16}},colorsEnabled:true,faceColor:'#7c3aed',edgeColor:'#aaaaaa',numberColor:'#ffffff'} };
+    dice:{enabled:true,style:{color:'#080808',opacity:1,textColor:'#dddddd',border:{enabled:true,color:'#777777',width:1,radius:16}},colorsEnabled:true,faceColor:'#7c3aed',edgeColor:'#aaaaaa',numberColor:'#ffffff',resultTextColor:'#23e2ab'} };
   await save(newSettings,settingsWindow);
   const newStyles = await website.webContents.executeJavaScript(`(() => {
     const style = id => { const c=getComputedStyle(document.getElementById(id));return {bg:c.backgroundColor,image:c.backgroundImage,fg:c.color,border:c.borderTopColor,width:c.borderTopWidth,radius:c.borderRadius}; };
@@ -305,6 +329,9 @@ async function save(settings, window) {
   assert.equal(newStyles.player.width,'2px'); assert.equal(newStyles.player.radius,'12px');
   assert.equal(newStyles.gm.width,'3px'); assert.equal(newStyles.gm.border,'rgb(171, 205, 239)');
   assert.match(newStyles.gm.image,/135deg/); assert.match(newStyles.event.image,/linear-gradient/);
+  assert.match(newStyles.gm.image,/rgba\(101, 67, 33, 0.35\) 50%/);
+  const migratedGradient = await settingsContents.executeJavaScript('window.appearance.get().then(s => s.events.style.gradient)');
+  assert.equal(migratedGradient.opacity,1); assert.equal(migratedGradient.balance,50);
   assert.equal(newStyles.event.width,'2px'); assert.equal(newStyles.event.radius,'4px');
   assert.equal(newStyles.roll.bg,'rgb(8, 8, 8)'); assert.equal(newStyles.ornament,'none');
   assert.equal(newStyles.face,'rgb(124, 58, 237)'); assert.equal(newStyles.d8,newStyles.face);
@@ -312,6 +339,19 @@ async function save(settings, window) {
   assert.equal(newStyles.numberValue,'16');
   assert.equal(newStyles.transition,'0.7s');
   assert.equal(newStyles.blur,'blur(8px)');assert.equal(newStyles.imageOpacity,'0.7');assert.equal(newStyles.overlay,'rgba(0, 0, 0, 0.6)');
+  const rollText = () => website.webContents.executeJavaScript(`['roll-calculation','roll-success','roll-damage'].map(id=>getComputedStyle(document.getElementById(id)).color)`);
+  assert.deepEqual(await rollText(),Array(3).fill('rgb(35, 226, 171)'));
+  assert.equal(await website.webContents.executeJavaScript("document.getElementById('roll-damage').textContent"),'18 Damage');
+  // Result text has its own switch and must work with all other styles disabled.
+  await save({preset:'website',customColor:'#123456',dice:{...newSettings.dice,enabled:false,colorsEnabled:false}},settingsWindow);
+  assert.deepEqual(await rollText(),Array(3).fill('rgb(35, 226, 171)'));
+  assert.equal(await website.webContents.executeJavaScript("document.querySelector('#d20 text').textContent"),'16');
+  await save({preset:'website',customColor:'#123456'},settingsWindow);
+  assert.equal(await website.webContents.executeJavaScript("document.querySelector('[data-ff-desktop-roll-text]')"),null);
+  assert.equal((await rollText())[2],'rgb(248, 113, 113)');
+  await save(newSettings,settingsWindow);
+  await website.webContents.executeJavaScript(`document.getElementById('roll-outcome').insertAdjacentHTML('beforeend','<span id="late-result" class="text-red-400">Updated damage</span>')`);
+  await until(website.webContents,"getComputedStyle(document.getElementById('late-result')).color==='rgb(35, 226, 171)'");
   await save({...newSettings,context:{enabled:true,style:{color:'#ffffff',opacity:0}}},settingsWindow);
   assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('context-panel-root')).backgroundColor"),'rgba(255, 255, 255, 0)');
   assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('context-block')).backgroundColor"),'rgb(255, 255, 255)');
@@ -323,7 +363,35 @@ async function save(settings, window) {
   assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('#d4 path')).fill"),'rgb(124, 58, 237)');
   await assert.rejects(save({...newSettings,backgroundEffects:{...newSettings.backgroundEffects,blur:Infinity}},settingsWindow),/between/);
   await assert.rejects(save({...newSettings,dice:{...newSettings.dice,faceColor:'red; fill:url(secret)'}},settingsWindow),/#RRGGBB/);
+  await assert.rejects(save({...newSettings,dice:{...newSettings.dice,resultTextColor:'red; color:blue'}},settingsWindow),/#RRGGBB/);
+  for(const [key,value] of [['opacity',1.1],['balance',-1],['balance',101]]){
+    await assert.rejects(save({...newSettings,events:{enabled:true,style:{...newSettings.events.style,gradient:{...newSettings.events.style.gradient,[key]:value}}}},settingsWindow),/between/);
+  }
   await assert.rejects(save({...newSettings,context:{enabled:true,style:{...newSettings.context.style,border:{enabled:true,color:'#ffffff',width:100,radius:8}}}},settingsWindow),/between/);
+  // Exercise the new sliders through the real settings renderer and preview.
+  await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
+  await settingsContents.executeJavaScript(`
+    document.querySelector('[data-panel="messages-panel"]').click();
+    element('gm-gradient-opacity').value=40;
+    element('gm-gradient-balance').value=25;
+    element('gm-gradient-balance').dispatchEvent(new Event('input',{bubbles:true}));
+    updatePreview();
+    document.getElementById('appearance-form').requestSubmit();
+  `);
+  await until(settingsContents,"document.querySelector('#status').textContent.startsWith('Appearance applied')");
+  const sliderState = await settingsContents.executeJavaScript(`({
+    opacity:selection().messages.gm.gradient.opacity,balance:selection().messages.gm.gradient.balance,
+    label:element('gm-gradient-balance-label').value,bg:getComputedStyle(document.querySelector('.sample-gm')).backgroundImage})`);
+  assert.equal(sliderState.opacity,.4);assert.equal(sliderState.balance,25);assert.equal(sliderState.label,'25% / 75%');
+  assert.match(sliderState.bg,/rgba\(101, 67, 33, 0.28\) 0%/);
+  assert.match(sliderState.bg,/ 50%/);
+  // At either extreme only the visible color should determine automatic text.
+  for(const [balance,foreground] of [[0,'rgb(255, 255, 255)'],[100,'rgb(0, 0, 0)']]){
+    await save({...newSettings,messages:{...newSettings.messages,gm:{...newSettings.messages.gm,color:'#ffffff',opacity:1,textColor:null,
+      gradient:{enabled:true,color:'#000000',angle:90,opacity:1,balance}}}},settingsWindow);
+    assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('event-message-card-2')).color"),foreground);
+  }
+  await save(newSettings,settingsWindow);
   // Exercise the in-app picker and a burst of color changes with a large preview URL.
   settingsWindow.show(); // Hidden windows throttle requestAnimationFrame.
   await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
@@ -393,6 +461,8 @@ async function save(settings, window) {
   const shared=JSON.parse(await readFile(themeFile,'utf8'));
   assert.equal(shared.version,1);assert(shared.image.pngBase64);assert.equal(shared.appearance.backgroundImage,null);
   assert.equal(shared.appearance.linuxBlackMenu,undefined);assert.equal(shared.appearance.linuxFloatingAppearance,undefined);
+  assert.equal(shared.appearance.messages.gm.gradient.opacity,.5);assert.equal(shared.appearance.messages.gm.gradient.balance,75);
+  assert.equal(shared.appearance.dice.resultTextColor,'#23e2ab');
   dialog.showSaveDialog=async()=>({canceled:false,filePath:themeFile});
   await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(decorated)},false)`);
   assert.equal(JSON.parse(await readFile(themeFile,'utf8')).image,null);
@@ -413,13 +483,15 @@ async function save(settings, window) {
   dialog.showOpenDialog=showDialog;
   // The selected folder survives restarts and paginates all supported files.
   const folder=path.join(userData,'background-options');await mkdir(folder);
-  for(let i=0;i<14;i++)await writeFile(path.join(folder,`picture-${String(i).padStart(2,'0')}.png`),nativeImage.createFromBitmap(Buffer.from([i,120,240,255]),{width:1,height:1}).toPNG());
+  for(let i=0;i<14;i++)await writeFile(path.join(folder,`picture-${String(i).padStart(2,'0')}.${i===13?'WEBP':'png'}`),i===13?webpBytes:nativeImage.createFromBitmap(Buffer.from([i,120,240,255]),{width:1,height:1}).toPNG());
   await writeFile(path.join(folder,'notes.txt'),'not a picture');
   dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});
   const folderPage=await settingsContents.executeJavaScript('window.appearance.chooseFolder()');
   dialog.showOpenDialog=showDialog;
   assert.equal(folderPage.folderName,'background-options');assert.equal(folderPage.total,14);assert.equal(folderPage.items.length,12);assert.equal(folderPage.nextOffset,12);
   const secondPage=await settingsContents.executeJavaScript('window.appearance.folderPictures(12)');assert.equal(secondPage.items.length,2);assert.equal(secondPage.nextOffset,null);
+  assert.match(secondPage.items[1].name,/\.WEBP$/);assert.match(secondPage.items[1].thumbnail,/^data:image\/png;base64,/);
+  assert.match((await settingsContents.executeJavaScript(`window.appearance.selectFolderPicture(${JSON.stringify(secondPage.items[1].id)})`)).id,/^[a-f0-9]{64}\.png$/);
   await writeFile(path.join(folder,'new.png'),nativeImage.createFromBitmap(Buffer.from([250,10,30,255]),{width:1,height:1}).toPNG());
   assert.equal((await settingsContents.executeJavaScript('window.appearance.folderPictures()')).total,15);
   await rm(path.join(folder,'new.png'));
@@ -554,6 +626,14 @@ async function save(settings, window) {
     await frame.loadURL(MENU_URL);
     assert.equal(await frame.webContents.executeJavaScript('getComputedStyle(document.body).backgroundColor'), 'rgb(0, 0, 0)');
     assert.equal(view.getBounds().y,32);
+    const originalContentSize = frame.getContentSize.bind(frame);
+    const [width,height] = originalContentSize();
+    frame.getContentSize = () => [width+100,height+100];
+    frame.emit('enter-full-screen');
+    assert.equal(view.getBounds().height,height+100-32);
+    frame.getContentSize = originalContentSize;
+    frame.emit('leave-full-screen');
+    assert.equal(view.getBounds().height,height-32);
     view.webContents.emit('before-input-event',{preventDefault(){}},{type:'keyDown',code:'KeyR',control:true,shift:false});
     assert.equal(reloads,1);
     bar.setBlack(false);
@@ -577,7 +657,22 @@ async function save(settings, window) {
     assert(prevented);
     assert.equal(website.webContents.getZoomLevel(), input.expected);
   }
-  console.log('PASS: themes, image effects, persistent folder and picture library, theme sharing, reset undo across restarts, three context palettes, decorative borders and dice menus, picker performance, SVG dice paint, text and inputs, navigation, IPC restrictions, Linux menu, and zoom.');
+  // Fullscreen keys target the owning window, including Linux WebContentsViews.
+  let fullscreen = false, toggles = 0;
+  const owner = {isDestroyed:()=>false,isFullScreen:()=>fullscreen,setFullScreen:value=>{fullscreen=value;toggles++;}};
+  configureFullscreenShortcuts(website.webContents,owner);
+  const fullscreenInput = (extra) => {
+    let prevented=false;
+    website.webContents.emit('before-input-event',{preventDefault(){prevented=true;}},{type:'keyDown',code:'Enter',alt:true,control:false,meta:false,shift:false,isComposing:false,isAutoRepeat:false,...extra});
+    return prevented;
+  };
+  assert(fullscreenInput({}));assert(fullscreen);
+  assert(fullscreenInput({isAutoRepeat:true}));assert.equal(toggles,1);
+  assert(fullscreenInput({code:'NumpadEnter'}));assert(!fullscreen);
+  assert(fullscreenInput({code:'F11',alt:false}));assert(fullscreen);
+  for(const extra of [{alt:false},{control:true},{shift:true},{meta:true},{isComposing:true},{type:'keyUp'}])assert(!fullscreenInput(extra));
+  assert.equal(toggles,3);assert.equal(website.webContents.getZoomLevel(),0);
+  console.log('PASS: themes and gradient controls, WebP import and limits, image effects, persistent folder and picture library, theme sharing, reset undo across restarts, three context palettes, decorative borders and dice menus, picker performance, independent dice result text, SVG dice paint, text and inputs, navigation, IPC restrictions, Linux menu, zoom, and fullscreen shortcuts.');
 })().then(async () => {
   clearTimeout(timeout);
   for (const window of BrowserWindow.getAllWindows()) window.destroy();

@@ -1,7 +1,7 @@
 {
   "name": "friends-and-fables-desktop",
   "productName": "Friends & Fables Desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Unofficial Friends & Fables desktop wrapper for Windows and Arch Linux",
   "private": true,
   "main": "dist/main.js",
@@ -26,7 +26,8 @@
     "premake": "npm run build",
     "make": "electron-forge make",
     "dist:linux": "npm run build && electron-builder --config electron-builder.config.cjs --linux AppImage --x64 --publish never",
-    "dist:windows": "npm run build && electron-builder --config electron-builder.config.cjs --win portable --x64 --publish never"
+    "dist:windows": "npm run build && electron-builder --config electron-builder.config.cjs --win portable --x64 --publish never",
+    "checksums": "node scripts/release-checksums.cjs"
   },
   "config": {
     "forge": "./forge.config.cjs"

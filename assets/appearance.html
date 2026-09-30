@@ -88,7 +88,7 @@
             <input type="range" id="image-overlay-opacity" min="0" max="100" value="0">
           </div>
           <p class="help">Try a black overlay with a little blur to keep the picture subtle. These effects apply to your uploaded chat picture; text stays sharp.</p>
-          <p class="help">PNG or JPEG · up to 20 MB and 16 million pixels.</p>
+          <p class="help">PNG, JPEG, or WebP · up to 20 MB and 16 million pixels. Animated WebP imports as a still picture.</p>
         </section>
 
         <section id="messages-panel" role="tabpanel" hidden>
@@ -115,6 +115,9 @@
         <section id="dice-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="roll-styles"> Customize dice roll cards</label>
           <div class="message-controls single"><fieldset data-style="roll"><legend>Roll background &amp; border</legend></fieldset></div>
+          <label class="switch-row dice-switch"><input type="checkbox" id="dice-result-auto" checked> Use the current roll text color</label>
+          <label class="setting-row">Text beneath dice <input type="color" id="dice-result-color" value="#ffffff"></label>
+          <p class="help">Choose a separate color for calculations, success/failure results, and damage below the dice.</p>
           <label class="switch-row dice-switch"><input type="checkbox" id="dice-colors"> Customize dice colors</label>
           <div class="dice-presets" aria-label="Dice color presets">
             <button type="button" class="secondary" data-dice-preset="black">Black</button>
@@ -152,7 +155,7 @@
           <div class="sample-context-bar">Collapsed bar · 9 Active / 0 Idle</div>
           <div class="sample-context"><strong>Context blocks · 9 Active / 0 Idle</strong><div class="sample-block">Keep the story consistent with the campaign.</div></div>
           <div class="sample-event">Player moves 5 feet south to (7, 8)</div>
-          <div class="sample-roll"><small>DEATH SAVE</small><svg class="sample-die" viewBox="0 0 100 110" aria-label="Dice color preview"><path class="die-face" d="M50 5 93 30 93 80 50 105 7 80 7 30Z"/><path class="die-edge" d="M50 5 93 30 93 80 50 105 7 80 7 30Z M50 5 20 75 80 75 50 5 M7 30 50 25 93 30 M7 80 20 75 50 105 80 75 93 80"/><text x="50" y="63" text-anchor="middle" class="die-number">16</text></svg><span>16 = 16</span></div>
+          <div class="sample-roll"><small>DEATH SAVE</small><svg class="sample-die" viewBox="0 0 100 110" aria-label="Dice color preview"><path class="die-face" d="M50 5 93 30 93 80 50 105 7 80 7 30Z"/><path class="die-edge" d="M50 5 93 30 93 80 50 105 7 80 7 30Z M50 5 20 75 80 75 50 5 M7 30 50 25 93 30 M7 80 20 75 50 105 80 75 93 80"/><text x="50" y="63" text-anchor="middle" class="die-number">16</text></svg><span class="sample-roll-result">16 = 16 · 16 Damage</span></div>
           <div class="sample-input">Message input preview…</div>
           <div class="sample-controls"><span>Dice</span><span>Spell</span><span>Manual</span></div>
         </div>
@@ -174,6 +177,11 @@
         <label class="setting-row">Second color <input type="color" data-control="gradient-color" value="#000000"></label>
         <label data-label="gradient-angle">Direction <output data-control="gradient-angle-label">90°</output></label>
         <input type="range" data-control="gradient-angle" min="0" max="360" value="90">
+        <label data-label="gradient-opacity">Gradient opacity <output data-control="gradient-opacity-label">100%</output></label>
+        <input type="range" data-control="gradient-opacity" min="0" max="100" value="100">
+        <label data-label="gradient-balance">First color share <output data-control="gradient-balance-label">50% / 50%</output></label>
+        <input type="range" data-control="gradient-balance" min="0" max="100" value="50">
+        <p class="help">An even share blends across the whole surface. Increase a color's share to keep it solid for longer. Gradient opacity combines with background opacity.</p>
         <label class="switch-row border-switch"><input type="checkbox" data-control="border"> Show border</label>
         <label class="setting-row">Border style <select data-control="border-variant"><option value="plain">Plain</option><option value="ornate">Ornate corners</option><option value="arcane">Arcane diamonds</option><option value="runic">Runic corners</option></select></label>
         <label class="setting-row">Border color <input type="color" data-control="border-color" value="#555555"></label>
@@ -189,7 +197,7 @@
       <div class="image-actions"><button type="button" id="recent-pictures" class="secondary">Imported pictures</button><button type="button" id="folder-pictures" class="secondary">Selected folder</button><button type="button" id="choose-folder" class="secondary">Choose folder…</button></div>
       <p id="browser-status" class="help" role="status"></p><div id="picture-grid"></div>
       <button type="button" id="more-pictures" class="secondary" hidden>Show more</button>
-      <p class="help">PNG and JPEG · choosing a folder picture copies it into the app library. The selected folder is remembered after restarts.</p>
+      <p class="help">PNG, JPEG, and WebP · choosing a folder picture copies it into the app library. The selected folder is remembered after restarts.</p>
     </dialog>
     <dialog id="color-picker" aria-labelledby="picker-title">
       <h2 id="picker-title">Choose color</h2>

@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, Menu, nativeTheme, session, shell, webConte
 import type { WebContents, MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import { configureZoomShortcuts } from './zoom';
+import { configureFullscreenShortcuts } from './window-shortcuts';
 import { AppearanceManager, registerAppearanceScheme } from './appearance';
 import { LinuxMenuBar, MENU_URL } from './linux-menu';
 
@@ -27,8 +28,9 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
-function configureWebsiteContents(contents: WebContents): void {
+function configureWebsiteContents(contents: WebContents, window: BrowserWindow): void {
   configureZoomShortcuts(contents);
+  configureFullscreenShortcuts(contents, window);
   appearance.attach(contents);
   // Keep HTTPS authentication redirects in the sandboxed browser session.
   // The website has no preload script, Node access, or application IPC bridge.
@@ -58,7 +60,7 @@ function configureWebsiteContents(contents: WebContents): void {
     };
   });
   contents.on('did-create-window', (childWindow) => {
-    configureWebsiteContents(childWindow.webContents);
+    configureWebsiteContents(childWindow.webContents, childWindow);
   });
 }
 
@@ -117,10 +119,11 @@ function createWindow(): void {
     mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
     mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
     mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    configureFullscreenShortcuts(mainWindow.webContents, mainWindow);
     void mainWindow.loadURL(MENU_URL).catch(console.error);
   } else websiteContents = mainWindow.webContents;
   const contents = websiteContents;
-  configureWebsiteContents(contents);
+  configureWebsiteContents(contents, mainWindow);
   contents.once('did-finish-load', () => contents.focus());
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -191,7 +194,8 @@ function createMenu(): void {
         { label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: () => { const target = targetContents(); if (target) target.setZoomLevel(Math.min(5, target.getZoomLevel() + .5)); } },
         { label: 'Zoom Out', accelerator: 'CmdOrCtrl+-', click: () => { const target = targetContents(); if (target) target.setZoomLevel(Math.max(-5, target.getZoomLevel() - .5)); } },
         { type: 'separator' },
-        { id: 'fullscreen', role: 'togglefullscreen' },
+        { id: 'fullscreen', label: 'Toggle Fullscreen (Alt+Enter)', accelerator: 'F11',
+          click: () => { if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen()); } },
       ],
     },
     { id: 'window', label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close' }] },

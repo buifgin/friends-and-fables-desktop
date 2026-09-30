@@ -148,3 +148,6 @@ __pycache__/
 *.py[cod]
 translation-cache/
 models/
+
+# Full saved campaign pages are local references; tests use sample fixtures.
+references/

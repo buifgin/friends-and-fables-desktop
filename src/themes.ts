@@ -10,20 +10,20 @@ export interface AppearanceSettings {
   messages: { enabled: boolean; player: MessageStyle; gm: MessageStyle };
   context: { enabled: boolean; style: MessageStyle; blocks: MessageStyle; bar: MessageStyle };
   events: { enabled: boolean; style: MessageStyle };
-  dice: { enabled: boolean; style: MessageStyle; colorsEnabled: boolean; faceColor: string; edgeColor: string; numberColor: string };
+  dice: { enabled: boolean; style: MessageStyle; colorsEnabled: boolean; faceColor: string; edgeColor: string; numberColor: string; resultTextColor: string | null };
   linuxBlackMenu: boolean;
   linuxFloatingAppearance: boolean;
 }
 
 export interface MessageStyle {
   color: string; opacity: number; textColor: string | null;
-  gradient: { enabled: boolean; color: string; angle: number };
+  gradient: { enabled: boolean; color: string; angle: number; opacity: number; balance: number };
   border: { enabled: boolean; color: string; width: number; radius: number; variant: 'plain' | 'ornate' | 'arcane' | 'runic' };
 }
 export interface AppearanceState extends AppearanceSettings { imagePreview: string | null; platform: string; canUndoReset: boolean }
 
 const baseStyle = (color: string, opacity: number): MessageStyle => ({ color, opacity, textColor: null,
-  gradient: { enabled: false, color: '#000000', angle: 90 },
+  gradient: { enabled: false, color: '#000000', angle: 90, opacity: 1, balance: 50 },
   border: { enabled: false, color: '#555555', width: 1, radius: 8, variant: 'plain' } });
 export const DEFAULT_APPEARANCE: AppearanceSettings = {
   preset: 'website',
@@ -36,9 +36,9 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   context: { enabled: false, style: baseStyle('#101010', 1),
     blocks: { ...baseStyle('#101010', 1), border: { enabled: true, color: '#444444', width: 1, radius: 8, variant: 'plain' } },
     bar: baseStyle('#101010', 1) },
-  events: { enabled: false, style: { ...baseStyle('#17172b', 1), gradient: { enabled: true, color: '#000000', angle: 90 } } },
+  events: { enabled: false, style: { ...baseStyle('#17172b', 1), gradient: { enabled: true, color: '#000000', angle: 90, opacity: 1, balance: 50 } } },
   dice: { enabled: false, style: baseStyle('#101010', 1), colorsEnabled: false,
-    faceColor: '#7c3aed', edgeColor: '#d8bb82', numberColor: '#ffffff' },
+    faceColor: '#7c3aed', edgeColor: '#d8bb82', numberColor: '#ffffff', resultTextColor: null },
   linuxBlackMenu: true,
   linuxFloatingAppearance: true,
 };
@@ -84,7 +84,8 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     const variant = border.variant ?? 'plain';
     if (!['plain', 'ornate', 'arcane', 'runic'].includes(String(variant))) throw new Error('Choose a supported border style.');
     return { color: style.color.toLowerCase(), opacity: style.opacity, textColor: textColor?.toLowerCase() ?? null,
-      gradient: { enabled: flag(gradient.enabled), color: hex(gradient.color), angle: range(gradient.angle, 0, 360) },
+      gradient: { enabled: flag(gradient.enabled), color: hex(gradient.color), angle: range(gradient.angle, 0, 360),
+        opacity: range(gradient.opacity ?? 1, 0, 1), balance: range(gradient.balance ?? 50, 0, 100) },
       border: { enabled: flag(border.enabled), color: hex(border.color), width: range(border.width, 1, 8), radius: range(border.radius, 0, 40), variant: variant as MessageStyle['border']['variant'] } };
   }
   function record(raw: unknown): Record<string, unknown> {
@@ -113,6 +114,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   const contextStyle = messageStyle(context.style);
   const linuxFloatingAppearance = input.linuxFloatingAppearance ?? true;
   if (typeof linuxFloatingAppearance !== 'boolean') throw new Error('Invalid floating window preference.');
+  const resultTextColor = dice.resultTextColor ?? null;
   return {
     preset: preset as ThemePreset, customColor: customColor.toLowerCase(),
     backgroundImage, backgroundName, backgroundFit,
@@ -123,7 +125,8 @@ export function validateAppearance(value: unknown): AppearanceSettings {
       blocks: messageStyle(context.blocks ?? { ...contextStyle, opacity: 1 }), bar: messageStyle(context.bar ?? contextStyle) },
     events: { enabled: flag(events.enabled), style: messageStyle(events.style) },
     dice: { enabled: flag(dice.enabled), style: messageStyle(dice.style), colorsEnabled: flag(dice.colorsEnabled),
-      faceColor: hex(dice.faceColor), edgeColor: hex(dice.edgeColor), numberColor: hex(dice.numberColor) },
+      faceColor: hex(dice.faceColor), edgeColor: hex(dice.edgeColor), numberColor: hex(dice.numberColor),
+      resultTextColor: resultTextColor === null ? null : hex(resultTextColor) },
     linuxBlackMenu, linuxFloatingAppearance,
   };
 }
@@ -177,14 +180,23 @@ export function messageForeground(style: MessageStyle, settings: AppearanceSetti
   if (style.textColor) return style.textColor;
   // Account for opacity over the app color, rather than treating a transparent
   // white message as a solid white surface. Pictures can use a chosen text color.
-  const colors = [style.color, ...(style.gradient.enabled ? [style.gradient.color] : [])]
-    .map(color => mix(rgb(themeBackground(settings)), rgb(color), style.opacity));
+  const colors = [
+    ...(!style.gradient.enabled || style.gradient.balance > 0 ? [style.color] : []),
+    ...(style.gradient.enabled && style.gradient.balance < 100 ? [style.gradient.color] : []),
+  ]
+    .map(color => mix(rgb(themeBackground(settings)), rgb(color), style.opacity * (style.gradient.enabled ? style.gradient.opacity : 1)));
   const score = (foreground: RGB) => Math.min(...colors.map(background => contrast(background, foreground)));
   return score([255, 255, 255]) >= score([0, 0, 0]) ? '#ffffff' : '#000000';
 }
 
 export function styleBackground(style: MessageStyle): string {
-  return style.gradient.enabled ? `linear-gradient(${style.gradient.angle}deg, ${rgba(style.color, style.opacity)}, ${rgba(style.gradient.color, style.opacity)})` : 'none';
+  if (!style.gradient.enabled) return 'none';
+  const opacity = style.opacity * style.gradient.opacity;
+  // An even share preserves the original full-width blend. Moving the share
+  // adds a solid region for the dominant color before/after that blend.
+  const firstStop = Math.max(0, style.gradient.balance * 2 - 100);
+  const secondStop = Math.min(100, style.gradient.balance * 2);
+  return `linear-gradient(${style.gradient.angle}deg, ${rgba(style.color, opacity)} ${firstStop}%, ${rgba(style.gradient.color, opacity)} ${secondStop}%)`;
 }
 export function rgba(color: string, opacity: number): string { return `rgba(${rgb(color).join(',')}, ${opacity})`; }
 

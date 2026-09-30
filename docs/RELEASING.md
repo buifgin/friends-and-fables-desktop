@@ -28,8 +28,8 @@ The pinned builder's resource editor and portable NSIS target can package this a
 
 Both commands place release files in `out/releases/`:
 
-- `friends-and-fables-desktop-0.1.0-linux-x86_64.AppImage`
-- `friends-and-fables-desktop-0.1.0-windows-x64.exe`
+- `friends-and-fables-desktop-0.1.1-linux-x86_64.AppImage`
+- `friends-and-fables-desktop-0.1.1-windows-x64.exe`
 
 The AppImage uses the modern static AppImage runtime. The Windows release is unsigned; it may display a Windows publisher/reputation prompt. Automatic updates are not included in this version.
 
@@ -40,35 +40,39 @@ The AppImage uses the modern static AppImage runtime. The Windows release is uns
 Run the Linux AppImage without root:
 
 ```sh
-chmod +x out/releases/friends-and-fables-desktop-0.1.0-linux-x86_64.AppImage
-./out/releases/friends-and-fables-desktop-0.1.0-linux-x86_64.AppImage
+chmod +x out/releases/friends-and-fables-desktop-0.1.1-linux-x86_64.AppImage
+./out/releases/friends-and-fables-desktop-0.1.1-linux-x86_64.AppImage
 ```
 
 Check login, restart persistence, zoom, Appearance, picture browsing, and context/dice styles. Repeat on Windows with the portable EXE. If AppImage mounting is unavailable, the runtime also supports `--appimage-extract-and-run`.
 
-Generate checksums from the release directory:
+Generate checksums for the current package version from the repository root:
 
 ```sh
+npm run checksums
 cd out/releases
-sha256sum friends-and-fables-desktop-*.AppImage friends-and-fables-desktop-*.exe > SHA256SUMS
 sha256sum -c SHA256SUMS
 ```
 
+The checksum script uses the exact filenames for `package.json`’s version, so old release files cannot enter the new checksum list. CI generates a separate list for each platform.
+
+The workflow in `.github/workflows/build.yml` performs checks, tests, native builds, packaged-resource tests, and artifact uploads on Linux and Windows. It needs no release credentials and does not publish releases. Download the artifacts from a successful workflow run, verify them manually, and use the publication steps below for the selected version.
+
 ## Publish on GitHub
 
-The first release is `v0.1.0`. For later releases, update `package.json`/`package-lock.json`, rebuild, and update the AUR version/checksum. Publish the exact files you checked.
+The first published release is `v0.1.0`; the working version below is `v0.1.1`. For each release, update `package.json`/`package-lock.json`, rebuild, and update the AUR version/checksum. Publish the exact files you checked.
 
 From the repository root:
 
 ```sh
-git add package.json package-lock.json electron-builder.config.cjs forge.config.cjs build LICENSE README.md docs packaging
-git commit -m "Prepare desktop release v0.1.0"
-git tag -a v0.1.0 -m "Friends & Fables Desktop 0.1.0"
+git add .gitignore package.json package-lock.json src assets tests scripts .github electron-builder.config.cjs forge.config.cjs build LICENSE README.md docs packaging
+git commit -m "Prepare desktop release v0.1.1"
+git tag -a v0.1.1 -m "Friends & Fables Desktop 0.1.1"
 git push origin main
-git push origin v0.1.0
-gh release create v0.1.0 --verify-tag --title "Friends & Fables Desktop 0.1.0" --notes-file docs/releases/v0.1.0.md --draft
-gh release upload v0.1.0 out/releases/friends-and-fables-desktop-0.1.0-linux-x86_64.AppImage out/releases/friends-and-fables-desktop-0.1.0-windows-x64.exe out/releases/SHA256SUMS
-gh release edit v0.1.0 --draft=false
+git push origin v0.1.1
+gh release create v0.1.1 --verify-tag --title "Friends & Fables Desktop 0.1.1" --notes-file docs/releases/v0.1.1.md --draft
+gh release upload v0.1.1 out/releases/friends-and-fables-desktop-0.1.1-linux-x86_64.AppImage out/releases/friends-and-fables-desktop-0.1.1-windows-x64.exe out/releases/SHA256SUMS
+gh release edit v0.1.1 --draft=false
 ```
 
 If a tag/release already exists, upload to it rather than recreating it. Never replace a published AppImage with different bytes under the same name: the AUR checksum is tied to it. Use a new version for changed builds.

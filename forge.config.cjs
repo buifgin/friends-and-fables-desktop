@@ -6,6 +6,8 @@ module.exports = {
       /^\/src(?:\/|$)/,
       /^\/docs(?:\/|$)/,
       /^\/tests(?:\/|$)/,
+      /^\/references(?:\/|$)/,
+      /^\/scripts(?:\/|$)/,
       /^\/tsconfig\.json$/,
       /^\/forge\.config\.cjs$/,
       /^\/electron-builder\.config\.cjs$/,

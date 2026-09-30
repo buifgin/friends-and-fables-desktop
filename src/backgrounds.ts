@@ -2,6 +2,7 @@ import { nativeImage } from 'electron';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { decodeBackground } from './image-decoder';
 
 export interface ImportedBackground { id: string; name: string; preview: string }
 export interface BackgroundPage { items: { id: string; name: string; thumbnail: string; addedAt: number }[]; total: number; nextOffset: number | null }
@@ -18,10 +19,7 @@ async function index(directory: string): Promise<Index> {
 }
 export async function storeBackground(buffer: Buffer, name: string, directory: string): Promise<ImportedBackground> {
   if (buffer.length > MAX_BYTES) throw new Error('Choose an image smaller than 20 MB.');
-  const image = nativeImage.createFromBuffer(buffer);
-  if (image.isEmpty()) throw new Error('This file could not be read as an image.');
-  const size = image.getSize();
-  if (size.width * size.height > 16_000_000) throw new Error('Choose an image with at most 16 million pixels.');
+  const image = await decodeBackground(buffer);
   const png = image.toPNG();
   if (png.length > MAX_BYTES) throw new Error('The decoded image is too large. Try a smaller picture.');
   const id = `${createHash('sha256').update(png).digest('hex')}.png`;
@@ -35,7 +33,7 @@ export async function storeBackground(buffer: Buffer, name: string, directory: s
   return { id, name: safeName, preview: `data:image/png;base64,${png.toString('base64')}` };
 }
 export async function importBackground(file: string, directory: string): Promise<ImportedBackground> {
-  if (!['.png', '.jpg', '.jpeg'].includes(path.extname(file).toLowerCase())) throw new Error('Choose a PNG or JPEG image.');
+  if (!['.png', '.jpg', '.jpeg', '.webp'].includes(path.extname(file).toLowerCase())) throw new Error('Choose a PNG, JPEG, or WebP image.');
   const info = await stat(file);
   if (!info.isFile() || info.size > MAX_BYTES) throw new Error('Choose an image smaller than 20 MB.');
   return storeBackground(await readFile(file), path.basename(file), directory);

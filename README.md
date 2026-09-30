@@ -12,11 +12,11 @@ The app opens the existing website and adds local themes, campaign chat pictures
 - Allow HTTPS navigation and sandboxed sign-in popups in the same session.
 - Provide standard menus for reload, zoom, copy/paste, developer tools, and opening the website in your browser.
 - Choose AMOLED black, soft black, light, or a custom background color, with saved preferences.
-- Import a local picture behind campaign chat, with cover/contain sizing, blur, image opacity, and a color overlay. Browse previously imported pictures or a permanently selected image folder.
-- Set separate colors, opacity, gradients, and borders for player and GM/NPC messages. Campaign inputs and bottom buttons use the player style; battle summaries use the GM palette.
+- Import a local PNG, JPEG, or WebP picture behind campaign chat, with cover/contain sizing, blur, image opacity, and a color overlay. Browse previously imported pictures or a permanently selected image folder.
+- Set separate colors, opacity, gradients, gradient opacity/color proportions, and borders for player and GM/NPC messages. Campaign inputs and bottom buttons use the player style; battle summaries use the GM palette.
 - Set independent colors, opacity, gradients, and borders for the expanded context window, its block cards, and the collapsed bar above the input.
 - Customize movement/action cards, dice roll cards, and dice menus. Choose plain borders or Ornate, Arcane, and Runic corner decorations for messages, inputs, context surfaces, events, and dice.
-- Choose black, white, purple, or custom SVG dice face/edge/number colors while preserving animations and results.
+- Choose black, white, purple, or custom SVG dice face/edge/number colors while preserving animations and results. Set an independent color for calculations, outcomes, and damage beneath dice.
 - Use an in-app color picker with hue, saturation, lightness, and hex controls. Preview updates are coalesced, and color dragging does not reload the picture.
 - Keep character editor fields readable using the app theme's foreground color.
 - Undo the last appearance reset, including the selected picture, even after restarting.
@@ -35,7 +35,7 @@ chmod +x friends-and-fables-desktop-0.1.0-linux-x86_64.AppImage
 ./friends-and-fables-desktop-0.1.0-linux-x86_64.AppImage
 ```
 
-On Windows, run `friends-and-fables-desktop-0.1.0-windows-x64.exe`. The first build is unsigned and still needs manual Windows verification.
+On Windows, run `friends-and-fables-desktop-0.1.0-windows-x64.exe`. The build is unsigned. The user has tested v0.1.0 successfully on both Arch Linux and Windows.
 
 The [AUR guide](docs/AUR.md) includes a prepared binary-package recipe and submission steps. AUR publication requires an AUR account and SSH key.
 
@@ -82,9 +82,9 @@ In **Theme**, choose one of these presets:
 - **Custom color:** choose a color with the picker or enter a `#RRGGBB` value.
 - **Website default:** restore the site's original colors.
 
-In **Chat picture**, click **Choose picture…** to import a PNG or JPEG from your computer. Pictures must be at most 20 MB and 16 million pixels; the stored PNG must also fit within 20 MB. Choose **Cover the chat area** to fill the area, or **Show the whole picture** to keep the entire image visible. **Remove picture** restores the campaign's existing background when applied. The picture is copied into the app's local profile and used only in this desktop app. Removing or resetting it deselects it; the copy stays in the picture library.
+In **Chat picture**, click **Choose picture…** to import a PNG, JPEG, or WebP from your computer. WebP pictures are converted to PNG with transparency preserved; animated WebP imports as a still picture. Pictures must be at most 20 MB and 16 million pixels; the stored PNG must also fit within 20 MB. Choose **Cover the chat area** to fill the area, or **Show the whole picture** to keep the entire image visible. **Remove picture** restores the campaign's existing background when applied. The picture is copied into the app's local profile and used only in this desktop app. Removing or resetting it deselects it; the copy stays in the picture library.
 
-Click **Browse pictures…** to see **Imported pictures** or **Selected folder**. **Choose folder…** saves a permanent folder choice: after restarting, the browser opens that folder again until you choose another one or the folder is moved/deleted. It lists the folder's PNG/JPEG files, loads more thumbnails with **Show more**, and refreshes the list each time you open it. Subfolders are not scanned. Choosing a folder picture copies it into the library, so an applied theme keeps its picture even if the source folder later moves. If the folder is unavailable, use the library or select another folder.
+Click **Browse pictures…** to see **Imported pictures** or **Selected folder**. **Choose folder…** saves a permanent folder choice: after restarting, the browser opens that folder again until you choose another one or the folder is moved/deleted. It lists the folder's PNG/JPEG/WebP files, loads more thumbnails with **Show more**, and refreshes the list each time you open it. Subfolders are not scanned. Choosing a folder picture copies it into the library, so an applied theme keeps its picture even if the source folder later moves. If the folder is unavailable, use the library or select another folder.
 
 Use **Image blur**, **Image opacity**, **Overlay color**, and **Overlay opacity** to soften the picture or tint it. For a blurred image under black, choose a black overlay and increase its opacity. Message text and controls stay sharp. These effects apply only to your uploaded chat picture.
 
@@ -98,7 +98,9 @@ Open **Gradient & border** inside either message editor to enable a second backg
 
 In **Context**, enable customization and use **Customize** to switch between **Expanded window**, **Messages / block cards**, and **Collapsed bar above input**. Each has its own background, opacity, text color, gradient, and border. They start with solid dark backgrounds; keeping the expanded window opaque prevents the story from showing through it when player messages are transparent. The expanded window palette covers its header, search, tabs, and footer; the block palette covers the formerly blue/purple cards. Category dots and the usage meter retain their category colors.
 
-In **Events**, customize the compact movement/action cards with their own colors, opacity, gradient, and border. In **Dice**, customize the roll card background and border independently, and optionally enable dice colors. The roll breakdown popup and dice-selection dialog use the same roll-card palette and decorative border. The **Black**, **White**, and **Purple** buttons set face, edge, and number colors; the individual pickers allow any color. D4, D6, D8, D10, D12, and D20 keep their geometry, roll values, and animations.
+Each **Gradient & border** editor includes **Gradient opacity** and **First color share**. Gradient opacity combines with background opacity and leaves text opaque. A 50% / 50% share blends across the whole surface; increasing one color’s share gives it a longer solid region before or after the blend. Older themes default to 100% gradient opacity and an even share.
+
+In **Events**, customize the compact movement/action cards with their own colors, opacity, gradient, and border. In **Dice**, customize the roll card background and border independently, and optionally enable dice colors. The roll breakdown popup and dice-selection dialog use the same roll-card palette and decorative border. The **Black**, **White**, and **Purple** buttons set face, edge, and number colors; the individual pickers allow any color. D4, D6, D8, D10, D12, and D20 keep their geometry, roll values, and animations. Disable **Use the current roll text color** to choose a separate **Text beneath dice** color for calculations, success/failure, and damage. This works even with roll-card and SVG customization disabled.
 
 Color swatches open an in-app picker. Drag hue, saturation, or lightness, or enter a hex color; **Use color** keeps the draft and **Cancel** restores the previous color. Click **Apply changes** in Appearance to save it.
 
@@ -110,7 +112,7 @@ Click **Apply changes** to update the app and save your choices. Settings reappl
 
 Color themes use the website's shared neutral color variables and preserve artwork unless you import a chat picture. Message and input styling targets the current campaign page components, so website changes may require updates to those selectors. Components with fixed colors may need further adjustments after checking logged-in pages.
 
-Zoom in with **Ctrl+=** or **Ctrl+Shift+=** (the `+` key), zoom out with **Ctrl+-**, and reset with **Ctrl+0**. Numpad plus and minus also work. Physical key handling supports English and Russian keyboard layouts.
+Zoom in with **Ctrl+=** or **Ctrl+Shift+=** (the `+` key), zoom out with **Ctrl+-**, and reset with **Ctrl+0**. Numpad plus and minus also work. Physical key handling supports English and Russian keyboard layouts. Toggle fullscreen with **Alt+Enter**, **Alt+numpad Enter**, or **F11**; holding the key does not repeatedly toggle the window.
 
 ## Manual verification
 
@@ -127,7 +129,7 @@ Zoom in with **Ctrl+=** or **Ctrl+Shift+=** (the `+` key), zoom out with **Ctrl+
 11. Browse a folder with more than 12 pictures, restart, and confirm the same folder appears. Add/remove a picture and reopen the browser to refresh the list. Check that imported pictures remain after removal/reset.
 12. Reset appearance, restart, and undo the reset. Export a theme with a picture and import it on another profile or machine; check preview and application.
 
-Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. Windows verification remains pending.
+Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. The user reported successful v0.1.0 runs on Arch and Windows with no bugs spotted. The v0.1.1 fullscreen, gradient, result text, and WebP changes still need a manual campaign check on both systems.
 
 Website permissions such as camera, microphone, and notifications are disabled in this initial starter. They can be added when needed.
 
@@ -145,10 +147,11 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - Add custom color dice with menu at top of screen with picker of variants.
 - Add some free music api or link player for all people at the company, near the dice button. With volume slider and mute option.
 - Add resizable map feature.
-- Add opacity for gradiend and chosing how much will fill with 1-st color and how much with second(custom ratio).
-- Add custom color of text under the dice (damage etc.)
+- [x] Add gradient opacity and adjustable first/second color proportions (v0.1.1).
+- [x] Add custom text color beneath dice, including damage (v0.1.1).
+- [x] Add Alt+Enter fullscreen (v0.1.1).
 
-## Stack
+# Stack
 
 - Electron, TypeScript, and Electron Forge for the desktop app.
 - CSS for themes.
@@ -162,6 +165,12 @@ Local translation will use LibreTranslate/Argos. Its setup and integration are d
 Translation can work offline after its models are installed. Friends & Fables itself still requires internet access.
 
 See the [roadmap](docs/ROADMAP.md) for the implementation order.
+
+## Development references and builds
+
+Keep full saved campaign pages and their assets under `references/`. This folder stays local and is excluded from Git and both packaging workflows. Small fixtures with sample text live under `tests/fixtures/`.
+
+The GitHub Actions workflow checks TypeScript, runs offline Electron tests, builds an AppImage on Linux and a portable EXE on Windows, tests packaged resources, and uploads build artifacts with checksums. It runs after pushes to `main`, version tags, pull requests, or manual dispatch once committed to GitHub. Release publication remains a separate step.
 
 ## References
 

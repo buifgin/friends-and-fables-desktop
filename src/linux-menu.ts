@@ -17,6 +17,8 @@ export class LinuxMenuBar {
       this.open(id, x);
     });
     window.on('resize', () => this.resize());
+    window.on('enter-full-screen', () => this.resize());
+    window.on('leave-full-screen', () => this.resize());
     window.on('closed', () => ipcMain.removeHandler('desktop-menu:open'));
     website.webContents.on('before-input-event', (event, input) => {
       if (!this.black || input.type !== 'keyDown') return;
@@ -28,7 +30,6 @@ export class LinuxMenuBar {
       // Dispatch remaining commands by the same menu IDs so both paths agree.
       const command = input.code === 'F5' ? (input.control ? 'force-reload' : 'reload')
         : input.code === 'F12' ? 'devtools'
-        : input.code === 'F11' ? 'fullscreen'
         : input.control && !input.alt && input.code === 'KeyR' ? (input.shift ? 'force-reload' : 'reload')
         : input.control && input.shift && input.code === 'KeyI' ? 'devtools'
         : input.control && input.code === 'Home' ? 'home'

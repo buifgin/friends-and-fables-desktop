@@ -1,8 +1,8 @@
-import { nativeImage } from 'electron';
 import { createHash } from 'node:crypto';
 import { lstat, mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { importBackground } from './backgrounds';
+import { decodeBackground } from './image-decoder';
 import type { BackgroundPage, ImportedBackground } from './backgrounds';
 export interface FolderPage extends BackgroundPage { folderName: string | null }
 export class ImageFolder {
@@ -27,7 +27,7 @@ export class ImageFolder {
     if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < 0) throw new Error('Invalid folder page.');
     if (!this.directory) return {folderName:null,items:[],total:0,nextOffset:null};
     const directory=this.directory;
-    const entries=(await readdir(directory,{withFileTypes:true})).filter(e=>e.isFile() && /\.(png|jpe?g)$/i.test(e.name))
+    const entries=(await readdir(directory,{withFileTypes:true})).filter(e=>e.isFile() && /\.(png|jpe?g|webp)$/i.test(e.name))
       .sort((a,b)=>a.name.localeCompare(b.name));
     const items=await Promise.all(entries.slice(offset,offset+12).map(async e=>{
       const file=path.join(directory,e.name);const id=createHash('sha256').update(file).digest('hex');
@@ -36,7 +36,7 @@ export class ImageFolder {
       try {
         const info=await lstat(file);addedAt=info.mtimeMs;
         if (info.isFile() && info.size <= 20*1024*1024) {
-          const image=nativeImage.createFromBuffer(await readFile(file));const size=image.getSize();
+          const image=await decodeBackground(await readFile(file));const size=image.getSize();
           if (!image.isEmpty() && size.width*size.height<=16_000_000) {
             const scale=Math.min(1,160/Math.max(size.width,size.height));
             thumbnail=image.resize({width:Math.max(1,Math.round(size.width*scale)),height:Math.max(1,Math.round(size.height*scale))}).toDataURL();

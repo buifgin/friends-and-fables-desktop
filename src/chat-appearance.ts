@@ -9,7 +9,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   const host = window as unknown as Record<string, { dispose(): void } | undefined>;
   host[key]?.dispose();
   if (!settings.backgroundImage && !settings.messages.enabled && !settings.context.enabled
-    && !settings.events.enabled && !settings.dice.enabled && !settings.dice.colorsEnabled) return;
+    && !settings.events.enabled && !settings.dice.enabled && !settings.dice.colorsEnabled && !settings.dice.resultTextColor) return;
 
   let marked = new Map<Element, Set<string>>();
   let next = new Map<Element, Set<string>>();
@@ -122,12 +122,20 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     for (const die of document.querySelectorAll('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) {
       if (inCharacterForm(die)) continue;
       if (settings.dice.colorsEnabled) mark(die, 'data-ff-desktop-die', die.id);
-      if (settings.dice.enabled) {
+      if (settings.dice.enabled || settings.dice.resultTextColor) {
         const roll = die.closest('[class~="from-slate-900/95"][class~="to-slate-950/95"]');
         if (roll) {
-          mark(roll, 'data-ff-desktop-message', 'roll');
-          const container = roll.closest('[id^="event-message-card-"]');
-          if (container) mark(container, 'data-ff-desktop-roll-container', 'true');
+          if (settings.dice.enabled) {
+            mark(roll, 'data-ff-desktop-message', 'roll');
+            const container = roll.closest('[id^="event-message-card-"]');
+            if (container) mark(container, 'data-ff-desktop-roll-container', 'true');
+          }
+          if (settings.dice.resultTextColor) {
+            // The site's calculation and outcome/damage text sit below the SVGs.
+            for (const text of roll.querySelectorAll('[class~="font-mono"][class~="tracking-wider"], [class~="text-center"][class~="mt-4"][class~="transition-all"]')) {
+              if (!text.querySelector('svg')) mark(text, 'data-ff-desktop-roll-text', 'true');
+            }
+          }
         }
       }
     }
@@ -241,6 +249,10 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
       ${target} :is(input,textarea,[contenteditable]) { -webkit-text-fill-color:${fg} !important; caret-color:${fg} !important; }
       ${target} :is(input,textarea)::placeholder {color:${fg} !important;}`;
     css += borderCss(block,target);
+  }
+  if (settings.dice.resultTextColor) {
+    css += `[data-ff-desktop-roll-text], [data-ff-desktop-roll-text] :is(div,span,p,strong,b,em) {
+      color: ${settings.dice.resultTextColor} !important; }`;
   }
   if (settings.dice.colorsEnabled) {
     const { faceColor: face, edgeColor: edge, numberColor: number } = settings.dice;

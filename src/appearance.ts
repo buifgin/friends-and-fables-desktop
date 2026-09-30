@@ -93,7 +93,7 @@ export class AppearanceManager {
       this.assertTrusted(event);
       const result = await dialog.showOpenDialog(this.window!, {
         title: 'Choose a campaign chat background', properties: ['openFile'],
-        filters: [{ name: 'Pictures', extensions: ['png', 'jpg', 'jpeg'] }],
+        filters: [{ name: 'Pictures', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
       });
       if (result.canceled || !result.filePaths[0]) return null;
       return importBackground(result.filePaths[0], this.images);
