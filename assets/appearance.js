@@ -26,6 +26,18 @@ for (const field of document.querySelectorAll('[data-style]')) {
   for (const label of editor.querySelectorAll('[data-label]')) label.htmlFor = `${role}-${label.dataset.label}`;
   field.append(editor);
 }
+for (const field of document.querySelectorAll('[data-critical]')) {
+  const paints = document.createElement('div'); paints.className = 'dice-paints';
+  for (const [part,title] of [['face','Faces'],['edge','Edges'],['number','Numbers']]) {
+    const label = document.createElement('label'); label.className = 'setting-row'; label.append(document.createTextNode(title));
+    const input = document.createElement('input'); input.type = 'color'; input.id = `${field.dataset.critical}-${part}-color`;
+    label.append(input); paints.append(label);
+  }
+  field.append(paints);
+}
+function readDicePalette(result) {
+  return { enabled: element(`${result}-colors`).checked, ...Object.fromEntries(['face','edge','number'].map(part => [`${part}Color`,element(`${result}-${part}-color`).value])) };
+}
 function readStyle(role) {
   return { color: element(`${role}-color`).value, opacity: Number(element(`${role}-opacity`).value) / 100,
     textColor: element(`${role}-auto-text`).checked ? null : element(`${role}-text-color`).value,
@@ -46,8 +58,10 @@ function selection() {
     events: { enabled: element('event-styles').checked, style: readStyle('event') },
     dice: { enabled: element('roll-styles').checked, style: readStyle('roll'), colorsEnabled: element('dice-colors').checked,
       faceColor: element('dice-face-color').value, edgeColor: element('dice-edge-color').value, numberColor: element('dice-number-color').value,
-      resultTextColor: element('dice-result-auto').checked ? null : element('dice-result-color').value },
+      resultTextColor: element('dice-result-auto').checked ? null : element('dice-result-color').value,
+      natural20: readDicePalette('natural20'), natural1: readDicePalette('natural1') },
     appearancePinned: element('pin-appearance').checked, appearancePanelWidth: panelWidth,
+    resizableMap: element('resizable-map').checked,
     linuxBlackMenu: element('black-menu').checked, linuxFloatingAppearance: element('floating-appearance').checked,
   };
 }
@@ -57,6 +71,7 @@ function showSettings(settings) {
   canUndoReset = settings.canUndoReset;
   panelWidth = settings.appearancePanelWidth;
   element('pin-appearance').checked = settings.appearancePinned;
+  element('resizable-map').checked = settings.resizableMap;
   window.settingsLocale.set(settings.locale);
   if (settings.presentation) {
     document.body.classList.toggle('docked', settings.presentation === 'panel');
@@ -79,6 +94,10 @@ function showSettings(settings) {
   element('dice-result-auto').checked = !settings.dice.resultTextColor;
   element('dice-result-color').value = settings.dice.resultTextColor ?? '#ffffff';
   for (const part of ['face','edge','number']) element(`dice-${part}-color`).value = settings.dice[`${part}Color`];
+  for (const result of ['natural20','natural1']) {
+    element(`${result}-colors`).checked = settings.dice[result].enabled;
+    for (const part of ['face','edge','number']) element(`${result}-${part}-color`).value = settings.dice[result][`${part}Color`];
+  }
   for (const role of roles) {
     const style = role === 'player' || role === 'gm' ? settings.messages[role]
       : role === 'context' ? settings.context.style : role === 'context-block' ? settings.context.blocks : role === 'context-bar' ? settings.context.bar : role === 'event' ? settings.events.style : settings.dice.style;
@@ -122,7 +141,7 @@ function updatePreview() {
   const settings = selection();
   window.settingsTheme.apply(settings);
   fieldset.disabled = busy;
-  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance','pin-appearance']) element(id).disabled = busy;
+  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance','pin-appearance','resizable-map']) element(id).disabled = busy;
   element('floating-appearance').disabled = busy || settings.appearancePinned;
   element('undo-reset').hidden = !canUndoReset;
   element('dice-result-auto').disabled = busy;
@@ -165,10 +184,20 @@ function updatePreview() {
       setPreview('--input-min-height',decorated?'40px':'0');
     }
   }
+  for (const result of ['natural20','natural1']) {
+    element(`${result}-colors`).disabled = busy;
+    for (const part of ['face','edge','number']) element(`${result}-${part}-color`).disabled = busy || !settings.dice[result].enabled;
+  }
+  element('dice-preview-result').disabled = busy;
+  const previewValue = element('dice-preview-result').value;
+  const result = previewValue === '20' ? 'natural20' : previewValue === '1' ? 'natural1' : null;
+  const palette = result && settings.dice[result].enabled ? settings.dice[result] : settings.dice.colorsEnabled ? settings.dice : null;
   for (const part of ['face','edge','number']) {
     element(`dice-${part}-color`).disabled = busy || !settings.dice.colorsEnabled;
-    setPreview(`--dice-${part}`, settings.dice.colorsEnabled ? settings.dice[`${part}Color`] : {face:'#203da6',edge:'#d8bb82',number:'#f8c134'}[part]);
+    setPreview(`--dice-${part}`, palette ? palette[`${part}Color`] : {face:'#203da6',edge:'#d8bb82',number:'#f8c134'}[part]);
   }
+  preview.querySelector('.die-number').textContent = previewValue;
+  preview.querySelector('.sample-roll-result').textContent = result ? (previewValue === '20' ? 'Natural 20' : 'Natural 1') : '16 = 16 · 16 Damage';
   for (const button of document.querySelectorAll('[data-dice-preset]')) button.disabled = busy;
   setPreview('--roll-result-fg', settings.dice.resultTextColor ?? 'inherit');
   setPreview('--preview-bg', color); setPreview('--preview-fg', foreground(color));

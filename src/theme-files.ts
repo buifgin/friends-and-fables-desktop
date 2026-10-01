@@ -6,7 +6,7 @@ import { backgroundPreview, storeBackground } from './backgrounds';
 const MAX_THEME_BYTES = 30 * 1024 * 1024;
 export async function exportTheme(file: string, settings: AppearanceSettings, includePicture: boolean, images: string): Promise<void> {
   const preview = includePicture ? await backgroundPreview(images,settings.backgroundImage) : null;
-  const { linuxBlackMenu: _menu, linuxFloatingAppearance: _floating, appearancePinned: _pinned, appearancePanelWidth: _width, ...portable } = settings;
+  const { linuxBlackMenu: _menu, linuxFloatingAppearance: _floating, appearancePinned: _pinned, appearancePanelWidth: _width, resizableMap: _map, ...portable } = settings;
   const theme = { format:'friends-and-fables-desktop-theme', version:1,
     appearance:{...portable,backgroundImage:null,backgroundName:''},
     image:preview ? {name:settings.backgroundName,pngBase64:preview.slice('data:image/png;base64,'.length)} : null };
@@ -33,5 +33,5 @@ export async function importTheme(file: string, current: AppearanceSettings, ima
     selected = {backgroundImage:imported.id,backgroundName:imported.name};
   }
   // A portable theme cannot import filesystem paths or another machine's menu preferences.
-  return {...settings,...selected,linuxBlackMenu:current.linuxBlackMenu,linuxFloatingAppearance:current.linuxFloatingAppearance,appearancePinned:current.appearancePinned,appearancePanelWidth:current.appearancePanelWidth};
+  return {...settings,...selected,linuxBlackMenu:current.linuxBlackMenu,linuxFloatingAppearance:current.linuxFloatingAppearance,appearancePinned:current.appearancePinned,appearancePanelWidth:current.appearancePanelWidth,resizableMap:current.resizableMap};
 }

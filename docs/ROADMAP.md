@@ -71,11 +71,18 @@
 - [x] Build Linux x86_64 AppImage and Windows x64 portable EXE releases.
 - [x] Prepare the AUR binary-package recipe and publishing guide.
 - [ ] Submit the prepared recipe through an AUR maintainer account.
-- [ ] Account for translation model licenses before bundling them.
-- Evaluate how to package and manage the local translation engine on Windows and Arch.
-- Aim for a user setup that does not require Docker.
+- [x] Include pinned Windows translator/model resources and third-party license notices (v0.3.0).
+- [x] Run the included Windows translator automatically without Docker or a separate installation (v0.3.0).
+- Linux translator bundling is deferred at the user's request; retain separate LibreTranslate setup.
 - [x] Prepare GitHub Actions checks, native Windows/Linux builds, packaged-resource tests, and checksums.
-- [ ] Run the workflow on GitHub after pushing it.
+- [x] Run native Linux and Windows CI, including packaged-resource and Windows model checks (v0.3.0).
 - [x] Test v0.1.0 packaged releases on both operating systems using dual boot.
-- [ ] Publish verified builds; v0.2.0 adds the initial local translation prototype.
+- [x] Publish verified Linux/Windows releases through v0.3.0 with checksums.
 - Verify AUR installation on a clean Arch system and maintain package updates.
+
+## 6. Next source build (0.4.0, unpublished)
+
+- [x] Add independent natural-20/natural-1 D20 colors with previews, persistence, localization, reset/undo, and theme sharing.
+- [x] Add campaign map height resizing and top-layer expansion with two-dimensional resizing, keyboard controls, per-campaign sizes, reset, and Escape.
+- [ ] Check both features in a signed-in campaign on Linux and Windows; selectors use the saved website component references.
+- Message commands, host helpers, and music playback remain planned. Private visibility between players requires support from the Friends & Fables service.

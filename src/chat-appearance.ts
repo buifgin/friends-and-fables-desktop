@@ -9,7 +9,8 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   const host = window as unknown as Record<string, { dispose(): void } | undefined>;
   host[key]?.dispose();
   if (!settings.backgroundImage && !settings.messages.enabled && !settings.context.enabled
-    && !settings.events.enabled && !settings.dice.enabled && !settings.dice.colorsEnabled && !settings.dice.resultTextColor) return;
+    && !settings.events.enabled && !settings.dice.enabled && !settings.dice.colorsEnabled && !settings.dice.resultTextColor
+    && !settings.dice.natural20.enabled && !settings.dice.natural1.enabled) return;
 
   let marked = new Map<Element, Set<string>>();
   let next = new Map<Element, Set<string>>();
@@ -122,6 +123,15 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     for (const die of document.querySelectorAll('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) {
       if (inCharacterForm(die)) continue;
       if (settings.dice.colorsEnabled) mark(die, 'data-ff-desktop-die', die.id);
+      // Read the natural face value, never the total or the number printed on a menu icon.
+      // Rolling SVGs have animate-spin; preserve their normal paint until they settle.
+      if (die.id === 'd20' && die.closest('[id^="event-message-card-"]')
+        && die.closest('[class~="from-slate-900/95"][class~="to-slate-950/95"]')
+        && !die.closest('[class~="animate-spin"]')) {
+        const value = die.querySelector('text')?.textContent?.trim();
+        const result = value === '20' ? 'natural20' : value === '1' ? 'natural1' : null;
+        if (result && settings.dice[result].enabled) mark(die, 'data-ff-desktop-critical-die', result);
+      }
       if (settings.dice.enabled || settings.dice.resultTextColor) {
         const roll = die.closest('[class~="from-slate-900/95"][class~="to-slate-950/95"]');
         if (roll) {
@@ -151,9 +161,11 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     reconcile();
   }
   function schedule(): void { if (!frame) frame = requestAnimationFrame(scan); }
-  const observer = new MutationObserver(schedule);
+  const observer = new MutationObserver(records => {
+    if (records.some(record => record.type !== 'characterData' || record.target.parentElement?.closest('svg[id="d20"]'))) schedule();
+  });
   observer.observe(document.documentElement, {
-    childList: true, subtree: true, attributes: true,
+    childList: true, subtree: true, attributes: true, characterData: settings.dice.natural20.enabled || settings.dice.natural1.enabled,
     attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state'],
   });
   window.addEventListener('popstate', schedule);
@@ -254,8 +266,7 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
     css += `[data-ff-desktop-roll-text], [data-ff-desktop-roll-text] :is(div,span,p,strong,b,em) {
       color: ${settings.dice.resultTextColor} !important; }`;
   }
-  if (settings.dice.colorsEnabled) {
-    const { faceColor: face, edgeColor: edge, numberColor: number } = settings.dice;
+  {
     // Keep each die's geometry and animation. These classes are its SVG paint layers.
     const layers: Record<string, [string[], string[], string[], string[], string[]]> = {
       d20: [['cls-2'], ['cls-4'], ['cls-3'], ['cls-5','cls-6','cls-7'], ['cls-1']],
@@ -265,12 +276,19 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
       d10: [['d10-cls-1'], ['d10-cls-3'], ['d10-cls-2'], ['d10-cls-4'], []],
       d12: [['d12-cls-1'], ['d12-cls-3'], ['d12-cls-2'], ['d12-cls-4'], []],
     };
-    for (const [die, groups] of Object.entries(layers)) {
+    function paint(target: string, die: string, palette: { faceColor: string; edgeColor: string; numberColor: string }): void {
+      const { faceColor: face, edgeColor: edge, numberColor: number } = palette;
       const paints = [`color-mix(in srgb, ${face} 65%, black)`, face, `color-mix(in srgb, ${face} 85%, white)`, edge, edge];
-      groups.forEach((classes, index) => {
-        for (const name of classes) css += `[data-ff-desktop-die="${die}"] .${name} { ${index === 4 ? 'stroke' : 'fill'}: ${paints[index]} !important; }`;
+      layers[die].forEach((classes, index) => {
+        for (const name of classes) css += `${target} .${name} { ${index === 4 ? 'stroke' : 'fill'}: ${paints[index]} !important; }`;
       });
-      css += `[data-ff-desktop-die="${die}"] text { fill: ${number} !important; }`;
+      css += `${target} text { fill: ${number} !important; }`;
+    }
+    if (settings.dice.colorsEnabled) {
+      for (const die of Object.keys(layers)) paint(`[data-ff-desktop-die="${die}"]`, die, settings.dice);
+    }
+    for (const result of ['natural20','natural1'] as const) {
+      if (settings.dice[result].enabled) paint(`[data-ff-desktop-critical-die="${result}"]`, 'd20', settings.dice[result]);
     }
   }
   return css;

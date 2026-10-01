@@ -369,9 +369,45 @@ async function save(settings, window) {
   await website.webContents.executeJavaScript(`{const die=document.createElementNS('http://www.w3.org/2000/svg','svg');die.id='d4';die.innerHTML='<path class="d4-cls-2"/><text>3</text>';document.getElementById('roll-card').append(die);}`);
   await until(website.webContents, "document.getElementById('d4').dataset.ffDesktopDie === 'd4'");
   assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('#d4 path')).fill"),'rgb(124, 58, 237)');
+  // Critical paint follows the natural D20 face, including React text updates and rolling state.
+  const critical20={enabled:true,faceColor:'#e5b73b',edgeColor:'#fff1b8',numberColor:'#16120a'};
+  const critical1={enabled:true,faceColor:'#a51d2d',edgeColor:'#efb0b8',numberColor:'#ffffff'};
+  await save({...newSettings,dice:{...newSettings.dice,natural20:critical20,natural1:critical1}},settingsWindow);
+  assert.equal(await website.webContents.executeJavaScript("document.getElementById('d20').hasAttribute('data-ff-desktop-critical-die')"),false);
+  await website.webContents.executeJavaScript("document.querySelector('#d20 text').firstChild.data='20'");
+  await until(website.webContents,"document.getElementById('d20').dataset.ffDesktopCriticalDie==='natural20'");
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('#d20 .cls-4')).fill"),'rgb(229, 183, 59)');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('#d20 text')).fill"),'rgb(22, 18, 10)');
+  await website.webContents.executeJavaScript("document.getElementById('d20').classList.add('animate-spin')");
+  await until(website.webContents,"!document.getElementById('d20').hasAttribute('data-ff-desktop-critical-die')");
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('#d20 .cls-4')).fill"),'rgb(124, 58, 237)');
+  await website.webContents.executeJavaScript("document.querySelector('#d20 text').firstChild.data='1';document.getElementById('d20').classList.remove('animate-spin')");
+  await until(website.webContents,"document.getElementById('d20').dataset.ffDesktopCriticalDie==='natural1'");
+  await save({preset:'website',customColor:'#123456',dice:{...newSettings.dice,enabled:false,colorsEnabled:false,resultTextColor:null,natural20:critical20,natural1:critical1}},settingsWindow);
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('#d20 .cls-4')).fill"),'rgb(165, 29, 45)');
+  await website.webContents.executeJavaScript(`{
+    const icon=document.getElementById('d20').cloneNode(true);icon.dataset.test='critical-menu-icon';
+    icon.removeAttribute('data-ff-desktop-critical-die');document.getElementById('roll-breakdown').append(icon);
+    document.querySelector('#d4 text').firstChild.data='20';
+  }`);
+  await until(website.webContents,"document.querySelector('[data-test=critical-menu-icon]')!==null");
+  assert.equal(await website.webContents.executeJavaScript("document.querySelector('[data-test=critical-menu-icon]').hasAttribute('data-ff-desktop-critical-die')"),false);
+  assert.equal(await website.webContents.executeJavaScript("document.getElementById('d4').hasAttribute('data-ff-desktop-critical-die')"),false);
+  await settingsContents.executeJavaScript(`window.appearance.get().then(showSettings).then(()=>{
+    element('dice-preview-result').value='20';updatePreview();
+  })`);
+  assert.equal(await settingsContents.executeJavaScript("getComputedStyle(document.querySelector('.die-face')).fill"),'rgb(229, 183, 59)');
+  assert.equal(await settingsContents.executeJavaScript("document.querySelector('.die-number').textContent"),'20');
+  await settingsContents.executeJavaScript("window.settingsLocale.set('ru')");
+  await until(settingsContents,"document.querySelector('[data-critical=natural20] legend').textContent==='Натуральная 20'");
+  await settingsContents.executeJavaScript("window.settingsLocale.set('en');element('dice-preview-result').value='16';updatePreview()");
+  await website.webContents.executeJavaScript("document.querySelector('[data-test=critical-menu-icon]').remove();document.querySelector('#d20 text').firstChild.data='16';document.querySelector('#d4 text').firstChild.data='3'");
+  await save(newSettings,settingsWindow);
+  assert.equal(await website.webContents.executeJavaScript("document.querySelector('[data-ff-desktop-critical-die]')"),null);
   await assert.rejects(save({...newSettings,backgroundEffects:{...newSettings.backgroundEffects,blur:Infinity}},settingsWindow),/between/);
   await assert.rejects(save({...newSettings,dice:{...newSettings.dice,faceColor:'red; fill:url(secret)'}},settingsWindow),/#RRGGBB/);
   await assert.rejects(save({...newSettings,dice:{...newSettings.dice,resultTextColor:'red; color:blue'}},settingsWindow),/#RRGGBB/);
+  await assert.rejects(save({...newSettings,dice:{...newSettings.dice,natural20:{...critical20,faceColor:'red;fill:url(secret)'}}},settingsWindow),/#RRGGBB/);
   for(const [key,value] of [['secondOpacity',1.1],['secondOpacity',-1],['opacity',1.1],['balance',-1],['balance',101]]){
     await assert.rejects(save({...newSettings,events:{enabled:true,style:{...newSettings.events.style,gradient:{...newSettings.events.style.gradient,[key]:value}}}},settingsWindow),/between/);
   }
@@ -450,7 +486,7 @@ async function save(settings, window) {
     style:{color:'#223344',opacity:1,textColor:'#abcdef',border:{enabled:true,color:'#aa7722',width:1,radius:8,variant:'ornate'}},
     blocks:{color:'#556677',opacity:.6,textColor:'#ffeeaa',border:{enabled:true,color:'#cc9955',width:2,radius:6,variant:'arcane'}},
     bar:{color:'#112233',opacity:.9,textColor:'#eeddcc',border:{enabled:true,color:'#bbbbbb',width:1,radius:10,variant:'runic'}}};
-  const decorated={...newSettings,context:separateContext,dice:{...newSettings.dice,style:{...newSettings.dice.style,border:{enabled:true,color:'#cdaa55',width:2,radius:12,variant:'ornate'}}}};
+  const decorated={...newSettings,context:separateContext,dice:{...newSettings.dice,natural20:critical20,natural1:critical1,style:{...newSettings.dice.style,border:{enabled:true,color:'#cdaa55',width:2,radius:12,variant:'ornate'}}}};
   await save(decorated,settingsWindow);
   const surfaces=await website.webContents.executeJavaScript(`(()=>{
     const get=(id)=>{const e=document.getElementById(id),c=getComputedStyle(e);return {bg:c.backgroundColor,fg:c.color,ornament:getComputedStyle(e,'::after').backgroundImage,events:getComputedStyle(e,'::after').pointerEvents};};
@@ -485,6 +521,7 @@ async function save(settings, window) {
   assert.equal(shared.appearance.appearancePinned,undefined);assert.equal(shared.appearance.appearancePanelWidth,undefined);assert.equal(shared.appearance.linuxBlackMenu,undefined);assert.equal(shared.appearance.linuxFloatingAppearance,undefined);
   assert.equal(shared.appearance.messages.gm.opacity,.35);assert.equal(shared.appearance.messages.gm.gradient.secondOpacity,.35);assert.equal(shared.appearance.messages.gm.gradient.opacity,undefined);assert.equal(shared.appearance.messages.gm.gradient.balance,75);
   assert.equal(shared.appearance.dice.resultTextColor,'#23e2ab');
+  assert.deepEqual(shared.appearance.dice.natural20,critical20);assert.deepEqual(shared.appearance.dice.natural1,critical1);
   dialog.showSaveDialog=async()=>({canceled:false,filePath:themeFile});
   await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(decorated)},false)`);
   assert.equal(JSON.parse(await readFile(themeFile,'utf8')).image,null);

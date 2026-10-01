@@ -10,12 +10,16 @@ export interface AppearanceSettings {
   messages: { enabled: boolean; player: MessageStyle; gm: MessageStyle };
   context: { enabled: boolean; style: MessageStyle; blocks: MessageStyle; bar: MessageStyle };
   events: { enabled: boolean; style: MessageStyle };
-  dice: { enabled: boolean; style: MessageStyle; colorsEnabled: boolean; faceColor: string; edgeColor: string; numberColor: string; resultTextColor: string | null };
+  dice: { enabled: boolean; style: MessageStyle; colorsEnabled: boolean; faceColor: string; edgeColor: string; numberColor: string; resultTextColor: string | null;
+    natural20: DicePalette; natural1: DicePalette };
   appearancePinned: boolean;
   appearancePanelWidth: number;
+  resizableMap: boolean;
   linuxBlackMenu: boolean;
   linuxFloatingAppearance: boolean;
 }
+
+export interface DicePalette { enabled: boolean; faceColor: string; edgeColor: string; numberColor: string }
 
 export interface MessageStyle {
   color: string; opacity: number; textColor: string | null;
@@ -40,9 +44,12 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
     bar: baseStyle('#101010', 1) },
   events: { enabled: false, style: { ...baseStyle('#17172b', 1), gradient: { enabled: true, color: '#000000', angle: 90, secondOpacity: 1, balance: 50 } } },
   dice: { enabled: false, style: baseStyle('#101010', 1), colorsEnabled: false,
-    faceColor: '#7c3aed', edgeColor: '#d8bb82', numberColor: '#ffffff', resultTextColor: null },
+    faceColor: '#7c3aed', edgeColor: '#d8bb82', numberColor: '#ffffff', resultTextColor: null,
+    natural20: { enabled: false, faceColor: '#e5b73b', edgeColor: '#fff1b8', numberColor: '#16120a' },
+    natural1: { enabled: false, faceColor: '#a51d2d', edgeColor: '#efb0b8', numberColor: '#ffffff' } },
   appearancePinned: false,
   appearancePanelWidth: 420,
+  resizableMap: false,
   linuxBlackMenu: true,
   linuxFloatingAppearance: true,
 };
@@ -126,8 +133,13 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   const appearancePinned = input.appearancePinned ?? false;
   if (typeof appearancePinned !== 'boolean') throw new Error('Invalid pinned appearance preference.');
   const appearancePanelWidth = range(input.appearancePanelWidth ?? 420, 320, 900);
+  const resizableMap = flag(input.resizableMap ?? false);
   if (!Number.isInteger(appearancePanelWidth)) throw new Error('Panel width must be a whole number.');
   const resultTextColor = dice.resultTextColor ?? null;
+  function dicePalette(name: 'natural20' | 'natural1'): DicePalette {
+    const palette = record(dice[name] ?? DEFAULT_APPEARANCE.dice[name]);
+    return { enabled: flag(palette.enabled), faceColor: hex(palette.faceColor), edgeColor: hex(palette.edgeColor), numberColor: hex(palette.numberColor) };
+  }
   return {
     preset: preset as ThemePreset, customColor: customColor.toLowerCase(),
     backgroundImage, backgroundName, backgroundFit,
@@ -139,8 +151,8 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     events: { enabled: flag(events.enabled), style: messageStyle(events.style) },
     dice: { enabled: flag(dice.enabled), style: messageStyle(dice.style), colorsEnabled: flag(dice.colorsEnabled),
       faceColor: hex(dice.faceColor), edgeColor: hex(dice.edgeColor), numberColor: hex(dice.numberColor),
-      resultTextColor: resultTextColor === null ? null : hex(resultTextColor) },
-    appearancePinned, appearancePanelWidth, linuxBlackMenu, linuxFloatingAppearance,
+      resultTextColor: resultTextColor === null ? null : hex(resultTextColor), natural20: dicePalette('natural20'), natural1: dicePalette('natural1') },
+    appearancePinned, appearancePanelWidth, resizableMap, linuxBlackMenu, linuxFloatingAppearance,
   };
 }
 

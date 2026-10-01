@@ -134,6 +134,11 @@
             <label class="setting-row">Numbers <input type="color" id="dice-number-color" value="#ffffff"></label>
           </div>
           <p class="help">D4, D6, D8, D10, D12, and D20 keep their original shapes, results, and animations.</p>
+          <h2>Critical dice colors</h2>
+          <p class="help">Use separate face, edge, and number colors for finished D20 rolls of 20 or 1.</p>
+          <fieldset data-critical="natural20"><legend>Natural 20</legend><label class="switch-row"><input type="checkbox" id="natural20-colors"> Customize natural 20</label></fieldset>
+          <fieldset data-critical="natural1"><legend>Natural 1</legend><label class="switch-row"><input type="checkbox" id="natural1-colors"> Customize natural 1</label></fieldset>
+          <label class="setting-row">Preview result <select id="dice-preview-result"><option value="16">Normal roll (16)</option><option value="20">Natural 20</option><option value="1">Natural 1</option></select></label>
         </section>
 
         <section id="sharing-panel" role="tabpanel" hidden>
@@ -144,6 +149,8 @@
           <p class="help">A theme without a picture keeps the recipient’s selected picture. Menu, floating-window, and pinned-panel preferences stay local.</p>
         </section>
         <section id="app-panel" role="tabpanel" hidden>
+          <label class="switch-row"><input type="checkbox" id="resizable-map"> Resizable campaign map</label>
+          <p class="help">Drag the map's lower edge to change its height. Expand it to resize both dimensions. Sizes are remembered for each campaign.</p>
           <label class="switch-row"><input type="checkbox" id="pin-appearance"> Pin Appearance to the main interface</label>
           <p class="help">Add an Appearance button that opens these settings beside the game. Drag the panel’s right edge to resize it, including in fullscreen. Your panel width is remembered.</p>
           <div id="linux-menu-setting"><label class="switch-row"><input type="checkbox" id="black-menu" checked disabled> Black Linux menu bar</label>

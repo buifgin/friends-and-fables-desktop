@@ -1,7 +1,7 @@
 {
   "name": "friends-and-fables-desktop",
   "productName": "Friends & Fables Desktop",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Unofficial Friends & Fables desktop wrapper for Windows and Arch Linux",
   "private": true,
   "main": "dist/main.js",
@@ -18,7 +18,7 @@
     "build": "tsc",
     "check": "tsc --noEmit",
     "pretest": "npm run build",
-    "test": "npm run test:unit && npm run test:appearance && npm run test:translation && npm run test:panel",
+    "test": "npm run test:unit && npm run test:appearance && npm run test:translation && npm run test:panel && npm run test:map",
     "prestart": "npm run build",
     "start": "electron-forge start",
     "prepackage": "npm run build && node scripts/prepare-windows-translator.cjs --if-windows",
@@ -33,6 +33,7 @@
     "test:translation": "node scripts/run-electron-test.cjs tests/translation-smoke.cjs",
     "benchmark:translation": "npm run build && node scripts/translation-benchmark.cjs",
     "test:panel": "node scripts/run-electron-test.cjs tests/appearance-panel-smoke.cjs",
+    "test:map": "node scripts/run-electron-test.cjs tests/campaign-map-smoke.cjs",
     "prepare:translator:windows": "node scripts/prepare-windows-translator.cjs",
     "test:bundled-model": "node tests/bundled-model-smoke.cjs",
     "install:electron": "install-electron"
