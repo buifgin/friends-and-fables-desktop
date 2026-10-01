@@ -144,7 +144,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await until(() => reopened.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await reopened.webContents.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor'), 'rgb(35, 69, 103)');
   const savedWidth = manager.getSettings().appearancePanelWidth;
-  assert(savedWidth > startWidth);
+  assert(savedWidth < startWidth);
   // A fresh theme selected in the standalone editor replaces stale panel state.
   await reopened.webContents.executeJavaScript("document.querySelector('[name=preset][value=black]').checked=true;document.getElementById('pin-appearance').checked=true;document.getElementById('appearance-form').requestSubmit()");
   await until(() => reopened.isDestroyed() && dock.isOpen());
