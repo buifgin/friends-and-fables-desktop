@@ -8,9 +8,12 @@ From the repository root, with Node.js 24 or newer:
 
 ```sh
 npm ci
+npm run install:electron
 npm run check
 npm test
 ```
+
+The pinned Electron version downloads its binary lazily. `install:electron` makes this explicit before Linux sandbox configuration and CI tests; see [Electron installation](https://www.electronjs.org/docs/latest/tutorial/installation#binary-download-step).
 
 Build Linux on Arch or another Linux host:
 

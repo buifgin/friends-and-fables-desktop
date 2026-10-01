@@ -46,6 +46,7 @@ Install Node.js 24 LTS with npm, then from the repository root run:
 
 ```sh
 npm ci
+npm run install:electron
 npm start
 ```
 

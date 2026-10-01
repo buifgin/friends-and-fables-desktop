@@ -34,7 +34,8 @@
     "benchmark:translation": "npm run build && node scripts/translation-benchmark.cjs",
     "test:panel": "electron tests/appearance-panel-smoke.cjs",
     "prepare:translator:windows": "node scripts/prepare-windows-translator.cjs",
-    "test:bundled-model": "node tests/bundled-model-smoke.cjs"
+    "test:bundled-model": "node tests/bundled-model-smoke.cjs",
+    "install:electron": "install-electron"
   },
   "config": {
     "forge": "./forge.config.cjs"
