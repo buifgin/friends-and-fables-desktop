@@ -12,6 +12,7 @@ export class LinuxMenuBar {
   private ready: Promise<void>;
   private active: string | null = null;
   private revision = 0;
+  private locale: 'en' | 'ru' = 'en';
 
   constructor(private window: BrowserWindow, private website: WebContentsView, private menu: Menu, private onInsetChange?: (inset: number) => void) {
     this.overlay = new WebContentsView({ webPreferences: {
@@ -34,6 +35,7 @@ export class LinuxMenuBar {
       return this.open(id, x);
     });
     ipcMain.handle('desktop-menu:close', event => { this.assertTrusted(event); this.close(); });
+    ipcMain.handle('desktop-menu:labels', event => { this.assertTrusted(event); return this.labels(); });
     ipcMain.handle('desktop-menu:choose', (event, index: unknown) => {
       this.assertTrusted(event);
       if (event.sender !== contents || !this.active || !Number.isInteger(index)) throw new Error('Invalid menu command.');
@@ -48,7 +50,7 @@ export class LinuxMenuBar {
     window.on('blur', () => this.close(false));
     window.on('closed', () => {
       this.revision++;
-      for (const method of ['open', 'close', 'choose']) ipcMain.removeHandler(`desktop-menu:${method}`);
+      for (const method of ['open', 'close', 'choose', 'labels']) ipcMain.removeHandler(`desktop-menu:${method}`);
       if (!contents.isDestroyed()) contents.close();
     });
     website.webContents.on('before-input-event', (event, input) => {
@@ -79,6 +81,14 @@ export class LinuxMenuBar {
     this.black = black;
     this.window.setMenu(black ? null : this.menu);
     this.resize();
+    for (const contents of [this.window.webContents, this.overlay.webContents]) if (!contents.isDestroyed()) contents.send('desktop-menu:labels', this.labels());
+  }
+
+  private labels() { return { locale: this.locale, black: this.black, items: this.menu.items.map(item => ({ id: item.id, label: item.label })) }; }
+  setMenu(menu: Menu, locale: 'en' | 'ru'): void {
+    this.close(false); this.menu = menu; this.locale = locale;
+    this.window.setMenu(this.black ? null : menu);
+    for (const contents of [this.window.webContents, this.overlay.webContents]) if (!contents.isDestroyed()) contents.send('desktop-menu:labels', this.labels());
   }
 
   resize(): void {

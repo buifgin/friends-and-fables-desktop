@@ -1,6 +1,17 @@
 const buttons = [...document.querySelectorAll('button[data-menu]')];
 const dropdown = document.getElementById('dropdown');
 let active = null;
+function setLabels(state) {
+  document.documentElement.lang = state.locale;
+  document.querySelector('nav').hidden = !state.black;
+  document.querySelector('nav').setAttribute('aria-label', state.locale === 'ru' ? 'Меню приложения' : 'Application menu');
+  for (const item of state.items) {
+    const button = buttons.find(button => button.dataset.menu === item.id);
+    if (button) button.textContent = item.label;
+  }
+}
+window.desktopMenu.onLabels(setLabels);
+void window.desktopMenu.getLabels().then(setLabels).catch(console.error);
 
 function open(button) {
   void window.desktopMenu.open(button.dataset.menu, button.getBoundingClientRect().left).catch(console.error);

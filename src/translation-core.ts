@@ -1,4 +1,5 @@
 import { DND_GLOSSARY, INTERFACE_GLOSSARY, PROSE_GLOSSARY } from './russian-glossary';
+import { SHARED_INTERFACE_GLOSSARY } from './interface-russian';
 
 export interface TranslationSettings {
   enabled: boolean;
@@ -9,7 +10,7 @@ export interface TranslationSettings {
 }
 export const DEFAULT_TRANSLATION: TranslationSettings = {
   enabled: false, showOriginal: false, translateDescriptions: true, port: 5000,
-  preservedNames: ['Friends & Fables', 'Franz'],
+  preservedNames: ['Friends & Fables'],
 };
 export function validateTranslation(raw: unknown): TranslationSettings {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid translation preferences.');
@@ -39,8 +40,8 @@ export const RUSSIAN_DICTIONARY: Record<string, string> = {
   'ability check':'Проверка характеристики', 'skill check':'Проверка навыка', 'attack roll':'Бросок атаки',
   'death save':'Спасбросок от смерти', 'death saving throw':'Спасбросок от смерти',
   'hit points':'Очки здоровья', 'max hp':'Максимум ОЗ', 'temporary hp':'Временные ОЗ', 'hp':'ОЗ',
-  'armor class':'Класс доспеха', 'ac':'КД', 'initiative':'Инициатива', 'speed':'Скорость',
-  'proficiency bonus':'Бонус мастерства', 'inspiration':'Вдохновение', 'advantage':'Преимущество',
+  'armor class':'Класс брони', 'ac':'КБ', 'initiative':'Инициатива', 'speed':'Скорость',
+  'proficiency bonus':'Бонус умения', 'inspiration':'Вдохновение', 'advantage':'Преимущество',
   'disadvantage':'Помеха', 'short rest':'Короткий отдых', 'long rest':'Продолжительный отдых',
   'damage':'Урон', 'healing':'Лечение', 'success':'Успех', 'failure':'Провал', 'critical hit':'Критическое попадание',
   'combat':'Бой', 'action':'Действие', 'bonus action':'Бонусное действие', 'reaction':'Реакция',
@@ -55,7 +56,7 @@ export const RUSSIAN_DICTIONARY: Record<string, string> = {
   'create':'Создать', 'discover':'Обзор', 'workshop':'Мастерская', 'image studio':'Студия изображений',
   'updates':'Обновления', 'bug report':'Сообщить об ошибке', 'learn more':'Подробнее',
   'recent campaigns':'Недавние кампании', 'new discovery':'Новое в обзоре', 'contest':'Конкурс',
-  'stats':'Характеристики', 'bonuses':'Бонусы', 'level':'Уровень', 'xp':'Опыт', 'pb':'БМ',
+  'stats':'Характеристики', 'bonuses':'Бонусы', 'level':'Уровень', 'xp':'Опыт', 'pb':'БУ',
   'str':'СИЛ', 'dex':'ЛОВ', 'con':'ТЕЛ', 'int':'ИНТ', 'wis':'МДР', 'cha':'ХАР',
   'sorcery points':'Очки чародейства', 'spell slots':'Ячейки заклинаний', 'adventure mode':'Режим приключения',
   'active':'Активные', 'idle':'Неактивные', 'active /':'активных /', 'idle /':'неактивных /',
@@ -79,20 +80,36 @@ export const RUSSIAN_DICTIONARY: Record<string, string> = {
   'stealth':'Скрытность', 'stealth check':'Проверка Скрытности', 'survival':'Выживание', 'survival check':'Проверка Выживания',
   'strength check':'Проверка Силы', 'dexterity check':'Проверка Ловкости', 'constitution check':'Проверка Телосложения',
   'intelligence check':'Проверка Интеллекта', 'wisdom check':'Проверка Мудрости', 'charisma check':'Проверка Харизмы',
+  ...SHARED_INTERFACE_GLOSSARY,
 };
 // Serialized into the renderer along with the dictionary, so these labels and
 // counters never wait for the model. Original whitespace and numbers survive.
 export function localTranslation(text: string, dictionary: Record<string,string>): string | undefined {
   const lookup = (key: string): string | undefined => Object.hasOwn(dictionary,key) ? dictionary[key] : undefined;
-  const normalized = text.replace(/\s+/g,' ').trim().toLowerCase();
+  const normalized = text.replace(/\s+/g,' ').replace(/[’‘]/g,"'").trim().toLowerCase();
   const exact = lookup(normalized) ?? lookup(normalized.replace(/…/g,'...'));
   if (exact !== undefined) return text.slice(0,text.indexOf(text.trim())) + exact + text.slice(text.indexOf(text.trim())+text.trim().length);
   const prefix = text.match(/^(\s*)(.*?)(\s*:\s*[+\-\d][\d\s,./+\-]*\s*)$/);
   if (prefix && lookup(prefix[2].trim().toLowerCase())) return prefix[1]+lookup(prefix[2].trim().toLowerCase())+prefix[3];
   const colon = text.match(/^(\s*)(.*?)(\s*:\s*)$/);
   if (colon && lookup(colon[2].trim().toLowerCase())) return colon[1]+lookup(colon[2].trim().toLowerCase())+colon[3];
+  const decorated = text.match(/^(\s*)(.*?)(\s*\*|\.\.\.|…)(\s*)$/);
+  if (decorated && lookup(decorated[2].trim().toLowerCase())) return decorated[1]+lookup(decorated[2].trim().toLowerCase())+decorated[3]+decorated[4];
   const xp = text.match(/^(\s*)([\d,]+)\s*XP\s+until\s+level\s+(\d+)(\s*)$/i);
-  if (xp) return `${xp[1]}${xp[2]} Опыта до уровня ${xp[3]}${xp[4]}`;
+  if (xp) return `${xp[1]}${xp[2]} опыта до уровня ${xp[3]}${xp[4]}`;
+  const units = text.match(/^(\s*)([\d.,]+(?:\s*\/\s*[\d.,]+)?)\s*(ft\.?|lbs?\.?)(\s*)$/i);
+  if (units) return `${units[1]}${units[2]} ${/^ft/i.test(units[3])?'фт.':'фунт.'}${units[4]}`;
+  const voice = text.match(/^(\s*)([A-Za-z][A-Za-z -]+) \((American|British|Portuguese|Spanish|Japanese|Chinese|Italian|French|Indian) (Male|Female)\)(\s*)$/i);
+  if (voice) {
+    const accents: Record<string,string>={american:'американский',british:'британский',portuguese:'португальский',spanish:'испанский',japanese:'японский',chinese:'китайский',italian:'итальянский',french:'французский',indian:'индийский'};
+    return `${voice[1]}${/^franz$/i.test(voice[2])?'Франц':voice[2]} (${accents[voice[3].toLowerCase()]}, ${/^male$/i.test(voice[4])?'мужской':'женский'} голос)${voice[5]}`;
+  }
+  const credits = text.match(/^(\s*)(\d+)\s+(credits?|turns?)(\s*\/\s*turn)?(\s*)$/i);
+  if (credits) {
+    const n=Number(credits[2]), forms=/^credit/i.test(credits[3])?['кредит','кредита','кредитов']:['ход','хода','ходов'];
+    const word=n%100>=11&&n%100<=14?forms[2]:n%10===1?forms[0]:n%10>=2&&n%10<=4?forms[1]:forms[2];
+    return `${credits[1]}${credits[2]} ${word}${credits[4]?' / ход':''}${credits[5]}`;
+  }
   const counter = text.match(/^(\s*)(\d+)\s+(Topic Researched|Block Created|Memory Saved|Active|Idle)(\s*(?:\/\s*)?)$/i);
   if (counter) return `${counter[1]}${counter[2]} ${dictionary[counter[3].toLowerCase()]}${counter[4]}`;
   const level = text.match(/^(\s*)Level\s+(\d+)(.*)$/i);
@@ -103,8 +120,10 @@ export function localTranslation(text: string, dictionary: Record<string,string>
     if (terms.length) rest=rest.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'),term=>dictionary[term.toLowerCase()]);
     return `${level[1]}Уровень ${level[2]}${rest}`;
   }
-  const bonus = text.match(/^(\s*)Bonuses:\s*([+\-]?\d+)\s+Proficiency(\s*)$/i);
-  if(bonus) return `${bonus[1]}Бонусы: ${bonus[2]} Мастерство${bonus[3]}`;
+  // Dice bonuses are often one composite text node or several fragments.
+  // Translate only known mechanical terms, preserving numbers and punctuation.
+  const bonus = text.match(/^(\s*)(Bonuses:\s*)?((?:[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))(?:\s*,\s*[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*)(\s*)$/i);
+  if(bonus) return bonus[1]+(bonus[2]?bonus[2].replace(/Bonuses/i,lookup('bonuses')!):'')+bonus[3].replace(/[A-Za-z]+/g,term=>lookup(term.toLowerCase())!)+bonus[4];
   const composer = text.match(/^(.*?)\s+says or does(?:\.\.\.|…)(\s*)$/i);
   if(composer) return `${composer[1]} говорит или делает…${composer[2]}`;
   return undefined;
@@ -143,9 +162,9 @@ export function translationPlan(text: string, names: string[] = []): Translation
   // Tool-call dumps are technical records rather than game prose.
   if (/DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(text)) return [{text,translate:false}];
   const local = localTranslation(text,RUSSIAN_DICTIONARY);
-  if (local !== undefined && !names.some(name=>name.toLowerCase()===text.trim().toLowerCase())) return [{text,translate:false,local}];
+  if (local !== undefined && (text.trim().toLowerCase()==='franz' || !names.some(name=>name.toLowerCase()===text.trim().toLowerCase()))) return [{text,translate:false,local}];
   const escape = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const protectedNames = names.filter(Boolean).sort((a, b) => b.length - a.length)
+  const protectedNames = [...new Set([...names,'Franz','Friends & Fables','DeepSeek V4 Flash','Gemini 3.1 Pro','Grok 4.7','GLM-5','Hy-3','Fenix','OpenAI','OpenRouter','Groq'])].filter(Boolean).sort((a, b) => b.length - a.length)
     .map(name => `(?<![\\p{L}\\p{N}_])${escape(name)}(?![\\p{L}\\p{N}_])`);
   const protectedPattern = new RegExp([
     'https?://[^\\s<>]+', '\\b\\d*d(?:4|6|8|10|12|20|100)(?:\\s*[+-]\\s*\\d+)?\\b', ...protectedNames,
@@ -153,7 +172,7 @@ export function translationPlan(text: string, names: string[] = []): Translation
   if (/ZXQ\d+ZXQ/.test(text)) return [{ text, translate: false }];
   const replacements = new Map<string, {original:string; rendered:string}>();
   let masked = text.replace(protectedPattern, value => {
-    const token = `ZXQ${replacements.size}ZXQ`; replacements.set(token, {original:value,rendered:value}); return token;
+    const token = `ZXQ${replacements.size}ZXQ`; replacements.set(token, {original:value,rendered:value.toLowerCase()==='franz'?'Франц':value}); return token;
   });
   const terms = Object.keys(PROSE_GLOSSARY).sort((a,b)=>b.length-a.length).map(escape);
   masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'), value => {

@@ -38,8 +38,13 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     if (!eligible(node)) { if (entry) restore(entry); return; }
     if (entry && (read(node) === entry.rendered || (read(node) === entry.original && !entry.rendered))) return;
     const original = read(node), core = original.trim();
-    const preserved = names.some(name => name.toLocaleLowerCase() === core.toLocaleLowerCase());
-    const translated = preserved ? undefined : local(original,dictionary);
+    const preserved = core.toLowerCase() !== 'franz' && names.some(name => name.toLocaleLowerCase() === core.toLocaleLowerCase());
+    let translated = preserved ? undefined : local(original,dictionary);
+    // "Back" is navigation elsewhere, but a slot on the equipment diagram.
+    if (!preserved && core.toLowerCase() === 'back') {
+      const card = parent(node)?.closest('.border,section,[data-equipment]');
+      if (card && [...card.querySelectorAll('h2,h3,h4,.font-semibold.leading-none.tracking-tight')].some(heading => heading.closest('.border,section,[data-equipment]') === card && /^(Equipped Items|Надетые предметы)$/i.test(heading.textContent?.trim() ?? ''))) translated = original.replace(/Back/i,'Спина');
+    }
     const known = translated !== undefined;
     const prose = descriptions && !/DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(core)
       && (!parent(node)?.closest('h1,h2,h3,h4,h5,h6') || /\b(?:the|to|of|in|at|with|for|and|your)\b/i.test(core))

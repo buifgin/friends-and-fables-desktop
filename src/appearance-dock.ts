@@ -101,13 +101,15 @@ export class AppearanceDock {
   private layout(): void {
     if (this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
+    const pinned = this.manager.getSettings().appearancePinned;
+    // Reserve an app-owned row when there is no Linux toolbar. The launcher
+    // must never cover the website's avatars, navigation, or map controls.
+    const inset = this.inset || (pinned ? 32 : 0);
     const panelWidth = this.opened ? this.clamp(this.width) : 0;
-    this.website.setBounds({ x: panelWidth, y: this.inset, width: Math.max(0, width - panelWidth), height: Math.max(0, height - this.inset) });
-    this.panel?.setBounds({ x: 0, y: this.inset, width: panelWidth || this.clamp(this.width), height: Math.max(0, height - this.inset) });
+    this.website.setBounds({ x: panelWidth, y: inset, width: Math.max(0, width - panelWidth), height: Math.max(0, height - inset) });
+    this.panel?.setBounds({ x: 0, y: inset, width: panelWidth || this.clamp(this.width), height: Math.max(0, height - inset) });
     this.panel?.setVisible(this.opened);
-    // On Linux the button shares the menu bar. On Windows it is a compact
-    // control in the top-right corner, available even with the menu hidden.
-    this.launcher.setBounds({ x: Math.max(0, width - 156), y: this.inset ? 0 : 8, width: 148, height: 32 });
-    this.launcher.setVisible(this.manager.getSettings().appearancePinned);
+    this.launcher.setBounds({ x: Math.max(0, width - 156), y: 0, width: 148, height: 32 });
+    this.launcher.setVisible(pinned);
   }
 }

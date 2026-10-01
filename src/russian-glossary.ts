@@ -1,6 +1,6 @@
 // Term names only; Russian wording is curated for this app. See docs/GLOSSARY.md
 // for SRD attribution and the community terminology references used to check it.
-export const GLOSSARY_VERSION = 1;
+export const GLOSSARY_VERSION = 2;
 export const DND_GLOSSARY: Record<string, string> = {
   'cantrip':'Заговор', 'cantrips':'Заговоры', 'spellcasting':'Использование заклинаний',
   'spellcasting ability':'Базовая характеристика заклинаний', 'spellcasting focus':'Магическая фокусировка',
@@ -224,5 +224,7 @@ export const INTERFACE_GLOSSARY: Record<string,string> = {
 
 // Only specialized, unambiguous terms are forced inside prose. Single words
 // such as "light", "friends", and "charmed" retain their ordinary meanings.
-export const PROSE_GLOSSARY = Object.fromEntries(Object.entries(DND_GLOSSARY)
-  .filter(([english]) => english.includes(' ') || ['cantrip','cantrips','spellcasting','metamagic','prestidigitation','thaumaturgy','counterspell'].includes(english)));
+export const PROSE_GLOSSARY: Record<string, string> = { ...Object.fromEntries(Object.entries(DND_GLOSSARY)
+  .filter(([english]) => english.includes(' ') || ['cantrip','cantrips','spellcasting','metamagic','prestidigitation','thaumaturgy','counterspell'].includes(english))),
+  'armor class':'Класс брони', 'proficiency bonus':'Бонус умения',
+};

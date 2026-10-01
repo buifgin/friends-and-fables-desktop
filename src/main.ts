@@ -6,6 +6,7 @@ import { configureFullscreenShortcuts } from './window-shortcuts';
 import { AppearanceManager, registerAppearanceScheme } from './appearance';
 import { LinuxMenuBar, MENU_URL } from './linux-menu';
 import { TranslationManager } from './translation';
+import { appText, localizeMenu } from './app-menu-locale';
 
 const APP_NAME = 'Friends & Fables Desktop';
 const WEBSITE_URL = 'https://play.fables.gg/';
@@ -79,9 +80,9 @@ async function loadWebsite(window: BrowserWindow, contents: WebContents): Promis
     const { response } = await dialog.showMessageBox(window, {
       type: 'error',
       title: APP_NAME,
-      message: 'Friends & Fables could not be opened.',
-      detail: 'Check your internet connection and try again.',
-      buttons: ['Retry', 'Close'],
+      message: appText('Friends & Fables could not be opened.', appearance.getLocale()),
+      detail: appText('Check your internet connection and try again.', appearance.getLocale()),
+      buttons: ['Retry', 'Close'].map(label => appText(label, appearance.getLocale())),
       defaultId: 0,
       cancelId: 1,
     });
@@ -119,12 +120,14 @@ function createWindow(): void {
   const dock = appearance.attachMain(mainWindow, view);
   if (linux) {
     linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => dock.setInset(inset));
+    linuxMenu.setMenu(applicationMenu, appearance.getLocale());
     linuxMenu.setBlack(appearance.getSettings().linuxBlackMenu);
   }
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
   mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   configureFullscreenShortcuts(mainWindow.webContents, mainWindow);
+  if (!linux) mainWindow.webContents.on('did-finish-load', () => { void mainWindow?.webContents.insertCSS('html,body{margin:0;background:#000;}'); });
   void mainWindow.loadURL(linux ? MENU_URL : 'about:blank').catch(console.error);
   const contents = websiteContents;
   configureWebsiteContents(contents, mainWindow);
@@ -155,7 +158,7 @@ function createMenu(): void {
     { label: 'Paste', accelerator: 'CmdOrCtrl+V', click: () => targetContents()?.paste() },
     { label: 'Select All', accelerator: 'CmdOrCtrl+A', click: () => targetContents()?.selectAll() },
   ];
-  applicationMenu = Menu.buildFromTemplate([
+  applicationMenu = Menu.buildFromTemplate(localizeMenu([
     {
       id: 'file', label: 'File',
       submenu: [
@@ -175,7 +178,7 @@ function createMenu(): void {
         },
         { type: 'separator' },
         { id: 'close-window', label: 'Close Window', accelerator: 'CmdOrCtrl+W', click: () => BrowserWindow.getFocusedWindow()?.close() },
-        { id: 'quit', role: 'quit' },
+        { id: 'quit', label: 'Quit', role: 'quit' },
       ],
     },
     { id: 'edit', label: 'Edit', submenu: editItems },
@@ -216,9 +219,10 @@ function createMenu(): void {
           click: () => { if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen()); } },
       ],
     },
-    { id: 'window', label: 'Window', submenu: [{ role: 'minimize' }, { role: 'close' }] },
-  ]);
+    { id: 'window', label: 'Window', submenu: [{ label: 'Minimize', role: 'minimize' }, { label: 'Close', role: 'close' }] },
+  ], appearance.getLocale()));
   Menu.setApplicationMenu(applicationMenu);
+  linuxMenu?.setMenu(applicationMenu, appearance.getLocale());
 }
 
 if (!app.requestSingleInstanceLock()) {
@@ -253,9 +257,7 @@ if (!app.requestSingleInstanceLock()) {
     createMenu();
     translation.onChange = settings => {
       appearance.setLocale(settings.enabled && !settings.showOriginal ? 'ru' : 'en');
-      applicationMenu.getMenuItemById('russian-translation')!.checked = settings.enabled;
-      applicationMenu.getMenuItemById('original-text')!.checked = settings.showOriginal;
-      applicationMenu.getMenuItemById('original-text')!.enabled = settings.enabled;
+      createMenu();
     };
     createWindow();
   }).catch((error) => {

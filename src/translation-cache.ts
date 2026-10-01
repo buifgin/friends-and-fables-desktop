@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { GLOSSARY_VERSION } from './russian-glossary';
 
 export class TranslationCache {
   private entries = new Map<string, string>();
@@ -8,7 +9,7 @@ export class TranslationCache {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private writes: Promise<void> = Promise.resolve();
   constructor(private file: string) {}
-  private key(text: string): string { return createHash('sha256').update('en-ru:argos:3:glossary1\n' + text).digest('hex'); }
+  private key(text: string): string { return createHash('sha256').update(`en-ru:argos:3:glossary${GLOSSARY_VERSION}\n` + text).digest('hex'); }
   async initialize(): Promise<void> {
     try {
       if ((await stat(this.file)).size > 8 * 1024 * 1024) return;

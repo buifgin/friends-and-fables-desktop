@@ -7,6 +7,7 @@ const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..');
 const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance'));
 const { TranslationManager } = require(path.join(appRoot, 'dist/translation'));
 const { floatSettingsWindow } = require(path.join(appRoot, 'dist/floating-appearance'));
+const {localizeMenu}=require(path.join(appRoot,'dist/app-menu-locale'));
 const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/linux-menu'));
 registerAppearanceScheme(); app.on('window-all-closed', () => {});
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -18,7 +19,10 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   profile = process.env.FABLES_TEST_PROFILE_DIR || await mkdtemp(path.join(os.tmpdir(), 'fables-panel-test-')); app.setPath('userData', profile); await app.whenReady();
   const manager = new AppearanceManager(); await manager.initialize();
   translation = new TranslationManager(); await translation.initialize();
-  translation.onChange = settings => manager.setLocale(settings.enabled && !settings.showOriginal ? 'ru' : 'en');
+  let bar; let chosen=0;
+  const template=['File','Edit','Appearance','Translation','View','Window'].map(label=>({id:label.toLowerCase(),label,submenu:[{label:label==='Appearance'?'Customize Appearance…':'Copy',click(){chosen++;}}]}));
+  template[3].submenu=[{id:'translate-ru',label:'Translate into Russian',type:'checkbox',checked:false}];
+  translation.onChange = settings => {const locale=settings.enabled&&!settings.showOriginal?'ru':'en';manager.setLocale(locale);const translated=localizeMenu(template,locale);translated[3].submenu[0].checked=settings.enabled;bar?.setMenu(Menu.buildFromTemplate(translated),locale);};
   const host = new BrowserWindow({ show: false, type: process.platform==='linux'?'dialog':undefined, width: 1100, height: 820, webPreferences: {
     partition: 'fables-appearance', preload: path.join(appRoot, 'dist/menu-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
   } });
@@ -27,8 +31,8 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const website = new WebContentsView({ webPreferences: { session: websiteSession, sandbox: true, contextIsolation: true, nodeIntegration: false } });
   host.contentView.addChildView(website); manager.attach(website.webContents);
   const dock = manager.attachMain(host, website);
-  const menu = Menu.buildFromTemplate(['file','edit','appearance','translation','view','window'].map(id => ({ id, label: id, submenu: [{ label: 'One option', click() {} }] })));
-  const bar = new LinuxMenuBar(host, website, menu, inset => dock.setInset(inset)); bar.setBlack(true);
+  const menu = Menu.buildFromTemplate(template);
+  bar = new LinuxMenuBar(host, website, menu, inset => dock.setInset(inset)); bar.setBlack(true);
   await host.loadURL(MENU_URL); await website.webContents.loadURL('https://play.fables.gg/');
   const separate = await manager.open(host); separate.hide();
   await until(() => separate.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
@@ -60,7 +64,9 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(panel.getBounds().width, 460); assert.equal(website.getBounds().width, 360);
   host.setContentSize(1100, 820); await until(() => host.getContentSize()[0] === 1100); assert.equal(panel.getBounds().width, 540);
   // The shared layout also works without the Linux app bar (Windows/fullscreen).
-  dock.setInset(0); assert.equal(panel.getBounds().y, 0); assert.equal(website.getBounds().y, 0);
+  dock.setInset(0); assert.equal(panel.getBounds().y, 32); assert.equal(website.getBounds().y, 32);
+  const launcher=dock.launcher.getBounds();assert(launcher.y+launcher.height<=website.getBounds().y,'The Windows launcher must not cover website controls.');
+  dock.hide();assert.equal(website.getBounds().y,32);await dock.open();assert.equal(panel.getBounds().y,32);
   dock.setInset(32);
   host.show(); host.focus(); host.setFullScreen(true); await until(() => host.isFullScreen()); await sleep(150);
   assert.equal(panel.getBounds().height, host.getContentSize()[1] - 32);
@@ -88,6 +94,17 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await contents.executeJavaScript("document.getElementById('custom-hex').value='#abcdef'");
   await translation.save({ ...translation.getSettings(), enabled: true, translateDescriptions: false });
   await until(() => contents.executeJavaScript('document.documentElement.lang === "ru"'));
+  await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=appearance]').textContent==='Оформление'"));
+  assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Оформление','Перевод','Вид','Окно']);
+  await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
+  await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Настроить оформление…'"));
+  assert(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').scrollHeight<=document.getElementById('dropdown').clientHeight"),'One-option dropdown must fit without scrolling.');
+  await bar.overlay.webContents.executeJavaScript("window.desktopMenu.choose(0)");assert.equal(chosen,1,'Localized callbacks retain their actions.');
+  await host.webContents.executeJavaScript("window.desktopMenu.open('translation',100)");
+  await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='✓ Переводить на русский'"));
+  await host.webContents.executeJavaScript('window.desktopMenu.close()');
+  bar.setBlack(false);await until(()=>host.webContents.executeJavaScript("document.querySelector('nav').hidden"));assert.equal(website.getBounds().y,32);assert.equal(bar.menu.items[0].label,'Файл');
+  bar.setBlack(true);
   assert.equal(await contents.executeJavaScript("document.querySelector('h1').textContent"), 'Настройте под себя.');
   assert.equal(await contents.executeJavaScript("document.getElementById('close-panel').textContent"), 'Закрыть панель');
   assert.equal(await contents.executeJavaScript("document.getElementById('custom-hex').value"), '#abcdef');
@@ -104,6 +121,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await translation.save({ ...translation.getSettings(), showOriginal: true });
   await until(() => contents.executeJavaScript('document.documentElement.lang === "en"'));
   assert.equal(await contents.executeJavaScript("document.querySelector('h1').textContent"), 'Make it yours.');
+  await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=appearance]').textContent==='Appearance'"));
   // Light and custom presets update the entire editor as well as the game.
   await contents.executeJavaScript("document.querySelector('[name=preset][value=light]').checked=true;document.getElementById('appearance-form').dispatchEvent(new Event('input',{bubbles:true}))");
   await until(() => contents.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor === "rgb(245, 245, 245)"'));
@@ -139,11 +157,11 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
       assert(own);execFileSync('grim',['-g',`${own.at[0]},${own.at[1]} ${own.size[0]}x${own.size[1]}`,process.env.FABLES_PANEL_SCREENSHOT]);
     }
   }
-  host.setFullScreen(false); await until(() => !host.isFullScreen());
+  host.setFullScreen(false); await until(() => !host.isFullScreen());bar.setBlack(false);
   // Disabling the pin restores the standalone editor and full game width.
   await contents.executeJavaScript("document.getElementById('pin-appearance').checked=false;document.getElementById('appearance-form').requestSubmit()");
   await until(() => !manager.getSettings().appearancePinned && BrowserWindow.getAllWindows().length === 2);
-  assert.equal(dock.isOpen(), false); assert.equal(website.getBounds().x, 0);
+  assert.equal(dock.isOpen(), false); assert.equal(website.getBounds().x, 0);assert.equal(website.getBounds().y,0,'Unpinning restores the full website height without a custom menu row.');
   const reopened = manager.window;
   await until(() => reopened.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await reopened.webContents.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor'), 'rgb(35, 69, 103)');
@@ -167,10 +185,10 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const freshHost=new BrowserWindow({show:false,width:1100,height:820,webPreferences:{partition:'fables-appearance',sandbox:true,contextIsolation:true,nodeIntegration:false}});
   const freshSite=new WebContentsView({webPreferences:{session:websiteSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});freshHost.contentView.addChildView(freshSite);
   const freshDock=restarted.attachMain(freshHost,freshSite);await freshDock.ready;
-  assert.equal(freshDock.isOpen(),false);assert.equal(freshSite.getBounds().x,0);
+  assert.equal(freshDock.isOpen(),false);assert.equal(freshSite.getBounds().x,0);assert.equal(freshSite.getBounds().y,32);assert(freshDock.launcher.getBounds().height<=freshSite.getBounds().y);
   await freshDock.launcher.webContents.executeJavaScript("document.getElementById('appearance-button').click()");await until(()=>freshDock.isOpen());
   assert.equal(freshDock.panel.getBounds().width,savedWidth);assert.equal(BrowserWindow.getAllWindows().length,1);
   await until(()=>freshDock.panel.webContents.executeJavaScript('document.documentElement.lang==="ru"'));
-  console.log('PASS: themed settings, built-in Russian labels, preserved drafts, pin/unpin, button, mouse/keyboard resizing, persisted width, viewport clamping, fullscreen, menu overlay ordering, website isolation, and restricted editor IPC.');
+  console.log('PASS: themed settings, built-in Russian labels, preserved drafts, pin/unpin, button, mouse/keyboard resizing, persisted width, viewport clamping, fullscreen, localized menus/actions/checkboxes, native menu mode, non-overlapping Windows launcher, menu overlay ordering, website isolation, and restricted editor IPC.');
 })().then(async () => { clearTimeout(timer); await translation?.shutdown(); for (const window of BrowserWindow.getAllWindows()) window.destroy(); if (profile && !process.env.FABLES_TEST_PROFILE_DIR) await rm(profile, { recursive: true, force: true }); app.exit(0); })
   .catch(async error => { console.error(error); clearTimeout(timer); await translation?.shutdown(); for (const window of BrowserWindow.getAllWindows()) window.destroy(); if (profile && !process.env.FABLES_TEST_PROFILE_DIR) await rm(profile, { recursive: true, force: true }); app.exit(1); });

@@ -1,43 +1,54 @@
 type RichNode = { type: string; text?: string; marks?: { type: string; [key: string]: unknown }[]; content?: RichNode[]; [key: string]: unknown };
-type FormattedCommand = { command: 'me' | 'gm'; document: RichNode | null };
+type FormattedCommand = { command: 'me' | 'gm'; document: RichNode | null; lineEnd?: number };
 
 // Operate on editor JSON so literal text, mentions, links, and formatting remain structured.
-export function formatMessageCommand(document: RichNode): FormattedCommand | null {
-  const first = document?.content?.[0]?.content?.[0];
-  if (document?.type !== 'doc' || document.content?.[0]?.type !== 'paragraph' || first?.type !== 'text' || typeof first.text !== 'string') return null;
-  const prefix = /^\/(me|gm)(?:[ \t]+|$)/i.exec(first.text);
-  if (!prefix) return null;
-  const command = prefix[1].toLowerCase() as 'me' | 'gm';
+export function formatMessageCommand(document: RichNode, position?: number): FormattedCommand | null {
+  if (document?.type !== 'doc') return null;
   const copy: RichNode = JSON.parse(JSON.stringify(document));
-  const paragraph = copy.content![0];
-  paragraph.content![0].text = paragraph.content![0].text!.slice(prefix[0].length);
-  if (!paragraph.content![0].text) paragraph.content!.shift();
-  if (!paragraph.content!.length && copy.content!.length > 1) copy.content!.shift();
-  function hasBody(node: RichNode): boolean {
-    return (node.type === 'text' && !!node.text?.trim()) || node.type === 'mention' || !!node.content?.some(hasBody);
-  }
-  if (!hasBody(copy)) return { command, document: null };
-  if (command === 'me') {
-    function italic(node: RichNode): void {
-      if (node.type === 'codeBlock') return;
-      if (node.type === 'text' && !node.marks?.some(mark => mark.type === 'code' || mark.type === 'italic')) node.marks = [...(node.marks ?? []), { type: 'italic' }];
-      node.content?.forEach(italic);
+  let command: 'me' | 'gm' | undefined, changed = false, lineEnd: number | undefined;
+  const size = (node: RichNode): number => node.type === 'text' ? node.text?.length ?? 0 : node.content || ['paragraph','heading','codeBlock','blockquote','bulletList','orderedList','listItem'].includes(node.type) ? 2 + (node.content ?? []).reduce((sum, child) => sum + size(child), 0) : 1;
+  function visit(node: RichNode, start: number): void {
+    if (node.type === 'codeBlock') return;
+    if (node.type === 'paragraph') {
+      const output: RichNode[] = []; let line: RichNode[] = [], originalStart = start + 1, outputStart = start + 1;
+      function finish(): void {
+        const length = line.reduce((sum, child) => sum + size(child), 0);
+        let leading = '';
+        for (const child of line) { if (child.type !== 'text') break; leading += child.text ?? ''; }
+        const prefix = /^\/(me|gm)(?:[ \t]+|$)/i.exec(leading);
+        if (prefix && (position === undefined || position >= originalStart && position <= originalStart + length)) {
+          command ??= prefix[1].toLowerCase() as 'me' | 'gm';
+          const body = line.map(child => child.type === 'text' ? child.text : child.type === 'hardBreak' ? '' : 'x').join('').slice(prefix[0].length);
+          if (body.trim()) {
+            let remaining = prefix[0].length;
+            while (remaining > 0 && line[0]?.type === 'text') {
+              const first = line[0], removed = Math.min(remaining, first.text!.length);
+              first.text = first.text!.slice(removed); remaining -= removed; if (!first.text) line.shift();
+            }
+            if (prefix[1].toLowerCase() === 'me') {
+              for (const child of line) if (child.type === 'text' && !child.marks?.some(mark => mark.type === 'code' || mark.type === 'italic')) child.marks = [...(child.marks ?? []), { type: 'italic' }];
+            } else { line.unshift({ type: 'text', text: '#' }); line.push({ type: 'text', text: '#' }); }
+            changed = true; lineEnd = outputStart + line.reduce((sum, child) => sum + size(child), 0);
+          }
+        }
+        output.push(...line); outputStart += line.reduce((sum, child) => sum + size(child), 0) + 1; originalStart += length + 1; line = [];
+      }
+      for (const child of node.content ?? []) { if (child.type === 'hardBreak') { finish(); output.push(child); } else line.push(child); }
+      finish(); node.content = output;
+      return;
     }
-    italic(copy);
-  } else {
-    let start = copy.content![0], end = copy.content!.at(-1)!;
-    if (start.type !== 'paragraph') { start = { type: 'paragraph', content: [] }; copy.content!.unshift(start); }
-    if (end.type !== 'paragraph') { end = { type: 'paragraph', content: [] }; copy.content!.push(end); }
-    (start.content ??= []).unshift({ type: 'text', text: '#' });
-    (end.content ??= []).push({ type: 'text', text: '#' });
+    let offset = node.type === 'doc' ? 0 : start + 1;
+    for (const child of node.content ?? []) { const originalSize = size(child); visit(child, offset); offset += originalSize; }
   }
-  return { command, document: copy };
+  visit(copy, 0);
+  return command ? { command, document: changed ? copy : null, lineEnd } : null;
 }
 
 // Serialized into the ordinary website renderer, without a preload or application IPC.
 export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', format: typeof formatMessageCommand): void {
-  type Editor = { isDestroyed?: boolean; view: { dom: HTMLElement }; getJSON(): RichNode;
-    commands: { setContent(value: RichNode, options: { emitUpdate: boolean }): boolean; focus(position: 'end'): boolean } };
+  type Editor = { isDestroyed?: boolean; view: { dom: HTMLElement }; state: { selection: { from: number } }; getJSON(): RichNode;
+    commands: { setContent(value: RichNode, options: { emitUpdate: boolean }): boolean; focus(position?: 'end'): boolean;
+      setTextSelection(position: number): boolean; splitBlock(options: { keepMarks: boolean }): boolean; unsetAllMarks(): boolean } };
   type Entry = { root: HTMLElement; editorElement: HTMLElement; controls: HTMLElement; button: HTMLButtonElement; status: HTMLElement; note: 'ready' | 'empty' | 'unavailable' | null; blockEnter: boolean };
   const key = '__friendsFablesDesktopCommands';
   const host = window as unknown as Record<string, { dispose(): void; setLocale(value: 'en' | 'ru'): void } | undefined>;
@@ -59,27 +70,32 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     return null;
   }
   function hasCommand(entry: Entry): boolean {
-    const first = editorFor(entry.editorElement)?.getJSON()?.content?.[0]?.content?.[0];
-    return first?.type === 'text' && typeof first.text === 'string' && /^\/(me|gm)(?:[ \t]+|$)/i.test(first.text);
+    const editor = editorFor(entry.editorElement);
+    return !!editor && !!format(editor.getJSON());
   }
   function render(entry: Entry): void {
     const active = hasCommand(entry);
     entry.button.textContent = text('Format command', 'Оформить команду');
     entry.button.hidden = !active;
-    entry.status.textContent = entry.note === 'ready' ? text('Formatted. Review and send normally.', 'Текст оформлен. Проверьте его и отправьте обычным способом.')
+    entry.status.textContent = entry.note === 'ready' ? text('Line formatted. Continue writing or send normally.', 'Строка оформлена. Продолжайте писать или отправьте сообщение обычным способом.')
       : entry.note === 'empty' ? text('Add text after the command.', 'Добавьте текст после команды.')
       : entry.note === 'unavailable' ? text('Could not format this draft. Use the editor controls.', 'Не удалось оформить текст. Используйте кнопки редактора.') : text('/me: italic text · /gm: #text#', '/me: курсив · /gm: #текст#');
     entry.controls.hidden = !active && !entry.note;
   }
-  function prepare(entry: Entry): boolean {
+  function prepare(entry: Entry, newline = false): boolean {
     const editor = editorFor(entry.editorElement);
     if (!editor) return false;
-    const result = format(editor.getJSON());
+    const result = format(editor.getJSON(), newline ? editor.state.selection.from : undefined);
     if (!result) return false;
     if (!result.document) entry.note = 'empty';
     else {
       try {
-        if (editor.commands.setContent(result.document, { emitUpdate: true })) { editor.commands.focus('end'); entry.note = 'ready'; }
+        if (editor.commands.setContent(result.document, { emitUpdate: true })) {
+          if (newline && result.lineEnd !== undefined) {
+            editor.commands.setTextSelection(result.lineEnd); editor.commands.splitBlock({ keepMarks: false }); editor.commands.unsetAllMarks(); editor.commands.focus();
+          } else editor.commands.focus('end');
+          entry.note = 'ready';
+        }
         else entry.note = 'unavailable';
       } catch { entry.note = 'unavailable'; }
     }
@@ -122,10 +138,10 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
   }
   function onInput(event: Event): void { const entry = entryFor(event.target); if (entry && entry.editorElement.contains(event.target as Node)) { entry.note = null; render(entry); } }
   function onKeyDown(event: KeyboardEvent): void {
-    if (event.key !== 'Enter' || event.shiftKey || event.isComposing) return;
+    if (event.key !== 'Enter' || event.isComposing) return;
     const entry = entryFor(event.target);
     if (!entry || !entry.editorElement.contains(event.target as Node)) return;
-    if (entry.blockEnter || prepare(entry)) { entry.blockEnter = true; event.preventDefault(); event.stopImmediatePropagation(); }
+    if (entry.blockEnter || prepare(entry, !event.ctrlKey && !event.metaKey) || prepare(entry)) { entry.blockEnter = true; event.preventDefault(); event.stopImmediatePropagation(); }
   }
   function onKeyUp(event: KeyboardEvent): void { if (event.key === 'Enter') for (const entry of entries.values()) entry.blockEnter = false; }
   function onClick(event: MouseEvent): void {

@@ -1,5 +1,6 @@
 :root { color-scheme: dark; background: #000; color: #eee; font-family: system-ui, sans-serif; }
 body { margin: 0; background: #000; }
+[hidden] { display: none !important; }
 nav { height: 32px; display: flex; align-items: stretch; background: #000; border-bottom: 1px solid #222; }
 button { background: #000; color: #eee; font: 13px system-ui, sans-serif; border: 0; padding: 0 10px; cursor: pointer; }
 button:hover, button:focus-visible { background: #252525; outline: none; }

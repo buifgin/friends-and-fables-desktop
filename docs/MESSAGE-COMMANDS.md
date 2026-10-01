@@ -2,10 +2,11 @@
 
 In Appearance → App, enable **Enable /me and /gm commands** and apply. The setting starts disabled and stays local when importing or exporting themes.
 
-- `/me I look closer.` prepares italic text in the campaign composer.
-- `/gm Keep the party together.` prepares `#Keep the party together.#`.
-- **Format command**, Enter, or the first click on Send prepares a recognized command for review. After reviewing it, send through the website normally. Holding Enter during preparation cannot send the prepared draft.
-- Shift+Enter keeps the editor's normal newline behavior. Empty commands ask for text. Other commands and ordinary messages use the website's normal behavior.
+- `/me I look closer.` makes only its own line italic in the campaign composer.
+- `/gm Keep the party together.` wraps only its own line as `#Keep the party together.#`.
+- Enter or Shift+Enter formats the command on the current line and starts a new paragraph with no inherited formatting. Other lines stay independent, including logical lines separated by a soft break.
+- **Format command**, Ctrl+Enter, or the first click on Send prepares each command line independently for review. Holding Enter during preparation cannot send the prepared draft.
+- Empty commands ask for text. Other commands and ordinary messages use the website's normal behavior. If another line still contains an unformatted command, Enter prepares it before allowing a send.
 
 Formatting is part of the draft's rich text, so it is included in the message when you send it. Mentions, links, Russian text, and literal characters are preserved. `/me` leaves code formatting intact. Character forms, dialogs, and context-block editors receive no command handler.
 

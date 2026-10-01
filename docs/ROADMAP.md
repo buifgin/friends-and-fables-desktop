@@ -80,10 +80,13 @@
 - [x] Publish verified Linux/Windows releases through v0.3.0 with checksums.
 - Verify AUR installation on a clean Arch system and maintain package updates.
 
-## 6. Next source build (0.4.0, unpublished)
+## 6. Release 0.4.0
 
 - [x] Add independent natural-20/natural-1 D20 colors with previews, persistence, localization, reset/undo, and theme sharing.
 - [x] Add campaign map height resizing and top-layer expansion with two-dimensional resizing, keyboard controls, per-campaign sizes, reset, and Escape.
 - [x] Add opt-in `/me` italic drafts and `/gm` `#text#` drafts, with review before sending, rich-text/mention preservation, and built-in Russian labels.
+- [x] Make commands line-scoped, format on Enter, and start the next paragraph without inherited marks.
+- [x] Expand fixed Russian UI copy, use КБ / Класс брони and Умение consistently, translate app menus and Франц, and preserve official model names.
+- [x] Reserve a toolbar row for the pinned Appearance button on Windows to prevent overlap with game controls.
 - [ ] Check these features in a signed-in campaign on Linux and Windows; selectors use the saved website component references.
 - Host helpers and shared music playback remain planned. Private visibility between players requires support from the Friends & Fables service.

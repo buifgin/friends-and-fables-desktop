@@ -79,6 +79,10 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await until(contents,"document.getElementById('raw').textContent.startsWith('<img')");
  assert.equal(await contents.executeJavaScript("document.querySelector('#raw img')"),null);assert.equal(await contents.executeJavaScript('window.injected'),undefined);
  await contents.executeJavaScript("document.getElementById('save').click()");assert.equal(await contents.executeJavaScript('window.saveClicks'),1);
+
+ const shared={details:'Сведения',race:'Раса',class:'Класс',subclass:'Подкласс',pronouns:'Местоимения',voice:'Голос',faction:'Фракция',none:'Нет',currencies:'Валюты',gold:'Золотые монеты',silver:'Серебряные монеты',copper:'Медные монеты',backstory:'Предыстория',mannerisms:'Манеры',carrying:'Грузоподъёмность',weight:'10 / 150 фунт.',armor:'Доспехи',head:'Голова',neck:'Шея','equipment-back':'Спина',gloves:'Перчатки',belt:'Пояс',ring:'Кольцо',legs:'Ноги',feet:'Ступни',back:'Назад','campaign-settings':'Настройки кампании',pacing:'Темп кампании',adventure:'Приключение',downtime:'Спокойная игра','model-help':'Выберите модель повествования Франца.',model:'Gemini 3.1 Pro',credits:'2 кредита / ход',franz:'Франц',ac:'КБ','armor-class':'Класс брони',pb:'БУ',proficiency:'Умение',bonus:'Бонусы: +2 Мудрость, +2 Умение','bonus-fragment':'+2 Умение',speed:'30 фт.','split-xp':'1,799 опыта до уровня 4','spellbook-open':'Открыть книгу заклинаний','full-inventory':'Открыть полный инвентарь','voice-franz':'Франц (британский, мужской голос)'};
+ for(const [id,text] of Object.entries(shared))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id);
+ assert(!calls.some(value=>/Proficiency|Armor Class|Gold Pieces|Campaign Settings|Franz|Gemini/.test(value)),'Shared GUI and model names must not reach the machine translator.');
  // Opening a Radix-style portal hides the background only from accessibility APIs.
  const beforePopup=calls.length;
  await contents.executeJavaScript(`document.getElementById('page').setAttribute('aria-hidden','true');document.getElementById('page').inert=true;
@@ -89,6 +93,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.querySelector('#story strong').textContent"),'Лес тих.');
  assert.equal(await contents.executeJavaScript("document.querySelector('#portal [role=menuitem]').textContent"),'Только игроки');
  assert.equal(calls.length,beforePopup,'Popup labels should use the glossary immediately.');
+ for(const [id,text] of Object.entries(shared))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id+' while a menu is open');
  // React replacing translated DOM with source gets the memoized display promptly.
  await contents.executeJavaScript("document.querySelector('#story strong').textContent='The forest is quiet.'");
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'",200);
@@ -107,8 +112,10 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  const count=calls.length;await manager.save({...manager.getSettings(),showOriginal:false});
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");assert.equal(calls.length,count,'Previously translated text should use the cache.');
  // A displayed node becoming editable restores the original before editing.
- website.show();website.focus();await sleep(150);
+ website.show();website.focus();await sleep(150);contents.focus();
+ await contents.executeJavaScript("window.editFocus=[];document.addEventListener('focusin',e=>editFocus.push(e.target.id));document.getElementById('save').focus()");
  const beforeEditing=await contents.executeJavaScript("document.getElementById('story').contentEditable='true';document.getElementById('story').focus();document.querySelector('#story strong').textContent");
+ if(beforeEditing!=='The forest is quiet.')console.error('Edit focus diagnostic',await contents.executeJavaScript("({focus:editFocus,active:document.activeElement.id,editable:document.getElementById('story').contentEditable,focused:document.hasFocus(),controller:!!window.__friendsFablesDesktopTranslation})"));
  assert.equal(beforeEditing,'The forest is quiet.','Restore originals synchronously when an editor receives focus.');
  await until(contents,"document.querySelector('#story strong').textContent==='The forest is quiet.'");
  await contents.executeJavaScript("document.getElementById('story').contentEditable='false';document.getElementById('hidden').hidden=false;document.getElementById('late').innerHTML='<p id=stream>The first streaming sentence.</p>'");
@@ -121,6 +128,11 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  mode='offline';await contents.executeJavaScript("document.getElementById('late').insertAdjacentHTML('beforeend','<p id=offline>The unfamiliar cave appears.</p>')");
  await sleep(1300);assert.equal(await contents.executeJavaScript("document.getElementById('offline').textContent"),'The unfamiliar cave appears.');
  assert.equal((await manager.check()).available,false);
+ const offlineCalls=calls.length;await manager.save({...manager.getSettings(),translateDescriptions:false});
+ await contents.executeJavaScript("document.getElementById('bonus').textContent='Bonuses: +3 Wisdom, +2 Proficiency';document.getElementById('portal').innerHTML='<div role=menu><span>Campaign Settings</span><span>Race</span><span>Class</span><span>AC</span></div>'");
+ await until(contents,"document.getElementById('bonus').textContent==='Бонусы: +3 Мудрость, +2 Умение'");
+ assert.equal(await contents.executeJavaScript("document.getElementById('portal').textContent"),'Настройки кампанииРасаКлассКБ');assert.equal(calls.length,offlineCalls);
+ await manager.save({...manager.getSettings(),translateDescriptions:true});
  await website.loadURL('https://play.fables.gg/campaign/play');
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");
  assert.equal(await contents.executeJavaScript("document.getElementById('term').textContent"),'Спасбросок Мудрости');

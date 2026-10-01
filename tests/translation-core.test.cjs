@@ -20,7 +20,7 @@ test('mixed Russian, names, dice, URLs, whitespace, and long prose are preserved
  assert.equal(translationPlan('Привет, мир!').some(part=>part.translate),false);
  assert.equal(translationPlan('Franziska greets Franz.',['Franz'])[0].request,'Franziska greets ZXQ0ZXQ.');
  const part=translationPlan('Franz greets Aria.',['Franz','Aria'])[0];
- assert.equal(renderTranslation(part,'ZXQ0ZXQ приветствует ZXQ1ZXQ.'),'Franz приветствует Aria.');
+ assert.equal(renderTranslation(part,'ZXQ0ZXQ приветствует ZXQ1ZXQ.'),'Франц приветствует Aria.');
  assert.throws(()=>validateTranslationMarkers(part.request,'Приветствие.'),/protected/);
  const url=translationPlan('Visit https://example.com/room.',['Franz'])[0];
  assert.equal(renderTranslation(url,'Посетите ZXQ0ZXQ'),'Посетите https://example.com/room.');
@@ -75,7 +75,7 @@ test('glossary covers screenshot labels and numeric UI immediately, including wh
  const {localTranslation}=require('../dist/translation-core');
  const {DND_GLOSSARY,INTERFACE_GLOSSARY}=require('../dist/russian-glossary');
  assert(Object.keys(DND_GLOSSARY).length>=500);assert(Object.keys(INTERFACE_GLOSSARY).length>=70);
- for(const [source,expected] of Object.entries({'Spellbook':'Книга заклинаний','Memories':'Воспоминания','Class Features':'Умения класса','Spellcasting':'Использование заклинаний','Prone':'Сбитый с ног','Action Surge: 0/1':'Всплеск действий: 0/1','Second Wind:1/2':'Второе дыхание:1/2','Bonuses: +2 Proficiency':'Бонусы: +2 Мастерство','1 Topic Researched':'1 Тема изучена','1,699 XP until level 6':'1,699 Опыта до уровня 6','Level 5 Drow Fighter (Spellblade)':'Уровень 5 Дроу Воин (Клинок заклинаний)','Mira says or does...':'Mira говорит или делает…','  Add Spell\n':'  Добавить заклинание\n'})){
+ for(const [source,expected] of Object.entries({'Spellbook':'Книга заклинаний','Memories':'Воспоминания','Class Features':'Умения класса','Spellcasting':'Использование заклинаний','Prone':'Сбитый с ног','Action Surge: 0/1':'Всплеск действий: 0/1','Second Wind:1/2':'Второе дыхание:1/2','Bonuses: +2 Proficiency':'Бонусы: +2 Умение','1 Topic Researched':'1 Тема изучена','1,699 XP until level 6':'1,699 опыта до уровня 6','Level 5 Drow Fighter (Spellblade)':'Уровень 5 Дроу Воин (Клинок заклинаний)','Mira says or does...':'Mira говорит или делает…','  Add Spell\n':'  Добавить заклинание\n'})){
   assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected);assert.equal(renderTranslation(translationPlan(source)[0]),expected);
  }
  assert.equal(localTranslation('constructor',RUSSIAN_DICTIONARY),undefined);
@@ -91,4 +91,35 @@ test('specialized terms retain canonical Russian names in prose without changing
  assert.equal(renderTranslation(first,`${markers[0]} использует ${markers[1]} и накладывает ${markers[2]}.`),'Mira использует Второе дыхание и накладывает Доспехи мага.');
  assert.equal(translationPlan('Second Wind + Action Surge').map(p=>renderTranslation(p)).join(''),'Второе дыхание + Всплеск действий');
  for(const value of ['< | DSML | invoke name="magic_tool">','{"tool_calls": [{"name":"update_character"}]}'])assert.deepEqual(translationPlan(value),[{text:value,translate:false}]);
+});
+
+
+test('shared GUI and composite dice bonuses use the chosen vocabulary without a model',()=>{
+ const {localTranslation}=require('../dist/translation-core');
+ const samples={
+  'AC':'КБ','Armor Class':'Класс брони','Base AC':'Базовый КБ','PB':'БУ','Proficiency':'Умение','Proficiency Bonus':'Бонус умения',
+  'Bonuses: +2 Wisdom, +2 Proficiency':'Бонусы: +2 Мудрость, +2 Умение','+2 Proficiency':'+2 Умение','+2 Wisdom, +2 Proficiency':'+2 Мудрость, +2 Умение',
+  'Details':'Сведения','Armor':'Доспехи','Open Spellbook':'Открыть книгу заклинаний','Gold Pieces':'Золотые монеты','Backstory':'Предыстория','Mannerisms':'Манеры',
+  'Campaign Settings':'Настройки кампании','Campaign Pacing Mode':'Темп кампании','Select Franz’s narration model.':'Выберите модель повествования Франца.',
+  "Select Franz's narration model.":'Выберите модель повествования Франца.','Franz':'Франц','Gemini 3.1 Pro':'Gemini 3.1 Pro',
+  'XP until level':'опыта до уровня','30ft':'30 фт.','10 / 150 lbs':'10 / 150 фунт.','1 credit/turn':'1 кредит / ход','2 credits/turn':'2 кредита / ход','11 credits/turn':'11 кредитов / ход',
+  'Source *':'Источник *','Select race':'Выберите расу','Select subclass':'Выберите подкласс','STR - Strength':'СИЛ — Сила',
+ };
+ for(const [source,target] of Object.entries(samples)) assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+ assert.equal(renderTranslation(translationPlan('Franz',['Franz'])[0]),'Франц','Old preserved-name preferences must not keep the service NPC in English.');
+ const brand=translationPlan('Franz uses Gemini 3.1 Pro.');
+ assert.equal(brand.map(p=>p.text).join(''),'Franz uses Gemini 3.1 Pro.');
+ assert(!brand.filter(p=>p.translate).some(p=>/Franz|Gemini/.test(p.request)));
+ assert.equal(brand.map(p=>p.translate?renderTranslation(p,'ZXQ0ZXQ использует ZXQ1ZXQ.'):renderTranslation(p)).join(''),'Франц использует Gemini 3.1 Pro.');
+});
+
+test('every authored shared interface string is deterministic, with whitespace and case variants',()=>{
+ const {SHARED_INTERFACE_GLOSSARY}=require('../dist/interface-russian');
+ const {localTranslation}=require('../dist/translation-core');
+ assert(Object.keys(SHARED_INTERFACE_GLOSSARY).length>900);
+ for(const [source,target] of Object.entries(SHARED_INTERFACE_GLOSSARY)){
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+  assert.equal(localTranslation('  '+source.toUpperCase()+'\n',RUSSIAN_DICTIONARY),'  '+target+'\n',source);
+  const plan=translationPlan(source);assert(!plan.some(p=>p.translate),source);assert.equal(plan.map(p=>renderTranslation(p)).join(''),target,source);
+ }
 });
