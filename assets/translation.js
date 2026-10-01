@@ -10,6 +10,11 @@ function show(settings) {
   element('show-original').checked = settings.showOriginal;
   element('descriptions').checked = settings.translateDescriptions;
   element('port').value = settings.port;
+  element('port-row').hidden = settings.bundled;
+  element('service-help').textContent = settings.bundled
+    ? 'The translator and English → Russian model are included. They start automatically on this computer; no separate install or download is needed.'
+    : 'The app connects only to 127.0.0.1 on this computer. Translation starts disabled. The model is a separate service; ordinary app use does not need it.';
+  element('model-help').textContent = 'Interface labels and D&D terms use the built-in glossary immediately. Longer text uses the local model and cache. Turn descriptions off for glossary-only translation.';
   element('preserved-names').value = settings.preservedNames.join('\n');
   element('cache-count').textContent = `${settings.cacheEntries} cached translation fragments.`;
   element('translation-options').disabled = false;
@@ -36,11 +41,13 @@ element('enabled').addEventListener('change', () => {
 form.addEventListener('submit', async event => {
   event.preventDefault(); if (busy) return;
   busy = true; element('apply').disabled = true;
-  try { show(await window.translation.save(selection())); element('status').textContent = 'Translation settings applied.'; void check(); }
+  try { const settings = await window.translation.save(selection()); show(settings); element('status').textContent = 'Translation settings applied.';
+    if (!settings.bundled || settings.enabled && settings.translateDescriptions && !settings.showOriginal) void check();
+    else element('service-status').textContent = 'The included translator starts when translation is enabled.'; }
   catch (error) { element('status').textContent = error.message; }
   finally { busy = false; element('apply').disabled = false; }
 });
-element('check').addEventListener('click', () => { void check(); });
+element('check').addEventListener('click', () => { if (settings.enabled || !settings.bundled) void check(); else element('service-status').textContent = 'The included translator starts when translation is enabled.'; });
 element('clear-cache').addEventListener('click', async () => {
   element('clear-cache').disabled = true;
   try { const state = await window.translation.clearCache(); element('cache-count').textContent = `${state.cacheEntries} cached translation fragments.`;
@@ -48,5 +55,5 @@ element('clear-cache').addEventListener('click', async () => {
   catch (error) { element('status').textContent = error.message; }
   finally { element('clear-cache').disabled = false; }
 });
-void window.translation.get().then(settings => { show(settings); element('status').textContent = 'Changes stay local to this app.'; void check(); })
+void window.translation.get().then(settings => { show(settings); element('status').textContent = 'Changes stay local to this app.'; if (!settings.bundled || settings.enabled && settings.translateDescriptions && !settings.showOriginal) void check(); else element('service-status').textContent = 'The included translator starts when translation is enabled.'; })
   .catch(error => { element('status').textContent = error.message; });

@@ -1,0 +1,69 @@
+{
+  "schema": 1,
+  "pythonAbi": "314",
+  "packages": [
+    {
+      "name": "python",
+      "version": "3.14.8",
+      "url": "https://www.python.org/ftp/python/3.14.8/python-3.14.8-embed-amd64.zip",
+      "sha256": "a93abe456ab01bd96d7a085b3cdb6566b3063f4241360d114142fbdb07f0a310",
+      "kind": "python"
+    },
+    {
+      "name": "model",
+      "version": "en_ru-1.9",
+      "url": "https://argos-net.com/v1/translate-en_ru-1_9.argosmodel",
+      "sha256": "591d743ae103752b88ffc38785c50421320f4eff93c8967e0d3d2e14d4e27811",
+      "kind": "model"
+    },
+    {
+      "name": "ctranslate2",
+      "version": "4.8.2",
+      "url": "https://files.pythonhosted.org/packages/f2/86/03386a60b634a34c820e00f82bec808d38841cc2c007ec6b797892a9a5b5/ctranslate2-4.8.2-cp314-cp314-win_amd64.whl",
+      "sha256": "00bc9f44172d05bd2becefe757d2397ab3292fad1695169f9ebb9c16eb497ce2",
+      "kind": "wheel"
+    },
+    {
+      "name": "sentencepiece",
+      "version": "0.2.2",
+      "url": "https://files.pythonhosted.org/packages/33/fe/4906f12c458274edd96387e4baaad7c6f064a2b7c11a1cc2401c8a7bd483/sentencepiece-0.2.2-cp314-cp314-win_amd64.whl",
+      "sha256": "63250cfab8b80a1ef82a614eb2b3cadfec2c405f870cedc139d08e2f063eb708",
+      "kind": "wheel"
+    },
+    {
+      "name": "numpy",
+      "version": "2.5.3",
+      "url": "https://files.pythonhosted.org/packages/a4/73/d2c08231e4fde7e415501fd02c715d96e98599b2d8384445933944152984/numpy-2.5.3-cp314-cp314-win_amd64.whl",
+      "sha256": "2c25dfa72943e4336ddb6b0ee4277b47a0c85bede0807530ec68103bf58e2c10",
+      "kind": "wheel"
+    },
+    {
+      "name": "pyyaml",
+      "version": "6.0.3",
+      "url": "https://files.pythonhosted.org/packages/23/20/bb6982b26a40bb43951265ba29d4c246ef0ff59c9fdcdf0ed04e0687de4d/pyyaml-6.0.3-cp314-cp314-win_amd64.whl",
+      "sha256": "4a2e8cebe2ff6ab7d1050ecd59c25d4c8bd7e6f400f5f82b96557ac0abafd0ac",
+      "kind": "wheel"
+    },
+    {
+      "name": "argos-license",
+      "version": "2020",
+      "url": "https://raw.githubusercontent.com/argosopentech/argos-translate/master/LICENSE",
+      "sha256": "f90866ab74c1b756cc6f7420aed109f598320c9b660aeadbcec6458d0c1a4e1f",
+      "kind": "notice"
+    },
+    {
+      "name": "ctranslate2-license",
+      "version": "4.8.2",
+      "url": "https://raw.githubusercontent.com/OpenNMT/CTranslate2/v4.8.2/LICENSE",
+      "sha256": "54aa79d9fe3c09e67a16dcd95b9e88676405a6ec174efda31036983cf7672ecb",
+      "kind": "notice"
+    },
+    {
+      "name": "sentencepiece-license",
+      "version": "0.2.2",
+      "url": "https://raw.githubusercontent.com/google/sentencepiece/v0.2.2/LICENSE",
+      "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "kind": "notice"
+    }
+  ]
+}

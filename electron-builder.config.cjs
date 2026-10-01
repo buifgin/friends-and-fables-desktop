@@ -5,7 +5,7 @@ module.exports = {
   asar: true,
   npmRebuild: false,
   files: ['dist/**/*', 'assets/**/*', 'package.json', 'LICENSE'],
-  extraResources: [{ from: 'LICENSE', to: 'LICENSE' }],
+  extraResources: [{ from: 'LICENSE', to: 'LICENSE' }, { from: 'docs/GLOSSARY.md', to: 'GLOSSARY.md' }],
   publish: null,
   linux: {
     syncDesktopName: true,
@@ -23,6 +23,7 @@ module.exports = {
   toolsets: { appimage: '1.0.3' },
   appImage: { artifactName: 'friends-and-fables-desktop-${version}-linux-${arch}.AppImage' },
   win: {
+    extraResources: [{ from: 'build/translator', to: 'translator' }],
     target: [{ target: 'portable', arch: ['x64'] }],
     executableName: 'friends-and-fables-desktop',
     icon: 'build/icon.ico',

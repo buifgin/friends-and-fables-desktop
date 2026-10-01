@@ -2,7 +2,7 @@ import http from 'node:http';
 
 export class LocalTranslator {
   private requests = new Set<http.ClientRequest>();
-  constructor(private port: number, private timeoutMs = 30000) {}
+  constructor(private port: number, private timeoutMs = 30000, private token?: string) {}
   abort(): void { for (const request of this.requests) request.destroy(new Error('Translation canceled.')); }
   private json(route: '/languages' | '/translate', body?: unknown): Promise<unknown> {
     return new Promise((resolve, reject) => {
@@ -10,7 +10,8 @@ export class LocalTranslator {
       // Explicit numeric loopback, no proxy, credentials, DNS, or redirects.
       const request = http.request({ hostname: '127.0.0.1', port: this.port, path: route,
         method: data ? 'POST' : 'GET', agent: false,
-        headers: data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {},
+        headers: { ...(data ? { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } : {}),
+          ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) },
       }, response => {
         if (response.statusCode !== 200) { response.resume(); reject(new Error('The local translator rejected the request.')); return; }
         const chunks: Buffer[] = []; let bytes = 0;

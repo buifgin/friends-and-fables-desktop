@@ -151,3 +151,6 @@ models/
 
 # Full saved campaign pages are local references; tests use sample fixtures.
 references/
+
+# Prepared Windows runtime and language model
+build/translator/

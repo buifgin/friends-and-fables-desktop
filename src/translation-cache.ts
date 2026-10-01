@@ -8,7 +8,7 @@ export class TranslationCache {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private writes: Promise<void> = Promise.resolve();
   constructor(private file: string) {}
-  private key(text: string): string { return createHash('sha256').update('en-ru:argos:2\n' + text).digest('hex'); }
+  private key(text: string): string { return createHash('sha256').update('en-ru:argos:3:glossary1\n' + text).digest('hex'); }
   async initialize(): Promise<void> {
     try {
       if ((await stat(this.file)).size > 8 * 1024 * 1024) return;

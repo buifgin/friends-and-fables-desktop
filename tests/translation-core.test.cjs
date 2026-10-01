@@ -70,3 +70,25 @@ test('loopback client uses bounded plain-text batches and refuses redirects, ove
   assert.equal(requests.filter(r=>r.url!=='/translate'&&r.url!=='/languages').length,0);
  } finally {client.abort();server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
 });
+
+test('glossary covers screenshot labels and numeric UI immediately, including whitespace and preserved names',()=>{
+ const {localTranslation}=require('../dist/translation-core');
+ const {DND_GLOSSARY,INTERFACE_GLOSSARY}=require('../dist/russian-glossary');
+ assert(Object.keys(DND_GLOSSARY).length>=500);assert(Object.keys(INTERFACE_GLOSSARY).length>=70);
+ for(const [source,expected] of Object.entries({'Spellbook':'Книга заклинаний','Memories':'Воспоминания','Class Features':'Умения класса','Spellcasting':'Использование заклинаний','Prone':'Сбитый с ног','Action Surge: 0/1':'Всплеск действий: 0/1','Second Wind:1/2':'Второе дыхание:1/2','Bonuses: +2 Proficiency':'Бонусы: +2 Мастерство','1 Topic Researched':'1 Тема изучена','1,699 XP until level 6':'1,699 Опыта до уровня 6','Level 5 Drow Fighter (Spellblade)':'Уровень 5 Дроу Воин (Клинок заклинаний)','Mira says or does...':'Mira говорит или делает…','  Add Spell\n':'  Добавить заклинание\n'})){
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected);assert.equal(renderTranslation(translationPlan(source)[0]),expected);
+ }
+ assert.equal(localTranslation('constructor',RUSSIAN_DICTIONARY),undefined);
+ assert.equal(translationPlan('Light',['Light']).map(part=>renderTranslation(part)).join(''),'Light');
+});
+
+test('specialized terms retain canonical Russian names in prose without changing literal names or ordinary words',()=>{
+ const sample='Mira uses Second Wind and casts Mage Armor. Her friends see the light.';
+ const parts=translationPlan(sample,['Mira']);assert.equal(parts.map(p=>p.text).join(''),sample);
+ const request=parts.filter(p=>p.translate).map(p=>p.request).join('');assert(!/Second Wind|Mage Armor|Mira/.test(request));assert.match(request,/friends/);assert.match(request,/light/);
+ const first=parts.find(p=>p.translate);
+ const markers=first.request.match(/ZXQ\d+ZXQ/g);assert.equal(markers.length,3);
+ assert.equal(renderTranslation(first,`${markers[0]} использует ${markers[1]} и накладывает ${markers[2]}.`),'Mira использует Второе дыхание и накладывает Доспехи мага.');
+ assert.equal(translationPlan('Second Wind + Action Surge').map(p=>renderTranslation(p)).join(''),'Второе дыхание + Всплеск действий');
+ for(const value of ['< | DSML | invoke name="magic_tool">','{"tool_calls": [{"name":"update_character"}]}'])assert.deepEqual(translationPlan(value),[{text:value,translate:false}]);
+});

@@ -7,7 +7,7 @@ The app opens the existing website and adds local themes, campaign chat pictures
 ## Current features
 
 - Open the existing website in a native window.
-- Translate displayed English into Russian with a built-in interface dictionary and a local LibreTranslate service. Preserve Russian passages, names, URLs, and dice notation; switch back to originals and cache translations locally.
+- Translate displayed English into Russian with a built-in D&D glossary and local translation engine. The Windows portable EXE includes the runtime and English–Russian model; Linux uses the local LibreTranslate service. Preserve Russian passages, names, URLs, and dice notation; switch back to originals and cache translations locally.
 - Use a persistent browser session for cookies and website storage.
 - Keep website content sandboxed, with Node integration disabled.
 - Allow HTTPS navigation and sandboxed sign-in popups in the same session.
@@ -136,7 +136,7 @@ Zoom in with **Ctrl+=** or **Ctrl+Shift+=** (the `+` key), zoom out with **Ctrl+
 11. Browse a folder with more than 12 pictures, restart, and confirm the same folder appears. Add/remove a picture and reopen the browser to refresh the list. Check that imported pictures remain after removal/reset.
 12. Reset appearance, restart, and undo the reset. Export a theme with a picture and import it on another profile or machine; check preview and application.
 
-Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. The user reported successful v0.1.0 runs on Arch and Windows with no bugs spotted. The corrected black dropdowns were verified in windowed and fullscreen Hyprland views, with every menu fully visible. Separate gradient color opacity, theme migration, persistence, and preview have offline Electron checks. The user confirmed the corrected v0.1.1 build works. The v0.2.1 translation fix overrides the website’s page-wide browser translation opt-out and includes matching Translation-window themes. Regression checks cover this document flag, local exclusions, home/game labels, drafts, persistence, and theme changes; the engine also has a real local-model benchmark. The new build still needs a signed-in campaign check on both systems.
+Email login, persistent sessions, resizing, copy/paste, keyboard input, and appearance presets have been confirmed by the user on Hyprland. The latest context, decorative borders, dice menus, picture browser, sharing, and picker changes have offline Electron checks; they still need a check in a signed-in campaign. Floating/tiled Appearance switching was separately verified on Hyprland without changing the parent window. The user reported successful v0.1.0 runs on Arch and Windows with no bugs spotted. The corrected black dropdowns were verified in windowed and fullscreen Hyprland views, with every menu fully visible. Separate gradient color opacity, theme migration, persistence, and preview have offline Electron checks. The user confirmed the corrected v0.1.1 build works. The v0.2.1 translation fix overrides the website’s page-wide browser translation opt-out and includes matching Translation-window themes. Regression checks cover this document flag, local exclusions, home/game labels, drafts, persistence, and theme changes; the engine also has a real local-model benchmark. Version 0.3.0 additionally keeps translated backgrounds visible when dropdowns set accessibility flags, adds over 600 glossary/interface entries, and themes neutral portal menus. The new build still needs a signed-in campaign check on both systems.
 
 Website permissions such as camera, microphone, and notifications are disabled in this initial starter. They can be added when needed.
 
@@ -146,33 +146,35 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - [x] Preserve Russian passages and editable fields.
 - [x] Cache translations and provide a way to view original text.
 - [x] Apply translations locally to the displayed page without changing campaign records or typed messages.
-- Make big glossary. For example, dnd 5 redaction eng vs rus. dnd wiki eng vs rus. baldurs gate wiki eng vs rus. For better understanding of dnd texts
+- [x] Add custom color dice with menu at top of screen with picker of variants.
+- [x] Add separate opacity for each gradient color and adjustable first/second color proportions (v0.1.1).
+- [x] Add custom text color beneath dice, including damage (v0.1.1).
+- [x] Add Alt+Enter fullscreen (v0.1.1).
+- [x] Add a large D&D English–Russian glossary, checked against the SRD, Russian D&D terminology, and BG3 feature references (v0.3.0).
 - Add command /me for cursive sentences and /gm will set # mark at start and end of sentece
 - Add some special mark that we will not see. 
 - Add admin version app for me. Private ofc (or just add some commands)
 - Add some text after my message as a host. Only for admin version app. (Examples: always include info about separeted char and what happend with them, always check background and appearence of char, dont forget to base npcs reaction with it,) (or command)
 - Text that not adressed to that char will not be seen by him
-- Add custom color dice with menu at top of screen with picker of variants.
 - Add some free music api or link player for all people at the company, near the dice button. With volume slider and mute option.
 - Add resizable map feature.
-- [x] Add separate opacity for each gradient color and adjustable first/second color proportions (v0.1.1).
-- [x] Add custom text color beneath dice, including damage (v0.1.1).
-- [x] Add Alt+Enter fullscreen (v0.1.1).
+- Add built-in translator in linux app
+
 
 # Stack
 
 - Electron, TypeScript, and Electron Forge for the desktop app.
 - CSS for themes.
-- LibreTranslate with its Argos translation engine for local English-to-Russian translation.
+- CTranslate2, SentencePiece, embedded Python, and the Argos English–Russian model included on Windows; local LibreTranslate/Argos on Linux.
 - Local storage for settings and the translation cache.
 
-`src/main.ts` manages the website window, session, and menus. `src/themes.ts` validates settings and builds theme colors; `src/appearance.ts` applies styles and stores preferences. `src/backgrounds.ts` maintains the picture library, `src/image-folder.ts` stores the selected folder, and `src/theme-files.ts` handles portable themes. `src/chat-appearance.ts` styles campaign components; `src/borders.ts` builds decorative corners, and `src/floating-appearance.ts` targets the Appearance window on Hyprland. `assets/` contains the bundled appearance window and black Linux menu strip, with their own isolated preloads. The appearance bridge, available only to the bundled window or panel, exposes validated preferences, reset/undo, native file/folder pickers, opaque picture IDs, and theme import/export; the menu bridge opens only predefined application menus. The remote website has no preload or application IPC bridge. `src/zoom.ts` handles zoom shortcuts. `src/translation.ts` manages local translation preferences, polling, and the settings window; `src/translation-dom.ts` changes only eligible displayed text nodes. `src/translation-core.ts` protects Russian/name/URL/dice fragments and supplies game terminology, `src/local-translator.ts` connects only to numeric loopback, and `src/translation-cache.ts` keeps a bounded local cache.
+`src/main.ts` manages the website window, session, and menus. `src/themes.ts` validates settings and builds theme colors; `src/appearance.ts` applies styles and stores preferences. `src/backgrounds.ts` maintains the picture library, `src/image-folder.ts` stores the selected folder, and `src/theme-files.ts` handles portable themes. `src/chat-appearance.ts` styles campaign components; `src/borders.ts` builds decorative corners, and `src/floating-appearance.ts` targets the Appearance window on Hyprland. `assets/` contains the bundled appearance window and black Linux menu strip, with their own isolated preloads. The appearance bridge, available only to the bundled window or panel, exposes validated preferences, reset/undo, native file/folder pickers, opaque picture IDs, and theme import/export; the menu bridge opens only predefined application menus. The remote website has no preload or application IPC bridge. `src/zoom.ts` handles zoom shortcuts. `src/translation.ts` manages local translation preferences, polling, and the settings window; `src/translation-dom.ts` changes eligible displayed text and placeholder hints. `src/translation-core.ts` protects Russian/name/URL/dice fragments and supplies game terminology, `src/local-translator.ts` connects only to numeric loopback, `src/bundled-translator.ts` owns the included Windows service, and `src/translation-cache.ts` keeps a bounded local cache.
 
 Open **Translation → Translate into Russian** to enable translation. **Show original text** restores the English display. **Translation Settings…** lets you disable machine-translated prose for dictionary-only mode, preserve additional names, check the local service, and clear the cache. Translation starts disabled.
 
-The local service on this Linux computer was verified with English/Russian models. This first translation prototype requires a separate LibreTranslate service, including on Windows; the model is not bundled in the AppImage or EXE. See [translation setup and test results](docs/TRANSLATION.md).
+The local service on this Linux computer was verified with English/Russian models. Version 0.3.0 includes the translator and English–Russian model inside the Windows EXE. Enable translation and the private local service starts automatically; no Docker, Python installation, or separate model download is needed. Linux continues to use a separate LibreTranslate service. See [translation setup and test results](docs/TRANSLATION.md) and [glossary coverage and sources](docs/GLOSSARY.md).
 
-Translation can work offline after its models are installed. Friends & Fables itself still requires internet access.
+Windows translation works offline with the included model; Linux translation works offline after its service models are installed. Friends & Fables itself still requires internet access.
 
 See the [roadmap](docs/ROADMAP.md) for the implementation order.
 

@@ -7,7 +7,7 @@ const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'..');
 const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance'));
 const {TranslationManager,TRANSLATION_URL}=require(path.join(appRoot,'dist/translation'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
-let profile,manager,server,mode='ready',calls=[],delays=0;
+let profile,manager,server,mode='ready',calls=[],delays=0,batches=[];
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const until=async(contents,expression,limit=5000)=>{for(let i=0;i<limit/25;i++){if(await contents.executeJavaScript(expression))return;await sleep(25);}throw Error('Timed out: '+expression);};
 const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');app.exit(1);},45000);
@@ -18,7 +18,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
   res.setHeader('Content-Type','application/json');
   if(req.url==='/languages'){res.end(JSON.stringify([{code:'en',targets:['ru']}])) ;return;}
   let text='';for await(const chunk of req)text+=chunk;
-  const body=JSON.parse(text);calls.push(...body.q);
+  const body=JSON.parse(text);calls.push(...body.q);batches.push(body.q);
   assert.equal(body.source,'en');assert.equal(body.target,'ru');assert.equal(body.format,'text');
   for(const value of body.q)assert(!/[\p{Script=Cyrillic}]/u.test(value),'Russian must never reach the English model.');
   if(body.q.some(value=>value.includes('streaming sentence'))){delays++;await sleep(400);}
@@ -30,7 +30,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const appearance=new AppearanceManager();await appearance.initialize();
- manager=new TranslationManager();await manager.initialize();
+ manager=new TranslationManager(undefined, null);await manager.initialize();
  appearance.onChange=value=>manager.setAppearance(value);manager.setAppearance(appearance.getSettings());
  assert.equal(manager.getSettings().enabled,false);
  const preferences={...manager.getSettings(),port:server.address().port,preservedNames:['Franz','Aria Moonwhisper']};
@@ -60,7 +60,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await settings.webContents.executeJavaScript("document.getElementById('enabled').checked=true;document.getElementById('translation-form').requestSubmit()");
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");
  assert.equal(await contents.executeJavaScript("document.getElementById('term').textContent"),'Спасбросок Мудрости');
- for(const [id,text] of Object.entries({home:'Главная',create:'Создать',discover:'Обзор',workshop:'Мастерская',studio:'Студия изображений','skill-check':'Проверка Акробатики',stats:'Характеристики',alignment:'Законно-добрый'}))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text);
+ for(const [id,text] of Object.entries({home:'Главная',create:'Создать',discover:'Обзор',workshop:'Мастерская',studio:'Студия изображений',spellbook:'Книга заклинаний',resource:'Второе дыхание:1/2',feature:'Использование заклинаний','skill-check':'Проверка Акробатики',stats:'Характеристики',alignment:'Законно-добрый'}))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text);
  assert.equal(await contents.executeJavaScript('document.documentElement.getAttribute("translate")'),'no');
  assert.equal(await contents.executeJavaScript('document.documentElement.classList.contains("notranslate")'),true);
  assert.equal(await contents.executeJavaScript('document.getElementById("untranslated-name").textContent'),'The Protected Name');
@@ -79,6 +79,25 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await until(contents,"document.getElementById('raw').textContent.startsWith('<img')");
  assert.equal(await contents.executeJavaScript("document.querySelector('#raw img')"),null);assert.equal(await contents.executeJavaScript('window.injected'),undefined);
  await contents.executeJavaScript("document.getElementById('save').click()");assert.equal(await contents.executeJavaScript('window.saveClicks'),1);
+ // Opening a Radix-style portal hides the background only from accessibility APIs.
+ const beforePopup=calls.length;
+ await contents.executeJavaScript(`document.getElementById('page').setAttribute('aria-hidden','true');document.getElementById('page').inert=true;
+ document.getElementById('portal').innerHTML='<div role="menu"><h3>GM Continue Mode</h3><span>Controls whether the GM continues automatically after player messages.</span><button role="menuitem">Players Only</button><span>Credits</span><span>Add Credits</span><span>Blinded</span><span>Necrotic</span></div>'`);
+ await until(contents,"document.querySelector('#portal h3').textContent==='Режим продолжения мастера'");
+ await sleep(120);
+ assert.equal(await contents.executeJavaScript("document.getElementById('home').textContent"),'Главная');
+ assert.equal(await contents.executeJavaScript("document.querySelector('#story strong').textContent"),'Лес тих.');
+ assert.equal(await contents.executeJavaScript("document.querySelector('#portal [role=menuitem]').textContent"),'Только игроки');
+ assert.equal(calls.length,beforePopup,'Popup labels should use the glossary immediately.');
+ // React replacing translated DOM with source gets the memoized display promptly.
+ await contents.executeJavaScript("document.querySelector('#story strong').textContent='The forest is quiet.'");
+ await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'",200);
+ assert.equal(calls.length,beforePopup);
+ assert.equal(await contents.executeJavaScript("document.getElementById('typed').placeholder"),'Mira говорит или делает…');
+ assert.equal(await contents.executeJavaScript("document.querySelector('#editor p').dataset.placeholder"),'Mira говорит или делает…');
+ assert.equal(await contents.executeJavaScript("document.querySelector('input[type=password]').placeholder"),'Password');
+ await contents.executeJavaScript("document.getElementById('portal').innerHTML='';document.getElementById('page').removeAttribute('aria-hidden');document.getElementById('page').removeAttribute('inert')");
+ assert(batches.some(batch=>batch.length>1),'Visible prose should share model requests.');
  // Restoring originals retains HTML structure and event listeners.
  await manager.save({...manager.getSettings(),showOriginal:true});
  assert.equal(await contents.executeJavaScript("document.body.innerHTML"),original);
@@ -115,7 +134,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript('typeof window.__friendsFablesDesktopTranslation'),'undefined');
  assert.equal(await contents.executeJavaScript("document.querySelector('h1').textContent"),'Characters');
  // Preferences and cache survive an application restart.
- settings.destroy();await manager.shutdown();manager=new TranslationManager();await manager.initialize();manager.attach(contents);
+ settings.destroy();await manager.shutdown();manager=new TranslationManager(undefined, null);await manager.initialize();manager.attach(contents);
  assert.equal(manager.getSettings().enabled,true);assert.equal(manager.getSettings().port,preferences.port);
  mode='offline';await website.loadURL('https://play.fables.gg/campaign/play');
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");
@@ -124,5 +143,5 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.querySelector('#story strong').textContent"),'The forest is quiet.');
  assert.equal((await reopened.webContents.executeJavaScript('window.translation.clearCache()')).cacheEntries,0);
  if(process.env.FABLES_TEST_SCREENSHOT){reopened.show();await sleep(150);await writeFile(process.env.FABLES_TEST_SCREENSHOT,(await reopened.webContents.capturePage()).toPNG());}
- console.log('PASS: site-wide browser opt-outs, preserved nested opt-outs, themed translation settings and unsaved drafts, home/game labels, translation controls, dictionary, mixed Russian, names/URLs/dice preservation, immutable drafts/records, reversible DOM, late/streaming content, model failure/recovery, restart cache, exact origins, and restricted IPC.');
+ console.log('PASS: site-wide browser opt-outs, preserved nested opt-outs, themed translation settings and unsaved drafts, home/game labels, glossary-only dropdowns, accessibility masking, instant React restoration, placeholder hints, model batching, translation controls, dictionary, mixed Russian, names/URLs/dice preservation, immutable drafts/records, reversible DOM, late/streaming content, model failure/recovery, restart cache, exact origins, and restricted IPC.');
 })().then(async()=>{clearTimeout(timer);await manager?.shutdown();for(const window of BrowserWindow.getAllWindows())window.destroy();server?.closeAllConnections();await new Promise(resolve=>server?server.close(resolve):resolve());if(profile)await rm(profile,{recursive:true,force:true});app.exit(0);}).catch(async error=>{console.error(error);clearTimeout(timer);await manager?.shutdown();for(const window of BrowserWindow.getAllWindows())window.destroy();server?.closeAllConnections();if(server)server.close();if(profile)await rm(profile,{recursive:true,force:true});app.exit(1);});

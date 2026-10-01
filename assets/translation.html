@@ -11,12 +11,12 @@
 <label class="switch-row"><input id="enabled" type="checkbox"> Translate into Russian</label>
 <label class="switch-row"><input id="show-original" type="checkbox"> Show original text</label>
 <label class="switch-row"><input id="descriptions" type="checkbox" checked> Translate descriptions and story text</label>
-<p class="help">Common interface labels and game terms use a built-in dictionary. Descriptions use your local translation service. Turn descriptions off for dictionary-only translation.</p>
+<p id="model-help" class="help">Common interface labels and game terms use a built-in dictionary. Descriptions use your local translation service. Turn descriptions off for dictionary-only translation.</p>
 <label for="preserved-names">Keep these names unchanged</label>
 <textarea id="preserved-names" rows="4" maxlength="2430" spellcheck="false" placeholder="One name per line"></textarea>
 <p class="help">Add character and place names here to preserve their spelling in translated text. Names may otherwise be transliterated by the model.</p>
-<label class="setting-row" for="port">Local service port <input id="port" type="number" min="1" max="65535" value="5000"></label>
-<p class="help">The app connects only to 127.0.0.1 on this computer. Translation starts disabled. The model is a separate service; ordinary app use does not need it.</p>
+<label id="port-row" class="setting-row" for="port">Local service port <input id="port" type="number" min="1" max="65535" value="5000"></label>
+<p id="service-help" class="help">The app connects only to 127.0.0.1 on this computer. Translation starts disabled. The model is a separate service; ordinary app use does not need it.</p>
 <div class="service-actions"><button id="check" type="button" class="secondary">Check translator</button><button id="clear-cache" type="button" class="secondary">Clear translation cache</button></div>
 <p id="service-status" class="help" role="status">Checking local service…</p>
 <p id="cache-count" class="help"></p>

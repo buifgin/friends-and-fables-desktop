@@ -1,9 +1,9 @@
 <!doctype html><html lang="en" translate="no" class="notranslate"><head><meta charset="utf-8"><style>
 body{background:#101116;color:#eee;font:16px system-ui;padding:20px}button,input,textarea{margin:6px}p{line-height:1.5}
 </style></head><body>
-<nav><button id="home">Home</button><button id="create">Create</button><button id="discover">Discover</button><button id="workshop">Workshop</button><button id="studio">Image Studio</button></nav>
+<div id="page"><nav><button id="home">Home</button><button id="create">Create</button><button id="discover">Discover</button><button id="workshop">Workshop</button><button id="studio">Image Studio</button></nav>
 <h1>Characters</h1><h2 id="character-name">Aria Moonwhisper</h2>
-<h3 id="skill-check">Acrobatics Check</h3><span id="stats">Stats</span><span id="alignment">Lawful Good</span>
+<h3 id="spellbook">Spellbook</h3><span id="resource">Second Wind:1/2</span><span id="feature">Spellcasting</span><h3 id="skill-check">Acrobatics Check</h3><span id="stats">Stats</span><span id="alignment">Lawful Good</span>
 <button id="save" title="Hide background image">Save</button><span id="term">Wisdom saving throw</span>
 <p id="story"><strong>The forest is quiet.</strong> A lantern lights the road.</p>
 <p id="mixed">The door opens. Привет, путник! Take a seat.</p>
@@ -12,12 +12,12 @@ body{background:#101116;color:#eee;font:16px system-ui;padding:20px}button,input
 <p id="protected">Visit https://example.com/room and roll 1d20 + 5.</p>
 <p id="hidden" hidden>A hidden passage opens.</p>
 <p id="raw">Dangerous sample text.</p>
-<input id="typed" value="Hello, friends!"><textarea id="textarea">The original draft stays here.</textarea>
-<div id="editor" class="tiptap" contenteditable="true"><p>The editable draft stays here.</p></div>
+<input id="typed" placeholder="Mira says or does..." value="Hello, friends!"><textarea id="textarea">The original draft stays here.</textarea>
+<div id="editor" class="tiptap" contenteditable="true"><p data-placeholder="Mira says or does...">The editable draft stays here.</p></div>
 <pre id="code">The sample code stays here.</pre><div translate="no" id="ignored">The ignored story stays here.</div>
 <span class="notranslate" id="untranslated-name">The Protected Name</span>
-<form><input type="password"><span id="login">Sign in with your account.</span></form>
-<div id="late"></div>
+<form><input type="password" placeholder="Password"><span id="login">Sign in with your account.</span></form>
+<div id="late"></div></div><div id="portal"></div>
 <script>
 window.campaignRecord={text:'The forest is quiet.',name:'Aria Moonwhisper',message:'Hello, friends!'};
 window.saveClicks=0;document.getElementById('save').addEventListener('click',()=>window.saveClicks++);

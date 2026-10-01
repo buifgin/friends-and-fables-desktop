@@ -114,6 +114,7 @@ async function save(settings, window) {
       </div>
     </div>
     <form id="character-form"><input name="name" type="text" value="Character"><input name="max_hp" type="text" value="24"><input name="strength" type="number" value="12"></form>
+    <div data-radix-popper-content-wrapper><div role="menu" id="neutral-menu" class="bg-slate-700"><div id="neutral-menu-row" role="menuitem" data-highlighted class="bg-gray-800">Public Profile</div><span class="text-red-400" id="menu-warning">Danger</span></div></div>
     <div role="dialog" id="roll-breakdown" class="w-80 bg-slate-900/95 border-amber-600/50 text-amber-100"><span class="text-amber-200">Base Roll</span><b>17</b><div class="border-amber-600/50">Total 21</div></div>
     <script>
       document.getElementById('event-message-card-1').__reactFiber$test = {memoizedProps:{event:{role:'player'}}};
@@ -142,6 +143,9 @@ async function save(settings, window) {
   assert.equal(amoled.artwork, original.artwork);
   assert.equal(amoled.message, original.message);
   assert.equal(amoled.bridge, 'undefined');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('neutral-menu')).backgroundColor"),'rgb(0, 0, 0)');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('neutral-menu-row')).backgroundColor"),'rgb(0, 0, 0)');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('menu-warning')).color"),'rgb(248, 113, 113)');
 
   const reloaded = new Promise((resolve) => website.webContents.once('did-finish-load', resolve));
   website.webContents.reload();
@@ -154,8 +158,11 @@ async function save(settings, window) {
   assert.equal(light.background, 'rgb(245, 245, 245)');
   assert.equal(light.foreground, 'rgb(0, 0, 0)');
   assert.equal(light.artwork, original.artwork);
+  assert.notEqual(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('neutral-menu')).backgroundColor"),'rgb(51, 65, 85)');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('neutral-menu')).color"),'rgb(0, 0, 0)');
   await save({ preset: 'custom', customColor: '#123456' }, settingsWindow);
   assert.equal((await colors(website.webContents)).background, 'rgb(18, 52, 86)');
+  assert.notEqual(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('neutral-menu')).backgroundColor"),'rgb(51, 65, 85)');
   await save({ preset: 'custom', customColor: '#747474' }, settingsWindow);
   const customContrast = await website.webContents.executeJavaScript(`(() => {
     const luminance = color => {

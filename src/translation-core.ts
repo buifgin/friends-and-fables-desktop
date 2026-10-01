@@ -1,3 +1,5 @@
+import { DND_GLOSSARY, INTERFACE_GLOSSARY, PROSE_GLOSSARY } from './russian-glossary';
+
 export interface TranslationSettings {
   enabled: boolean;
   showOriginal: boolean;
@@ -25,6 +27,7 @@ export function validateTranslation(raw: unknown): TranslationSettings {
 
 // Common interface labels use consistent RPG terminology without a service.
 export const RUSSIAN_DICTIONARY: Record<string, string> = {
+  ...DND_GLOSSARY, ...INTERFACE_GLOSSARY,
   'home':'Главная', 'play':'Играть', 'campaign':'Кампания', 'campaigns':'Кампании', 'characters':'Персонажи',
   'character':'Персонаж', 'character sheet':'Лист персонажа', 'inventory':'Инвентарь', 'equipment':'Снаряжение',
   'spells':'Заклинания', 'spell':'Заклинание', 'abilities':'Характеристики', 'skills':'Навыки',
@@ -77,6 +80,35 @@ export const RUSSIAN_DICTIONARY: Record<string, string> = {
   'strength check':'Проверка Силы', 'dexterity check':'Проверка Ловкости', 'constitution check':'Проверка Телосложения',
   'intelligence check':'Проверка Интеллекта', 'wisdom check':'Проверка Мудрости', 'charisma check':'Проверка Харизмы',
 };
+// Serialized into the renderer along with the dictionary, so these labels and
+// counters never wait for the model. Original whitespace and numbers survive.
+export function localTranslation(text: string, dictionary: Record<string,string>): string | undefined {
+  const lookup = (key: string): string | undefined => Object.hasOwn(dictionary,key) ? dictionary[key] : undefined;
+  const normalized = text.replace(/\s+/g,' ').trim().toLowerCase();
+  const exact = lookup(normalized) ?? lookup(normalized.replace(/…/g,'...'));
+  if (exact !== undefined) return text.slice(0,text.indexOf(text.trim())) + exact + text.slice(text.indexOf(text.trim())+text.trim().length);
+  const prefix = text.match(/^(\s*)(.*?)(\s*:\s*[+\-\d][\d\s,./+\-]*\s*)$/);
+  if (prefix && lookup(prefix[2].trim().toLowerCase())) return prefix[1]+lookup(prefix[2].trim().toLowerCase())+prefix[3];
+  const colon = text.match(/^(\s*)(.*?)(\s*:\s*)$/);
+  if (colon && lookup(colon[2].trim().toLowerCase())) return colon[1]+lookup(colon[2].trim().toLowerCase())+colon[3];
+  const xp = text.match(/^(\s*)([\d,]+)\s*XP\s+until\s+level\s+(\d+)(\s*)$/i);
+  if (xp) return `${xp[1]}${xp[2]} Опыта до уровня ${xp[3]}${xp[4]}`;
+  const counter = text.match(/^(\s*)(\d+)\s+(Topic Researched|Block Created|Memory Saved|Active|Idle)(\s*(?:\/\s*)?)$/i);
+  if (counter) return `${counter[1]}${counter[2]} ${dictionary[counter[3].toLowerCase()]}${counter[4]}`;
+  const level = text.match(/^(\s*)Level\s+(\d+)(.*)$/i);
+  if (level) {
+    let rest = level[3];
+    const terms = Object.keys(dictionary).filter(term=>term.length>2).sort((a,b)=>b.length-a.length)
+      .map(term=>term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'));
+    if (terms.length) rest=rest.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'),term=>dictionary[term.toLowerCase()]);
+    return `${level[1]}Уровень ${level[2]}${rest}`;
+  }
+  const bonus = text.match(/^(\s*)Bonuses:\s*([+\-]?\d+)\s+Proficiency(\s*)$/i);
+  if(bonus) return `${bonus[1]}Бонусы: ${bonus[2]} Мастерство${bonus[3]}`;
+  const composer = text.match(/^(.*?)\s+says or does(?:\.\.\.|…)(\s*)$/i);
+  if(composer) return `${composer[1]} говорит или делает…${composer[2]}`;
+  return undefined;
+}
 export interface TranslationPart {
   text: string; translate: boolean; request?: string; protected?: { token: string; text: string }[]; local?: string;
 }
@@ -108,6 +140,10 @@ export function renderTranslation(part: TranslationPart, translated?: string): s
 // Russian runs remain literal. Names, URLs, and dice use validated placeholders
 // inside complete English sentences, preserving spelling without losing context.
 export function translationPlan(text: string, names: string[] = []): TranslationPart[] {
+  // Tool-call dumps are technical records rather than game prose.
+  if (/DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(text)) return [{text,translate:false}];
+  const local = localTranslation(text,RUSSIAN_DICTIONARY);
+  if (local !== undefined && !names.some(name=>name.toLowerCase()===text.trim().toLowerCase())) return [{text,translate:false,local}];
   const escape = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const protectedNames = names.filter(Boolean).sort((a, b) => b.length - a.length)
     .map(name => `(?<![\\p{L}\\p{N}_])${escape(name)}(?![\\p{L}\\p{N}_])`);
@@ -115,11 +151,15 @@ export function translationPlan(text: string, names: string[] = []): Translation
     'https?://[^\\s<>]+', '\\b\\d*d(?:4|6|8|10|12|20|100)(?:\\s*[+-]\\s*\\d+)?\\b', ...protectedNames,
   ].join('|'), 'giu');
   if (/ZXQ\d+ZXQ/.test(text)) return [{ text, translate: false }];
-  const replacements = new Map<string, string>();
-  const masked = text.replace(protectedPattern, value => {
-    const token = `ZXQ${replacements.size}ZXQ`; replacements.set(token, value); return token;
+  const replacements = new Map<string, {original:string; rendered:string}>();
+  let masked = text.replace(protectedPattern, value => {
+    const token = `ZXQ${replacements.size}ZXQ`; replacements.set(token, {original:value,rendered:value}); return token;
   });
-  const original = (value: string): string => value.replace(markerPattern, token => replacements.get(token) ?? token);
+  const terms = Object.keys(PROSE_GLOSSARY).sort((a,b)=>b.length-a.length).map(escape);
+  masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'), value => {
+    const token=`ZXQ${replacements.size}ZXQ`; replacements.set(token,{original:value,rendered:PROSE_GLOSSARY[value.toLowerCase()]}); return token;
+  });
+  const original = (value: string): string => value.replace(markerPattern, token => replacements.get(token)?.original ?? token);
   const russian = /[\p{Script=Cyrillic}][\p{Script=Cyrillic}\p{M}\p{N}\s.,!?;:—–«»"'()\-]*/gu;
   const parts: TranslationPart[] = [];
   const literal = (value: string): void => { if (value) parts.push({ text: original(value), translate: false }); };
@@ -132,12 +172,15 @@ export function translationPlan(text: string, names: string[] = []): Translation
         if (!core) { literal(chunk); chunk = ''; return; }
         const start = chunk.indexOf(core);
         literal(chunk.slice(0, start));
-        const protectedText = (core.match(markerPattern) ?? []).map(token => ({ token, text: replacements.get(token)! }));
+        const protectedText = (core.match(markerPattern) ?? []).map(token => ({ token, text: replacements.get(token)!.rendered }));
         const plain = original(core);
         const local = gameInstruction(plain);
         const content = core.replace(markerPattern, '');
-        parts.push({ text: plain, translate: local === undefined && /[A-Za-z]/.test(content),
-          request: core, protected: protectedText, ...(local === undefined ? {} : { local }) });
+        const translate = local === undefined && /[A-Za-z]/.test(content);
+        const renderedLocal = local ?? (!translate && protectedText.length
+          ? core.replace(markerPattern, token => replacements.get(token)!.rendered) : undefined);
+        parts.push({ text: plain, translate, request: core, protected: protectedText,
+          ...(renderedLocal === undefined ? {} : { local: renderedLocal }) });
         literal(chunk.slice(start + core.length)); chunk = '';
       };
       for (const token of tokens) {

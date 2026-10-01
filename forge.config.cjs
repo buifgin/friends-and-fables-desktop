@@ -1,9 +1,12 @@
 module.exports = {
   packagerConfig: {
     asar: true,
+    extraResource: process.platform === 'win32' ? ['build/translator'] : [],
     executableName: 'friends-and-fables-desktop',
     ignore: [
       /^\/src(?:\/|$)/,
+      /^\/translator(?:\/|$)/,
+      /^\/\.cache(?:\/|$)/,
       /^\/docs(?:\/|$)/,
       /^\/tests(?:\/|$)/,
       /^\/references(?:\/|$)/,

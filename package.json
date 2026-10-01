@@ -1,7 +1,7 @@
 {
   "name": "friends-and-fables-desktop",
   "productName": "Friends & Fables Desktop",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Unofficial Friends & Fables desktop wrapper for Windows and Arch Linux",
   "private": true,
   "main": "dist/main.js",
@@ -21,18 +21,20 @@
     "test": "npm run test:unit && npm run test:appearance && npm run test:translation && npm run test:panel",
     "prestart": "npm run build",
     "start": "electron-forge start",
-    "prepackage": "npm run build",
+    "prepackage": "npm run build && node scripts/prepare-windows-translator.cjs --if-windows",
     "package": "electron-forge package",
-    "premake": "npm run build",
+    "premake": "npm run build && node scripts/prepare-windows-translator.cjs --if-windows",
     "make": "electron-forge make",
     "dist:linux": "npm run build && electron-builder --config electron-builder.config.cjs --linux AppImage --x64 --publish never",
-    "dist:windows": "npm run build && electron-builder --config electron-builder.config.cjs --win portable --x64 --publish never",
+    "dist:windows": "npm run prepare:translator:windows && npm run build && electron-builder --config electron-builder.config.cjs --win portable --x64 --publish never",
     "checksums": "node scripts/release-checksums.cjs",
-    "test:unit": "node --test tests/translation-core.test.cjs",
+    "test:unit": "node --test tests/translation-core.test.cjs tests/bundled-translator.test.cjs",
     "test:appearance": "electron tests/appearance-smoke.cjs",
     "test:translation": "electron tests/translation-smoke.cjs",
     "benchmark:translation": "npm run build && node scripts/translation-benchmark.cjs",
-    "test:panel": "electron tests/appearance-panel-smoke.cjs"
+    "test:panel": "electron tests/appearance-panel-smoke.cjs",
+    "prepare:translator:windows": "node scripts/prepare-windows-translator.cjs",
+    "test:bundled-model": "node tests/bundled-model-smoke.cjs"
   },
   "config": {
     "forge": "./forge.config.cjs"

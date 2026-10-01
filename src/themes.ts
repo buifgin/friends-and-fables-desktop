@@ -275,5 +275,16 @@ export function themeCss(settings: AppearanceSettings): string {
       color: hsl(var(--foreground)) !important; -webkit-text-fill-color: hsl(var(--foreground)) !important;
       caret-color: hsl(var(--foreground)) !important;
     }
-    :where(input, textarea)::placeholder { color: hsl(var(--foreground-muted)) !important; }`;
+    :where(input, textarea)::placeholder { color: hsl(var(--foreground-muted)) !important; }
+    :is([role="menu"], [role="listbox"], [role="dialog"], [data-radix-popper-content-wrapper] > div):not([data-ff-desktop-message]) {
+      background-color: hsl(var(--popover)) !important; color: hsl(var(--popover-foreground)) !important;
+      background-image: none !important; border-color: hsl(var(--border)) !important;
+    }
+    :is([role="menu"], [role="listbox"], [role="dialog"], [data-radix-popper-content-wrapper]):not([data-ff-desktop-message]):not(:has([data-ff-desktop-message="roll-menu"]))
+      :is([class*="bg-gray-"], [class*="bg-slate-"]) {
+      background-color: hsl(var(--popover)) !important; background-image: none !important;
+    }
+    :is([role="menuitem"], [role="option"], [role="menuitemcheckbox"], [role="menuitemradio"]):is(:hover,[data-highlighted]) {
+      background-color: hsl(var(--muted)) !important; color: hsl(var(--foreground)) !important;
+    }`;
 }

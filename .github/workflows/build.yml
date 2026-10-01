@@ -57,6 +57,8 @@ jobs:
       - name: Test on Windows
         if: runner.os == 'Windows'
         run: npm test
+      - name: Test translator adapter protocol
+        run: python -B tests/translator-protocol.test.py
       - name: Build package
         run: npm run dist:${{ matrix.target }}
       - name: Verify packaged resources on Linux
@@ -69,6 +71,9 @@ jobs:
         env:
           FABLES_TEST_APP_ROOT: ${{ github.workspace }}/out/releases/${{ matrix.app }}/resources/app.asar
         run: npm run test:appearance && npm run test:translation && npm run test:panel
+      - name: Verify included Windows translation model
+        if: runner.os == 'Windows'
+        run: npm run test:bundled-model
       - name: Generate checksums
         run: node scripts/release-checksums.cjs ${{ matrix.target }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
