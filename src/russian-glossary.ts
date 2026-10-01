@@ -1,6 +1,6 @@
 // Term names only; Russian wording is curated for this app. See docs/GLOSSARY.md
 // for SRD attribution and the community terminology references used to check it.
-export const GLOSSARY_VERSION = 3;
+export const GLOSSARY_VERSION = 4;
 export const DND_GLOSSARY: Record<string, string> = {
   'cantrip':'Заговор', 'cantrips':'Заговоры', 'spellcasting':'Использование заклинаний',
   'spellcasting ability':'Базовая характеристика заклинаний', 'spellcasting focus':'Магическая фокусировка',
@@ -55,6 +55,14 @@ export const DND_GLOSSARY: Record<string, string> = {
   'arcane tradition':'Магическая традиция', 'spell mastery':'Мастерство заклинаний',
   'signature spells':'Фирменные заклинания', 'draconic sorcery':'Драконово чародейство',
   'draconic bloodline':'Драконья кровь', 'wild magic':'Дикая магия', 'storm sorcery':'Магия бури',
+  'sorcerer subclass':'Подкласс чародея', 'draconic resilience':'Драконья устойчивость', 'draconic spells':'Драконьи заклинания',
+  'draconic spell list':'Драконьи заклинания', 'general feat':'Общая черта',
+  "dragon's breath":'Дыхание дракона', 'arcane eye':'Магический глаз', 'charm monster':'Очарование чудовища',
+  'legend lore':'Знание легенд', 'summon dragon':'Призыв дракона', 'sorcerer level spells':'Уровень чародея — заклинания',
+  'strength modifier':'Модификатор Силы', 'dexterity modifier':'Модификатор Ловкости',
+  'constitution modifier':'Модификатор Телосложения', 'intelligence modifier':'Модификатор Интеллекта',
+  'wisdom modifier':'Модификатор Мудрости', 'charisma modifier':'Модификатор Харизмы',
+  'dexterity and charisma modifiers':'Модификаторы Ловкости и Харизмы',
   'champion':'Чемпион', 'battle master':'Мастер боевых искусств', 'eldritch knight':'Мистический рыцарь',
   'spellblade':'Клинок заклинаний', 'berserker':'Берсерк', 'assassin':'Убийца',
   'arcane trickster':'Мистический ловкач', 'thief':'Вор', 'hunter':'Охотник',
@@ -227,4 +235,9 @@ export const INTERFACE_GLOSSARY: Record<string,string> = {
 export const PROSE_GLOSSARY: Record<string, string> = { ...Object.fromEntries(Object.entries(DND_GLOSSARY)
   .filter(([english]) => english.includes(' ') || ['cantrip','cantrips','spellcasting','metamagic','prestidigitation','thaumaturgy','counterspell'].includes(english))),
   'armor class':'Класс брони', 'proficiency bonus':'Бонус умения',
+  'sorcerer':'Чародей', 'strength':'Сила', 'dexterity':'Ловкость', 'constitution':'Телосложение',
+  'intelligence':'Интеллект', 'wisdom':'Мудрость', 'charisma':'Харизма',
 };
+// These one-word spell names are also ordinary English words. Only title-case
+// names are canonicalized in prose; lowercase verbs and emotions stay natural.
+export const PROSE_TITLE_GLOSSARY: Record<string,string> = {Command:'Приказ',Fear:'Ужас',Fly:'Полёт'};

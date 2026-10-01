@@ -90,3 +90,12 @@
 - [x] Reserve a toolbar row for the pinned Appearance button on Windows to prevent overlap with game controls.
 - [ ] Check these features in a signed-in campaign on Linux and Windows; selectors use the saved website component references.
 - Host helpers and shared music playback remain planned. Private visibility between players requires support from the Friends & Fables service.
+
+## 7. Release 0.5.0
+
+- [x] Use soft breaks for Shift+Enter without paragraph spacing or inherited command marks.
+- [x] Display completed sentences incrementally, share small batches across paragraphs, prioritize visible blocks, and show translation progress.
+- [x] Add fixed battle-summary, inventory-event and progression translations; preserve canonical ability/spell names in prose.
+- [x] Make expanded maps movable by dragging or keyboard, with remembered positions and viewport bounds.
+- [x] Add world map resizing and expansion with independent per-campaign sizes.
+- [ ] Verify new map controls against a signed-in live campaign; automated tests use the saved shared component structure and original canvas interactions.

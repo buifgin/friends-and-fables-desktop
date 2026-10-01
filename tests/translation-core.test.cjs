@@ -159,3 +159,23 @@ test('roll outcomes, period-separated bonuses, healing and spell-slot events nev
   assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),undefined,source+' is not a shared control');
  assert.equal(renderTranslation(translationPlan('Heal',['Heal'])[0]),'Heal','Listed world-specific names still take priority.');
 });
+
+test('battle summaries, inventory outcomes and progression terminology are deterministic',()=>{
+ const {localTranslation}=require('../dist/translation-core');
+ for(const [source,target] of Object.entries({
+  'VICTORY':'Победа','DEFEAT':'Поражение','ALLY':'Союзник','ENEMY':'Враг',
+  'Battle lasted 1 turn':'Битва продолжалась 1 ход','Battle lasted 2 turns':'Битва продолжалась 2 хода','Battle lasted 16 turns':'Битва продолжалась 16 ходов',
+  'Damage Dealt: 20':'Нанесённый урон: 20','Healing Done: 4':'Восстановленные ОЗ: 4','Distance Moved: 40ft':'Пройденное расстояние: 40фт.',
+  'found 1 ':'находит 1 ','Могнус found 1 Маленький латунный ключ':'Могнус находит 1 Маленький латунный ключ',
+  'Aria Moonwhisper found 2 Arcane Eye':'Aria Moonwhisper находит 2 Магический глаз',
+  'Sorcerer Subclass':'Подкласс чародея','Draconic Resilience':'Драконья устойчивость','Draconic Spells':'Драконьи заклинания','General Feat':'Общая черта',
+ })) assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+ const source='The Sorcerer uses Dexterity and Charisma modifiers and casts Command, Dragon’s Breath, Fear, Fly, Arcane Eye, Charm Monster, Legend Lore, and Summon Dragon.';
+ const plan=translationPlan(source);assert.equal(plan.map(p=>p.text).join(''),source);
+ const terms=plan.flatMap(p=>p.protected??[]).map(p=>p.text);
+ for(const term of ['Чародей','Модификаторы Ловкости и Харизмы','Приказ','Дыхание дракона','Ужас','Полёт','Магический глаз','Очарование чудовища','Знание легенд','Призыв дракона']) assert(terms.includes(term),term);
+ const ordinary=translationPlan('They command an army, fear the dark, and fly home.');
+ assert(ordinary.filter(p=>p.translate).some(p=>/command.*fear.*fly/.test(p.request)),'Ordinary verbs remain prose.');
+ const named=translationPlan('Command greets Fly.',['Command','Fly']);
+ assert.deepEqual(named.flatMap(p=>p.protected??[]).map(p=>p.text),['Command','Fly'],'World-specific names override spell titles.');
+});

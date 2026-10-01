@@ -1,7 +1,7 @@
 {
   "name": "friends-and-fables-desktop",
   "productName": "Friends & Fables Desktop",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Unofficial Friends & Fables desktop wrapper for Windows and Arch Linux",
   "private": true,
   "main": "dist/main.js",

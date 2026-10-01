@@ -1,12 +1,12 @@
-# Message commands (0.4.0 source build)
+# Message commands (0.5.0)
 
 In Appearance → App, enable **Enable /me and /gm commands** and apply. The setting starts disabled and stays local when importing or exporting themes.
 
 - `/me I look closer.` makes only its own line italic in the campaign composer.
 - `/gm Keep the party together.` wraps only its own line as `#Keep the party together.#`.
-- Enter or Shift+Enter formats the command on the current line and starts a new paragraph with no inherited formatting. Other lines stay independent, including logical lines separated by a soft break.
-- **Format command**, Ctrl+Enter, or the first click on Send prepares each command line independently for review. Holding Enter during preparation cannot send the prepared draft.
-- Empty commands ask for text. Other commands and ordinary messages use the website's normal behavior. If another line still contains an unformatted command, Enter prepares it before allowing a send.
+- Enter formats the command on the current line and starts a plain new paragraph. Shift+Enter formats the current line and inserts a soft break in the same paragraph, without paragraph margins or inherited italics. An existing soft break is reused, so formatting a previous line does not create an extra empty line. Other lines stay independent.
+- Ctrl+Enter formats the current line without adding a break. **Format command** or the first click on Send prepares all command lines independently for review. Holding Enter during preparation cannot send the prepared draft.
+- Empty commands ask for text. Other commands and ordinary messages use the website's normal behavior. Enter only formats the current line; other command lines wait for their own Enter or an explicit Format command / Send preparation.
 
 Formatting is part of the draft's rich text, so it is included in the message when you send it. Mentions, links, Russian text, and literal characters are preserved. `/me` leaves code formatting intact. Character forms, dialogs, and context-block editors receive no command handler.
 

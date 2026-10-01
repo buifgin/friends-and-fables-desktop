@@ -1,9 +1,9 @@
 // Serialized into the website renderer. Uses only DOM APIs and local layout preferences.
 export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): void {
-  type Size = { height?: number; width?: number; expandedHeight?: number };
-  type Entry = { root: HTMLElement; controls: HTMLElement; expand: HTMLButtonElement; reset: HTMLButtonElement;
-    handle: HTMLElement; styles: Map<string, [string, string]>; size: Size; campaign: string; expanded: boolean; popover: boolean; left?: number; top?: number;
-    drag?: { x: number; y: number; width: number; height: number } };
+  type Size = { height?: number; width?: number; expandedHeight?: number; left?: number; top?: number };
+  type Entry = { root: HTMLElement; controls: HTMLElement; expand: HTMLButtonElement; reset: HTMLButtonElement; move: HTMLButtonElement; kind: 'battle' | 'world';
+    handle: HTMLElement; styles: Map<HTMLElement, Map<string, [string, string]>>; size: Size; campaign: string; expanded: boolean; popover: boolean; left?: number; top?: number;
+    drag?: { x: number; y: number; width: number; height: number }; moving?: { x: number; y: number; left: number; top: number } };
   const key = '__friendsFablesDesktopMap';
   const host = window as unknown as Record<string, { dispose(): void; setLocale(value: 'en' | 'ru'): void } | undefined>;
   if (host[key]) {
@@ -15,30 +15,33 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
   let frame = 0;
   const entries = new Map<HTMLElement, Entry>();
   const text = (en: string, ru: string): string => language === 'ru' ? ru : en;
-  const storageKey = (campaign: string): string => `ff-desktop-map-size-v1:${campaign}`;
+  const storageKey = (campaign: string, kind: 'battle' | 'world'): string => `ff-desktop-map-size-v1:${campaign}${kind==='world'?':world':''}`;
+  const minimum = (entry: Entry): number => entry.kind==='world'?400:240;
   const clamp = (value: number, min: number, max: number): number => Math.round(Math.max(Math.min(min, max), Math.min(max, value)));
-  function readSize(campaign: string): Size {
+  function readSize(campaign: string, kind: 'battle' | 'world'): Size {
     try {
-      const source = localStorage.getItem(storageKey(campaign));
+      const source = localStorage.getItem(storageKey(campaign,kind));
       if (!source || source.length > 512) return {};
       const raw = JSON.parse(source);
       const result: Size = {};
-      for (const name of ['height', 'width', 'expandedHeight'] as const) {
-        if (typeof raw?.[name] === 'number' && Number.isFinite(raw[name]) && raw[name] >= 100 && raw[name] <= 4000) result[name] = raw[name];
+      for (const name of ['height', 'width', 'expandedHeight', 'left', 'top'] as const) {
+        if (typeof raw?.[name] === 'number' && Number.isFinite(raw[name]) && raw[name] >= (name==='left'||name==='top'?0:100) && raw[name] <= 4000) result[name] = raw[name];
       }
       return result;
     } catch { return {}; }
   }
   function saveSize(entry: Entry): void {
-    try { localStorage.setItem(storageKey(entry.campaign), JSON.stringify(entry.size)); } catch { /* Storage may be unavailable. */ }
+    try { localStorage.setItem(storageKey(entry.campaign,entry.kind), JSON.stringify(entry.size)); } catch { /* Storage may be unavailable. */ }
   }
-  function set(entry: Entry, property: string, value: string): void {
-    if (!entry.styles.has(property)) entry.styles.set(property, [entry.root.style.getPropertyValue(property), entry.root.style.getPropertyPriority(property)]);
-    if (entry.root.style.getPropertyValue(property) !== value || entry.root.style.getPropertyPriority(property) !== 'important') entry.root.style.setProperty(property, value, 'important');
+  function set(entry: Entry, property: string, value: string, target = entry.root): void {
+    let styles = entry.styles.get(target);
+    if (!styles) { styles = new Map(); entry.styles.set(target, styles); }
+    if (!styles.has(property)) styles.set(property, [target.style.getPropertyValue(property), target.style.getPropertyPriority(property)]);
+    if (target.style.getPropertyValue(property) !== value || target.style.getPropertyPriority(property) !== 'important') target.style.setProperty(property, value, 'important');
   }
   function restoreStyles(entry: Entry): void {
-    for (const [property, [value, priority]] of entry.styles) {
-      if (value) entry.root.style.setProperty(property, value, priority); else entry.root.style.removeProperty(property);
+    for (const [target, styles] of entry.styles) for (const [property, [value, priority]] of styles) {
+      if (value) target.style.setProperty(property, value, priority); else target.style.removeProperty(property);
     }
     entry.styles.clear();
   }
@@ -46,10 +49,16 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
     entry.expand.textContent = entry.expanded ? text('Close map', 'Закрыть карту') : text('Expand map', 'Развернуть карту');
     entry.expand.setAttribute('aria-expanded', String(entry.expanded));
     entry.reset.textContent = text('Reset size', 'Сбросить размер');
+    entry.move.textContent=text('Move map','Переместить карту');entry.move.hidden=!entry.expanded;
+    entry.move.title=text('Drag to move. Arrow keys move the window; Home centers it.','Перетаскивайте для перемещения. Стрелки перемещают окно, Home возвращает в центр.');
     entry.handle.setAttribute('aria-label', entry.expanded ? text('Resize expanded map', 'Изменить размер развёрнутой карты') : text('Resize map height', 'Изменить высоту карты'));
     entry.handle.title = text('Drag to resize. Use arrow keys when focused.', 'Перетаскивайте для изменения размера. При фокусе используйте стрелки.');
   }
   function layout(entry: Entry): void {
+    if (entry.kind === 'world' && (entry.expanded || entry.size.height !== undefined)) {
+      const stage = entry.root.querySelector<HTMLElement>('[class~="min-h-[400px]"].overflow-hidden.group');
+      if (stage) set(entry, 'min-height', '0px', stage);
+    }
     if (entry.expanded) {
       const width = clamp(entry.size.width ?? innerWidth * .8, 320, Math.max(100, innerWidth - 24));
       const height = clamp(entry.size.expandedHeight ?? innerHeight * .72, 240, Math.max(100, innerHeight - 24));
@@ -67,13 +76,13 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
       entry.handle.setAttribute('aria-valuetext', `${width} × ${height}`);
     } else {
       if (entry.size.height !== undefined) {
-        set(entry, 'height', `${clamp(entry.size.height, 240, 1600)}px`); set(entry, 'min-height', '0px'); set(entry, 'flex', 'none');
+        set(entry, 'height', `${clamp(entry.size.height, minimum(entry), 1600)}px`); set(entry, 'min-height', '0px'); set(entry, 'flex', 'none');
       }
       // The map canvas is already positioned against this box; the controls share it.
       set(entry, 'position', 'relative');
       entry.handle.style.cssText = 'position:absolute;left:0;right:0;bottom:0;height:10px;z-index:30;cursor:row-resize;touch-action:none;background:hsl(var(--border,0 0% 40%)/.6);border-radius:4px';
       entry.handle.setAttribute('aria-orientation', 'horizontal');
-      entry.handle.setAttribute('aria-valuemin', '240'); entry.handle.setAttribute('aria-valuemax', '1600');
+      entry.handle.setAttribute('aria-valuemin', String(minimum(entry))); entry.handle.setAttribute('aria-valuemax', '1600');
       entry.handle.setAttribute('aria-valuenow', String(Math.round(entry.root.getBoundingClientRect().height)));
       entry.handle.removeAttribute('aria-valuetext');
     }
@@ -86,14 +95,14 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
       if (entry.root.matches(':popover-open')) entry.root.hidePopover();
       entry.root.removeAttribute('popover'); entry.popover = false;
     }
-    entry.expanded = false; entry.drag = undefined;
+    entry.expanded = false; entry.drag = undefined; entry.moving=undefined;
     restoreStyles(entry); layout(entry);
   }
   function toggle(entry: Entry): void {
     if (entry.expanded) close(entry);
     else {
       entry.expanded = true;
-      entry.left = entry.top = undefined;
+      entry.left=entry.size.left;entry.top=entry.size.top;
       // The top layer avoids clipping by the website's scrolling/sidebar containers.
       // Keep the existing canvas in its React parent so its map interactions continue.
       try { entry.root.setAttribute('popover', 'manual'); entry.root.showPopover(); entry.popover = true; }
@@ -106,14 +115,14 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
     if (entry.expanded) {
       entry.size.width = clamp(width, 320, Math.max(100, innerWidth - 24));
       entry.size.expandedHeight = clamp(height, 240, Math.max(100, innerHeight - 24));
-    } else entry.size.height = clamp(height, 240, 1600);
+    } else entry.size.height = clamp(height, minimum(entry), 1600);
     layout(entry);
   }
   function remove(entry: Entry): void {
     close(entry); entry.controls.remove(); entry.handle.remove(); restoreStyles(entry);
     entries.delete(entry.root);
   }
-  function add(root: HTMLElement, campaign: string): void {
+  function add(root: HTMLElement, campaign: string, kind: 'battle' | 'world'): void {
     const controls = document.createElement('div'); controls.setAttribute('data-ff-desktop-map-controls', 'true'); controls.setAttribute('translate', 'no');
     controls.style.cssText = 'position:absolute;left:8px;top:8px;z-index:30;display:flex;gap:6px;max-width:calc(100% - 52px);flex-wrap:wrap';
     const expand = document.createElement('button'), reset = document.createElement('button');
@@ -121,14 +130,20 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
       button.type = 'button'; button.style.cssText = 'font:12px system-ui;padding:5px 8px;border:1px solid hsl(var(--border,0 0% 40%));border-radius:5px;background:hsl(var(--background,0 0% 6%));color:hsl(var(--foreground,0 0% 96%));cursor:pointer';
       controls.append(button);
     }
+    const move=document.createElement('button');move.type='button';move.setAttribute('data-ff-desktop-map-mover','true');move.style.cssText=expand.style.cssText+';cursor:grab;touch-action:none';controls.append(move);
     const handle = document.createElement('div'); handle.tabIndex = 0; handle.setAttribute('role', 'separator'); handle.setAttribute('translate', 'no'); handle.setAttribute('data-ff-desktop-map-resizer', 'true');
-    const entry: Entry = { root, controls, expand, reset, handle, styles: new Map(), size: readSize(campaign), campaign, expanded: false, popover: false };
+    const entry: Entry = { root, controls, expand, reset, move, kind, handle, styles: new Map(), size: readSize(campaign,kind), campaign, expanded: false, popover: false };
     entries.set(root, entry); root.append(controls, handle);
     controls.addEventListener('pointerdown', event => event.stopPropagation());
     expand.addEventListener('click', event => { event.stopPropagation(); toggle(entry); });
     reset.addEventListener('click', event => {
-      event.stopPropagation(); entry.size = {}; saveSize(entry); restoreStyles(entry); layout(entry);
+      event.stopPropagation(); entry.size = {}; entry.left=entry.top=undefined; saveSize(entry); restoreStyles(entry); layout(entry);
     });
+    const savePosition=():void=>{entry.size.left=entry.left;entry.size.top=entry.top;saveSize(entry);};
+    move.addEventListener('pointerdown',event=>{if(!entry.expanded||event.button!==0)return;event.preventDefault();event.stopPropagation();entry.moving={x:event.clientX,y:event.clientY,left:entry.left!,top:entry.top!};move.setPointerCapture(event.pointerId);});
+    move.addEventListener('pointermove',event=>{if(!entry.moving)return;event.preventDefault();event.stopPropagation();entry.left=entry.moving.left+event.clientX-entry.moving.x;entry.top=entry.moving.top+event.clientY-entry.moving.y;layout(entry);});
+    for(const type of ['pointerup','pointercancel','lostpointercapture'])move.addEventListener(type,()=>{if(entry.moving){entry.moving=undefined;savePosition();}});
+    move.addEventListener('keydown',event=>{if(!entry.expanded||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home'].includes(event.key))return;event.preventDefault();event.stopPropagation();const step=event.shiftKey?64:24;if(event.key==='Home')entry.left=entry.top=undefined;else{entry.left!+=event.key==='ArrowLeft'?-step:event.key==='ArrowRight'?step:0;entry.top!+=event.key==='ArrowUp'?-step:event.key==='ArrowDown'?step:0;}layout(entry);savePosition();});
     handle.addEventListener('pointerdown', event => {
       if (event.button !== 0) return;
       event.preventDefault(); event.stopPropagation();
@@ -154,14 +169,18 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
   }
   function scan(): void {
     frame = 0;
-    const view = new URLSearchParams(location.search).get('view');
     const campaign = /\/([^/]+)\/play\/?$/.exec(location.pathname)?.[1];
-    const roots = new Set<HTMLElement>();
-    if (campaign && (!view || view === 'play')) {
-      for (const canvas of document.querySelectorAll('canvas.touch-none.absolute.inset-0')) {
+    const roots = new Map<HTMLElement,'battle'|'world'>();
+    if (campaign) {
+      for (const canvas of document.querySelectorAll('canvas.absolute.inset-0')) {
         if (canvas.closest('[role="dialog"],form')) continue;
-        const root = canvas.closest<HTMLElement>('[class~="min-h-[300px]"]');
-        if (root) roots.add(root);
+        const root = canvas.classList.contains('touch-none') ? canvas.closest<HTMLElement>('[class~="min-h-[300px]"]') : null;
+        if (root) roots.set(root,'battle');
+        else {
+          const stage=canvas.closest<HTMLElement>('[class~="min-h-[400px]"].overflow-hidden.group');
+          const world=stage?.parentElement;
+          if(world?.matches('.w-full.h-full.flex.flex-1.relative'))roots.set(world,'world');
+        }
       }
     }
     for (const entry of entries.values()) {
@@ -172,7 +191,7 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
         if (!entry.root.contains(entry.handle)) entry.root.append(entry.handle);
       }
     }
-    if (campaign) for (const root of roots) if (!entries.has(root) && !root.hasAttribute('popover')) add(root, campaign);
+    if (campaign) for (const [root,kind] of roots) if (!entries.has(root) && !root.hasAttribute('popover')) add(root, campaign,kind);
   }
   function schedule(): void { if (!frame) frame = requestAnimationFrame(scan); }
   function onResize(): void { for (const entry of entries.values()) layout(entry); }

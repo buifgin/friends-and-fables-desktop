@@ -1,4 +1,4 @@
-import { DND_GLOSSARY, INTERFACE_GLOSSARY, PROSE_GLOSSARY } from './russian-glossary';
+import { DND_GLOSSARY, INTERFACE_GLOSSARY, PROSE_GLOSSARY, PROSE_TITLE_GLOSSARY } from './russian-glossary';
 import { SHARED_INTERFACE_GLOSSARY } from './interface-russian';
 
 export interface TranslationSettings {
@@ -112,6 +112,16 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   }
   const counter = text.match(/^(\s*)(\d+)\s+(Topic Researched|Block Created|Memory Saved|Active|Idle)(\s*(?:\/\s*)?)$/i);
   if (counter) return `${counter[1]}${counter[2]} ${dictionary[counter[3].toLowerCase()]}${counter[4]}`;
+  const battle = text.match(/^(\s*)Battle lasted\s+(\d+)\s+turns?([.!]?)(\s*)$/i);
+  if (battle) return `${battle[1]}Битва продолжалась ${battle[2]} ${localTranslation(battle[2]+' turns',dictionary)!.split(' ').slice(1).join(' ')}${battle[3]}${battle[4]}`;
+  const turns = text.match(/^(\s*)turns?(\s*)$/i);
+  if (turns) return turns[1]+'ходов'+turns[2];
+  const metric = text.match(/^(\s*)(Damage Dealt|Healing Done|Distance Moved)(\s*:\s*)(\d+)(\s*(?:ft)?[.!]?)(\s*)$/i);
+  if (metric) return metric[1]+lookup(metric[2].toLowerCase())+metric[3]+metric[4]+metric[5].replace(/ft/i,'фт.')+metric[6];
+  const gained = text.match(/^(\s*)(found|gained|acquired|bought|looted|crafted|gifted|awarded)(\s+\d+\s*)(\s*)$/i);
+  if (gained) return gained[1]+lookup(gained[2].toLowerCase())+gained[3]+gained[4];
+  const itemEvent = text.match(/^(\s*)(.{1,80}?)\s+(found|gained|acquired|bought|looted|crafted|gifted|awarded)\s+(\d+)\s+(.{1,512}?)(\s*)$/i);
+  if (itemEvent) return `${itemEvent[1]}${itemEvent[2]} ${lookup(itemEvent[3].toLowerCase())} ${itemEvent[4]} ${lookup(itemEvent[5].toLowerCase())??itemEvent[5]}${itemEvent[6]}`;
   const instructions = text.match(/^(\s*)Custom Instructions(\s*\(\s*\d+\s*\/\s*\d+\s*\))(\s*)$/i);
   if (instructions) return instructions[1]+lookup('custom instructions')+instructions[2]+instructions[3];
   const slot = text.match(/^(\s*)Level\s+(\d+)\s+spell slot\s+(consumed|restored)([.!]?)(\s*)$/i);
@@ -184,9 +194,12 @@ export function translationPlan(text: string, names: string[] = []): Translation
   let masked = text.replace(protectedPattern, value => {
     const token = `ZXQ${replacements.size}ZXQ`; replacements.set(token, {original:value,rendered:value.toLowerCase()==='franz'?'Франц':value}); return token;
   });
-  const terms = Object.keys(PROSE_GLOSSARY).sort((a,b)=>b.length-a.length).map(escape);
+  const terms = Object.keys(PROSE_GLOSSARY).sort((a,b)=>b.length-a.length).map(value=>escape(value).replaceAll("'","['’‘]"));
   masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'), value => {
-    const token=`ZXQ${replacements.size}ZXQ`; replacements.set(token,{original:value,rendered:PROSE_GLOSSARY[value.toLowerCase()]}); return token;
+    const token=`ZXQ${replacements.size}ZXQ`; replacements.set(token,{original:value,rendered:PROSE_GLOSSARY[value.toLowerCase().replace(/[’‘]/g,"'")]}); return token;
+  });
+  masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${Object.keys(PROSE_TITLE_GLOSSARY).map(escape).join('|')})(?![\\p{L}\\p{N}_])`,'gu'), value => {
+    const token=`ZXQ${replacements.size}ZXQ`; replacements.set(token,{original:value,rendered:PROSE_TITLE_GLOSSARY[value]}); return token;
   });
   const original = (value: string): string => value.replace(markerPattern, token => replacements.get(token)?.original ?? token);
   const russian = /[\p{Script=Cyrillic}][\p{Script=Cyrillic}\p{M}\p{N}\s.,!?;:—–«»"'()\-]*/gu;

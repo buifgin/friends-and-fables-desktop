@@ -70,18 +70,23 @@ const html=`<!doctype html><html><meta charset="utf-8"><body><div class="grid re
  assert.equal(await js('sent.length'),2,'Holding Enter must not send the newly prepared draft.');
  await js("editor.view.dom.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',bubbles:true}))");
  manager.setLocale('ru');await until("document.querySelector('[data-ff-desktop-command-controls] [role=status]').textContent==='Строка оформлена. Продолжайте писать или отправьте сообщение обычным способом.'");
- await draft('<p>/me Keep the newline.</p>');await enter(true);assert.equal(await js('editor.getHTML()'),'<p><em>Keep the newline.</em></p><p></p>');assert.equal(await js('sent.length'),2);
+ await draft('<p>/me Keep the newline.</p>');await enter(true);assert.equal(await js('editor.getHTML()'),'<p><em>Keep the newline.</em><br></p>');assert.equal(await js('sent.length'),2);
  await js("editor.commands.insertContent('Next line stays plain.');editor.view.dom.dispatchEvent(new Event('input',{bubbles:true}))");
- assert.equal(await js('editor.getHTML()'),'<p><em>Keep the newline.</em></p><p>Next line stays plain.</p>');
+ assert.equal(await js('editor.getHTML()'),'<p><em>Keep the newline.</em><br>Next line stays plain.</p>');
+ await enter(true);await js("editor.commands.insertContent('Third line.');editor.view.dom.dispatchEvent(new Event('input',{bubbles:true}))");
+ assert.equal(await js('editor.getHTML()'),'<p><em>Keep the newline.</em><br>Next line stays plain.<br>Third line.</p>','Soft breaks add no paragraph margins or extra empty blocks.');
  await js("editor.commands.insertContent('<p>/gm Talk to the group.</p>');editor.commands.focus('end')");await enter();
  assert.match(await js('editor.getHTML()'),/<p>#Talk to the group\.#<\/p><p><\/p>$/);assert.equal(await js('sent.length'),2);
  // Format only the caret's command line within one paragraph containing soft breaks.
  await draft('<p>Ordinary line.<br>/me A separate action.<br>Other line.<br>/gm A separate note.</p>',20);await enter();
  const softJSON=await js('editor.getJSON()');
  assert(!JSON.stringify(softJSON).includes('/me'));assert(JSON.stringify(softJSON).includes('/gm'));
- assert.equal(await js('editor.getHTML()'),'<p>Ordinary line.<br><em>A separate action.</em></p><p><br>Other line.<br>/gm A separate note.</p>');
+ assert.equal(await js('editor.getHTML()'),'<p>Ordinary line.<br><em>A separate action.</em></p><p>Other line.<br>/gm A separate note.</p>');
  await js("document.querySelector('[data-ff-desktop-command-controls] button').click()");
- assert.equal(await js('editor.getHTML()'),'<p>Ordinary line.<br><em>A separate action.</em></p><p><br>Other line.<br>#A separate note.#</p>');assert.equal(await js('sent.length'),2);
+ assert.equal(await js('editor.getHTML()'),'<p>Ordinary line.<br><em>A separate action.</em></p><p>Other line.<br>#A separate note.#</p>');assert.equal(await js('sent.length'),2);
+ await draft('<p>/me First action.<br>Plain next line.<br>/gm Later note.</p>',8);await enter(true);
+ assert.equal(await js('editor.getHTML()'),'<p><em>First action.</em><br>Plain next line.<br>/gm Later note.</p>','Reuse an existing soft break instead of inserting an empty line.');
+ await enter(true);assert.match(await js('editor.getHTML()'),/\/gm Later note/,'Typing on an ordinary line must not format a different command line.');
  // Split prefix marks still form one command, while later paragraphs stay plain.
  await draft('<p><strong>/m</strong>e Marked prefix.</p><p>Plain afterwards.</p>');await enter();
  assert.equal(await js('editor.getHTML()'),'<p><em>Marked prefix.</em></p><p></p><p>Plain afterwards.</p>');

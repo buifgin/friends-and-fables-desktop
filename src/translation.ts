@@ -18,6 +18,7 @@ export const TRANSLATION_URL = 'fables-desktop://settings/translation.html';
 const DOM_KEY = '__friendsFablesDesktopTranslation';
 interface Website { contents: WebContents; token: string; pending: Promise<void> }
 interface TextRequest { id: number; version: number; text: string }
+interface TextResult { text: string | null; complete: boolean; retry?: boolean }
 export interface TranslationState extends TranslationSettings {
   cacheEntries: number;
   theme: Pick<AppearanceSettings, 'preset' | 'customColor'>;
@@ -59,7 +60,7 @@ export class TranslationManager {
       await Promise.all([...this.websites].map(website => this.configure(website)));
       return this.state();
     });
-    this.timer = setInterval(() => { void this.pump(); }, 100);
+    this.timer = setInterval(() => { void this.pump(); }, 50);
     if (this.settings.enabled && this.settings.translateDescriptions && !this.settings.showOriginal) void this.readyEngine().catch(() => {});
   }
   private resetEngine(): void {
@@ -131,15 +132,31 @@ export class TranslationManager {
     }).catch(() => { /* Navigation can discard an in-flight renderer call. */ });
     return website.pending;
   }
-  private async translateBatch(nodes: TextRequest[]): Promise<(string | null)[]> {
+  private async translateBatch(nodes: TextRequest[], progress: (results: TextResult[]) => Promise<void>): Promise<TextResult[]> {
     const plans = nodes.map(node => translationPlan(node.text, this.settings.preservedNames));
-    const missing = [...new Set(plans.flat().filter(part => part.translate && this.cache.get(part.request ?? part.text) === undefined).map(part => part.request ?? part.text))];
+    const queues = plans.map(parts => parts.filter(part => part.translate && this.cache.get(part.request ?? part.text) === undefined).map(part => part.request ?? part.text));
+    const requests = new Set<string>();
+    // Interleave paragraphs so one long description cannot hold up the others.
+    for (let index = 0; queues.some(queue => index < queue.length); index++) {
+      for (const queue of queues) if (queue[index] !== undefined) requests.add(queue[index]);
+    }
+    const missing = [...requests];
     const failed = new Set<string>();
-    // Cached text and local labels do not wait for model startup.
-    const engine = missing.length && this.retryAfter <= Date.now() ? await this.readyEngine() : this.engine;
-    while (missing.length && this.retryAfter <= Date.now()) {
+    const render = (): TextResult[] => plans.map(parts => {
+      const pending=parts.filter(part=>part.translate && this.cache.get(part.request??part.text)===undefined);
+      const complete=pending.length===0;
+      return {complete, retry: !complete && (this.retryAfter>Date.now() || pending.some(part=>failed.has(part.request??part.text))),
+        text:parts.map(part=>part.translate && this.cache.get(part.request??part.text)===undefined ? part.text
+          : renderTranslation(part,part.translate?this.cache.get(part.request??part.text):undefined)).join('')};
+    });
+    // Show cached sentences and local terms immediately, including model startup.
+    await progress(render());
+    if (missing.length && this.retryAfter <= Date.now()) {
+      const engine = await this.readyEngine();
       const batch: string[] = []; let length = 0;
-      while (missing.length && batch.length < 16 && length + missing[0].length <= 8000) {
+      // Yield after a small batch: other paragraphs and newly visible text can
+      // progress on the next poll rather than waiting for an entire long page.
+      while (missing.length && batch.length < 4 && length + missing[0].length <= 2400) {
         const value = missing.shift()!; batch.push(value); length += value.length;
       }
       if (engine !== this.engine || this.stopped) throw new Error('Translation canceled.');
@@ -152,10 +169,7 @@ export class TranslationManager {
         });
       } catch { this.retryAfter = Date.now() + 15000; }
     }
-    return plans.map(parts => {
-      if (parts.some(part => part.translate && (failed.has(part.request ?? part.text) || this.cache.get(part.request ?? part.text) === undefined))) return null;
-      return parts.map(part => renderTranslation(part, part.translate ? this.cache.get(part.request ?? part.text) : undefined)).join('');
-    });
+    return render();
   }
   private async pump(): Promise<void> {
     if (this.busy || this.stopped || !this.settings.enabled || this.settings.showOriginal || !this.settings.translateDescriptions) return;
@@ -168,14 +182,16 @@ export class TranslationManager {
         const collected = await website.contents.executeJavaScript(`window.${DOM_KEY}?.collect()`) as { token?: unknown; nodes?: unknown } | undefined;
         if (token !== website.token || collected?.token !== token || !Array.isArray(collected.nodes)) continue;
         const nodes = collected.nodes as TextRequest[];
+        if (!nodes.length) continue;
         if (nodes.length > 32 || nodes.some(node => !node || !Number.isInteger(node.id) || !Number.isInteger(node.version)
           || typeof node.text !== 'string' || node.text.length > 16000) || nodes.reduce((total, node) => total + node.text.length, 0) > 48000) continue;
-        let translated: (string | null)[] = nodes.map(() => null);
-        try { translated = await this.translateBatch(nodes); } catch { /* Canceled by a settings change. */ }
-        const results = nodes.map((node,index) => ({ id:node.id,version:node.version,text:translated[index] }));
-        if (token === website.token && this.allowed(website.contents)) {
+        const publish = async (translated: TextResult[]): Promise<void> => {
+          if (token !== website.token || !this.allowed(website.contents)) return;
+          const results=nodes.map((node,index)=>({id:node.id,version:node.version,...translated[index]}));
           await website.contents.executeJavaScript(`window.${DOM_KEY}?.finish(${JSON.stringify(token)},${JSON.stringify(results)})`);
-        }
+        };
+        try { await publish(await this.translateBatch(nodes,publish)); }
+        catch { await publish(nodes.map(()=>({text:null,complete:false,retry:true}))); }
       }
     } catch { /* A closed or navigating page cannot block the next poll. */ }
     finally { this.busy = false; }

@@ -7,7 +7,7 @@ const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'..');
 const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance'));
 const {TranslationManager,TRANSLATION_URL}=require(path.join(appRoot,'dist/translation'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
-let profile,manager,server,mode='ready',calls=[],delays=0,batches=[];
+let profile,manager,server,mode='ready',calls=[],delays=0,batches=[],progressBatches=0,releaseProgress;
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const until=async(contents,expression,limit=5000)=>{for(let i=0;i<limit/25;i++){if(await contents.executeJavaScript(expression))return;await sleep(25);}throw Error('Timed out: '+expression);};
 const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');app.exit(1);},45000);
@@ -22,6 +22,10 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
   assert.equal(body.source,'en');assert.equal(body.target,'ru');assert.equal(body.format,'text');
   for(const value of body.q)assert(!/[\p{Script=Cyrillic}]/u.test(value),'Russian must never reach the English model.');
   if(body.q.some(value=>value.includes('streaming sentence'))){delays++;await sleep(400);}
+  if(body.q.some(value=>value.includes('Progress sample'))){
+   progressBatches++;assert(body.q.length<=4,'A small batch allows earlier results.');
+   if(progressBatches===2)await new Promise(resolve=>{releaseProgress=resolve;});else await sleep(120);
+  }
   const dictionary={'The forest is quiet.':'Лес тих.','A lantern lights the road.':'Фонарь освещает дорогу.',
    'The door opens.':'Дверь открывается.','Take a seat.':'Присаживайся.',
    'Dangerous sample text.':'<img src=x onerror="window.injected=true">',
@@ -84,6 +88,9 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  for(const [id,text] of Object.entries(shared))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id);
  const rolls={'roll-other':'Другое','roll-flee':'Отступление','roll-heal':'Лечение','roll-melee':'Атака в ближнем бою','roll-ranged':'Атака в дальнем бою','roll-bonus':'Бонусы: +4 Сила. +2 Умение','roll-bonus-combined':'Бонусы: +2 Мудрость. +2 Умение','roll-success':'Успех!','roll-failure':'Провал!','roll-critical-success':'Критический успех!','roll-critical-failure':'Критический провал!','spells-known':'Известные','custom-instructions':'Дополнительные инструкции (1/15)','slot-event':'Ячейка заклинания 1-го уровня использована','slot-restored':'Ячейка заклинания 2-го уровня восстановлена','roll-healed':'4 ОЗ восстановлено','roll-recovered':'8 ОЗ восстановлено','roll-damage':'18 Урон','roll-base':'Базовый бросок (Преимущество)','roll-modifier':'Модификатор Мудрости','roll-proficiency':'Бонус умения'};
  for(const [id,text] of Object.entries(rolls))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id);
+ const summaries={victory:'Победа',ally:'Союзник',enemy:'Враг','battle-lasted':'Битва продолжалась 16 ходов','damage-dealt':'Нанесённый урон: 20','healing-done':'Восстановленные ОЗ: 4','distance-moved':'Пройденное расстояние: 40фт.','item-found':'Могнус находит 1 Маленький латунный ключ с трезубой головой','sorcerer-subclass':'Подкласс чародея','draconic-resilience':'Драконья устойчивость','draconic-spells':'Драконьи заклинания','general-feat':'Общая черта'};
+ for(const [id,text] of Object.entries(summaries))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id);
+ assert(!calls.some(value=>/VICTORY|Battle lasted|Damage Dealt|found|Sorcerer Subclass|Draconic Resilience|Draconic Spells|General Feat/.test(value)),'Shared summary and progression labels never wait for the model.');
  assert(!calls.some(value=>/Melee Attack|Ranged Attack|SUCCESS|FAILURE|HP Healed|HP Recovered|spell slot|Custom Instructions|Base Roll|Modifier/.test(value)),'Roll labels and split counters must stay local.');
  assert(!calls.some(value=>/Proficiency|Armor Class|Gold Pieces|Campaign Settings|Franz|Gemini/.test(value)),'Shared GUI and model names must not reach the machine translator.');
  // Opening a Radix-style portal hides the background only from accessibility APIs.
@@ -115,6 +122,30 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await contents.executeJavaScript("document.getElementById('save').click()");assert.equal(await contents.executeJavaScript('window.saveClicks'),2);
  const count=calls.length;await manager.save({...manager.getSettings(),showOriginal:false});
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");assert.equal(calls.length,count,'Previously translated text should use the cache.');
+ // Hold a later response: earlier sentences, cache hits and progress must already be visible.
+ await contents.executeJavaScript(`{const block=document.createElement('p');block.id='progress';block.textContent=Array.from({length:8},(_,i)=>'Progress sample '+(i+1)+'.').join(' ');document.getElementById('late').append(block);window.progressNode=block.firstChild;window.progressOriginal=block.textContent;block.scrollIntoView()}`);
+ await until(contents,"document.getElementById('progress').textContent.includes('Перевод(Progress sample 1.)') && document.getElementById('progress').textContent.endsWith('Progress sample 8.')");
+ for(let i=0;i<120&&!releaseProgress;i++)await sleep(25);assert(releaseProgress,'Second response is held until partial output is verified.');
+ assert.equal(await contents.executeJavaScript("document.getElementById('progress').firstChild===progressNode"),true);
+ assert.equal(await contents.executeJavaScript("document.getElementById('progress').getAttribute('data-ff-translation-pending')"),'true');
+ assert.equal(await contents.executeJavaScript("getComputedStyle(document.querySelector('[data-ff-translation-status]')).display"),'flex');
+ await contents.executeJavaScript("document.getElementById('late').insertAdjacentHTML('beforeend','<p id=cache-during-progress>The forest is quiet.</p>')");
+ await until(contents,"document.getElementById('cache-during-progress').textContent==='Лес тих.'",250);
+ releaseProgress();releaseProgress=undefined;
+ await until(contents,"document.getElementById('progress').textContent.includes('Перевод(Progress sample 8.)') && !document.getElementById('progress').hasAttribute('data-ff-translation-pending')");
+ assert.equal(progressBatches,2);
+ await until(contents,"getComputedStyle(document.querySelector('[data-ff-translation-status]')).display==='none'");
+ await manager.save({...manager.getSettings(),showOriginal:true});
+ assert.equal(await contents.executeJavaScript("document.getElementById('progress').textContent===progressOriginal && document.getElementById('progress').firstChild===progressNode"),true);
+ assert.equal(await contents.executeJavaScript("document.querySelector('[data-ff-translation-status]')"),null);
+ await manager.save({...manager.getSettings(),showOriginal:false});
+ await until(contents,"document.getElementById('progress').textContent.includes('Перевод(Progress sample 8.)')");assert.equal(progressBatches,2,'Completed sentences survive reconfiguration in the cache.');
+ progressBatches=0;
+ await contents.executeJavaScript(`document.getElementById('late').insertAdjacentHTML('beforeend',Array.from({length:4},(_,i)=>'<p class="fair-progress">Progress sample block '+i+' first. Progress sample block '+i+' second.</p>').join(''))`);
+ await until(contents,"[...document.querySelectorAll('.fair-progress')].every(block=>block.textContent.includes('first.)') && !block.textContent.includes('second.)'))");
+ for(let i=0;i<120&&!releaseProgress;i++)await sleep(25);assert(releaseProgress);
+ releaseProgress();releaseProgress=undefined;
+ await until(contents,"[...document.querySelectorAll('.fair-progress')].every(block=>block.textContent.includes('second.)'))");assert.equal(progressBatches,2,'Paragraphs share a small batch rather than waiting behind the first paragraph.');
  // A displayed node becoming editable restores the original before editing.
  website.show();website.focus();await sleep(150);contents.focus();
  await contents.executeJavaScript("window.editFocus=[];document.addEventListener('focusin',e=>editFocus.push(e.target.id));document.getElementById('save').focus()");

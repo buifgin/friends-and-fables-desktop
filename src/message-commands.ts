@@ -46,9 +46,11 @@ export function formatMessageCommand(document: RichNode, position?: number): For
 
 // Serialized into the ordinary website renderer, without a preload or application IPC.
 export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', format: typeof formatMessageCommand): void {
-  type Editor = { isDestroyed?: boolean; view: { dom: HTMLElement }; state: { selection: { from: number } }; getJSON(): RichNode;
+  type Editor = { isDestroyed?: boolean; view: { dom: HTMLElement }; state: { selection: { from: number }; doc: { nodeAt(position: number): { type: { name: string } } | null } }; getJSON(): RichNode;
     commands: { setContent(value: RichNode, options: { emitUpdate: boolean }): boolean; focus(position?: 'end'): boolean;
-      setTextSelection(position: number): boolean; splitBlock(options: { keepMarks: boolean }): boolean; unsetAllMarks(): boolean } };
+      setTextSelection(position: number): boolean; splitBlock(options: { keepMarks: boolean }): boolean; setHardBreak(): boolean;
+      deleteRange(range: { from: number; to: number }): boolean; unsetAllMarks(): boolean;
+      command(action: (context: { tr: { setStoredMarks(marks: []): unknown } }) => boolean): boolean } };
   type Entry = { root: HTMLElement; editorElement: HTMLElement; controls: HTMLElement; button: HTMLButtonElement; status: HTMLElement; note: 'ready' | 'empty' | 'unavailable' | null; blockEnter: boolean };
   const key = '__friendsFablesDesktopCommands';
   const host = window as unknown as Record<string, { dispose(): void; setLocale(value: 'en' | 'ru'): void } | undefined>;
@@ -81,8 +83,9 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
       : entry.note === 'empty' ? text('Add text after the command.', 'Добавьте текст после команды.')
       : entry.note === 'unavailable' ? text('Could not format this draft. Use the editor controls.', 'Не удалось оформить текст. Используйте кнопки редактора.') : text('/me: italic text · /gm: #text#', '/me: курсив · /gm: #текст#');
     entry.controls.hidden = !active && !entry.note;
+    entry.controls.style.display = entry.controls.hidden ? 'none' : 'flex';
   }
-  function prepare(entry: Entry, newline = false): boolean {
+  function prepare(entry: Entry, newline?: 'paragraph' | 'soft' | 'none'): boolean {
     const editor = editorFor(entry.editorElement);
     if (!editor) return false;
     const result = format(editor.getJSON(), newline ? editor.state.selection.from : undefined);
@@ -91,8 +94,18 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     else {
       try {
         if (editor.commands.setContent(result.document, { emitUpdate: true })) {
-          if (newline && result.lineEnd !== undefined) {
-            editor.commands.setTextSelection(result.lineEnd); editor.commands.splitBlock({ keepMarks: false }); editor.commands.unsetAllMarks(); editor.commands.focus();
+          if (newline && newline !== 'none' && result.lineEnd !== undefined) {
+            const end=result.lineEnd, existingBreak=editor.state.doc.nodeAt(end)?.type.name==='hardBreak';
+            editor.commands.setTextSelection(end);
+            editor.commands.command(({tr})=>{tr.setStoredMarks([]);return true;});
+            if (newline === 'soft') {
+              if (existingBreak) editor.commands.setTextSelection(end+1);
+              else editor.commands.setHardBreak();
+            } else {
+              if (existingBreak) editor.commands.deleteRange({from:end,to:end+1});
+              editor.commands.splitBlock({ keepMarks: false });
+            }
+            editor.commands.command(({tr})=>{tr.setStoredMarks([]);return true;}); editor.commands.focus();
           } else editor.commands.focus('end');
           entry.note = 'ready';
         }
@@ -141,7 +154,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     if (event.key !== 'Enter' || event.isComposing) return;
     const entry = entryFor(event.target);
     if (!entry || !entry.editorElement.contains(event.target as Node)) return;
-    if (entry.blockEnter || prepare(entry, !event.ctrlKey && !event.metaKey) || prepare(entry)) { entry.blockEnter = true; event.preventDefault(); event.stopImmediatePropagation(); }
+    if (entry.blockEnter || prepare(entry, event.ctrlKey || event.metaKey ? 'none' : event.shiftKey ? 'soft' : 'paragraph')) { entry.blockEnter = true; event.preventDefault(); event.stopImmediatePropagation(); }
   }
   function onKeyUp(event: KeyboardEvent): void { if (event.key === 'Enter') for (const entry of entries.values()) entry.blockEnter = false; }
   function onClick(event: MouseEvent): void {
