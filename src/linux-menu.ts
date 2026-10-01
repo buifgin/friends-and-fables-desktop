@@ -55,7 +55,7 @@ export class LinuxMenuBar {
     });
     website.webContents.on('before-input-event', (event, input) => {
       if (!this.black || input.type !== 'keyDown') return;
-      const menus: Record<string, string> = { KeyF: 'file', KeyE: 'edit', KeyA: 'appearance', KeyT: 'translation', KeyV: 'view', KeyW: 'window' };
+      const menus: Record<string, string> = { KeyF: 'file', KeyE: 'edit', KeyA: 'appearance', KeyT: 'translation', KeyM: 'music', KeyV: 'view', KeyW: 'window' };
       if (input.alt && !input.control && menus[input.code]) {
         event.preventDefault(); void this.open(menus[input.code], 0).catch(console.error); return;
       }
@@ -65,6 +65,8 @@ export class LinuxMenuBar {
         : input.code === 'F12' ? 'devtools'
         : input.control && !input.alt && input.code === 'KeyR' ? (input.shift ? 'force-reload' : 'reload')
         : input.control && input.shift && input.code === 'KeyI' ? 'devtools'
+        : input.control && input.shift && input.code === 'KeyM' ? 'music-player'
+        : input.control && input.shift && input.code === 'KeyP' ? 'sp-settings'
         : input.control && input.code === 'Home' ? 'home'
         : input.control && input.code === 'KeyQ' ? 'quit'
         : input.control && input.code === 'KeyW' ? 'close-window' : undefined;

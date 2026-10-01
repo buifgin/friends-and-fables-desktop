@@ -13,6 +13,9 @@ import { AppearanceDock } from './appearance-dock';
 import { configureFullscreenShortcuts } from './window-shortcuts';
 import { configureCampaignMap } from './campaign-map';
 import { configureMessageCommands, formatMessageCommand } from './message-commands';
+import { DEFAULT_HOST_INSTRUCTIONS, instructionDocument } from './host-instructions-core';
+import type { HostInstructions } from './host-instructions-core';
+import { configureInstructionHiding } from './host-instructions-dom';
 
 const SCHEME = 'fables-desktop';
 const SETTINGS_ORIGIN = `${SCHEME}://settings`;
@@ -35,6 +38,7 @@ interface WebsiteTheme {
 
 export class AppearanceManager {
   private settings: AppearanceSettings = { ...DEFAULT_APPEARANCE };
+  private instructions:HostInstructions=structuredClone(DEFAULT_HOST_INSTRUCTIONS);
   private window: BrowserWindow | null = null;
   private panel: WebContentsView | null = null;
   private panelParent: BrowserWindow | null = null;
@@ -88,6 +92,9 @@ export class AppearanceManager {
       '/translation.html': ['translation.html', 'text/html; charset=utf-8'],
       '/translation.css': ['translation.css', 'text/css; charset=utf-8'],
       '/translation.js': ['translation.js', 'text/javascript; charset=utf-8'],
+      '/host-instructions.html':['host-instructions.html','text/html; charset=utf-8'],
+      '/host-instructions.css':['host-instructions.css','text/css; charset=utf-8'],
+      '/host-instructions.js':['host-instructions.js','text/javascript; charset=utf-8'],
     };
     settingsSession.protocol.handle(SCHEME, async (request) => {
       const url = new URL(request.url);
@@ -166,6 +173,10 @@ export class AppearanceManager {
   }
 
   getSettings(): AppearanceSettings { return this.settings; }
+  async setHostInstructions(settings:HostInstructions):Promise<void>{
+    this.instructions=structuredClone(settings);
+    await Promise.all([...this.websites].map(website=>this.apply(website)));
+  }
 
   private async state(contents?: WebContents): Promise<AppearanceState> {
     const settings = this.settings, revision = this.settingsRevision;
@@ -359,7 +370,8 @@ export class AppearanceManager {
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureCampaignMap.toString()})(${settings.resizableMap},${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
-      await contents.executeJavaScript(`(${configureMessageCommands.toString()})(${settings.messageCommands},${JSON.stringify(this.locale)},(${formatMessageCommand.toString()}))`);
+      await contents.executeJavaScript(`(${configureInstructionHiding.toString()})(${this.instructions.hideMarked})`);
+      await contents.executeJavaScript(`(${configureMessageCommands.toString()})(${settings.messageCommands},${JSON.stringify(this.locale)},(${formatMessageCommand.toString()}),${JSON.stringify(this.instructions)},(${instructionDocument.toString()}))`);
     });
     website.pending = apply;
     return apply;

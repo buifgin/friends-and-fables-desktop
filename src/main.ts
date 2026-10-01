@@ -7,6 +7,8 @@ import { AppearanceManager, registerAppearanceScheme } from './appearance';
 import { LinuxMenuBar, MENU_URL } from './linux-menu';
 import { TranslationManager } from './translation';
 import { appText, localizeMenu } from './app-menu-locale';
+import { MusicManager } from './music';
+import { HostInstructionsManager } from './host-instructions';
 
 const APP_NAME = 'Friends & Fables Desktop';
 const WEBSITE_URL = 'https://play.fables.gg/';
@@ -18,6 +20,8 @@ registerAppearanceScheme();
 let mainWindow: BrowserWindow | null = null;
 let appearance: AppearanceManager;
 let translation: TranslationManager;
+let music: MusicManager;
+let hostInstructions:HostInstructionsManager;
 let websiteContents: WebContents | null = null;
 let applicationMenu: Menu;
 let linuxMenu: LinuxMenuBar | undefined;
@@ -36,6 +40,7 @@ function configureWebsiteContents(contents: WebContents, window: BrowserWindow):
   configureFullscreenShortcuts(contents, window);
   appearance.attach(contents);
   translation.attach(contents);
+  music.attach(contents);
   // Keep HTTPS authentication redirects in the sandboxed browser session.
   // The website has no preload script, Node access, or application IPC bridge.
   contents.on('will-navigate', (event, url) => {
@@ -46,6 +51,10 @@ function configureWebsiteContents(contents: WebContents, window: BrowserWindow):
   });
 
   contents.setWindowOpenHandler(({ url }) => {
+    if (music.handleOpenRequest(contents,window,url)) {
+      return { action: 'deny' };
+    }
+    if(hostInstructions.handleOpenRequest(contents,window,url))return {action:'deny'};
     // Some sign-in flows create a blank popup before navigating it to HTTPS.
     if (url !== 'about:blank' && !isHttpsUrl(url)) return { action: 'deny' };
 
@@ -189,7 +198,7 @@ function createMenu(): void {
         click: () => {
           if (mainWindow) void appearance.open(mainWindow).catch(console.error);
         },
-      }],
+      },{id:'sp-settings',label:'Saved /sp Instructions…',accelerator:'CmdOrCtrl+Shift+P',click:()=>{if(mainWindow)void hostInstructions.open(mainWindow).catch(console.error);}}],
     },
     {
       id: 'translation', label: 'Translation',
@@ -203,6 +212,11 @@ function createMenu(): void {
         { type: 'separator' },
         { label: 'Translation Settings…', click: () => { if (mainWindow) void translation.open(mainWindow).catch(console.error); } },
       ],
+    },
+    {
+      id: 'music', label: 'Music',
+      submenu: [{ id: 'music-player', label: 'Music Player…', accelerator: 'CmdOrCtrl+Shift+M',
+        click: () => { if (mainWindow) void music.open(mainWindow).catch(console.error); } }],
     },
     {
       id: 'view', label: 'View',
@@ -240,11 +254,18 @@ if (!app.requestSingleInstanceLock()) {
     await appearance.initialize();
     translation = new TranslationManager();
     await translation.initialize();
+    music = new MusicManager();
+    await music.initialize();
+    hostInstructions=new HostInstructionsManager();await hostInstructions.initialize();
+    hostInstructions.onChange=settings=>appearance.setHostInstructions(settings);
+    await appearance.setHostInstructions(hostInstructions.getSettings());
     if (process.platform === 'linux') nativeTheme.themeSource = 'dark';
     translation.setAppearance(appearance.getSettings());
     appearance.onChange = (settings) => {
       linuxMenu?.setBlack(settings.linuxBlackMenu);
       translation.setAppearance(settings);
+      music.setInterface(settings,appearance.getLocale());
+      hostInstructions.setInterface(settings,appearance.getLocale());
     };
     const websiteSession = session.fromPartition(SESSION_PARTITION);
     // Additional site permissions can be introduced when those features are added.
@@ -254,9 +275,13 @@ if (!app.requestSingleInstanceLock()) {
     websiteSession.setPermissionCheckHandler(() => false);
 
     appearance.setLocale(translation.getSettings().enabled && !translation.getSettings().showOriginal ? 'ru' : 'en');
+    music.setInterface(appearance.getSettings(),appearance.getLocale());
+    hostInstructions.setInterface(appearance.getSettings(),appearance.getLocale());
     createMenu();
     translation.onChange = settings => {
       appearance.setLocale(settings.enabled && !settings.showOriginal ? 'ru' : 'en');
+      music.setInterface(appearance.getSettings(),appearance.getLocale());
+      hostInstructions.setInterface(appearance.getSettings(),appearance.getLocale());
       createMenu();
     };
     createWindow();
@@ -275,6 +300,6 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', event => {
     if (!translation || quitting) return;
     event.preventDefault(); quitting = true;
-    void translation.shutdown().finally(() => app.quit());
+    void Promise.allSettled([translation.shutdown(),music?.shutdown(),hostInstructions?.shutdown()]).finally(() => app.quit());
   });
 }

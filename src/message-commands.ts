@@ -1,4 +1,5 @@
-type RichNode = { type: string; text?: string; marks?: { type: string; [key: string]: unknown }[]; content?: RichNode[]; [key: string]: unknown };
+import type { HostInstructions, instructionDocument } from './host-instructions-core';
+export type RichNode = { type: string; text?: string; marks?: { type: string; [key: string]: unknown }[]; content?: RichNode[]; [key: string]: unknown };
 type FormattedCommand = { command: 'me' | 'gm' | null; invalid?: boolean; document: RichNode | null; lineEnd?: number };
 
 // Operate on editor JSON so literal text, mentions, links, and formatting remain structured.
@@ -10,6 +11,8 @@ export function formatMessageCommand(document: RichNode, position?: number): For
   function visit(node: RichNode, start: number): void {
     if (node.type === 'codeBlock') return;
     if (node.type === 'paragraph') {
+      const text=(node.content??[]).map(child=>child.type==='hardBreak'?'\n':child.text??'').join('').trim();
+      if(text.startsWith('[[FF-SP:1]]\n')&&text.endsWith('\n[[/FF-SP:1]]'))return;
       const output: RichNode[] = []; let line: RichNode[] = [], originalStart = start + 1, outputStart = start + 1;
       function finish(): void {
         const length = line.reduce((sum, child) => sum + size(child), 0);
@@ -48,21 +51,61 @@ export function formatMessageCommand(document: RichNode, position?: number): For
 }
 
 // Serialized into the ordinary website renderer, without a preload or application IPC.
-export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', format: typeof formatMessageCommand): void {
+export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', format: typeof formatMessageCommand,
+  instructions:HostInstructions={text:'',enabled:false,configured:false,hideMarked:true},withInstructions?:typeof instructionDocument): void {
   type Editor = { isDestroyed?: boolean; view: { dom: HTMLElement }; state: { selection: { from: number }; doc: { nodeAt(position: number): { type: { name: string } } | null } }; getJSON(): RichNode;
     commands: { setContent(value: RichNode, options: { emitUpdate: boolean }): boolean; focus(position?: 'end'): boolean;
       setTextSelection(position: number): boolean; splitBlock(options: { keepMarks: boolean }): boolean; setHardBreak(): boolean;
       deleteRange(range: { from: number; to: number }): boolean; unsetAllMarks(): boolean;
       command(action: (context: { tr: { setStoredMarks(marks: []): unknown } }) => boolean): boolean } };
-  type Entry = { root: HTMLElement; editorElement: HTMLElement; controls: HTMLElement; button: HTMLButtonElement; status: HTMLElement; note: 'ready' | 'empty' | 'unavailable' | null; blockEnter: boolean; pending: boolean; sequence: number; bypass: HTMLButtonElement | null };
+  type Entry = { root: HTMLElement; editorElement: HTMLElement; controls: HTMLElement; button: HTMLButtonElement; status: HTMLElement; badge:HTMLButtonElement; note: 'ready' | 'empty' | 'unavailable' | 'configure' | null; blockEnter: boolean; pending: boolean; sequence: number; bypass: HTMLButtonElement | null };
   const key = '__friendsFablesDesktopCommands';
-  const host = window as unknown as Record<string, { dispose(): void; setLocale(value: 'en' | 'ru'): void } | undefined>;
-  if (host[key]) { if (enabled) host[key]!.setLocale(locale); else host[key]!.dispose(); return; }
-  if (!enabled) return;
-  let language = locale, frame = 0, disposed=false;
+  const host = window as unknown as Record<string, { dispose(): void; update(enabled:boolean,locale:'en'|'ru',instructions:HostInstructions):void } | undefined>;
+  if (host[key]) { if (enabled || instructions.configured) host[key]!.update(enabled,locale,instructions); else host[key]!.dispose(); return; }
+  if (!enabled && !instructions.configured) return;
+  let language = locale, commandsEnabled=enabled, preferences=instructions, frame = 0, disposed=false;
   const entries = new Map<HTMLElement, Entry>();
   const text = (en: string, ru: string): string => language === 'ru' ? ru : en;
+  const cleanDocument=(document:RichNode):RichNode=>withInstructions?withInstructions(document,null):document;
+  const stable=(value:unknown):string=>JSON.stringify(value,(_key,value:unknown)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.entries(value).sort(([left],[right])=>left.localeCompare(right))):value);
+  const fingerprint=(document:RichNode):string=>{
+    const normalize=(node:RichNode):RichNode=>{
+      const result={...node};
+      if(result.marks)result.marks=[...result.marks].sort((left,right)=>stable(left).localeCompare(stable(right)));
+      if(result.content){
+        const content:RichNode[]=[];
+        for(const child of result.content.map(normalize)){
+          const last=content.at(-1);
+          if(last?.type==='text'&&child.type==='text'&&stable({...last,text:undefined})===stable({...child,text:undefined}))last.text=(last.text??'')+(child.text??'');else content.push(child);
+        }
+        if(content.length)result.content=content;else delete result.content;
+      }
+      return result;
+    };
+    const normalized=normalize(document);normalized.content=[...(normalized.content??[])];
+    // Tiptap may add an empty paragraph after a terminal code block.
+    while(normalized.content.at(-1)?.type==='paragraph'&&!normalized.content.at(-1)?.content?.length)normalized.content.pop();
+    return stable(normalized);
+  };
+  const playersOnly=(entry:Entry):boolean=>Array.from(entry.root.querySelectorAll('[role="combobox"]')).some(button=>/^(?:Players Only|Только игроки)$/i.test(button.textContent?.trim()??''));
+  const active=(entry:Entry):boolean=>preferences.enabled&&!!preferences.text&&!playersOnly(entry);
+  function spCommand(node:RichNode):boolean{
+    if(node.type==='codeBlock')return false;
+    if(node.type==='paragraph')return (node.content??[]).map(child=>child.type==='hardBreak'?'\n':child.marks?.some(mark=>mark.type==='code')?'':child.text??'').join('').split('\n').some(line=>/^\/sp(?:\s|$)/i.test(line));
+    return !!node.content?.some(spCommand);
+  }
+  function openInstructions(entry:Entry):void{entry.note='configure';render(entry);window.open('fables-desktop://settings/host-instructions.html','_blank');}
+  function cleanDraft(entry:Entry):void{
+    entry.editorElement.parentElement?.removeAttribute('data-ff-desktop-sp-draft');
+    const editor=editorFor(entry.editorElement);if(!editor)return;
+    const before=editor.getJSON(),after=cleanDocument(before);
+    if(JSON.stringify(before)!==JSON.stringify(after))editor.commands.setContent(after,{emitUpdate:true});
+  }
   function editorFor(element: HTMLElement): Editor | null {
+    // Tiptap attaches its live editor to the ProseMirror DOM element. React
+    // fibers can be deeper than our search limit or belong to a portal.
+    const direct=(element as HTMLElement & {editor?:Editor}).editor;
+    if(direct&&!direct.isDestroyed&&direct.view?.dom===element&&typeof direct.getJSON==='function'&&typeof direct.commands?.setContent==='function')return direct;
     type Fiber = { memoizedProps?: { editor?: Editor }; return?: Fiber };
     for (let parent: HTMLElement | null = element, depth = 0; parent && depth < 8; parent = parent.parentElement, depth++) {
       const fiberKey = Object.keys(parent).find(name => name.startsWith('__reactFiber$'));
@@ -76,21 +119,26 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
   }
   function hasCommand(entry: Entry): boolean {
     const editor = editorFor(entry.editorElement);
-    return !!editor && !!format(editor.getJSON());
+    return commandsEnabled && !!editor && !!format(cleanDocument(editor.getJSON()));
   }
   function render(entry: Entry): void {
-    const active = hasCommand(entry);
+    const command = hasCommand(entry);
     entry.button.textContent = text('Format command', 'Оформить команду');
-    entry.button.hidden = !active;
+    entry.button.hidden = !command;
     entry.status.textContent = entry.note === 'ready' ? text('Draft formatted. Enter checks and sends it.', 'Текст оформлен. Enter проверяет и отправляет сообщение.')
       : entry.note === 'empty' ? text('Add text after the command.', 'Добавьте текст после команды.')
-      : entry.note === 'unavailable' ? text('Could not format this draft. Use the editor controls.', 'Не удалось оформить текст. Используйте кнопки редактора.') : text('/me: italic text · /gm: #text#', '/me: курсив · /gm: #текст#');
-    entry.controls.hidden = !active && !entry.note;
+      : entry.note === 'unavailable' ? text('Could not format this draft. Use the editor controls.', 'Не удалось оформить текст. Используйте кнопки редактора.')
+      : entry.note === 'configure' ? text('Configure /sp in the instruction settings.', 'Настройте /sp в окне инструкций.')
+      : commandsEnabled ? text('/me: italic text · /gm: #text#', '/me: курсив · /gm: #текст#') : '';
+    entry.badge.hidden=!preferences.configured;
+    entry.badge.textContent=active(entry)?text('/sp active','/sp активен'):preferences.enabled&&playersOnly(entry)?text('/sp paused · Players Only','/sp приостановлен · Только игроки'):text('/sp inactive','/sp выключен');
+    entry.badge.title=text('Edit saved /sp instructions','Изменить сохранённые инструкции /sp');
+    entry.controls.hidden = !command && !entry.note && !preferences.configured;
     entry.controls.style.display = entry.controls.hidden ? 'none' : 'flex';
   }
   function prepare(entry: Entry, newline?: 'paragraph' | 'soft' | 'none'): boolean {
     const editor = editorFor(entry.editorElement);
-    if (!editor) return false;
+    if (!editor || !commandsEnabled) return false;
     const result = format(editor.getJSON(), newline ? editor.state.selection.from : undefined);
     if (!result) return false;
     if (result.invalid) entry.note = 'empty';
@@ -123,10 +171,12 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     const controls = document.createElement('div'); controls.setAttribute('data-ff-desktop-command-controls', 'true'); controls.setAttribute('translate', 'no');
     controls.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-wrap:wrap;text-align:center;gap:10px;padding:4px 8px;font:12px system-ui;grid-column:1/-1;width:100%;box-sizing:border-box';
     const button = document.createElement('button'); button.type = 'button'; button.style.cssText = 'font:inherit;padding:4px 8px;border:1px solid currentColor;border-radius:5px;background:transparent;color:inherit;cursor:pointer';
-    const status = document.createElement('span'); status.setAttribute('role', 'status'); controls.append(button, status);
-    const entry: Entry = { root, editorElement, controls, button, status, note: null, blockEnter: false, pending:false, sequence:0, bypass:null };
+    const status = document.createElement('span'); status.setAttribute('role', 'status');
+    const badge=document.createElement('button');badge.type='button';badge.setAttribute('data-ff-desktop-sp-status','true');badge.style.cssText=button.style.cssText;controls.append(button,status,badge);
+    const entry: Entry = { root, editorElement, controls, button, status, badge, note: null, blockEnter: false, pending:false, sequence:0, bypass:null };
     entries.set(root, entry); root.append(controls);
     button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); prepare(entry); });
+    badge.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();openInstructions(entry);});
     render(entry);
   }
   function scan(): void {
@@ -153,21 +203,37 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     if (!(target instanceof Element)) return;
     for (const entry of entries.values()) if (entry.root.contains(target)) return entry;
   }
-  function onInput(event: Event): void { const entry = entryFor(event.target); if (entry && entry.editorElement.contains(event.target as Node)) { entry.note = null; entry.pending=false; entry.sequence++; render(entry); } }
+  function onInput(event: Event): void { const entry = entryFor(event.target); if (entry && entry.editorElement.contains(event.target as Node)) { entry.editorElement.parentElement?.removeAttribute('data-ff-desktop-sp-draft');if(entry.pending)cleanDraft(entry);entry.note = null; entry.pending=false; entry.sequence++; render(entry); } }
   const sendSelector='button[id="send"],button[aria-label="Send message"],button[aria-label="Send message (V2)"],button[aria-label="Отправить сообщение"]';
   function submit(entry: Entry): void {
     if (entry.pending) return;
     const editor=editorFor(entry.editorElement);
     if (!editor) { entry.note='unavailable'; render(entry); return; }
-    const source=editor.getJSON(), result=format(source);
+    const original=editor.getJSON(),source=cleanDocument(original), result=commandsEnabled?format(source):null;
+    if(spCommand(source)){cleanDraft(entry);openInstructions(entry);return;}
     const hasContent=(node:RichNode):boolean=>!!node.text?.trim() || node.type==='mention' || !!node.content?.some(hasContent);
-    if (!hasContent(source) || result?.invalid) { entry.note='empty'; render(entry); return; }
+    if (!hasContent(source) || result?.invalid) { cleanDraft(entry);entry.note='empty'; render(entry); return; }
     try {
-      if (result?.document && !editor.commands.setContent(result.document,{emitUpdate:true})) throw new Error('Editor refused the draft.');
+      entry.editorElement.parentElement?.removeAttribute('data-ff-desktop-sp-draft');
+      const selection=editor.state.selection.from,mode=playersOnly(entry),attach=active(entry);
+      const candidate=withInstructions?withInstructions(result?.document??source,attach?preferences.text:null):result?.document??source;
+      if (JSON.stringify(candidate)!==JSON.stringify(original) && !editor.commands.setContent(candidate,{emitUpdate:true})) throw new Error('Editor refused the draft.');
       // Round-trip through the editor schema, then check that no command remains
       // unformatted. The JSON comparison below also detects edits while queued.
-      const expected=JSON.stringify(editor.getJSON()), check=format(editor.getJSON());
+      const roundTrip=editor.getJSON(),expected=JSON.stringify(roundTrip), check=commandsEnabled?format(roundTrip):null;
       if (check?.invalid || check?.document) throw new Error('Draft formatting did not complete.');
+      if(fingerprint(cleanDocument(roundTrip))!==fingerprint(cleanDocument(candidate)))throw new Error('Editor changed the draft.');
+      if(playersOnly(entry)!==mode)throw new Error('The message mode changed.');
+      if(attach){
+        const value=(node:RichNode|undefined):string=>node?.type==='hardBreak'?'\n':node?.text??(node?.content??[]).map(value).join('');
+        if(value(roundTrip.content?.at(-1))!==value(candidate.content?.at(-1)))throw new Error('Editor changed the instruction block.');
+        // Keep the caret in the visible body so a late keystroke cannot edit
+        // the hidden footer before the queued submission is cancelled.
+        const size=(node:RichNode):number=>node.type==='text'?node.text?.length??0:node.content||['paragraph','heading','codeBlock','blockquote','bulletList','orderedList','listItem'].includes(node.type)?2+(node.content??[]).reduce((total,child)=>total+size(child),0):1;
+        const bodyEnd=Math.max(1,(cleanDocument(roundTrip).content??[]).reduce((total,node)=>total+size(node),0)-1);
+        editor.commands.setTextSelection(Math.max(1,Math.min(selection,bodyEnd)));
+      }
+      if(preferences.hideMarked&&attach)entry.editorElement.parentElement?.setAttribute('data-ff-desktop-sp-draft','true');
       entry.pending=true;const sequence=++entry.sequence, route=location.href;
       // React commits its draft state after Tiptap emits the update. Use the
       // site's normal Send button after a task boundary and a frame interval.
@@ -176,13 +242,13 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
         if (sequence!==entry.sequence) return;
         entry.pending=false;
         if (disposed || location.href!==route || entries.get(entry.root)!==entry || !entry.root.isConnected || editorFor(entry.editorElement)!==editor
-          || JSON.stringify(editor.getJSON())!==expected) return;
+          || JSON.stringify(editor.getJSON())!==expected || playersOnly(entry)!==mode) {cleanDraft(entry);return;}
         const send=entry.root.querySelector<HTMLButtonElement>(sendSelector);
-        if (!send || send.disabled) {entry.note='unavailable';render(entry);return;}
+        if (!send || send.disabled) {cleanDraft(entry);entry.note='unavailable';render(entry);return;}
         entry.bypass=send;
         try { send.click(); } finally { entry.bypass=null; }
       },16);
-    } catch {entry.note='unavailable';render(entry);}
+    } catch {cleanDraft(entry);entry.note='unavailable';render(entry);}
   }
   function onKeyDown(event: KeyboardEvent): void {
     if (event.key !== 'Enter' || event.isComposing) return;
@@ -204,11 +270,15 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
   const onNavigation = (): void => schedule();
   document.addEventListener('input', onInput, true); document.addEventListener('keydown', onKeyDown, true); document.addEventListener('keyup', onKeyUp, true); document.addEventListener('click', onClick, true); window.addEventListener('popstate', onNavigation);
   host[key] = {
-    setLocale(value) { language = value; for (const entry of entries.values()) render(entry); },
+    update(value,locale,next) {
+      const changed=commandsEnabled!==value || JSON.stringify(preferences)!==JSON.stringify(next);
+      commandsEnabled=value;language=locale;preferences=next;
+      for(const entry of entries.values()){if(changed){entry.pending=false;entry.sequence++;cleanDraft(entry);}render(entry);}
+    },
     dispose() {
       disposed=true;observer.disconnect(); cancelAnimationFrame(frame);
       document.removeEventListener('input', onInput, true); document.removeEventListener('keydown', onKeyDown, true); document.removeEventListener('keyup', onKeyUp, true); document.removeEventListener('click', onClick, true); window.removeEventListener('popstate', onNavigation);
-      for (const entry of entries.values()) entry.controls.remove(); entries.clear(); delete host[key];
+      for (const entry of entries.values()) {cleanDraft(entry);entry.controls.remove();} entries.clear(); delete host[key];
     },
   };
   scan();

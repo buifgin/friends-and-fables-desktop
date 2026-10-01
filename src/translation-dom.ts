@@ -69,7 +69,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     if (element.childElementCount || parts.length < 2 || parts.length > 12) return reset();
     const originals = parts.map(node => { const entry=nodes.get(node); return entry && read(node)===entry.rendered ? entry.original : read(node); });
     const source = originals.join('');
-    if (source.length > 512 || !/^(?:\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Modifier\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*)$/i.test(source)
+    if (source.length > 512 || !/^(?:\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Modifier\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*[\d,.]+\s+(?:Followers|Following)\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*)$/i.test(source)
       || names.some(name => [source,...originals].some(value=>value.trim().toLowerCase()===name.toLowerCase()))
       || parts.some(node=>!eligible(node)) || entries.size + parts.filter(node=>!nodes.has(node)).length > 4000) return reset();
     const translated = local(source,dictionary);
@@ -77,7 +77,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     const rendered = parts.map(()=>'');
     let start=0, offset=0;
     for (let i=0;i<parts.length;i++) {
-      if (!/^\d+$/.test(originals[i])) continue;
+      if (!/^\d[\d,.]*$/.test(originals[i])) continue;
       const at=translated.indexOf(originals[i],offset);
       if (at<0 || i===start && at!==offset) return reset();
       if (i>start) rendered[start]=translated.slice(offset,at);

@@ -17,11 +17,8 @@ window.sent=[];window.draftHTML='';
 const extensions=[StarterKit.configure({heading:false,blockquote:false,bulletList:false,orderedList:false}),Mention];
 window.editor=new Editor({element:document.getElementById('editor-content'),extensions,content:'<p></p>',
  onUpdate({editor}){const html=editor.getHTML();setTimeout(()=>window.draftHTML=html,0)}});
-document.getElementById('editor-content').__reactFiber$fixture={memoizedProps:{editor:window.editor}};
 window.formEditor=new Editor({element:document.getElementById('form-content'),extensions,content:'<p>Character notes</p>'});
-document.getElementById('form-content').__reactFiber$fixture={memoizedProps:{editor:window.formEditor}};
 window.contextEditor=new Editor({element:document.getElementById('context-content'),extensions,content:'<p>Context notes</p>'});
-document.getElementById('context-content').__reactFiber$fixture={memoizedProps:{editor:window.contextEditor}};
 document.getElementById('editor-content').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();window.sent.push(window.draftHTML)}},true);
 document.getElementById('send').addEventListener('click',()=>window.sent.push(window.draftHTML));
 `,resolveDir:path.join(__dirname,'..')},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
@@ -80,7 +77,9 @@ const html=`<!doctype html><html><meta charset="utf-8"><body><div class="grid re
  await draft('<p>Ordinary <strong>formatted</strong> text.</p>');const normalBefore=await js('editor.getHTML()');await enter();await sendCount(7);assert.equal(await js('sent[6]'),normalBefore);
  await draft('<p>   </p>');await enter();await sleep(80);assert.equal(await sent(),7,'Whitespace-only drafts never send.');
  assert.equal(await js('formEditor.getText()'),'Character notes');assert.equal(await js('contextEditor.getText()'),'Context notes');assert.equal(await js("document.querySelector('input').value"),'Untouched field');
- await draft('<p>/me Disabled command.</p>');await manager.save({...manager.getSettings(),messageCommands:false});await enter();await sendCount(8);assert.match(await js('editor.getHTML()'),/\/me/);assert.equal(await js("document.querySelector('[data-ff-desktop-command-controls]')"),null);
+ await draft('<p>/gm Проверка Enter.</p>');await enter();await sendCount(8);
+ assert.equal(await js('sent[7]'),'<p>#Проверка Enter.#</p>','Plain Enter formats /gm before the native Send handler.');
+ await draft('<p>/me Disabled command.</p>');await manager.save({...manager.getSettings(),messageCommands:false});await enter();await sendCount(9);assert.match(await js('editor.getHTML()'),/\/me/);assert.equal(await js("document.querySelector('[data-ff-desktop-command-controls]')"),null);
  await manager.save({...manager.getSettings(),messageCommands:true});await js("history.pushState(null,'','/');dispatchEvent(new PopStateEvent('popstate'))");await until("document.querySelector('[data-ff-desktop-command-controls]')===null");
  console.log('PASS: real Tiptap whole-draft preparation and validated submission after state commit, № conversion, soft breaks, split prefixes, mentions/links/code, review button, held Enter, duplicate clicks, pending edits, empty commands, editor exclusions, disable, and navigation.');
 })().then(async()=>{clearTimeout(timer);window?.destroy();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true});app.exit(0)}).catch(async error=>{console.error(error);clearTimeout(timer);window?.destroy();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true});app.exit(1)});

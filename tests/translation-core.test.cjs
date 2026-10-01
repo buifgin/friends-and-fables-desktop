@@ -219,3 +219,18 @@ test('whole draft commands are idempotent, preserve code, and reject every empty
  const empty={type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'/gm Complete.'}]},{type:'paragraph',content:[{type:'text',text:'/me ' }]}]};
  assert.equal(formatMessageCommand(empty).invalid,true);
 });
+
+test('profile, workshop, likes, and notification screenshot labels stay local',()=>{
+ const {localTranslation}=require('../dist/translation-core');
+ const samples={
+  'Create your first race!':'Создайте свою первую расу!', 'Create your first class!':'Создайте свой первый класс!',
+  'Create your first world!':'Создайте свой первый мир!', 'Followers':'Подписчики', 'Following':'Подписки', '0 Followers':'0 подписчиков', '1 Followers':'1 подписчик', '2 Followers':'2 подписчика', '11 Followers':'11 подписчиков', '1 Following':'1 подписка', '2 Following':'2 подписки',
+  'No items published yet!':'Пока ничего не опубликовано в разделе «Предметы»!', 'No unread notifications':'Нет непрочитанных уведомлений',
+  'Your Likes':'Понравившееся', 'One Shots':'Короткие приключения', 'Browse Worlds':'Обзор миров',
+  'Discover and like your first world!':'Найдите мир и отметьте «Нравится»!', 'Monthly bonus credits!':'Ежемесячные бонусные кредиты!',
+  'You received 100 bonus credits from your subscription!':'По вашей подписке начислено 100 бонусных кредитов!',
+ };
+ for(const [source,target] of Object.entries(samples)){
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);const plan=translationPlan(source);assert(!plan.some(part=>part.translate),source);assert.equal(plan.map(part=>renderTranslation(part)).join(''),target);
+ }
+});

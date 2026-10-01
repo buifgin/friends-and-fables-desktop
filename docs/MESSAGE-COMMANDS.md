@@ -9,6 +9,8 @@ In Appearance → App, enable **Enable /me and /gm commands** and apply. The set
 - **Format command** prepares the whole draft for review without sending it. The hint is centered under the composer.
 - An empty command anywhere in the draft blocks submission and asks for text. Whitespace-only drafts also stay unsent. Held Enter and repeated clicks cannot duplicate a queued submission. Editing a queued draft cancels that submission.
 
-Mentions, links, Russian text, literal HTML characters, and existing rich text stay structured. Code blocks and inline code are left intact. Character forms, dialogs, and context-block editors receive no command handler. No hidden system prompt is added.
+Mentions, links, Russian text, literal HTML characters, and existing rich text stay structured. Code blocks and inline code are left intact. Character forms, dialogs, and context-block editors receive no command handler. Optional [saved /sp instructions](HOST-INSTRUCTIONS.md) can append ordinary narration guidance at submission; they are hidden locally and remain part of the stored shared message.
 
-Disabling the setting restores the site's normal keyboard and Send behavior.
+Disabling the setting restores the site's normal keyboard and Send behavior when saved /sp instructions have not been configured. `/sp` by itself opens its settings independently of the /me and /gm option.
+
+The composer uses Tiptap’s native editor reference, with a React lookup fallback. Enter and Send format `/gm` and attach enabled `/sp` guidance before the website receives the message. Offline integration tests use that native reference without fabricated React fibers.

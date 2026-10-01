@@ -20,8 +20,10 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const manager = new AppearanceManager(); await manager.initialize();
   translation = new TranslationManager(); await translation.initialize();
   let bar; let chosen=0;
-  const template=['File','Edit','Appearance','Translation','View','Window'].map(label=>({id:label.toLowerCase(),label,submenu:[{label:label==='Appearance'?'Customize Appearance…':'Copy',click(){chosen++;}}]}));
+  const template=['File','Edit','Appearance','Translation','Music','View','Window'].map(label=>({id:label.toLowerCase(),label,submenu:[{label:label==='Appearance'?'Customize Appearance…':'Copy',click(){chosen++;}}]}));
+  template[2].submenu.push({id:'sp-settings',label:'Saved /sp Instructions…',accelerator:'CmdOrCtrl+Shift+P',click(){chosen++;}});
   template[3].submenu=[{id:'translate-ru',label:'Translate into Russian',type:'checkbox',checked:false}];
+  template[4].submenu=[{id:'music-player',label:'Music Player…',accelerator:'CmdOrCtrl+Shift+M',click(){chosen++;}}];
   translation.onChange = settings => {const locale=settings.enabled&&!settings.showOriginal?'ru':'en';manager.setLocale(locale);const translated=localizeMenu(template,locale);translated[3].submenu[0].checked=settings.enabled;bar?.setMenu(Menu.buildFromTemplate(translated),locale);};
   const host = new BrowserWindow({ show: false, type: process.platform==='linux'?'dialog':undefined, width: 1100, height: 820, webPreferences: {
     partition: 'fables-appearance', preload: path.join(appRoot, 'dist/menu-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
@@ -95,11 +97,21 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await translation.save({ ...translation.getSettings(), enabled: true, translateDescriptions: false });
   await until(() => contents.executeJavaScript('document.documentElement.lang === "ru"'));
   await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=appearance]').textContent==='Оформление'"));
-  assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Оформление','Перевод','Вид','Окно']);
+  assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Оформление','Перевод','Музыка','Вид','Окно']);
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
   await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Настроить оформление…'"));
-  assert(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').scrollHeight<=document.getElementById('dropdown').clientHeight"),'One-option dropdown must fit without scrolling.');
+  assert(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').scrollHeight<=document.getElementById('dropdown').clientHeight"),'The settings dropdown must fit without scrolling.');
+  assert.equal(await bar.overlay.webContents.executeJavaScript("document.querySelectorAll('#dropdown .label')[1].textContent"),'Сохранённые инструкции /sp…');
   await bar.overlay.webContents.executeJavaScript("window.desktopMenu.choose(0)");assert.equal(chosen,1,'Localized callbacks retain their actions.');
+  await host.webContents.executeJavaScript("window.desktopMenu.open('music',100)");
+  await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Музыкальный проигрыватель…'"));
+  await bar.overlay.webContents.executeJavaScript("window.desktopMenu.choose(0)");assert.equal(chosen,2);
+  let prevented=false;
+  website.webContents.emit('before-input-event',{preventDefault(){prevented=true}},{type:'keyDown',code:'KeyM',control:true,shift:true,alt:false});
+  assert(prevented);assert.equal(chosen,3,'The custom Linux toolbar dispatches the music shortcut.');
+  prevented=false;
+  website.webContents.emit('before-input-event',{preventDefault(){prevented=true}},{type:'keyDown',code:'KeyP',control:true,shift:true,alt:false});
+  assert(prevented);assert.equal(chosen,4,'The custom Linux toolbar dispatches the instruction shortcut.');
   await host.webContents.executeJavaScript("window.desktopMenu.open('translation',100)");
   await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='✓ Переводить на русский'"));
   await host.webContents.executeJavaScript('window.desktopMenu.close()');

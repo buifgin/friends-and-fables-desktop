@@ -105,6 +105,14 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   if (transactions) return `${transactions[1]}Всего операций: ${transactions[2]}${transactions[3]}`;
   const bonusCredits = text.match(/^(\s*)([+\d,]+)\s+Bonus(\s*)$/i);
   if (bonusCredits) return `${bonusCredits[1]}${bonusCredits[2]} бонусных${bonusCredits[3]}`;
+  const socialCount = text.match(/^(\s*)([\d,.]+)\s+(Followers|Following)(\s*)$/i);
+  if (socialCount) {
+    const count=Number(socialCount[2].replace(/[,.]/g,'')),forms=/followers/i.test(socialCount[3])?['подписчик','подписчика','подписчиков']:['подписка','подписки','подписок'];
+    const word=count%100>=11&&count%100<=14?forms[2]:count%10===1?forms[0]:count%10>=2&&count%10<=4?forms[1]:forms[2];
+    return `${socialCount[1]}${socialCount[2]} ${word}${socialCount[4]}`;
+  }
+  const receivedCredits = text.match(/^(\s*)You received ([\d,]+) bonus credits from your subscription!?(\s*)$/i);
+  if (receivedCredits) return `${receivedCredits[1]}По вашей подписке начислено ${receivedCredits[2]} бонусных кредитов!${receivedCredits[3]}`;
   const date = text.match(/^(\s*)(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(\d{4})(\s*)$/i);
   if (date) {
     const months=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];

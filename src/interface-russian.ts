@@ -1025,3 +1025,22 @@ Object.assign(SHARED_INTERFACE_GLOSSARY, {
   "tip: franz might make mistakes when generating npcs, areas, and locations. when he does, we recommend that you undo or edit the event to ensure that the context is consistent and accurate.": "Совет: Франц может ошибаться при создании НИП, областей и мест. Отмените или измените ошибочное событие, чтобы контекст оставался последовательным и точным.",
   "fyi, applying additional affects or using class features through this message box will not work as well. this box is primarily for in-character dialogue. we recommend using class features by talking to franz via the normal input.": "Это поле предназначено прежде всего для диалога персонажей. Чтобы применить эффекты или особенности класса, сообщите об этом Францу через обычное поле ввода."
 });
+
+// Public profile, workshop empty states, likes, and notification copy.
+Object.assign(SHARED_INTERFACE_GLOSSARY, {
+  'followers':'Подписчики', 'following':'Подписки', 'show followers':'Показать подписчиков', 'show following':'Показать подписки',
+  'follow':'Подписаться', 'unfollow':'Отписаться', 'no followers yet':'Подписчиков пока нет', 'not following anyone yet':'Подписок пока нет',
+  'your likes':'Понравившееся', 'one shot':'Короткое приключение', 'one shots':'Короткие приключения', 'one-shots':'Короткие приключения',
+  'no unread notifications':'Нет непрочитанных уведомлений', "when you receive notifications, they'll appear here":'Полученные уведомления появятся здесь',
+  'monthly bonus credits!':'Ежемесячные бонусные кредиты!',
+  'browse worlds':'Обзор миров', 'browse characters':'Обзор персонажей', 'browse races':'Обзор рас', 'browse classes':'Обзор классов',
+  'browse factions':'Обзор фракций', 'browse monsters':'Обзор монстров', 'browse items':'Обзор предметов', 'browse spells':'Обзор заклинаний',
+  'browse one shots':'Обзор коротких приключений', 'browse one-shots':'Обзор коротких приключений',
+});
+for (const [entity,forms] of Object.entries({ ...entities, world:{object:'мир',many:'миры'} })) {
+  const plural=entity==='class'?'classes':entity==='memory'?'memories':entity==='race'?'races':entity==='one-shot'?'one-shots':entity+'s';
+  add(`create your first ${entity}!`, `Создайте ${['race','faction','feat','memory'].includes(entity)?'свою первую':['spell','location','one-shot'].includes(entity)?'своё первое':'свой первый'} ${forms.object}!`);
+  add(`discover and like your first ${entity}!`, `Найдите ${forms.object} и отметьте «Нравится»!`);
+  add(`no ${plural} published yet!`, `Пока ничего не опубликовано в разделе «${forms.many[0].toUpperCase()+forms.many.slice(1)}»!`);
+}
+add('discover and like your first one shot!', 'Найдите короткое приключение и отметьте «Нравится»!');

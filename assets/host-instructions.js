@@ -1,0 +1,39 @@
+(() => {
+  const $=id=>document.getElementById(id);
+  const russian={
+    'Saved /sp instructions':'Сохранённые инструкции /sp','Attach your saved guidance when sending a message to Franz.':'Добавляйте сохранённые указания к сообщениям для Франца.',
+    'Append /sp to my messages':'Добавлять /sp к моим сообщениям','Instructions for Franz':'Инструкции для Франца','Scene continuity':'Согласованность сцены','Character reactions':'Реакции персонажей','Separated party':'Разделённая группа',
+    'Templates are editable. They add narration guidance and do not change game mechanics.':'Шаблоны можно редактировать. Они задают стиль повествования и не меняют игровые механики.',
+    'Show marked instructions in chat':'Показывать отмеченные инструкции в чате',
+    'Instructions are included in the shared message sent to the website. This app hides the marked sections by default. Browser users and other clients can still read the stored text. Use this for narration guidance, not secrets.':'Инструкции включаются в общее сообщение, отправляемое сайту. Это приложение скрывает отмеченные части по умолчанию. Пользователи браузера и других клиентов могут прочитать сохранённый текст. Используйте эту функцию для указаний по повествованию, а не для секретов.',
+    'Saved on this computer for all campaigns. Players Only messages skip /sp. /sp opens these settings; Shift+Enter never sends. Settings are excluded from exported themes.':'Настройки сохраняются на этом компьютере для всех кампаний. В режиме «Только игроки» /sp не добавляется. Команда /sp открывает это окно; Shift+Enter не отправляет сообщение. Настройки не включаются в экспорт тем.',
+    'Preview the attached text':'Посмотреть добавляемый текст','Save instructions':'Сохранить инструкции','Loading preferences…':'Загрузка настроек…',
+    'Instructions saved.':'Инструкции сохранены.','Could not load preferences.':'Не удалось загрузить настройки.','Could not save instructions.':'Не удалось сохранить инструкции.',
+    'Unsaved changes.':'Есть несохранённые изменения.',
+    'Add instructions before enabling /sp.':'Введите инструкции, прежде чем включить /sp.','Use up to 4,000 characters without reserved /sp markers.':'Введите до 4 000 символов без служебных меток /sp.',
+  };
+  const templates={
+    continuity:['Keep continuity with the established scene and character details. Ask for clarification when those details conflict.','Сохраняй согласованность с установленными деталями сцены и персонажей. Если детали противоречат друг другу, уточни их.'],
+    characters:["Base NPC reactions on the character's established appearance, background, and behavior. Mention relevant details in the narration.",'Основывай реакции НИП на установленной внешности, предыстории и поведении персонажа. Упоминай уместные детали в повествовании.'],
+    party:["When party members are separated, briefly describe each group's current situation when relevant, without inventing events the characters could not observe.",'Когда участники группы разделены, при необходимости кратко описывай положение каждой части группы. Не выдумывай события, которых персонажи не могли наблюдать.'],
+  };
+  let locale='en',note='Loading preferences…',failed=false,busy=false;
+  const text=value=>locale==='ru'?russian[value]??value:value;
+  function status(value,error=false){note=value;failed=error;$('status').textContent=text(value);$('status').classList.toggle('error',error);}
+  function preview(){const value=$('instructions').value.trim();$('count').textContent=`${$('instructions').value.length.toLocaleString(locale==='ru'?'ru-RU':'en-US')} / ${locale==='ru'?'4 000':'4,000'}`;$('preview').textContent=value?`[[FF-SP:1]]\nAdditional guidance for Franz; apply to this message, not as player dialogue:\n${value}\n[[/FF-SP:1]]`:'';}
+  function applyInterface(state){locale=state.locale;document.documentElement.lang=locale;document.title=`${text('Saved /sp instructions')} — Friends & Fables Desktop`;window.settingsTheme.apply(state.theme);for(const element of document.querySelectorAll('[data-label]'))element.textContent=text(element.dataset.label);status(note,failed);preview();}
+  for(const [id,values] of Object.entries(templates))$(id).addEventListener('click',()=>{const existing=$('instructions').value.trim(),addition=values[locale==='ru'?1:0];const value=[existing,addition].filter(Boolean).join('\n');if(value.length>4000){status('Use up to 4,000 characters without reserved /sp markers.',true);return;}$('instructions').value=value;preview();status('Unsaved changes.');});
+  $('instructions').addEventListener('input',()=>{preview();status('Unsaved changes.');});
+  for(const id of ['enabled','show-marked'])$(id).addEventListener('change',()=>status('Unsaved changes.'));
+  $('instructions-form').addEventListener('submit',async event=>{
+    event.preventDefault();if(busy)return;
+    const value={text:$('instructions').value,enabled:$('enabled').checked,hideMarked:!$('show-marked').checked};
+    if(value.text.length>4000||/\[\[(?:\/)?FF-SP:1\]\]/.test(value.text)||value.text.includes('\0')){status('Use up to 4,000 characters without reserved /sp markers.',true);return;}
+    if(value.enabled&&!value.text.trim()){status('Add instructions before enabling /sp.',true);return;}
+    busy=true;$('save').disabled=true;
+    try{await window.hostInstructions.save(value);status($('instructions').value===value.text&&$('enabled').checked===value.enabled&&!$('show-marked').checked===value.hideMarked?'Instructions saved.':'Unsaved changes.');}catch{status('Could not save instructions.',true);}
+    finally{busy=false;$('save').disabled=false;}
+  });
+  window.hostInstructions.onInterface(applyInterface);
+  void window.hostInstructions.get().then(state=>{$('instructions').value=state.settings.text;$('enabled').checked=state.settings.enabled;$('show-marked').checked=!state.settings.hideMarked;$('options').disabled=false;note='';applyInterface(state);}).catch(()=>status('Could not load preferences.',true));
+})();

@@ -67,12 +67,12 @@ jobs:
         if: runner.os == 'Linux'
         env:
           FABLES_TEST_APP_ROOT: ${{ github.workspace }}/out/releases/${{ matrix.app }}/resources/app.asar
-        run: xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:appearance && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:translation && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:panel && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:map && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:commands
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:appearance && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:translation && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:panel && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:map && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:commands && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:music && xvfb-run -a -s "-screen 0 1920x1080x24" bash scripts/test-linux-display.sh npm run test:instructions
       - name: Verify packaged resources on Windows
         if: runner.os == 'Windows'
         env:
           FABLES_TEST_APP_ROOT: ${{ github.workspace }}/out/releases/${{ matrix.app }}/resources/app.asar
-        run: npm run test:appearance && npm run test:translation && npm run test:panel && npm run test:map && npm run test:commands
+        run: npm run test:appearance && npm run test:translation && npm run test:panel && npm run test:map && npm run test:commands && npm run test:music && npm run test:instructions
       - name: Verify included Windows translation model
         if: runner.os == 'Windows'
         run: npm run test:bundled-model

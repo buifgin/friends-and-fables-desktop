@@ -107,3 +107,13 @@
 - [x] Mark only untranslated ranges during progressive translation.
 - [x] Preserve search-icon padding and theme the sidebar account tile.
 - [x] Center command hints and prepare/check the complete draft before Enter or Send submission; convert № to # outside code.
+
+## Next features (unreleased)
+
+- [x] Add a direct audio link player beside the campaign dice button and in the app menu, with a saved playlist, volume/mute, seeking, track navigation, and repeat.
+- [x] Keep music through campaign reloads, start saved tracks paused, and support built-in Russian labels and app themes.
+- [ ] Synchronized GM-controlled music for campaign members requires a shared playback channel; the first player offers local playback and copying track links.
+- [x] Add persistent editable `/sp` narration guidance, first-use settings command, status badge, automatic marked attachment, safe retries, and reversible local hiding; skip Players Only messages.
+- [ ] Private GM delivery and per-character secrecy still require a verified service channel. Marked `/sp` guidance remains ordinary shared message content.
+
+- [x] Add a searchable built-in catalog of 266 official CC BY music links, English/Russian mood and genre filters, playlist actions, source/license links, and attribution copying.

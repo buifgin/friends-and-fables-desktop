@@ -2,6 +2,8 @@ import type { MenuItemConstructorOptions } from 'electron';
 
 const RUSSIAN: Record<string, string> = {
   'File':'Файл', 'Edit':'Правка', 'Appearance':'Оформление', 'Translation':'Перевод', 'View':'Вид', 'Window':'Окно',
+  'Music':'Музыка', 'Music Player…':'Музыкальный проигрыватель…',
+  'Saved /sp Instructions…':'Сохранённые инструкции /sp…',
   'Undo':'Отменить', 'Redo':'Повторить', 'Cut':'Вырезать', 'Copy':'Копировать', 'Paste':'Вставить', 'Select All':'Выделить всё',
   'Friends & Fables Home':'Главная Friends & Fables', 'Open in Browser':'Открыть в браузере', 'Close Window':'Закрыть окно',
   'Quit':'Выход', 'Minimize':'Свернуть', 'Close':'Закрыть', 'Customize Appearance…':'Настроить оформление…',

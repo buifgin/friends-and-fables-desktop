@@ -691,6 +691,7 @@ async function save(settings, window) {
       {id:'edit',label:'Edit',submenu:Array.from({length:7},(_,i)=>({label:`Edit command ${i}`,click(){}}))},
       {id:'appearance',label:'Appearance',submenu:[{label:'Customize Appearance…',click:()=>appearances++}]},
       {id:'translation',label:'Translation',submenu:[{label:'Translate into Russian',type:'checkbox',click(){}},{label:'Show original text',enabled:false,click(){}}]},
+      {id:'music',label:'Music',submenu:[{id:'music-player',label:'Music Player…',accelerator:'CmdOrCtrl+Shift+M',click(){}}]},
       {id:'view',label:'View',submenu:[{id:'reload',label:'Reload',accelerator:'CmdOrCtrl+R',click:()=>reloads++},
         ...Array.from({length:8},(_,i)=>({label:`View command ${i}`,click(){}}))]},
       {id:'window',label:'Window',submenu:[{role:'minimize'},{role:'close'}]},
@@ -710,7 +711,7 @@ async function save(settings, window) {
     assert.equal(view.getBounds().height,height-32);
     const overlay = frame.contentView.children.find(child => child.webContents && child !== view);
     assert(overlay, 'The local dropdown view must be above the website.');
-    for (const id of ['file','edit','appearance','translation','view','window']) {
+    for (const id of ['file','edit','appearance','translation','music','view','window']) {
       await frame.webContents.executeJavaScript(`window.desktopMenu.open('${id}',120)`);
       await until(overlay.webContents, `active==='${id}' && !dropdown.hidden`);
       const geometry = await overlay.webContents.executeJavaScript(`(()=>{
@@ -732,6 +733,8 @@ async function save(settings, window) {
     await until(overlay.webContents,"active==='view'");
     await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
     assert.equal(await overlay.webContents.executeJavaScript('document.activeElement.dataset.index'),'1');
+    await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
+    await until(overlay.webContents,"active==='music'");
     await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
     await until(overlay.webContents,"active==='translation'");
     await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");

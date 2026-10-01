@@ -1,0 +1,19 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Saved /sp Instructions — Friends &amp; Fables Desktop</title><link rel="stylesheet" href="appearance.css"><link rel="stylesheet" href="host-instructions.css">
+<script src="settings-theme.js" defer></script><script src="host-instructions.js" defer></script></head><body><main>
+<p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p><h1 data-label="Saved /sp instructions">Saved /sp instructions</h1>
+<p class="intro" data-label="Attach your saved guidance when sending a message to Franz.">Attach your saved guidance when sending a message to Franz.</p>
+<form id="instructions-form"><fieldset id="options" disabled>
+<label class="switch-row"><input id="enabled" type="checkbox"><span data-label="Append /sp to my messages">Append /sp to my messages</span></label>
+<label for="instructions" data-label="Instructions for Franz">Instructions for Franz</label><textarea id="instructions" rows="8" maxlength="4000" spellcheck="true"></textarea>
+<p class="help" id="count">0 / 4,000</p>
+<div class="templates"><button type="button" class="secondary" id="continuity" data-label="Scene continuity">Scene continuity</button><button type="button" class="secondary" id="characters" data-label="Character reactions">Character reactions</button><button type="button" class="secondary" id="party" data-label="Separated party">Separated party</button></div>
+<p class="help" data-label="Templates are editable. They add narration guidance and do not change game mechanics.">Templates are editable. They add narration guidance and do not change game mechanics.</p>
+<label class="switch-row"><input id="show-marked" type="checkbox"><span data-label="Show marked instructions in chat">Show marked instructions in chat</span></label>
+<p class="help notice" data-label="Instructions are included in the shared message sent to the website. This app hides the marked sections by default. Browser users and other clients can still read the stored text. Use this for narration guidance, not secrets.">Instructions are included in the shared message sent to the website. This app hides the marked sections by default. Browser users and other clients can still read the stored text. Use this for narration guidance, not secrets.</p>
+<p class="help" data-label="Saved on this computer for all campaigns. Players Only messages skip /sp. /sp opens these settings; Shift+Enter never sends. Settings are excluded from exported themes.">Saved on this computer for all campaigns. Players Only messages skip /sp. /sp opens these settings; Shift+Enter never sends. Settings are excluded from exported themes.</p>
+<details><summary data-label="Preview the attached text">Preview the attached text</summary><pre id="preview"></pre></details>
+<div class="actions"><button id="save" type="submit" data-label="Save instructions">Save instructions</button></div>
+<p id="status" role="status" aria-live="polite" data-label="Loading preferences…">Loading preferences…</p>
+</fieldset></form></main></body></html>
