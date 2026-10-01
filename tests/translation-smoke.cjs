@@ -63,6 +63,8 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await settings.webContents.executeJavaScript(`document.getElementById('preserved-names').value=${JSON.stringify(preferences.preservedNames.join('\n'))}`);
  await settings.webContents.executeJavaScript("document.getElementById('enabled').checked=true;document.getElementById('translation-form').requestSubmit()");
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");
+ await until(contents,"document.getElementById('mixed').textContent==='Дверь открывается. Привет, путник! Присаживайся.'");
+ await until(contents,"getComputedStyle(document.querySelector('[data-ff-translation-status]')).display==='none'");
  assert.equal(await contents.executeJavaScript("document.getElementById('term').textContent"),'Спасбросок Мудрости');
  for(const [id,text] of Object.entries({home:'Главная',create:'Создать',discover:'Обзор',workshop:'Мастерская',studio:'Студия изображений',spellbook:'Книга заклинаний',resource:'Второе дыхание:1/2',feature:'Использование заклинаний','skill-check':'Проверка Акробатики',stats:'Характеристики',alignment:'Законно-добрый'}))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text);
  assert.equal(await contents.executeJavaScript('document.documentElement.getAttribute("translate")'),'no');

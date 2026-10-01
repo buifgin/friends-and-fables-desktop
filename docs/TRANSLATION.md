@@ -68,6 +68,8 @@ Small, handwritten samples, measured with `npm run benchmark:translation`:
 
 The terminology sample uses local templates and makes no model request. These six short samples demonstrate feasibility, not a guarantee for long campaign messages. The mixed sample preserved `Привет, путник!` exactly; the historical name/dice sample preserved `Franz`, `Aria Moonwhisper`, and `1d20 + 5`. From 0.4.0, the service narrator is consistently displayed as «Франц».
 
+For 0.5.0, eight handwritten synthetic paragraphs (32 sentences) were also compared on the same local LibreTranslate service. Waiting for the complete page took 3,715 ms before displaying any result. The progressive scheduler displayed its first batch after 436 ms and completed all paragraphs after 3,885 ms. This measures the scheduling/model path after warm-up, excluding DOM settling, polling, and cold model startup. It demonstrates earlier display, rather than faster total inference; hardware and text length still matter.
+
 Machine prose remains imperfect: the model translated “innkeeper” as “постоялец” in one sample. Names and complex grammar can also read awkwardly even when spelling is preserved. Use original-text display to check uncertain passages. Common RPG labels and supported instruction templates avoid those model errors, but actual campaign quality still needs user review.
 
 ## Verification

@@ -53,7 +53,7 @@ new ResizeObserver(()=>{worldCanvas.width=worldCanvas.parentElement.clientWidth;
  await until('originalCanvas.width===Math.round(originalCanvas.parentElement.clientWidth)');
  const moverKey=(id,code,shift=false)=>js(`document.querySelector('#${id} [data-ff-desktop-map-mover]').dispatchEvent(new KeyboardEvent('keydown',{key:${JSON.stringify(code)},shiftKey:${shift},bubbles:true}))`);
  const centered=await size();await moverKey('map','ArrowLeft');await moverKey('map','ArrowDown',true);
- assert.equal((await size()).left,centered.left-24);assert.equal((await size()).top,Math.min(centered.top+64,820-centered.height-12));
+ assert.equal((await size()).left,centered.left-24);assert.equal((await size()).top,await js(`Math.min(${centered.top+64},innerHeight-${centered.height}-12)`));
  assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-map-size-v1:sample')).left"),centered.left-24);
  await moverKey('map','Home');assert.equal((await size()).left,await js(`Math.round((innerWidth-${centered.width})/2)`));assert.equal((await size()).top,await js(`Math.round((innerHeight-${centered.height})/2)`));
  await js("originalCanvas.dispatchEvent(new MouseEvent('click',{bubbles:true}))");assert.equal(await js('window.canvasClicks'),1);
