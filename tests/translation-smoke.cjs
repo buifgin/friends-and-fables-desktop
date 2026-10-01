@@ -82,6 +82,9 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
 
  const shared={details:'Сведения',race:'Раса',class:'Класс',subclass:'Подкласс',pronouns:'Местоимения',voice:'Голос',faction:'Фракция',none:'Нет',currencies:'Валюты',gold:'Золотые монеты',silver:'Серебряные монеты',copper:'Медные монеты',backstory:'Предыстория',mannerisms:'Манеры',carrying:'Грузоподъёмность',weight:'10 / 150 фунт.',armor:'Доспехи',head:'Голова',neck:'Шея','equipment-back':'Спина',gloves:'Перчатки',belt:'Пояс',ring:'Кольцо',legs:'Ноги',feet:'Ступни',back:'Назад','campaign-settings':'Настройки кампании',pacing:'Темп кампании',adventure:'Приключение',downtime:'Спокойная игра','model-help':'Выберите модель повествования Франца.',model:'Gemini 3.1 Pro',credits:'2 кредита / ход',franz:'Франц',ac:'КБ','armor-class':'Класс брони',pb:'БУ',proficiency:'Умение',bonus:'Бонусы: +2 Мудрость, +2 Умение','bonus-fragment':'+2 Умение',speed:'30 фт.','split-xp':'1,799 опыта до уровня 4','spellbook-open':'Открыть книгу заклинаний','full-inventory':'Открыть полный инвентарь','voice-franz':'Франц (британский, мужской голос)'};
  for(const [id,text] of Object.entries(shared))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id);
+ const rolls={'roll-other':'Другое','roll-flee':'Отступление','roll-heal':'Лечение','roll-melee':'Атака в ближнем бою','roll-ranged':'Атака в дальнем бою','roll-bonus':'Бонусы: +4 Сила. +2 Умение','roll-bonus-combined':'Бонусы: +2 Мудрость. +2 Умение','roll-success':'Успех!','roll-failure':'Провал!','roll-critical-success':'Критический успех!','roll-critical-failure':'Критический провал!','spells-known':'Известные','custom-instructions':'Дополнительные инструкции (1/15)','slot-event':'Ячейка заклинания 1-го уровня использована','slot-restored':'Ячейка заклинания 2-го уровня восстановлена','roll-healed':'4 ОЗ восстановлено','roll-recovered':'8 ОЗ восстановлено','roll-damage':'18 Урон','roll-base':'Базовый бросок (Преимущество)','roll-modifier':'Модификатор Мудрости','roll-proficiency':'Бонус умения'};
+ for(const [id,text] of Object.entries(rolls))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id);
+ assert(!calls.some(value=>/Melee Attack|Ranged Attack|SUCCESS|FAILURE|HP Healed|HP Recovered|spell slot|Custom Instructions|Base Roll|Modifier/.test(value)),'Roll labels and split counters must stay local.');
  assert(!calls.some(value=>/Proficiency|Armor Class|Gold Pieces|Campaign Settings|Franz|Gemini/.test(value)),'Shared GUI and model names must not reach the machine translator.');
  // Opening a Radix-style portal hides the background only from accessibility APIs.
  const beforePopup=calls.length;
@@ -94,6 +97,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.querySelector('#portal [role=menuitem]').textContent"),'Только игроки');
  assert.equal(calls.length,beforePopup,'Popup labels should use the glossary immediately.');
  for(const [id,text] of Object.entries(shared))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id+' while a menu is open');
+ for(const [id,text] of Object.entries(rolls))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id+' while a menu is open');
  // React replacing translated DOM with source gets the memoized display promptly.
  await contents.executeJavaScript("document.querySelector('#story strong').textContent='The forest is quiet.'");
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'",200);
@@ -129,6 +133,26 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await sleep(1300);assert.equal(await contents.executeJavaScript("document.getElementById('offline').textContent"),'The unfamiliar cave appears.');
  assert.equal((await manager.check()).available,false);
  const offlineCalls=calls.length;await manager.save({...manager.getSettings(),translateDescriptions:false});
+ // Keep React text/comment identities and update only the changed source nodes.
+ await contents.executeJavaScript(`window.rollNodes={modifier:[...document.getElementById('roll-modifier').childNodes],slot:[...document.getElementById('slot-event').childNodes],instructions:[...document.getElementById('custom-instructions').childNodes]};
+ rollNodes.modifier[0].data='Strength';rollNodes.slot[2].data='3';rollNodes.slot[8].data='restored';rollNodes.instructions[2].data='2'`);
+ await until(contents,"document.getElementById('roll-modifier').textContent==='Модификатор Силы'");
+ await until(contents,"document.getElementById('slot-event').textContent==='Ячейка заклинания 3-го уровня восстановлена'");
+ assert.equal(await contents.executeJavaScript("document.getElementById('custom-instructions').textContent"),'Дополнительные инструкции (2/15)');
+ assert(await contents.executeJavaScript("Object.entries(rollNodes).every(([key,nodes])=>nodes.every((node,i)=>node===document.getElementById(key==='modifier'?'roll-modifier':key==='slot'?'slot-event':'custom-instructions').childNodes[i]))"),'Local translation must retain React text/comment nodes.');
+ assert.equal(await contents.executeJavaScript('rollNodes.slot[2].data'),'3');
+ await contents.executeJavaScript(`const label=document.createElement('span');label.id='dynamic-modifier';label.append(document.createTextNode('Wisdom'),document.createTextNode(' '),document.createTextNode('Modifier'));document.getElementById('late').append(label)`);
+ await until(contents,"document.getElementById('dynamic-modifier').textContent==='Модификатор Мудрости'");
+ await contents.executeJavaScript("document.getElementById('dynamic-modifier').firstChild.data='Magic'");
+ await until(contents,"document.getElementById('dynamic-modifier').textContent==='Magic Модификатор'");
+ assert.equal(await contents.executeJavaScript("document.getElementById('dynamic-modifier').childNodes.length"),3,'Leaving a known label restores its fragments before ordinary translation.');
+ await manager.save({...manager.getSettings(),showOriginal:true});
+ assert.equal(await contents.executeJavaScript("document.getElementById('roll-modifier').textContent"),'Strength Modifier');
+ assert.equal(await contents.executeJavaScript("document.getElementById('slot-event').textContent"),'Level 3 spell slot restored');
+ assert.equal(await contents.executeJavaScript("document.getElementById('custom-instructions').textContent"),'Custom Instructions (2/15)');
+ await manager.save({...manager.getSettings(),showOriginal:false});
+ await until(contents,"document.getElementById('roll-modifier').textContent==='Модификатор Силы'");
+ assert.equal(calls.length,offlineCalls,'All roll translations work with descriptions off and the translator unavailable.');
  await contents.executeJavaScript("document.getElementById('bonus').textContent='Bonuses: +3 Wisdom, +2 Proficiency';document.getElementById('portal').innerHTML='<div role=menu><span>Campaign Settings</span><span>Race</span><span>Class</span><span>AC</span></div>'");
  await until(contents,"document.getElementById('bonus').textContent==='Бонусы: +3 Мудрость, +2 Умение'");
  assert.equal(await contents.executeJavaScript("document.getElementById('portal').textContent"),'Настройки кампанииРасаКлассКБ');assert.equal(calls.length,offlineCalls);
@@ -155,5 +179,5 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.querySelector('#story strong').textContent"),'The forest is quiet.');
  assert.equal((await reopened.webContents.executeJavaScript('window.translation.clearCache()')).cacheEntries,0);
  if(process.env.FABLES_TEST_SCREENSHOT){reopened.show();await sleep(150);await writeFile(process.env.FABLES_TEST_SCREENSHOT,(await reopened.webContents.capturePage()).toPNG());}
- console.log('PASS: site-wide browser opt-outs, preserved nested opt-outs, themed translation settings and unsaved drafts, home/game labels, glossary-only dropdowns, accessibility masking, instant React restoration, placeholder hints, model batching, translation controls, dictionary, mixed Russian, names/URLs/dice preservation, immutable drafts/records, reversible DOM, late/streaming content, model failure/recovery, restart cache, exact origins, and restricted IPC.');
+ console.log('PASS: site-wide browser opt-outs, preserved nested opt-outs, themed translation settings and unsaved drafts, home/game labels, local roll outcomes/bonuses/healing, split React labels/counters and original node identities, glossary-only dropdowns, accessibility masking, instant React restoration, placeholder hints, model batching, translation controls, dictionary, mixed Russian, names/URLs/dice preservation, immutable drafts/records, reversible DOM, late/streaming content, model failure/recovery, restart cache, exact origins, and restricted IPC.');
 })().then(async()=>{clearTimeout(timer);await manager?.shutdown();for(const window of BrowserWindow.getAllWindows())window.destroy();server?.closeAllConnections();await new Promise(resolve=>server?server.close(resolve):resolve());if(profile && !process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true});app.exit(0);}).catch(async error=>{console.error(error);clearTimeout(timer);await manager?.shutdown();for(const window of BrowserWindow.getAllWindows())window.destroy();server?.closeAllConnections();if(server)server.close();if(profile && !process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true});app.exit(1);});

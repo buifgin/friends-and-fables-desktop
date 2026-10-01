@@ -123,3 +123,39 @@ test('every authored shared interface string is deterministic, with whitespace a
   const plan=translationPlan(source);assert(!plan.some(p=>p.translate),source);assert.equal(plan.map(p=>renderTranslation(p)).join(''),target,source);
  }
 });
+
+test('roll outcomes, period-separated bonuses, healing and spell-slot events never use the model',()=>{
+ const {localTranslation}=require('../dist/translation-core');
+ const samples={
+  'OTHER':'Другое','Flee':'Отступление','Heal':'Лечение','Known':'Известные',
+  'Melee Attack':'Атака в ближнем бою','Ranged Attack':'Атака в дальнем бою',
+  'SUCCESS!':'Успех!','FAILURE!':'Провал!','CRITICAL SUCCESS!':'Критический успех!','CRITICAL FAILURE!':'Критический провал!',
+  'Bonuses: +4 Strength. +2 Proficiency':'Бонусы: +4 Сила. +2 Умение',
+  '+2 Wisdom. +2 Proficiency':'+2 Мудрость. +2 Умение',
+  '  Bonuses: -1 Dexterity, +2 Proficiency. +3 Expertise.\n':'  Бонусы: -1 Ловкость, +2 Умение. +3 Компетентность.\n',
+  '+3 Modifier':'+3 Модификатор',
+  'Custom Instructions (1/15)':'Дополнительные инструкции (1/15)',
+  '  Custom Instructions ( 0 / 15 )\n':'  Дополнительные инструкции ( 0 / 15 )\n',
+  'Level 1 Spell Slot consumed':'Ячейка заклинания 1-го уровня использована',
+  '  Level 9 spell slot restored!\n':'  Ячейка заклинания 9-го уровня восстановлена!\n',
+  'Cantrip used - no spell slot consumed':'Использован заговор — ячейка заклинания не потрачена',
+  'Spell slot consumed!':'Ячейка заклинания использована!',
+  'Spell slot restored!':'Ячейка заклинания восстановлена!',
+  '4 HP Healed':'4 ОЗ восстановлено','8 HP Recovered':'8 ОЗ восстановлено','18 Damage':'18 Урон',
+  '0 HP Healed!':'0 ОЗ восстановлено!','1,234 HP Recovered':'1,234 ОЗ восстановлено',
+  'Base Roll':'Базовый бросок','Base Roll (advantage)':'Базовый бросок (Преимущество)',
+  '(disadvantage)':'(Помеха)',
+  'Strength Modifier':'Модификатор Силы','Dexterity Modifier':'Модификатор Ловкости',
+  'Constitution Modifier':'Модификатор Телосложения','Intelligence Modifier':'Модификатор Интеллекта',
+  'Wisdom Modifier':'Модификатор Мудрости','Charisma Modifier':'Модификатор Харизмы',
+ };
+ for(const [source,target] of Object.entries(samples)){
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+  const plan=translationPlan(source);assert(!plan.some(p=>p.translate),source);
+  assert.equal(plan.map(p=>p.text).join(''),source);
+  assert.equal(plan.map(p=>renderTranslation(p)).join(''),target,source);
+ }
+ for(const source of ['Mira healed 4 HP.','Bonuses: +2 Mira','Custom Instructions from Mira','HP Healed by Mira'])
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),undefined,source+' is not a shared control');
+ assert.equal(renderTranslation(translationPlan('Heal',['Heal'])[0]),'Heal','Listed world-specific names still take priority.');
+});

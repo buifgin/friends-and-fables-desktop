@@ -1,7 +1,7 @@
 // Serialized into the website. This function has ordinary DOM access only:
 // no preload, IPC, network requests, or Electron APIs are exposed to the page.
 export function installTranslationDom(token: string, dictionary: Record<string, string>, descriptions: boolean, names: string[], local: (text: string, dictionary: Record<string,string>) => string | undefined): void {
-  type Entry = { id: number; node: Text | Attr; original: string; rendered: string | null; version: number; due: number; waiting: boolean };
+  type Entry = { id: number; node: Text | Attr; original: string; rendered: string | null; version: number; due: number; waiting: boolean; fragments?: boolean };
   type Result = { id: number; version: number; text: string | null };
   type Controller = { collect(): unknown; retry(): void; finish(token: string, results: Result[]): void; dispose(): void };
   const key = '__friendsFablesDesktopTranslation';
@@ -33,6 +33,40 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     if (entry.rendered !== null && read(entry.node) === entry.rendered) write(entry.node, entry.original);
     entries.delete(entry.id); nodes.delete(entry.node);
   }
+  // React renders these labels as adjacent text nodes. Translate the complete
+  // grammatical unit without replacing nodes, comments, or numeric counters.
+  // The whitelist keeps this treatment away from narration and user names.
+  function examineFragments(element: Element): boolean {
+    const parts = [...element.childNodes].filter((node): node is Text => node instanceof Text);
+    const reset = (): false => { for (const node of parts) { const entry=nodes.get(node); if(entry?.fragments) restore(entry); } return false; };
+    if (element.childElementCount || parts.length < 2 || parts.length > 12) return reset();
+    const originals = parts.map(node => { const entry=nodes.get(node); return entry && read(node)===entry.rendered ? entry.original : read(node); });
+    const source = originals.join('');
+    if (source.length > 512 || !/^(?:\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Modifier\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*)$/i.test(source)
+      || names.some(name => [source,...originals].some(value=>value.trim().toLowerCase()===name.toLowerCase()))
+      || parts.some(node=>!eligible(node)) || entries.size + parts.filter(node=>!nodes.has(node)).length > 4000) return reset();
+    const translated = local(source,dictionary);
+    if (translated === undefined) return reset();
+    const rendered = parts.map(()=>'');
+    let start=0, offset=0;
+    for (let i=0;i<parts.length;i++) {
+      if (!/^\d+$/.test(originals[i])) continue;
+      const at=translated.indexOf(originals[i],offset);
+      if (at<0 || i===start && at!==offset) return reset();
+      if (i>start) rendered[start]=translated.slice(offset,at);
+      rendered[i]=originals[i]; offset=at+originals[i].length; start=i+1;
+    }
+    if (start<parts.length) rendered[start]=translated.slice(offset);
+    else if (offset!==translated.length) return reset();
+    for (let i=0;i<parts.length;i++) {
+      const node=parts[i]; let entry=nodes.get(node);
+      if (entry?.fragments && entry.original===originals[i] && entry.rendered===rendered[i] && read(node)===rendered[i]) continue;
+      if (!entry) { entry={id:++next,node,original:originals[i],rendered:null,version:0,due:0,waiting:false}; entries.set(entry.id,entry); nodes.set(node,entry); }
+      entry.original=originals[i]; entry.rendered=rendered[i]; entry.version++; entry.waiting=false; entry.fragments=true;
+      if (read(node)!==rendered[i]) write(node,rendered[i]);
+    }
+    return true;
+  }
   function examine(node: Text | Attr): void {
     let entry = nodes.get(node);
     if (!eligible(node)) { if (entry) restore(entry); return; }
@@ -61,12 +95,13 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     if (timer) clearTimeout(timer); timer = undefined;
     for (const entry of entries.values()) if (!parent(entry.node)?.isConnected) { entries.delete(entry.id); nodes.delete(entry.node); }
     for (const root of roots) {
-      if (root.nodeType === Node.TEXT_NODE) { examine(root as Text); continue; }
+      if (root.nodeType === Node.TEXT_NODE) { if (!root.parentElement || !examineFragments(root.parentElement)) examine(root as Text); continue; }
       if (!(root instanceof Element)) continue;
       const attributes = (element: Element): void => { for(const name of ['placeholder','data-placeholder']) { const attribute=element.getAttributeNode(name); if(attribute) examine(attribute); } };
       attributes(root);
+      if (examineFragments(root)) continue;
       const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
-      while (walker.nextNode()) { const node=walker.currentNode; if(node instanceof Element) attributes(node); else examine(node as Text); }
+      while (walker.nextNode()) { const node=walker.currentNode; if(node instanceof Element) { attributes(node); examineFragments(node); } else examine(node as Text); }
     }
     roots.clear();
   }
@@ -76,7 +111,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   }
   const observer = new MutationObserver(mutations => {
     for (const mutation of mutations) {
-      if (mutation.type === 'childList') { for (const node of mutation.addedNodes) schedule(node); }
+      if (mutation.type === 'childList') { schedule(mutation.target); for (const node of mutation.addedNodes) schedule(node); }
       else schedule(mutation.target);
     }
   });

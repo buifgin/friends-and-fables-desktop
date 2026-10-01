@@ -24,6 +24,16 @@ body{background:#101116;color:#eee;font:16px system-ui;padding:20px}button,input
 <h3 id="campaign-settings">Campaign Settings</h3><span id="pacing">Campaign Pacing Mode</span><span id="adventure">Adventure</span><span id="downtime">Downtime</span><span id="model-help">Select Franz's narration model.</span><span id="model">Gemini 3.1 Pro</span><span id="credits">2 credits/turn</span>
 <span id="franz">Franz</span><span id="ac">AC</span><span id="armor-class">Armor Class</span><span id="pb">PB</span><span id="proficiency">Proficiency</span><span id="bonus">Bonuses: +2 Wisdom, +2 Proficiency</span><span id="bonus-fragment">+2 Proficiency</span><span id="speed">30ft</span>
 <span id="split-xp"><span>1,799 </span><span>XP until level</span><span> 4</span></span><span id="spellbook-open">Open Spellbook</span><span id="full-inventory">View Full Inventory</span><span id="voice-franz">Franz (British Male)</span>
+</section>
+<section id="roll-ui">
+<h3 id="roll-other">OTHER</h3><button id="roll-flee">Flee</button><button id="roll-heal">Heal</button>
+<h3 id="roll-melee">Melee Attack</h3><h3 id="roll-ranged">Ranged Attack</h3>
+<span id="roll-bonus">Bonuses: <!-- -->+4 Strength. +2 Proficiency</span><span id="roll-bonus-combined">Bonuses: +2 Wisdom. +2 Proficiency</span>
+<strong id="roll-success">SUCCESS!</strong><strong id="roll-failure">FAILURE!</strong><strong id="roll-critical-success">CRITICAL SUCCESS!</strong><strong id="roll-critical-failure">CRITICAL FAILURE!</strong>
+<button id="spells-known">Known</button><div id="custom-instructions">Custom Instructions (<!-- -->1<!-- -->/<!-- -->15<!-- -->)</div>
+<div id="slot-event">Level <!-- -->1<!-- --> spell slot<!-- --> <!-- -->consumed</div><div id="slot-restored">Level 2 spell slot restored</div>
+<strong id="roll-healed">4<!-- --> <!-- -->HP Healed</strong><strong id="roll-recovered">8<!-- --> <!-- -->HP Recovered</strong><strong id="roll-damage">18<!-- --> Damage</strong>
+<span id="roll-base">Base Roll<!-- --> <!-- -->(advantage)</span><span id="roll-modifier">Wisdom<!-- --> <!-- -->Modifier</span><span id="roll-proficiency">Proficiency Bonus</span>
 </section><div id="late"></div></div><div id="portal"></div>
 <script>
 window.campaignRecord={text:'The forest is quiet.',name:'Aria Moonwhisper',message:'Hello, friends!'};

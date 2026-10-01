@@ -93,7 +93,7 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   if (prefix && lookup(prefix[2].trim().toLowerCase())) return prefix[1]+lookup(prefix[2].trim().toLowerCase())+prefix[3];
   const colon = text.match(/^(\s*)(.*?)(\s*:\s*)$/);
   if (colon && lookup(colon[2].trim().toLowerCase())) return colon[1]+lookup(colon[2].trim().toLowerCase())+colon[3];
-  const decorated = text.match(/^(\s*)(.*?)(\s*\*|\.\.\.|…)(\s*)$/);
+  const decorated = text.match(/^(\s*)(.*?)(\s*\*|\.\.\.|…|[.!?])(\s*)$/);
   if (decorated && lookup(decorated[2].trim().toLowerCase())) return decorated[1]+lookup(decorated[2].trim().toLowerCase())+decorated[3]+decorated[4];
   const xp = text.match(/^(\s*)([\d,]+)\s*XP\s+until\s+level\s+(\d+)(\s*)$/i);
   if (xp) return `${xp[1]}${xp[2]} опыта до уровня ${xp[3]}${xp[4]}`;
@@ -112,6 +112,16 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   }
   const counter = text.match(/^(\s*)(\d+)\s+(Topic Researched|Block Created|Memory Saved|Active|Idle)(\s*(?:\/\s*)?)$/i);
   if (counter) return `${counter[1]}${counter[2]} ${dictionary[counter[3].toLowerCase()]}${counter[4]}`;
+  const instructions = text.match(/^(\s*)Custom Instructions(\s*\(\s*\d+\s*\/\s*\d+\s*\))(\s*)$/i);
+  if (instructions) return instructions[1]+lookup('custom instructions')+instructions[2]+instructions[3];
+  const slot = text.match(/^(\s*)Level\s+(\d+)\s+spell slot\s+(consumed|restored)([.!]?)(\s*)$/i);
+  if (slot) return `${slot[1]}Ячейка заклинания ${slot[2]}-го уровня ${/^consumed$/i.test(slot[3])?'использована':'восстановлена'}${slot[4]}${slot[5]}`;
+  const recovered = text.match(/^(\s*)([\d,]+)\s+(HP Healed|HP Recovered|Damage)([.!]?)(\s*)$/i);
+  if (recovered) return `${recovered[1]}${recovered[2]} ${lookup(recovered[3].toLowerCase())}${recovered[4]}${recovered[5]}`;
+  const baseRoll = text.match(/^(\s*)Base Roll\s*\((advantage|disadvantage)\)(\s*)$/i);
+  if (baseRoll) return `${baseRoll[1]}${lookup('base roll')} (${lookup(baseRoll[2].toLowerCase())})${baseRoll[3]}`;
+  const vantage = text.match(/^(\s*)\((advantage|disadvantage)\)(\s*)$/i);
+  if (vantage) return `${vantage[1]}(${lookup(vantage[2].toLowerCase())})${vantage[3]}`;
   const level = text.match(/^(\s*)Level\s+(\d+)(.*)$/i);
   if (level) {
     let rest = level[3];
@@ -122,7 +132,7 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   }
   // Dice bonuses are often one composite text node or several fragments.
   // Translate only known mechanical terms, preserving numbers and punctuation.
-  const bonus = text.match(/^(\s*)(Bonuses:\s*)?((?:[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))(?:\s*,\s*[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*)(\s*)$/i);
+  const bonus = text.match(/^(\s*)(Bonuses:\s*)?((?:[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise|Modifier))(?:\s*[,.]\s*[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise|Modifier))*)([.]?\s*)$/i);
   if(bonus) return bonus[1]+(bonus[2]?bonus[2].replace(/Bonuses/i,lookup('bonuses')!):'')+bonus[3].replace(/[A-Za-z]+/g,term=>lookup(term.toLowerCase())!)+bonus[4];
   const composer = text.match(/^(.*?)\s+says or does(?:\.\.\.|…)(\s*)$/i);
   if(composer) return `${composer[1]} говорит или делает…${composer[2]}`;

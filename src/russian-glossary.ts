@@ -1,6 +1,6 @@
 // Term names only; Russian wording is curated for this app. See docs/GLOSSARY.md
 // for SRD attribution and the community terminology references used to check it.
-export const GLOSSARY_VERSION = 2;
+export const GLOSSARY_VERSION = 3;
 export const DND_GLOSSARY: Record<string, string> = {
   'cantrip':'Заговор', 'cantrips':'Заговоры', 'spellcasting':'Использование заклинаний',
   'spellcasting ability':'Базовая характеристика заклинаний', 'spellcasting focus':'Магическая фокусировка',
