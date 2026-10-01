@@ -24,7 +24,11 @@ def download(package):
         print("Downloading", package["name"], package["version"], flush=True)
         temp = file.with_suffix(".tmp")
         try:
-            with urllib.request.urlopen(package["url"], timeout=120) as source, temp.open("wb") as dest:
+            # The model host rejects urllib's default agent (Cloudflare error 1010).
+            request = urllib.request.Request(package["url"], headers={
+                "User-Agent": "FriendsAndFablesDesktopBuild/1 (+https://github.com/buifgin/friends-and-fables-desktop)",
+            })
+            with urllib.request.urlopen(request, timeout=120) as source, temp.open("wb") as dest:
                 shutil.copyfileobj(source, dest)
             if digest(temp) != package["sha256"]:
                 raise ValueError("Checksum mismatch: " + package["name"])
