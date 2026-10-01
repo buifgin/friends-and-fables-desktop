@@ -77,7 +77,7 @@
 - [x] Prepare GitHub Actions checks, native Windows/Linux builds, packaged-resource tests, and checksums.
 - [x] Run native Linux and Windows CI, including packaged-resource and Windows model checks (v0.3.0).
 - [x] Test v0.1.0 packaged releases on both operating systems using dual boot.
-- [x] Publish verified Linux/Windows releases through v0.3.0 with checksums.
+- [x] Publish verified Linux/Windows releases through v0.4.0 with checksums.
 - Verify AUR installation on a clean Arch system and maintain package updates.
 
 ## 6. Release 0.4.0
