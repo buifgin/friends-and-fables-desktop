@@ -15,6 +15,7 @@ export interface AppearanceSettings {
   appearancePinned: boolean;
   appearancePanelWidth: number;
   resizableMap: boolean;
+  messageCommands: boolean;
   linuxBlackMenu: boolean;
   linuxFloatingAppearance: boolean;
 }
@@ -50,6 +51,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   appearancePinned: false,
   appearancePanelWidth: 420,
   resizableMap: false,
+  messageCommands: false,
   linuxBlackMenu: true,
   linuxFloatingAppearance: true,
 };
@@ -134,6 +136,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   if (typeof appearancePinned !== 'boolean') throw new Error('Invalid pinned appearance preference.');
   const appearancePanelWidth = range(input.appearancePanelWidth ?? 420, 320, 900);
   const resizableMap = flag(input.resizableMap ?? false);
+  const messageCommands = flag(input.messageCommands ?? false);
   if (!Number.isInteger(appearancePanelWidth)) throw new Error('Panel width must be a whole number.');
   const resultTextColor = dice.resultTextColor ?? null;
   function dicePalette(name: 'natural20' | 'natural1'): DicePalette {
@@ -152,7 +155,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     dice: { enabled: flag(dice.enabled), style: messageStyle(dice.style), colorsEnabled: flag(dice.colorsEnabled),
       faceColor: hex(dice.faceColor), edgeColor: hex(dice.edgeColor), numberColor: hex(dice.numberColor),
       resultTextColor: resultTextColor === null ? null : hex(resultTextColor), natural20: dicePalette('natural20'), natural1: dicePalette('natural1') },
-    appearancePinned, appearancePanelWidth, resizableMap, linuxBlackMenu, linuxFloatingAppearance,
+    appearancePinned, appearancePanelWidth, resizableMap, messageCommands, linuxBlackMenu, linuxFloatingAppearance,
   };
 }
 

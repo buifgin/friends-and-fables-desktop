@@ -62,6 +62,7 @@ function selection() {
       natural20: readDicePalette('natural20'), natural1: readDicePalette('natural1') },
     appearancePinned: element('pin-appearance').checked, appearancePanelWidth: panelWidth,
     resizableMap: element('resizable-map').checked,
+    messageCommands: element('message-commands').checked,
     linuxBlackMenu: element('black-menu').checked, linuxFloatingAppearance: element('floating-appearance').checked,
   };
 }
@@ -72,6 +73,7 @@ function showSettings(settings) {
   panelWidth = settings.appearancePanelWidth;
   element('pin-appearance').checked = settings.appearancePinned;
   element('resizable-map').checked = settings.resizableMap;
+  element('message-commands').checked = settings.messageCommands;
   window.settingsLocale.set(settings.locale);
   if (settings.presentation) {
     document.body.classList.toggle('docked', settings.presentation === 'panel');
@@ -141,7 +143,7 @@ function updatePreview() {
   const settings = selection();
   window.settingsTheme.apply(settings);
   fieldset.disabled = busy;
-  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance','pin-appearance','resizable-map']) element(id).disabled = busy;
+  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance','pin-appearance','resizable-map','message-commands']) element(id).disabled = busy;
   element('floating-appearance').disabled = busy || settings.appearancePinned;
   element('undo-reset').hidden = !canUndoReset;
   element('dice-result-auto').disabled = busy;

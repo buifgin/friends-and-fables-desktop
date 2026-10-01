@@ -12,6 +12,7 @@ import { ImageFolder } from './image-folder';
 import { AppearanceDock } from './appearance-dock';
 import { configureFullscreenShortcuts } from './window-shortcuts';
 import { configureCampaignMap } from './campaign-map';
+import { configureMessageCommands, formatMessageCommand } from './message-commands';
 
 const SCHEME = 'fables-desktop';
 const SETTINGS_ORIGIN = `${SCHEME}://settings`;
@@ -279,7 +280,7 @@ export class AppearanceManager {
     const before=validateAppearance(value);
     return this.persist({...before,preset:'website',backgroundImage:null,backgroundName:'',
       messages:{...before.messages,enabled:false},context:{...before.context,enabled:false},events:{...before.events,enabled:false},dice:{...before.dice,enabled:false,colorsEnabled:false,
-        natural20:{...before.dice.natural20,enabled:false},natural1:{...before.dice.natural1,enabled:false}},resizableMap:false},before);
+        natural20:{...before.dice.natural20,enabled:false},natural1:{...before.dice.natural1,enabled:false}},resizableMap:false,messageCommands:false},before);
   }
   private persist(next: AppearanceSettings, before?: AppearanceSettings, consumeReset = false): Promise<AppearanceState> {
     const save = this.saves.catch(() => undefined).then(async () => {
@@ -357,6 +358,8 @@ export class AppearanceManager {
       await contents.executeJavaScript(`(${configureChatAppearance.toString()})(${JSON.stringify(settings)})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureCampaignMap.toString()})(${settings.resizableMap},${JSON.stringify(this.locale)})`);
+      if (contents.isDestroyed() || document !== website.document) return;
+      await contents.executeJavaScript(`(${configureMessageCommands.toString()})(${settings.messageCommands},${JSON.stringify(this.locale)},(${formatMessageCommand.toString()}))`);
     });
     website.pending = apply;
     return apply;

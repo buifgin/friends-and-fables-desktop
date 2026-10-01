@@ -84,5 +84,6 @@
 
 - [x] Add independent natural-20/natural-1 D20 colors with previews, persistence, localization, reset/undo, and theme sharing.
 - [x] Add campaign map height resizing and top-layer expansion with two-dimensional resizing, keyboard controls, per-campaign sizes, reset, and Escape.
-- [ ] Check both features in a signed-in campaign on Linux and Windows; selectors use the saved website component references.
-- Message commands, host helpers, and music playback remain planned. Private visibility between players requires support from the Friends & Fables service.
+- [x] Add opt-in `/me` italic drafts and `/gm` `#text#` drafts, with review before sending, rich-text/mention preservation, and built-in Russian labels.
+- [ ] Check these features in a signed-in campaign on Linux and Windows; selectors use the saved website component references.
+- Host helpers and shared music playback remain planned. Private visibility between players requires support from the Friends & Fables service.

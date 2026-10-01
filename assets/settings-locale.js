@@ -11,6 +11,8 @@
     'Context': 'Контекст', 'Events': 'События', 'Dice': 'Кости', 'Sharing': 'Обмен', 'App': 'Приложение',
     'Critical dice colors': 'Цвета критических бросков', 'Natural 20': 'Натуральная 20', 'Natural 1': 'Натуральная 1',
     'Resizable campaign map': 'Изменяемый размер карты кампании',
+    'Enable /me and /gm commands': 'Включить команды /me и /gm',
+    'Type /me for italic text or /gm to wrap your message in # marks. Enter or Format command prepares the draft for review; then send it normally.': 'Используйте /me для курсива или /gm для обрамления сообщения знаками #. Enter или кнопка оформления подготавливают текст для проверки; затем отправьте его обычным способом.',
     "Drag the map's lower edge to change its height. Expand it to resize both dimensions. Sizes are remembered for each campaign.": 'Перетаскивайте нижний край карты, чтобы изменить высоту. Разверните карту для изменения высоты и ширины. Размеры сохраняются отдельно для каждой кампании.',
     'Customize natural 20': 'Настроить натуральную 20', 'Customize natural 1': 'Настроить натуральную 1',
     'Preview result': 'Результат для предпросмотра', 'Normal roll (16)': 'Обычный бросок (16)',

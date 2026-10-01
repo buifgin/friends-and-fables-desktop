@@ -18,7 +18,7 @@
     "build": "tsc",
     "check": "tsc --noEmit",
     "pretest": "npm run build",
-    "test": "npm run test:unit && npm run test:appearance && npm run test:translation && npm run test:panel && npm run test:map",
+    "test": "npm run test:unit && npm run test:appearance && npm run test:translation && npm run test:panel && npm run test:map && npm run test:commands",
     "prestart": "npm run build",
     "start": "electron-forge start",
     "prepackage": "npm run build && node scripts/prepare-windows-translator.cjs --if-windows",
@@ -34,6 +34,7 @@
     "benchmark:translation": "npm run build && node scripts/translation-benchmark.cjs",
     "test:panel": "node scripts/run-electron-test.cjs tests/appearance-panel-smoke.cjs",
     "test:map": "node scripts/run-electron-test.cjs tests/campaign-map-smoke.cjs",
+    "test:commands": "node scripts/run-electron-test.cjs tests/message-commands-smoke.cjs",
     "prepare:translator:windows": "node scripts/prepare-windows-translator.cjs",
     "test:bundled-model": "node tests/bundled-model-smoke.cjs",
     "install:electron": "install-electron"
@@ -44,9 +45,12 @@
   "devDependencies": {
     "@electron-forge/cli": "8.0.1",
     "@electron-forge/maker-zip": "8.0.1",
+    "@tiptap/core": "3.31.4",
+    "@tiptap/starter-kit": "3.31.4",
     "@types/node": "26.6.3",
     "electron": "44.5.1",
     "electron-builder": "26.15.3",
+    "esbuild": "0.28.2",
     "typescript": "7.0.2"
   },
   "desktopName": "friends-and-fables-desktop.desktop"
