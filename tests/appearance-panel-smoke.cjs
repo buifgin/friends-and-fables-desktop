@@ -69,16 +69,20 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const startWidth = panel.getBounds().width;
   await until(() => contents.executeJavaScript(`innerWidth === ${startWidth}`));
   contents.focus();
-  const point=host.getContentBounds(),inset=panel.getBounds().y;
-  const screenX=point.x+startWidth-4,screenY=point.y+inset+100;
-  contents.sendInputEvent({type:'mouseMove',globalX:screenX,globalY:screenY,x:startWidth-4,y:100});
+  // Classic Windows scrollbars shift the fixed handle away from innerWidth.
+  const handle=await contents.executeJavaScript(`(()=>{const r=document.getElementById('panel-resizer').getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.min(100,Math.round(r.top+r.height/2))};})()`);
+  assert.equal(await contents.executeJavaScript(`document.elementFromPoint(${handle.x},${handle.y})?.id`),'panel-resizer');
+  const point=host.getContentBounds(),bounds=panel.getBounds();
+  const screenX=point.x+bounds.x+handle.x,screenY=point.y+bounds.y+handle.y;
+  await contents.executeJavaScript(`window.resizeTrace=[];for(const type of ['pointerdown','pointermove','pointerup','lostpointercapture'])document.addEventListener(type,event=>window.resizeTrace.push({type,x:event.screenX,client:event.clientX,target:event.target.id,buttons:event.buttons}),true)`);
+  contents.sendInputEvent({type:'mouseMove',globalX:screenX,globalY:screenY,x:handle.x,y:handle.y});
   await sleep(50);
-  contents.sendInputEvent({type:'mouseDown',globalX:screenX,globalY:screenY,x:startWidth-4,y:100,button:'left',clickCount:1});
+  contents.sendInputEvent({type:'mouseDown',globalX:screenX,globalY:screenY,x:handle.x,y:handle.y,button:'left',clickCount:1});
   await sleep(50);
-  // Drag inward so injected pointer motion stays inside this native view.
-  contents.sendInputEvent({type:'mouseMove',globalX:screenX-40,globalY:screenY,modifiers:['leftButtonDown'],x:startWidth-44,y:100,movementX:-40,movementY:0});
-  await until(() => panel.getBounds().width < startWidth);
-  contents.sendInputEvent({type:'mouseUp',globalX:screenX-40,globalY:screenY,x:panel.getBounds().width-4,y:100,button:'left',clickCount:1});
+  contents.sendInputEvent({type:'mouseMove',globalX:screenX-40,globalY:screenY,modifiers:['leftButtonDown'],x:handle.x-40,y:handle.y,movementX:-40,movementY:0});
+  try { await until(() => panel.getBounds().width < startWidth); }
+  catch(error){console.error('Resize diagnostic',JSON.stringify({startWidth,handle,focused:host.isFocused(),trace:await contents.executeJavaScript('window.resizeTrace')}));throw error;}
+  contents.sendInputEvent({type:'mouseUp',globalX:screenX-40,globalY:screenY,x:handle.x-40,y:handle.y,button:'left',clickCount:1});
   await until(() => manager.getSettings().appearancePanelWidth < startWidth);
   // Built-in labels change without a model and preserve unsaved color values.
   await contents.executeJavaScript("document.getElementById('custom-hex').value='#abcdef'");
