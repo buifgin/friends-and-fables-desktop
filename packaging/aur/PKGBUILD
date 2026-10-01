@@ -1,6 +1,6 @@
 # Maintainer: buifgin
 pkgname=friends-and-fables-desktop-bin
-pkgver=0.1.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Unofficial Friends & Fables desktop app with local appearance customization'
 arch=('x86_64')
@@ -19,7 +19,7 @@ source=("${url}/releases/download/v${pkgver}/${_image}"
         'friends-and-fables-desktop.desktop'
         'friends-and-fables-desktop')
 noextract=("${_image}")
-sha256sums=('a495c0a827bca1b75764c3e8ce84837f1e8e8e31b1570fc82502bb8e76856521'
+sha256sums=('eb623832e5bcded3bbe60c643011521a09035b2741afb4754162032d5da5dac3'
             '462dcce05e630e78f5c2cd1e19436d5c50e0762fcf20fdf755d114826901c63a'
             '5a59b5ebb4ce705764d9f85e28299094ec888871c1a849abd4a255e12420442b')
 
