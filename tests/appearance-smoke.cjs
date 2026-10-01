@@ -39,7 +39,7 @@ async function save(settings, window) {
 }
 
 (async () => {
-  userData = await mkdtemp(path.join(os.tmpdir(), 'fables-appearance-test-'));
+  userData = process.env.FABLES_TEST_PROFILE_DIR || await mkdtemp(path.join(os.tmpdir(), 'fables-appearance-test-'));
   app.setPath('userData', userData);
   await app.whenReady();
   const manager = new AppearanceManager();
@@ -750,12 +750,12 @@ async function save(settings, window) {
 })().then(async () => {
   clearTimeout(timeout);
   for (const window of BrowserWindow.getAllWindows()) window.destroy();
-  await rm(userData, { recursive: true, force: true });
+  if (!process.env.FABLES_TEST_PROFILE_DIR) await rm(userData, { recursive: true, force: true });
   app.exit(0);
 }).catch(async (error) => {
   console.error(error);
   clearTimeout(timeout);
   for (const window of BrowserWindow.getAllWindows()) window.destroy();
-  if (userData) await rm(userData, { recursive: true, force: true });
+  if (userData && !process.env.FABLES_TEST_PROFILE_DIR) await rm(userData, { recursive: true, force: true });
   app.exit(1);
 });

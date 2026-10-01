@@ -15,7 +15,7 @@ let profile, translation;
 const timer = setTimeout(() => { console.error('Appearance panel test timed out.'); app.exit(1); }, 40000);
 
 (async () => {
-  profile = await mkdtemp(path.join(os.tmpdir(), 'fables-panel-test-')); app.setPath('userData', profile); await app.whenReady();
+  profile = process.env.FABLES_TEST_PROFILE_DIR || await mkdtemp(path.join(os.tmpdir(), 'fables-panel-test-')); app.setPath('userData', profile); await app.whenReady();
   const manager = new AppearanceManager(); await manager.initialize();
   translation = new TranslationManager(); await translation.initialize();
   translation.onChange = settings => manager.setLocale(settings.enabled && !settings.showOriginal ? 'ru' : 'en');
@@ -68,10 +68,16 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   // Actual pointer events exercise the resize handle and persist the result.
   const startWidth = panel.getBounds().width;
   await until(() => contents.executeJavaScript(`innerWidth === ${startWidth}`));
-  contents.sendInputEvent({ type: 'mouseDown', globalX: 1000, globalY: 100, x: startWidth - 4, y: 100, button: 'left', clickCount: 1 });
-  contents.sendInputEvent({ type: 'mouseMove', globalX: 1040, globalY: 100, modifiers: ['leftButtonDown'], x: startWidth + 36, y: 100, movementX: 40, movementY: 0 });
-  await sleep(80);
-  contents.sendInputEvent({ type: 'mouseUp', globalX: 1040, globalY: 100, x: panel.getBounds().width - 4, y: 100, button: 'left', clickCount: 1 });
+  contents.focus();
+  const point=host.getContentBounds(),inset=panel.getBounds().y;
+  const screenX=point.x+startWidth-4,screenY=point.y+inset+100;
+  contents.sendInputEvent({type:'mouseMove',globalX:screenX,globalY:screenY,x:startWidth-4,y:100});
+  await sleep(50);
+  contents.sendInputEvent({type:'mouseDown',globalX:screenX,globalY:screenY,x:startWidth-4,y:100,button:'left',clickCount:1});
+  await sleep(50);
+  contents.sendInputEvent({type:'mouseMove',globalX:screenX+40,globalY:screenY,modifiers:['leftButtonDown'],x:startWidth+36,y:100,movementX:40,movementY:0});
+  await until(() => panel.getBounds().width > startWidth);
+  contents.sendInputEvent({type:'mouseUp',globalX:screenX+40,globalY:screenY,x:panel.getBounds().width-4,y:100,button:'left',clickCount:1});
   await until(() => manager.getSettings().appearancePanelWidth > startWidth);
   // Built-in labels change without a model and preserve unsaved color values.
   await contents.executeJavaScript("document.getElementById('custom-hex').value='#abcdef'");
@@ -161,5 +167,5 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(freshDock.panel.getBounds().width,savedWidth);assert.equal(BrowserWindow.getAllWindows().length,1);
   await until(()=>freshDock.panel.webContents.executeJavaScript('document.documentElement.lang==="ru"'));
   console.log('PASS: themed settings, built-in Russian labels, preserved drafts, pin/unpin, button, mouse/keyboard resizing, persisted width, viewport clamping, fullscreen, menu overlay ordering, website isolation, and restricted editor IPC.');
-})().then(async () => { clearTimeout(timer); await translation?.shutdown(); for (const window of BrowserWindow.getAllWindows()) window.destroy(); if (profile) await rm(profile, { recursive: true, force: true }); app.exit(0); })
-  .catch(async error => { console.error(error); clearTimeout(timer); await translation?.shutdown(); for (const window of BrowserWindow.getAllWindows()) window.destroy(); if (profile) await rm(profile, { recursive: true, force: true }); app.exit(1); });
+})().then(async () => { clearTimeout(timer); await translation?.shutdown(); for (const window of BrowserWindow.getAllWindows()) window.destroy(); if (profile && !process.env.FABLES_TEST_PROFILE_DIR) await rm(profile, { recursive: true, force: true }); app.exit(0); })
+  .catch(async error => { console.error(error); clearTimeout(timer); await translation?.shutdown(); for (const window of BrowserWindow.getAllWindows()) window.destroy(); if (profile && !process.env.FABLES_TEST_PROFILE_DIR) await rm(profile, { recursive: true, force: true }); app.exit(1); });

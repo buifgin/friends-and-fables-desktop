@@ -29,10 +29,10 @@
     "dist:windows": "npm run prepare:translator:windows && npm run build && electron-builder --config electron-builder.config.cjs --win portable --x64 --publish never",
     "checksums": "node scripts/release-checksums.cjs",
     "test:unit": "node --test tests/translation-core.test.cjs tests/bundled-translator.test.cjs",
-    "test:appearance": "electron tests/appearance-smoke.cjs",
-    "test:translation": "electron tests/translation-smoke.cjs",
+    "test:appearance": "node scripts/run-electron-test.cjs tests/appearance-smoke.cjs",
+    "test:translation": "node scripts/run-electron-test.cjs tests/translation-smoke.cjs",
     "benchmark:translation": "npm run build && node scripts/translation-benchmark.cjs",
-    "test:panel": "electron tests/appearance-panel-smoke.cjs",
+    "test:panel": "node scripts/run-electron-test.cjs tests/appearance-panel-smoke.cjs",
     "prepare:translator:windows": "node scripts/prepare-windows-translator.cjs",
     "test:bundled-model": "node tests/bundled-model-smoke.cjs",
     "install:electron": "install-electron"
