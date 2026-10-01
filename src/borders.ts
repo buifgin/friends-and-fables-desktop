@@ -2,7 +2,7 @@ import type { MessageStyle } from './themes';
 
 // Four fixed-size corner motifs keep their proportions on a wide message or a
 // tall context panel. CSS pseudo-elements add no controls and intercept no input.
-export function borderCss(style: MessageStyle, target: string, compact = false): string {
+export function borderCss(style: MessageStyle, target: string, compact = false, preservePadding = false): string {
   const { enabled, color, width, radius, variant } = style.border;
   let css = `${target} { border: ${enabled ? `${width}px solid ${color}` : '0 solid transparent'} !important; border-radius: ${radius}px !important; }`;
   if (!enabled || variant === 'plain') return css;
@@ -16,7 +16,7 @@ export function borderCss(style: MessageStyle, target: string, compact = false):
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 42 42"><g transform="${transform}" fill="none" stroke="${color}" stroke-width="${Math.max(.8, width / 1.5)}" stroke-linecap="round" stroke-linejoin="round">${motifs[variant]}</g></svg>`;
     return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   });
-  css += `${target} { position: relative; padding: ${compact ? 12 : 20}px !important;
+  css += `${target} { position: relative; ${preservePadding ? '' : `padding: ${compact ? 12 : 20}px !important;`}
       min-height: ${compact ? 40 : 72}px; box-sizing: border-box;
       box-shadow: inset 0 0 0 ${width}px color-mix(in srgb, ${color} 35%, transparent) !important; }
     ${target}::after { content: ""; position: absolute; inset: 3px; pointer-events: none; z-index: 1;

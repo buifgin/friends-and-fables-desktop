@@ -18,7 +18,7 @@ export const TRANSLATION_URL = 'fables-desktop://settings/translation.html';
 const DOM_KEY = '__friendsFablesDesktopTranslation';
 interface Website { contents: WebContents; token: string; pending: Promise<void> }
 interface TextRequest { id: number; version: number; text: string }
-interface TextResult { text: string | null; complete: boolean; retry?: boolean }
+interface TextResult { text: string | null; complete: boolean; retry?: boolean; pending?: {start:number;end:number}[] }
 export interface TranslationState extends TranslationSettings {
   cacheEntries: number;
   theme: Pick<AppearanceSettings, 'preset' | 'customColor'>;
@@ -145,9 +145,14 @@ export class TranslationManager {
     const render = (): TextResult[] => plans.map(parts => {
       const pending=parts.filter(part=>part.translate && this.cache.get(part.request??part.text)===undefined);
       const complete=pending.length===0;
-      return {complete, retry: !complete && (this.retryAfter>Date.now() || pending.some(part=>failed.has(part.request??part.text))),
-        text:parts.map(part=>part.translate && this.cache.get(part.request??part.text)===undefined ? part.text
-          : renderTranslation(part,part.translate?this.cache.get(part.request??part.text):undefined)).join('')};
+      const ranges: {start:number;end:number}[]=[]; let text='';
+      for (const part of parts) {
+        const unresolved=part.translate && this.cache.get(part.request??part.text)===undefined;
+        if (unresolved) for (const range of part.untranslated??[]) ranges.push({start:text.length+range.start,end:text.length+range.end});
+        text+=unresolved ? part.text : renderTranslation(part,part.translate?this.cache.get(part.request??part.text):undefined);
+      }
+      return {complete, pending:ranges, text,
+        retry: !complete && (this.retryAfter>Date.now() || pending.some(part=>failed.has(part.request??part.text)))};
     });
     // Show cached sentences and local terms immediately, including model startup.
     await progress(render());

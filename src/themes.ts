@@ -291,6 +291,13 @@ export function themeCss(settings: AppearanceSettings): string {
       caret-color: hsl(var(--foreground)) !important;
     }
     :where(input, textarea)::placeholder { color: hsl(var(--foreground-muted)) !important; }
+    :is(aside,nav,[data-sidebar="sidebar"],[data-sidebar="footer"])
+      :is([class*="bg-gray-"],[class*="bg-slate-"]) {
+      background-color: hsl(var(--muted)) !important; background-image:none !important;
+      color:hsl(var(--foreground)) !important;
+    }
+    :is(aside,nav,[data-sidebar="sidebar"],[data-sidebar="footer"])
+      :is([class*="text-gray-"],[class*="text-slate-"]) { color:hsl(var(--foreground-muted)) !important; }
     :is([role="menu"], [role="listbox"], [role="dialog"], [data-radix-popper-content-wrapper] > div):not([data-ff-desktop-message]) {
       background-color: hsl(var(--popover)) !important; color: hsl(var(--popover-foreground)) !important;
       background-image: none !important; border-color: hsl(var(--border)) !important;

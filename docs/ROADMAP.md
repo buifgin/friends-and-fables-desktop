@@ -99,3 +99,11 @@
 - [x] Make expanded maps movable by dragging or keyboard, with remembered positions and viewport bounds.
 - [x] Add world map resizing and expansion with independent per-campaign sizes.
 - [ ] Verify new map controls against a signed-in live campaign; automated tests use the saved shared component structure and original canvas interactions.
+
+## 0.5.1 hotfix
+
+- [x] Localize common discovery, campaign, workshop, studio, account, notification, sidebar, and context controls.
+- [x] Preserve email addresses and translate character counters as symbols with closing parentheses.
+- [x] Mark only untranslated ranges during progressive translation.
+- [x] Preserve search-icon padding and theme the sidebar account tile.
+- [x] Center command hints and prepare/check the complete draft before Enter or Send submission; convert № to # outside code.

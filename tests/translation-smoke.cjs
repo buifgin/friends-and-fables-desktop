@@ -80,7 +80,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(unchanged.russian,'Путник идёт по тихой дороге.');assert.equal(unchanged.input,'Hello, friends!');
  assert.equal(unchanged.textarea,'The original draft stays here.');assert.equal(unchanged.editor,'The editable draft stays here.');
  assert.equal(unchanged.code,'The sample code stays here.');assert.equal(unchanged.ignored,'The ignored story stays here.');
- assert.equal(unchanged.login,'Sign in with your account.');assert.equal(unchanged.title,'Hide background image');
+ assert.equal(unchanged.login,'Sign in with your account.');assert.equal(unchanged.title,'Скрыть фоновое изображение');
  assert.deepEqual(unchanged.record,{text:'The forest is quiet.',name:'Aria Moonwhisper',message:'Hello, friends!'});
  await until(contents,"document.getElementById('raw').textContent.startsWith('<img')");
  assert.equal(await contents.executeJavaScript("document.querySelector('#raw img')"),null);assert.equal(await contents.executeJavaScript('window.injected'),undefined);
@@ -131,6 +131,13 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.getElementById('progress').firstChild===progressNode"),true);
  assert.equal(await contents.executeJavaScript("document.getElementById('progress').getAttribute('data-ff-translation-pending')"),'true');
  assert.equal(await contents.executeJavaScript("getComputedStyle(document.querySelector('[data-ff-translation-status]')).display"),'flex');
+ const dotted=await contents.executeJavaScript("[...CSS.highlights.get('ff-desktop-untranslated')].filter(range=>range.startContainer===progressNode).map(range=>range.toString())");
+ assert.deepEqual(dotted,['Progress sample 5.','Progress sample 6.','Progress sample 7.','Progress sample 8.'],'Dots cover only pending source sentences, never translated sentences.');
+ assert.equal(await contents.executeJavaScript("getComputedStyle(document.getElementById('progress')).textDecorationLine"),'none','No paragraph-wide underline.');
+ assert.equal(await contents.executeJavaScript("getComputedStyle(document.getElementById('progress'),'::highlight(ff-desktop-untranslated)').textDecorationLine"),'underline');
+ if(process.env.FABLES_TEST_SCREENSHOT){website.show();await sleep(150);await writeFile(process.env.FABLES_TEST_SCREENSHOT.replace(/\.png$/,'-partial.png'),(await contents.capturePage()).toPNG());}
+
+
  await contents.executeJavaScript("document.getElementById('late').insertAdjacentHTML('beforeend','<p id=cache-during-progress>The forest is quiet.</p>')");
  await until(contents,"document.getElementById('cache-during-progress').textContent==='Лес тих.'",250);
  releaseProgress();releaseProgress=undefined;
@@ -166,6 +173,21 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await sleep(1300);assert.equal(await contents.executeJavaScript("document.getElementById('offline').textContent"),'The unfamiliar cave appears.');
  assert.equal((await manager.check()).available,false);
  const offlineCalls=calls.length;await manager.save({...manager.getSettings(),translateDescriptions:false});
+ // Fixed common UI works with the service offline and descriptions disabled.
+ await contents.executeJavaScript(`const box=document.createElement('section');box.id='hotfix-ui';box.innerHTML='<form><label>Email Address</label><input type="email" value="player.test@example.com"><p>Changing your email requires confirmation via both your current and new email addresses.</p><span id="literal-email">player.test@example.com</span></form><p id="outside-email">player.test@example.com</p><span id="count"></span><span id="category"></span><span id="configure"></span><span id="context-count"></span><button id="left-tooltip" title="Character Sheet" aria-label="Character Sheet"></button><div contenteditable="true" translate="no"><p id="composer-placeholder" data-placeholder="Могнус says or does..."></p></div>';document.getElementById('late').append(box);
+ const fragments=(id,parts)=>{const element=document.getElementById(id);for(const text of parts){element.append(document.createTextNode(text),document.createComment('react'))}return [...element.childNodes]};
+ window.hotfixNodes={count:fragments('count',['(','284',' characters remaining)']),category:fragments('category',['General',' ','Feat']),configure:fragments('configure',['Configure',' ','Flat Adjustment']),context:fragments('context-count',['(','2',' active, ','0',' idle)'])};`);
+ await until(contents,"document.getElementById('count').textContent==='(осталось символов: 284)'");
+ await until(contents,"document.getElementById('category').textContent==='Общая черта' && document.getElementById('configure').textContent==='Настроить фиксированное изменение'");
+ await until(contents,"document.getElementById('context-count').textContent==='(2 активных, 0 неактивных)'");
+ await until(contents,"document.getElementById('composer-placeholder').getAttribute('data-placeholder')==='Могнус говорит или делает…'");
+ assert.equal(await contents.executeJavaScript("document.querySelector('#hotfix-ui label').textContent"),'Адрес электронной почты');
+ assert.equal(await contents.executeJavaScript("document.getElementById('left-tooltip').title"),'Лист персонажа');
+ assert.equal(await contents.executeJavaScript("document.getElementById('left-tooltip').getAttribute('aria-label')"),'Лист персонажа');
+ assert.equal(await contents.executeJavaScript("document.querySelector('#hotfix-ui input').value"),'player.test@example.com');
+ assert.equal(await contents.executeJavaScript("document.getElementById('outside-email').textContent"),'player.test@example.com');
+ assert.equal(await contents.executeJavaScript("Object.entries(hotfixNodes).every(([key,nodes])=>nodes.every((node,i)=>node===document.getElementById(key==='context'?'context-count':key).childNodes[i]))"),true);
+ assert.equal(calls.length,offlineCalls,'Common interface translations never call the model.');
  // Keep React text/comment identities and update only the changed source nodes.
  await contents.executeJavaScript(`window.rollNodes={modifier:[...document.getElementById('roll-modifier').childNodes],slot:[...document.getElementById('slot-event').childNodes],instructions:[...document.getElementById('custom-instructions').childNodes]};
  rollNodes.modifier[0].data='Strength';rollNodes.slot[2].data='3';rollNodes.slot[8].data='restored';rollNodes.instructions[2].data='2'`);
@@ -177,7 +199,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await contents.executeJavaScript(`const label=document.createElement('span');label.id='dynamic-modifier';label.append(document.createTextNode('Wisdom'),document.createTextNode(' '),document.createTextNode('Modifier'));document.getElementById('late').append(label)`);
  await until(contents,"document.getElementById('dynamic-modifier').textContent==='Модификатор Мудрости'");
  await contents.executeJavaScript("document.getElementById('dynamic-modifier').firstChild.data='Magic'");
- await until(contents,"document.getElementById('dynamic-modifier').textContent==='Magic Модификатор'");
+ await until(contents,"document.getElementById('dynamic-modifier').textContent==='Магия Модификатор'");
  assert.equal(await contents.executeJavaScript("document.getElementById('dynamic-modifier').childNodes.length"),3,'Leaving a known label restores its fragments before ordinary translation.');
  await manager.save({...manager.getSettings(),showOriginal:true});
  assert.equal(await contents.executeJavaScript("document.getElementById('roll-modifier').textContent"),'Strength Modifier');

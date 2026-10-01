@@ -72,6 +72,8 @@ async function save(settings, window) {
       .duration-700 { transition-duration: .7s; }
       .tiptap [data-placeholder]::before { content: attr(data-placeholder); color: #777; }
     </style></head><body><button id="background-toggle" title="Hide background image">Background</button>
+    <nav><div data-sidebar="footer"><button id="sidebar-account" class="bg-gray-800"><span class="text-gray-400">Player</span></button></div></nav>
+    <div style="position:relative;width:300px"><svg id="search-icon" style="position:absolute;left:12px;top:12px;width:16px;height:16px"></svg><input id="hotfix-search" placeholder="Search relationships..." style="padding:8px 12px 8px 36px;width:300px"></div>
     <div class="panel">Panel</div><div class="artwork">Campaign artwork</div>
     <div class="flex-1 h-full w-full"><div id="events-list">
       <div id="event-container-1"><div id="event-message-card-1"><p>Player text</p></div></div>
@@ -140,6 +142,7 @@ async function save(settings, window) {
   const amoled = await colors(website.webContents);
   assert.equal(amoled.background, 'rgb(0, 0, 0)');
   assert.equal(amoled.panel, 'rgb(0, 0, 0)');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('sidebar-account')).backgroundColor"),'rgb(0, 0, 0)','The footer account tile follows the selected theme.');
   assert.equal(amoled.artwork, original.artwork);
   assert.equal(amoled.message, original.message);
   assert.equal(amoled.bridge, 'undefined');
@@ -504,6 +507,8 @@ async function save(settings, window) {
     await writeFile(process.env.FABLES_TEST_SCREENSHOT.replace(/\.png$/,'-ornaments.png'),(await settingsContents.capturePage()).toPNG());
     settingsWindow.hide();
   }
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('hotfix-search')).paddingLeft"),'36px','Decorative input borders retain room for the search icon.');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('hotfix-search')).paddingRight"),'12px');
   // Expanding the header switches it from the bar palette to the panel palette.
   await website.webContents.executeJavaScript("document.querySelector('[aria-label=\"Expand working context\"]').remove()");
   await until(website.webContents,"document.getElementById('context-bar').dataset.ffDesktopContext==='panel'");

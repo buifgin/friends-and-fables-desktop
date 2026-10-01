@@ -179,3 +179,43 @@ test('battle summaries, inventory outcomes and progression terminology are deter
  const named=translationPlan('Command greets Fly.',['Command','Fly']);
  assert.deepEqual(named.flatMap(p=>p.protected??[]).map(p=>p.text),['Command','Fly'],'World-specific names override spell titles.');
 });
+
+
+test('hotfix common pages, counts, addresses, and partial progress spans',()=>{
+ const {localTranslation}=require('../dist/translation-core');
+ for(const [input,expected] of Object.entries({
+  '(284 characters remaining)':'(осталось символов: 284)',
+  '(2 active, 0 idle)':'(2 активных, 0 неактивных)',
+  'Configure Flat Adjustment':'Настроить фиксированное изменение',
+  'General Feat':'Общая черта', 'Skill':'Навык', 'Magic':'Магия',
+  'Races':'Расы','Classes':'Классы','Factions':'Фракции','Items':'Предметы',
+  'Email Address':'Адрес электронной почты','Google Account':'Аккаунт Google',
+  'Account Connections':'Подключённые аккаунты','Monthly':'Ежемесячно',
+  'October 25, 2026':'25 октября 2026','55 total transactions':'Всего операций: 55',
+  'Recent Generations':'Последние изображения','Landscape 4:3':'Горизонтальное 4:3',
+  'Aria says or does...':'Aria говорит или делает…',
+  'Могнус says or does...':'Могнус говорит или делает…',
+  'Public Profile':'Открытый профиль','PC':'ПИ','Message Details':'Сведения о сообщении'
+ })) assert.equal(localTranslation(input,RUSSIAN_DICTIONARY),expected,input);
+ const address="first.last+game@example.com";
+ assert.equal(translationPlan(address).some(part=>part.translate),false);
+ const plan=translationPlan('Contact '+address+' and Aria. Привет! Wait here.',['Aria']);
+ assert.equal(plan.map(part=>part.text).join(''),'Contact '+address+' and Aria. Привет! Wait here.');
+ for(const part of plan.filter(part=>part.translate)) {
+  assert(!part.request.includes(address));assert(!part.request.includes('Aria'));
+  for(const range of part.untranslated) assert(!part.text.slice(range.start,range.end).match(/@|Aria|Привет/));
+ }
+});
+
+test('whole draft commands are idempotent, preserve code, and reject every empty command',()=>{
+ const {formatMessageCommand}=require('../dist/message-commands');
+ const source={type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'/me Hello №1.'},{type:'hardBreak'},{type:'text',text:'/gm Note №2.'}]},{type:'codeBlock',content:[{type:'text',text:'№ /me literal'}]}]};
+ const result=formatMessageCommand(source);assert.equal(result.invalid,false);
+ assert.equal(formatMessageCommand(result.document),null);
+ assert.equal(result.document.content[0].content[0].text,'Hello #1.');
+ assert.equal(result.document.content[1].content[0].text,'№ /me literal');
+ assert.equal(source.content[0].content[0].text,'/me Hello №1.');
+ assert(formatMessageCommand(source,5).document.content[0].content[0].text.includes('№'),'Soft-break formatting leaves № conversion for whole-draft preparation.');
+ const empty={type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'/gm Complete.'}]},{type:'paragraph',content:[{type:'text',text:'/me ' }]}]};
+ assert.equal(formatMessageCommand(empty).invalid,true);
+});

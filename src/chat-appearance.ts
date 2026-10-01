@@ -46,8 +46,8 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   }
   function backgroundEnabled(): boolean {
     // The title describes the action, so "Hide" means the background is on.
-    const toggle = document.querySelector('[title="Hide background image"], [title="Show background image"]');
-    if (toggle) return toggle.getAttribute('title') === 'Hide background image';
+    const toggle = document.querySelector('[title="Hide background image"], [title="Show background image"], [title="Скрыть фоновое изображение"], [title="Показать фоновое изображение"]');
+    if (toggle) return ['Hide background image','Скрыть фоновое изображение'].includes(toggle.getAttribute('title')??'');
     const campaign = location.pathname.match(/^\/([^/]+)\/play\/?$/)?.[1];
     try { return !!campaign && localStorage.getItem(`play-show-poi-background-${campaign}`) === 'true'; }
     catch { return false; }
@@ -66,7 +66,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     const anchor = document.getElementById('events-list') ?? cards[0];
     const chat = anchor?.closest('.flex-1.h-full.w-full');
     const composers = new Set<Element>();
-    for (const anchor of document.querySelectorAll('#working-context-bar-spacer, [aria-label="Roll dice"], .tiptap[contenteditable="true"]')) {
+    for (const anchor of document.querySelectorAll('#working-context-bar-spacer, [aria-label="Roll dice"], [aria-label="Бросить кости"], .tiptap[contenteditable="true"]')) {
       const root = anchor.closest('.grid.relative');
       if (root && chat?.contains(root) && !inCharacterForm(anchor)) composers.add(root);
     }
@@ -76,7 +76,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       for (const bar of composer.querySelectorAll('[class~="bottom-full"][class~="left-0"][class~="right-0"] > [class~="bg-gray-800"]')) {
         contextRoots.add(bar);
         if (settings.context.enabled) {
-          mark(bar, 'data-ff-desktop-context', bar.querySelector('[aria-label="Expand working context"]') ? 'bar' : 'panel');
+          mark(bar, 'data-ff-desktop-context', bar.querySelector('[aria-label="Expand working context"],[aria-label="Развернуть рабочий контекст"]') ? 'bar' : 'panel');
           for (const block of bar.querySelectorAll('.group.rounded-lg.border')) mark(block,'data-ff-desktop-context-block','true');
         }
       }
@@ -229,7 +229,7 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
       if (role === 'gm') css += `${target} :is(h1,h2,h3,h4,h5,h6,strong,b),
         ${target} button[aria-controls], ${target} button[aria-controls] :is(svg,span) { color: ${foreground} !important; }`;
       if (role === 'battle') css += `${target} [class~="bg-slate-700"] { background-color: color-mix(in srgb, ${foreground} 20%, transparent) !important; }`;
-      if (role !== 'control') css += borderCss(style,target,role === 'input');
+      if (role !== 'control') css += borderCss(style,target,role === 'input',role === 'input');
       if (role === 'event' || role === 'roll' || role === 'roll-menu') css += `${target} :is(span,button,h1,h2,h3,h4,p) { color: ${foreground} !important; }`;
       if (role === 'roll-menu') css += `${target} :is([class*="bg-slate-"],[class*="bg-amber-"]) { background-color: transparent !important; background-image: none !important; }
         ${target} [class*="border-amber-"] { border-color: ${style.border.color} !important; }`;

@@ -95,6 +95,22 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   if (colon && lookup(colon[2].trim().toLowerCase())) return colon[1]+lookup(colon[2].trim().toLowerCase())+colon[3];
   const decorated = text.match(/^(\s*)(.*?)(\s*\*|\.\.\.|…|[.!?])(\s*)$/);
   if (decorated && lookup(decorated[2].trim().toLowerCase())) return decorated[1]+lookup(decorated[2].trim().toLowerCase())+decorated[3]+decorated[4];
+  const remaining = text.match(/^(\s*)\(\s*(\d+)\s+characters? remaining\s*\)(\s*)$/i);
+  if (remaining) return `${remaining[1]}(осталось символов: ${remaining[2]})${remaining[3]}`;
+  const contextCount = text.match(/^(\s*)(\()?\s*(\d+)\s+active\s*[,/]\s*(\d+)\s+idle\s*(\))?(\s*)$/i);
+  if (contextCount) return `${contextCount[1]}${contextCount[2]??''}${contextCount[3]} активных, ${contextCount[4]} неактивных${contextCount[5]??''}${contextCount[6]}`;
+  const configure = text.match(/^(\s*)Configure\s+(Flat Adjustment|Override|Modifier)(\s*)$/i);
+  if (configure) return `${configure[1]}Настроить: ${lookup(configure[2].toLowerCase())}${configure[3]}`;
+  const transactions = text.match(/^(\s*)([\d,]+)\s+total transactions(\s*)$/i);
+  if (transactions) return `${transactions[1]}Всего операций: ${transactions[2]}${transactions[3]}`;
+  const bonusCredits = text.match(/^(\s*)([+\d,]+)\s+Bonus(\s*)$/i);
+  if (bonusCredits) return `${bonusCredits[1]}${bonusCredits[2]} бонусных${bonusCredits[3]}`;
+  const date = text.match(/^(\s*)(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),\s*(\d{4})(\s*)$/i);
+  if (date) {
+    const months=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+    const english=['january','february','march','april','may','june','july','august','september','october','november','december'];
+    return `${date[1]}${date[3]} ${months[english.indexOf(date[2].toLowerCase())]} ${date[4]}${date[5]}`;
+  }
   const xp = text.match(/^(\s*)([\d,]+)\s*XP\s+until\s+level\s+(\d+)(\s*)$/i);
   if (xp) return `${xp[1]}${xp[2]} опыта до уровня ${xp[3]}${xp[4]}`;
   const units = text.match(/^(\s*)([\d.,]+(?:\s*\/\s*[\d.,]+)?)\s*(ft\.?|lbs?\.?)(\s*)$/i);
@@ -149,7 +165,7 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   return undefined;
 }
 export interface TranslationPart {
-  text: string; translate: boolean; request?: string; protected?: { token: string; text: string }[]; local?: string;
+  text: string; translate: boolean; request?: string; protected?: { token: string; text: string }[]; local?: string; untranslated?: { start: number; end: number }[];
 }
 function gameInstruction(text: string): string | undefined {
   const ability = text.match(/^(?:make|roll) (?:an? )?(strength|dexterity|constitution|intelligence|wisdom|charisma) (saving throw|check)([.!]?)$/i);
@@ -187,7 +203,7 @@ export function translationPlan(text: string, names: string[] = []): Translation
   const protectedNames = [...new Set([...names,'Franz','Friends & Fables','DeepSeek V4 Flash','Gemini 3.1 Pro','Grok 4.7','GLM-5','Hy-3','Fenix','OpenAI','OpenRouter','Groq'])].filter(Boolean).sort((a, b) => b.length - a.length)
     .map(name => `(?<![\\p{L}\\p{N}_])${escape(name)}(?![\\p{L}\\p{N}_])`);
   const protectedPattern = new RegExp([
-    'https?://[^\\s<>]+', '\\b\\d*d(?:4|6|8|10|12|20|100)(?:\\s*[+-]\\s*\\d+)?\\b', ...protectedNames,
+    'https?://[^\\s<>]+', "[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", '\\b\\d*d(?:4|6|8|10|12|20|100)(?:\\s*[+-]\\s*\\d+)?\\b', ...protectedNames,
   ].join('|'), 'giu');
   if (/ZXQ\d+ZXQ/.test(text)) return [{ text, translate: false }];
   const replacements = new Map<string, {original:string; rendered:string}>();
@@ -221,7 +237,19 @@ export function translationPlan(text: string, names: string[] = []): Translation
         const translate = local === undefined && /[A-Za-z]/.test(content);
         const renderedLocal = local ?? (!translate && protectedText.length
           ? core.replace(markerPattern, token => replacements.get(token)!.rendered) : undefined);
-        parts.push({ text: plain, translate, request: core, protected: protectedText,
+        // Map only unprotected source spans, so progress dots never cover names,
+        // addresses, dice, canonical terms, or already translated Russian runs.
+        const untranslated: {start:number;end:number}[]=[];
+        let sourceOffset=0, requestOffset=0;
+        for (const marker of core.matchAll(markerPattern)) {
+          const span=core.slice(requestOffset,marker.index);
+          if (/[A-Za-z]/.test(span)) untranslated.push({start:sourceOffset,end:sourceOffset+span.length});
+          sourceOffset+=span.length+replacements.get(marker[0])!.original.length;
+          requestOffset=marker.index!+marker[0].length;
+        }
+        const tail=core.slice(requestOffset);
+        if (/[A-Za-z]/.test(tail)) untranslated.push({start:sourceOffset,end:sourceOffset+tail.length});
+        parts.push({ text: plain, translate, request: core, protected: protectedText, untranslated,
           ...(renderedLocal === undefined ? {} : { local: renderedLocal }) });
         literal(chunk.slice(start + core.length)); chunk = '';
       };
