@@ -75,10 +75,11 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await sleep(50);
   contents.sendInputEvent({type:'mouseDown',globalX:screenX,globalY:screenY,x:startWidth-4,y:100,button:'left',clickCount:1});
   await sleep(50);
-  contents.sendInputEvent({type:'mouseMove',globalX:screenX+40,globalY:screenY,modifiers:['leftButtonDown'],x:startWidth+36,y:100,movementX:40,movementY:0});
-  await until(() => panel.getBounds().width > startWidth);
-  contents.sendInputEvent({type:'mouseUp',globalX:screenX+40,globalY:screenY,x:panel.getBounds().width-4,y:100,button:'left',clickCount:1});
-  await until(() => manager.getSettings().appearancePanelWidth > startWidth);
+  // Drag inward so injected pointer motion stays inside this native view.
+  contents.sendInputEvent({type:'mouseMove',globalX:screenX-40,globalY:screenY,modifiers:['leftButtonDown'],x:startWidth-44,y:100,movementX:-40,movementY:0});
+  await until(() => panel.getBounds().width < startWidth);
+  contents.sendInputEvent({type:'mouseUp',globalX:screenX-40,globalY:screenY,x:panel.getBounds().width-4,y:100,button:'left',clickCount:1});
+  await until(() => manager.getSettings().appearancePanelWidth < startWidth);
   // Built-in labels change without a model and preserve unsaved color values.
   await contents.executeJavaScript("document.getElementById('custom-hex').value='#abcdef'");
   await translation.save({ ...translation.getSettings(), enabled: true, translateDescriptions: false });
