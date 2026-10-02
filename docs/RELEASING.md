@@ -95,12 +95,12 @@ See [AUR publishing](AUR.md) for installing and submitting the binary package.
 
 References: [electron-builder AppImage](https://www.electron.build/v26/docs/appimage/), [multi-platform builds](https://www.electron.build/v26/docs/features/multi-platform-build/), [GitHub CLI release commands](https://cli.github.com/manual/gh_release).
 
-## 0.5.2 verification
+## 0.5.1 verification
 
-Release source: `ed4eedc445b365b6293504b22237b25d949f3028` (`v0.5.2`). [Native workflow 36880930595](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/36880930595) passed both Linux and Windows jobs, including source and packaged-resource tests and the included Windows translator model. The release assets are the downloaded CI files, verified without rebuilding. The combined checksum list and Arch recipe source verification passed.
+Release source: `ed4eedc445b365b6293504b22237b25d949f3028` (`v0.5.1`). [Native workflow 36880930595](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/36880930595) passed both Linux and Windows jobs, including source and packaged-resource tests and the included Windows translator model. The release assets are the downloaded CI files, verified without rebuilding. The combined checksum list and Arch recipe source verification passed.
 
 | Asset | Bytes | SHA-256 |
 | --- | ---: | --- |
-| friends-and-fables-desktop-0.5.2-linux-x86_64.AppImage | 117110893 | `296d2e68f891c2c5940f54f008869111df8c4bd81fb775f9d94d61b381aa6ec4` |
-| friends-and-fables-desktop-0.5.2-windows-x64.exe | 324079202 | `00bde6f0ddb630274aeed476a5a5ad8019d8892cb0e893ff8343b4298c74da1c` |
+| friends-and-fables-desktop-0.5.1-linux-x86_64.AppImage | 117110893 | `296d2e68f891c2c5940f54f008869111df8c4bd81fb775f9d94d61b381aa6ec4` |
+| friends-and-fables-desktop-0.5.1-windows-x64.exe | 324079202 | `00bde6f0ddb630274aeed476a5a5ad8019d8892cb0e893ff8343b4298c74da1c` |
 | SHA256SUMS | 236 | `5c91497dcfbedd30a097d05d2fcdd6c835544741935497a948b9b197b54de78e` |

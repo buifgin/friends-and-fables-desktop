@@ -48,7 +48,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  window.placeholderSource='Mira says or does...';window.editorUpdates=0;
  window.makeEditor=()=>new Editor({element:document.getElementById('native-editor'),extensions:[StarterKit,Placeholder.configure({placeholder:()=>window.placeholderSource})],content:'<p></p>',onUpdate(){window.editorUpdates++}});
  window.nativeEditor=window.makeEditor();
- `,resolveDir:appRoot},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
+ `,resolveDir:path.join(__dirname,'..','..')},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
  const nativeSession=session.fromPartition('translation-native-editor');nativeSession.protocol.handle('https',request=>new Response(new URL(request.url).pathname==='/editor.js'?editorScript:'<!doctype html><style>.tiptap p.is-empty::before{content:attr(data-placeholder)}</style><div id="native-editor"></div><input id="native-input" role="textbox" placeholder="Mira says or does..." value="Untouched native input draft"><script src="/editor.js"></script>',{headers:{'Content-Type':new URL(request.url).pathname==='/editor.js'?'text/javascript':'text/html'}}));
  const nativeWindow=new BrowserWindow({show:false,webPreferences:{session:nativeSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});
  const native=nativeWindow.webContents;
