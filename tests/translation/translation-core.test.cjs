@@ -250,3 +250,12 @@ test('combat health, turn labels, skill casing, and remaining screenshot UI stay
  assert.throws(()=>validateTranslation({...DEFAULT_TRANSLATION,hideUntranslated:'yes'}));
  const legacy={...DEFAULT_TRANSLATION};delete legacy.hideUntranslated;assert.equal(validateTranslation(legacy).hideUntranslated,false);
 });
+
+test('Edit Encounter combat button is local across case and whitespace variants',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ for(const [source,expected] of Object.entries({
+  'Edit Encounter':'Редактировать бой',
+  '  EDIT ENCOUNTER\n':'  Редактировать бой\n',
+  '  edit   encounter  ':'  Редактировать бой  ',
+ })) assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected,source);
+});

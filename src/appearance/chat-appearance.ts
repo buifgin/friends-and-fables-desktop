@@ -120,6 +120,13 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     for (const spinner of document.querySelectorAll('svg.custom-spin')) {
       const page = spinner.closest('[class~="h-[100dvh]"][class~="justify-center"][class~="items-center"]');
       if (page) mark(page, 'data-ff-desktop-loading', 'true');
+      // Resetting chat history replaces the feed with LoadingSpinner directly
+      // inside main. The combat sidebar is a separate resizable panel.
+      const wrapper = spinner.parentElement;
+      const panel = wrapper?.parentElement;
+      if (wrapper?.matches('[class~="w-full"][class~="h-full"][class~="flex"][class~="items-center"][class~="justify-center"]')
+        && panel?.matches('main[class~="w-full"][class~="h-full"]')
+        && !panel.closest('form,[role="dialog"],aside,[data-sidebar]')) mark(panel, 'data-ff-desktop-loading', 'true');
     }
     const cards = Array.from(document.querySelectorAll('[id^="event-message-card-"]'));
     const anchor = document.getElementById('events-list') ?? cards[0];
@@ -272,6 +279,7 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
     @media (max-width:600px) { [data-ff-desktop-input-expanded] { inset:8vh 4vw auto !important; width:92vw !important; } }`;
 
   const loading = `html[data-ff-desktop-play] [data-ff-desktop-loading],
+    html[data-ff-desktop-play] main[class~="w-full"][class~="h-full"]:not(form *,[role="dialog"] *,aside *,[data-sidebar] *):has(> [class~="w-full"][class~="h-full"][class~="flex"][class~="items-center"][class~="justify-center"] > svg.custom-spin),
     [class~="h-[100dvh]"][class~="justify-center"][class~="items-center"]:has(> [class~="w-full"][class~="h-full"] > svg.custom-spin),
     html[data-ff-desktop-play] [class~="flex-1"][class~="h-full"][class~="w-full"]:has(> [class~="w-full"][class~="h-full"][class~="justify-center"] > svg.custom-spin)`;
   css += `${loading} { background-color:#000000 !important; background-image:${image && settings.backgroundImage ? `linear-gradient(${rgba(settings.backgroundEffects.overlayColor, settings.backgroundEffects.overlayOpacity)},${rgba(settings.backgroundEffects.overlayColor, settings.backgroundEffects.overlayOpacity)}),url("${image}")` : 'none'} !important;

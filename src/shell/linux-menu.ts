@@ -14,7 +14,7 @@ export class LinuxMenuBar {
   private revision = 0;
   private locale: 'en' | 'ru' = 'en';
 
-  constructor(private window: BrowserWindow, private website: WebContentsView, private menu: Menu, private onInsetChange?: (inset: number) => void) {
+  constructor(private window: BrowserWindow, private website: WebContentsView, private menu: Menu, private onInsetChange?: (inset: number) => void, private onOverlayOpen?: () => void) {
     this.overlay = new WebContentsView({ webPreferences: {
       partition: 'fables-appearance', preload: path.join(__dirname, 'menu-preload.js'),
       sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
@@ -27,6 +27,9 @@ export class LinuxMenuBar {
     contents.on('will-redirect', event => event.preventDefault());
     contents.setWindowOpenHandler(() => ({ action: 'deny' }));
     configureFullscreenShortcuts(contents, window);
+    // Persistent toolbar views remain above the menu. Clicking one moves focus
+    // away from this overlay and dismisses the dropdown without stealing focus.
+    contents.on('blur', () => { if (this.active) this.close(false); });
     this.ready = contents.loadURL(MENU_URL);
     void this.ready.catch(console.error);
     ipcMain.handle('desktop-menu:open', (event, id: unknown, x: unknown) => {
@@ -132,6 +135,7 @@ export class LinuxMenuBar {
     if (revision !== this.revision || this.window.isDestroyed()) return;
     this.active = id;
     this.window.contentView.addChildView(this.overlay);
+    this.onOverlayOpen?.();
     this.overlay.setVisible(true);
     this.overlay.webContents.send('desktop-menu:show', {
       id, x: Math.round(Math.max(0, Math.min(this.window.getContentSize()[0], x))),

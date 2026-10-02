@@ -66,6 +66,7 @@ export const SHARED_INTERFACE_GLOSSARY: Record<string, string> = {
   'all spells':'Все заклинания', 'known':'Известные', 'choose spell slot level':'Выберите уровень ячейки', 'at higher levels':'На более высоких уровнях',
   'custom instructions':'Дополнительные инструкции',
   'victory':'Победа', 'defeat':'Поражение', 'ally':'Союзник', 'enemy':'Враг',
+  'edit encounter':'Редактировать бой',
   'battle lasted':'Битва продолжалась', 'damage dealt':'Нанесённый урон', 'healing done':'Восстановленные ОЗ',
   'distance moved':'Пройденное расстояние', 'ft':'фт.', 'general feat':'Общая черта',
   'found':'находит', 'gained':'получает', 'acquired':'получает', 'bought':'покупает', 'looted':'забирает',

@@ -1,4 +1,4 @@
-# Saved /sp instructions (unreleased)
+# Saved /sp instructions (0.5.2)
 
 Open **Appearance → Saved /sp Instructions…**, press **Ctrl+Shift+P**, or enter `/sp` by itself in campaign chat. This opens the app's settings window without sending a message.
 

@@ -65,6 +65,7 @@ export class AppearanceDock {
   }
 
   getLauncherContents() { return this.launcher.webContents; }
+  raiseControls(): void { if (!this.window.isDestroyed()) this.window.contentView.addChildView(this.launcher); }
   setInset(inset: number): void { this.inset = inset; this.layout(); }
   sync(): void {
     if (!this.manager.getSettings().appearancePinned) this.hide();

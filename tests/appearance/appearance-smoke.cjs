@@ -252,6 +252,29 @@ async function save(settings, window) {
   assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("loading-fixture")).backgroundColor'),'rgb(0, 0, 0)');
   assert((await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("loading-fixture")).backgroundImage')).includes(imported.preview));
   await website.webContents.executeJavaScript('document.getElementById("loading-fixture").remove()');
+  // The chat history reset renders LoadingSpinner directly in main, beside the combat sidebar.
+  await website.webContents.executeJavaScript(`document.body.insertAdjacentHTML('beforeend', '<div id="split-loader-fixture"><main id="chat-panel-loading" class="w-full h-full overflow-y-auto" style="background-image:linear-gradient(red,green)"><div class="absolute inset-0" id="native-loader-art">Native forest wallpaper</div><div class="w-full h-full flex items-center justify-center"><svg class="custom-spin"></svg></div></main><aside id="combat-sidebar-loading" style="background-image:linear-gradient(blue,yellow)"><div class="w-full h-full flex items-center justify-center"><svg class="custom-spin"></svg></div></aside></div>')`);
+  await until(website.webContents, 'document.getElementById("chat-panel-loading").hasAttribute("data-ff-desktop-loading")');
+  const panelLoading = () => website.webContents.executeJavaScript(`({
+    image:getComputedStyle(document.getElementById('chat-panel-loading')).backgroundImage,
+    color:getComputedStyle(document.getElementById('chat-panel-loading')).backgroundColor,
+    native:getComputedStyle(document.getElementById('native-loader-art')).display,
+    sidebar:getComputedStyle(document.getElementById('combat-sidebar-loading')).backgroundImage,
+    sidebarMarked:document.getElementById('combat-sidebar-loading').hasAttribute('data-ff-desktop-loading')
+  })`);
+  let embedded=await panelLoading();
+  assert(embedded.image.includes(imported.preview), 'Embedded chat loader uses the selected wallpaper.');
+  assert.equal(embedded.color,'rgb(0, 0, 0)');assert.equal(embedded.native,'none');assert.equal(embedded.sidebarMarked,false);
+  const sidebarImage=embedded.sidebar;
+  await save({...chatSettings,backgroundImage:null,backgroundName:''},settingsWindow);
+  embedded=await panelLoading();assert.equal(embedded.image,'none','Without a custom picture the embedded loader stays black.');
+  assert.equal(embedded.color,'rgb(0, 0, 0)');assert.equal(embedded.sidebar,sidebarImage,'Combat artwork remains unchanged.');
+  await save(chatSettings,settingsWindow);
+  await website.webContents.executeJavaScript("document.querySelector('#chat-panel-loading svg').remove()");
+  await until(website.webContents,'!document.getElementById("chat-panel-loading").hasAttribute("data-ff-desktop-loading")');
+  embedded=await panelLoading();assert.equal(embedded.native,'block','Native content is restored after the loader disappears.');
+  assert.equal(embedded.sidebar,sidebarImage);
+  await website.webContents.executeJavaScript("document.getElementById('split-loader-fixture').remove()");
   // The site's existing background switch controls the local picture as well.
   await website.webContents.executeJavaScript("document.getElementById('background-toggle').title = 'Show background image'");
   await until(website.webContents, "!document.querySelector('[data-ff-desktop-chat]')");

@@ -39,6 +39,47 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(manager.getSettings().enabled,false);
  const preferences={...manager.getSettings(),port:server.address().port,preservedNames:['Franz','Aria Moonwhisper']};
  await manager.save(preferences);
+ // Real ProseMirror decorations must remain owned by the editor. Mutating
+ // data-placeholder causes its DOM observer to restore/recreate decorations.
+ const {installTranslationDom}=require(path.join(appRoot,'dist/translation/translation-dom'));
+ const {RUSSIAN_DICTIONARY,localTranslation}=require(path.join(appRoot,'dist/translation/translation-core'));
+ const editorScript=require('esbuild').buildSync({stdin:{contents:`
+ import {Editor} from '@tiptap/core';import StarterKit from '@tiptap/starter-kit';import {Placeholder} from '@tiptap/extensions';
+ window.placeholderSource='Mira says or does...';window.editorUpdates=0;
+ window.makeEditor=()=>new Editor({element:document.getElementById('native-editor'),extensions:[StarterKit,Placeholder.configure({placeholder:()=>window.placeholderSource})],content:'<p></p>',onUpdate(){window.editorUpdates++}});
+ window.nativeEditor=window.makeEditor();
+ `,resolveDir:appRoot},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
+ const nativeSession=session.fromPartition('translation-native-editor');nativeSession.protocol.handle('https',request=>new Response(new URL(request.url).pathname==='/editor.js'?editorScript:'<!doctype html><style>.tiptap p.is-empty::before{content:attr(data-placeholder)}</style><div id="native-editor"></div><input id="native-input" role="textbox" placeholder="Mira says or does..." value="Untouched native input draft"><script src="/editor.js"></script>',{headers:{'Content-Type':new URL(request.url).pathname==='/editor.js'?'text/javascript':'text/html'}}));
+ const nativeWindow=new BrowserWindow({show:false,webPreferences:{session:nativeSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});
+ const native=nativeWindow.webContents;
+ await nativeWindow.loadURL('https://play.fables.gg/native-placeholder');
+ await native.executeJavaScript(`window.editorMutations=0;window.editorGuard=new MutationObserver(records=>{window.editorMutations+=records.length;if(window.editorMutations>30)window.__friendsFablesDesktopTranslation?.dispose()});editorGuard.observe(nativeEditor.view.dom,{subtree:true,childList:true,characterData:true,attributes:true});window.editorDocument=JSON.stringify(nativeEditor.getJSON());window.editorHTML=nativeEditor.view.dom.innerHTML;(${installTranslationDom.toString()})('native-test',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}));window.immediatePlaceholder=nativeEditor.view.dom.querySelector('p').getAttribute('data-placeholder')`);
+ assert.equal(await native.executeJavaScript('immediatePlaceholder'),'Mira says or does...','Translation must leave native placeholder attributes untouched.');
+ await until(native,`getComputedStyle(nativeEditor.view.dom.querySelector('p'),'::before').content.includes('Mira говорит или делает')`);
+ await sleep(250);
+ assert.equal(await native.executeJavaScript('editorMutations'),0,'Translation must not trigger the native editor DOM observer.');
+ assert.equal(await native.executeJavaScript('editorUpdates'),0);
+ assert.equal(await native.executeJavaScript("document.getElementById('native-input').placeholder"),'Mira говорит или делает…','Ordinary input hints use their native placeholder even with a textbox role.');
+ assert.equal(await native.executeJavaScript("document.getElementById('native-input').value"),'Untouched native input draft');
+ assert.equal(await native.executeJavaScript('JSON.stringify(nativeEditor.getJSON())'),await native.executeJavaScript('editorDocument'));
+ assert.equal(await native.executeJavaScript('nativeEditor.view.dom.innerHTML'),await native.executeJavaScript('editorHTML'));
+ await native.executeJavaScript(`nativeEditor.commands.setContent('<p>The original draft stays here.</p>');window.savedDraft=nativeEditor.getHTML()`);
+ await sleep(100);
+ assert.equal(await native.executeJavaScript('nativeEditor.getHTML()'),await native.executeJavaScript('savedDraft'));
+ await native.executeJavaScript(`nativeEditor.commands.clearContent();window.placeholderSource='Write a new thought here.';nativeEditor.view.dispatch(nativeEditor.state.tr)`);
+ await sleep(210);
+ const nativePending=await native.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');
+ const thought=nativePending.nodes.find(node=>node.text==='Write a new thought here.');assert(thought,'Changed editor hints remain eligible for asynchronous translation.');
+ await native.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('native-test',${JSON.stringify([{...thought,text:'Напишите новую мысль здесь.',complete:true}])})`);
+ assert.equal(await native.executeJavaScript("nativeEditor.view.dom.querySelector('p').getAttribute('data-placeholder')"),'Write a new thought here.');
+ assert.equal(await native.executeJavaScript("getComputedStyle(nativeEditor.view.dom.querySelector('p'),'::before').content"),'"Напишите новую мысль здесь."');
+ await native.executeJavaScript(`nativeEditor.destroy();document.getElementById('native-editor').replaceChildren();window.placeholderSource='Mira says or does...';window.nativeEditor=window.makeEditor();window.editorMutations=0;editorGuard.disconnect();editorGuard.observe(nativeEditor.view.dom,{subtree:true,childList:true,characterData:true,attributes:true})`);
+ await until(native,`getComputedStyle(nativeEditor.view.dom.querySelector('p'),'::before').content.includes('Mira говорит или делает')`);
+ await sleep(150);assert.equal(await native.executeJavaScript('editorMutations'),0);
+ await native.executeJavaScript('window.__friendsFablesDesktopTranslation.dispose();editorGuard.disconnect()');
+ assert.equal(await native.executeJavaScript("getComputedStyle(nativeEditor.view.dom.querySelector('p'),'::before').content"),'"Mira says or does..."','Disabling translation restores native CSS display.');
+ assert.equal(await native.executeJavaScript("document.getElementById('native-input').placeholder"),'Mira says or does...');
+ await native.executeJavaScript('nativeEditor.destroy()');nativeWindow.destroy();
  const html=await readFile(path.join(__dirname,'../fixtures/translation-page.html'),'utf8');
  const siteSession=session.fromPartition('translation-smoke');siteSession.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
  const website=new BrowserWindow({show:false,width:1000,height:900,webPreferences:{session:siteSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});
@@ -115,7 +156,8 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'",200);
  assert.equal(calls.length,beforePopup);
  assert.equal(await contents.executeJavaScript("document.getElementById('typed').placeholder"),'Mira говорит или делает…');
- assert.equal(await contents.executeJavaScript("document.querySelector('#editor p').dataset.placeholder"),'Mira говорит или делает…');
+ assert.equal(await contents.executeJavaScript("document.querySelector('#editor p').dataset.placeholder"),'Mira says or does...');
+ assert.equal(await contents.executeJavaScript("getComputedStyle(document.querySelector('#editor p'),'::before').content"),'"Mira говорит или делает…"');
  assert.equal(await contents.executeJavaScript("document.querySelector('input[type=password]').placeholder"),'Password');
  await contents.executeJavaScript("document.getElementById('portal').innerHTML='';document.getElementById('page').removeAttribute('aria-hidden');document.getElementById('page').removeAttribute('inert')");
  assert(batches.some(batch=>batch.length>1),'Visible prose should share model requests.');
@@ -183,7 +225,8 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await until(contents,"document.getElementById('count').textContent==='(осталось символов: 284)'");
  await until(contents,"document.getElementById('category').textContent==='Общая черта' && document.getElementById('configure').textContent==='Настроить фиксированное изменение'");
  await until(contents,"document.getElementById('context-count').textContent==='(2 активных, 0 неактивных)'");
- await until(contents,"document.getElementById('composer-placeholder').getAttribute('data-placeholder')==='Могнус говорит или делает…'");
+ await until(contents,"getComputedStyle(document.getElementById('composer-placeholder'),'::before').content.includes('Могнус говорит или делает…')");
+ assert.equal(await contents.executeJavaScript("document.getElementById('composer-placeholder').getAttribute('data-placeholder')"),'Могнус says or does...');
  assert.equal(await contents.executeJavaScript("document.querySelector('#hotfix-ui label').textContent"),'Адрес электронной почты');
  assert.equal(await contents.executeJavaScript("document.getElementById('left-tooltip').title"),'Лист персонажа');
  assert.equal(await contents.executeJavaScript("document.getElementById('left-tooltip').getAttribute('aria-label')"),'Лист персонажа');
@@ -239,8 +282,6 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal((await reopened.webContents.executeJavaScript('window.translation.clearCache()')).cacheEntries,0);
  if(process.env.FABLES_TEST_SCREENSHOT){reopened.show();await sleep(150);await writeFile(process.env.FABLES_TEST_SCREENSHOT,(await reopened.webContents.capturePage()).toPNG());}
  // Blank mode keeps native text nodes and never paints a newly inserted source label.
- const {installTranslationDom}=require(path.join(appRoot,'dist/translation/translation-dom'));
- const {RUSSIAN_DICTIONARY,localTranslation}=require(path.join(appRoot,'dist/translation/translation-core'));
  await contents.executeJavaScript(`document.body.innerHTML='<style>#blank-story{color:red!important}</style><p id="blank-story" aria-busy="false">The untranslated river flows.</p><div contenteditable="true" id="blank-editor">Original English draft.</div><section id="blank-late"></section>';window.blankText=document.getElementById('blank-story').firstChild;(${installTranslationDom.toString()})('blank-test',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}),true)`);
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').hasAttribute('data-ff-translation-blank')"),true);
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').firstChild===blankText"),true);

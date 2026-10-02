@@ -98,7 +98,10 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
         if(typeof props?.encounterActive==='boolean')return props.encounterActive;
         const value=props?.value as {campaign?:Record<string,unknown>}|undefined;
         const campaign=(props?.campaign??value?.campaign) as Record<string,unknown>|undefined;
-        if(campaign&&Object.hasOwn(campaign,'active_encounter_id'))return typeof campaign.active_encounter_id==='string'&&!!campaign.active_encounter_id;
+        if(campaign&&Object.hasOwn(campaign,'active_encounter_id')){
+          const id=campaign.active_encounter_id;
+          return typeof id==='string'&&!!id || typeof id==='number'&&Number.isFinite(id)&&id>0;
+        }
       }
     }
     // The native action button is only rendered while an encounter is active.

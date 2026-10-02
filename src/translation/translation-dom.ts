@@ -26,7 +26,29 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   document.body.append(style,status);
   style.textContent += '[data-ff-translation-blank]:not(#ff-translation-never){color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important} [data-ff-translation-blank]>*:not([data-ff-translation-placeholder]){opacity:0!important} [data-ff-translation-placeholder]{position:absolute;inset-inline-start:0;top:0;color:var(--ff-translation-ink,#aaa)!important;-webkit-text-fill-color:var(--ff-translation-ink,#aaa)!important;opacity:1!important;pointer-events:none;white-space:pre} [data-ff-translation-placeholder]::after{content:".";animation:ff-translation-dots 1.2s steps(1,end) infinite}@keyframes ff-translation-dots{0%,100%{content:"."}20%,80%{content:".."}40%,60%{content:"..."}}';
   const read = (node: Text | Attr): string => node instanceof Attr ? node.value : node.data;
-  const write = (node: Text | Attr, text: string): void => { if(node instanceof Attr) node.value=text; else node.data=text; };
+  const editorSelector = '[contenteditable]:not([contenteditable="false"])';
+  const editorPlaceholder = (node: Text | Attr): node is Attr => node instanceof Attr && ['placeholder','data-placeholder'].includes(node.name) && !!node.ownerElement?.closest(editorSelector);
+  const placeholderRules = new Map<Attr, CSSStyleRule>();
+  function clearPlaceholder(node: Text | Attr): boolean {
+    if (!(node instanceof Attr)) return false;
+    const rule=placeholderRules.get(node);if(!rule)return false;
+    const sheet=style.sheet;
+    if(sheet)for(let i=0;i<sheet.cssRules.length;i++)if(sheet.cssRules[i]===rule){sheet.deleteRule(i);break;}
+    placeholderRules.delete(node);return true;
+  }
+  const write = (node: Text | Attr, text: string): void => {
+    if(editorPlaceholder(node)) {
+      // ProseMirror owns the decoration attributes and will restore them after
+      // any external write. CSSOM changes render the hint without waking its
+      // DOM observer or changing the user's draft.
+      clearPlaceholder(node);
+      const sheet=style.sheet;if(!sheet)return;
+      const attribute=`[${node.name}="${CSS.escape(node.value)}"]`;
+      const editor=`:is(${editorSelector})`;
+      const index=sheet.insertRule(`${editor}${attribute}::before,${editor} ${attribute}::before{content:"${CSS.escape(text)}"!important}`,sheet.cssRules.length);
+      placeholderRules.set(node,sheet.cssRules[index] as CSSStyleRule);
+    } else if(node instanceof Attr) node.value=text; else node.data=text;
+  };
   const parent = (node: Text | Attr): Element | null => node instanceof Attr ? node.ownerElement : node.parentElement;
   let next = 0, timer: ReturnType<typeof setTimeout> | undefined, queued=false,disposed=false;
   function reveal(element:Element):void {
@@ -42,16 +64,16 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     // The user's app toggle overrides that page-wide flag. Local exclusions
     // (names, editors, individual blocks) still protect their original text.
     const exclusion = element?.closest('[translate="no"],.notranslate');
-    const editorPlaceholder=node instanceof Attr && ['placeholder','data-placeholder'].includes(node.name) && !!element?.closest('[contenteditable]');
+    const isEditorPlaceholder=editorPlaceholder(node);
     return !!element && element.isConnected && (node instanceof Attr
-      ? !element.closest('[data-ff-translation-ignore]') && !element.matches('input[type="password"],input[type="email"]')
+      ? (!element.closest(editorSelector) || isEditorPlaceholder) && !element.closest('[data-ff-translation-ignore]') && !element.matches('input[type="password"],input[type="email"]')
       : !element.closest(protectedSelector))
-      && (!exclusion || exclusion === document.documentElement || exclusion === document.body || editorPlaceholder)
+      && (!exclusion || exclusion === document.documentElement || exclusion === document.body || isEditorPlaceholder)
       && !element.closest('[hidden]') && element.getClientRects().length > 0
       && getComputedStyle(element).visibility !== 'hidden';
   }
   function restore(entry: Entry): void {
-    if (entry.rendered !== null && read(entry.node) === entry.rendered) write(entry.node, entry.original);
+    if (!clearPlaceholder(entry.node) && entry.rendered !== null && read(entry.node) === entry.rendered) write(entry.node, entry.original);
     entries.delete(entry.id); nodes.delete(entry.node);
   }
   function updateStatus(): void {
@@ -118,7 +140,8 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   function examine(node: Text | Attr): void {
     let entry = nodes.get(node);
     if (!eligible(node)) { if (entry) restore(entry); return; }
-    if (entry && (read(node) === entry.rendered || (read(node) === entry.original && !entry.rendered))) return;
+    if (entry && (read(node) === entry.rendered || (read(node) === entry.original && (!entry.rendered || node instanceof Attr && placeholderRules.has(node))))) return;
+    clearPlaceholder(node);
     const original = read(node), core = original.trim();
     const preserved = core.toLowerCase() !== 'franz' && names.some(name => name.toLocaleLowerCase() === core.toLocaleLowerCase());
     let translated = preserved ? undefined : local(original,dictionary);
@@ -144,7 +167,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     if(disposed)return;
     queued=false;
     if (timer) clearTimeout(timer); timer = undefined;
-    for (const entry of entries.values()) if (!parent(entry.node)?.isConnected) { entries.delete(entry.id); nodes.delete(entry.node); }
+    for (const entry of entries.values()) if (!parent(entry.node)?.isConnected) { clearPlaceholder(entry.node); entries.delete(entry.id); nodes.delete(entry.node); }
     for (const root of roots) {
       if (root.nodeType === Node.TEXT_NODE) { if (!root.parentElement || !examineFragments(root.parentElement)) examine(root as Text); continue; }
       if (!(root instanceof Element)) continue;

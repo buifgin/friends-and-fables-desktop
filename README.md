@@ -4,7 +4,7 @@ An unofficial desktop wrapper for [Friends & Fables](https://play.fables.gg/), t
 
 The app opens the existing website and adds local themes, campaign chat pictures, and message styling. Optional local English-to-Russian translation is available from the Translation menu.
 
-The latest published release is [0.3.0](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.3.0). The source on `main` is the upcoming 0.4.0 build, adding separate natural-20/natural-1 dice colors, a resizable campaign map, and `/me` / `/gm` draft commands.
+The current release is [0.5.2](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.5.2), with music playback, saved adventure/combat instructions, reusable appearance themes, and interface hotfixes. See [release notes](docs/releases/v0.5.2.md).
 
 ## Current features
 
@@ -16,19 +16,23 @@ The latest published release is [0.3.0](https://github.com/buifgin/friends-and-f
 - Provide standard menus for reload, zoom, copy/paste, developer tools, and opening the website in your browser.
 - Choose AMOLED black, soft black, light, or a custom background color, with saved preferences.
 - Import a local PNG, JPEG, or WebP picture behind campaign chat, with cover/contain sizing, blur, image opacity, and a color overlay. Browse previously imported pictures or a permanently selected image folder.
-- Set separate colors, opacity, gradients with separate opacity for each color, color proportions, and borders for player and GM/NPC messages. Campaign inputs and bottom buttons use the player style; battle summaries use the GM palette.
+- Set separate colors, opacity, gradients with separate opacity for each color, color proportions, and borders for player and GM/NPC messages. Campaign inputs have their own style; battle summaries use the GM palette.
 - Set independent colors, opacity, gradients, and borders for the expanded context window, its block cards, and the collapsed bar above the input.
 - Customize movement/action cards, dice roll cards, and dice menus. Choose plain borders or Ornate, Arcane, and Runic corner decorations for messages, inputs, context surfaces, events, and dice.
 - Choose black, white, purple, or custom SVG dice face/edge/number colors while preserving animations and results. Set an independent color for calculations, outcomes, and damage beneath dice.
-- In the upcoming 0.4.0 build, choose independent natural-20 and natural-1 D20 colors, with previews and portable theme sharing. Finished natural face values select these palettes; roll totals and menu icons use their normal colors.
-- In the upcoming 0.4.0 build, enable a map height handle and an expanded map with mouse/keyboard resizing. Keep sizes per campaign, close with Escape, and reset the layout.
-- In the upcoming 0.4.0 build, enable `/me` for italic drafts and `/gm` for `#text#` drafts. Prepare and review the rich text before sending through the website normally.
+- Choose independent natural-20 and natural-1 D20 colors, with previews and portable theme sharing. Finished natural face values select these palettes; roll totals and menu icons use their normal colors.
+- Enable a map height handle and an expanded map with mouse/keyboard resizing. Keep sizes per campaign, close with Escape, and reset the layout.
+- Enable `/me` for italic drafts and `/gm` for `#text#` drafts. Prepare and review the rich text before sending through the website normally.
 - Use an in-app color picker with hue, saturation, lightness, and hex controls. Preview updates are coalesced, and color dragging does not reload the picture.
 - Keep character editor fields readable using the app theme's foreground color.
 - Undo the last appearance reset, including the selected picture, even after restarting.
 - Export and import themes, optionally including the selected picture for friends.
 - Use a black application menu bar and dropdowns on Linux, with an option to restore the system menu bar. Open Appearance as a floating window on Hyprland.
 - Build a Linux x86_64 AppImage and Windows x64 portable EXE; keep the development ZIP option.
+
+- Play music from the searchable bundled catalog or local folders, with persistent main-window playback.
+- Save separate adventure/combat `/sp` guidance and named appearance themes.
+- Hide unfinished translations behind animated dots when desired.
 
 ## Download the app
 
@@ -37,11 +41,11 @@ Download the Linux AppImage or Windows portable EXE from [GitHub Releases](https
 On Arch/Linux, make the AppImage executable and run it:
 
 ```sh
-chmod +x friends-and-fables-desktop-0.3.0-linux-x86_64.AppImage
-./friends-and-fables-desktop-0.3.0-linux-x86_64.AppImage
+chmod +x friends-and-fables-desktop-0.5.2-linux-x86_64.AppImage
+./friends-and-fables-desktop-0.5.2-linux-x86_64.AppImage
 ```
 
-On Windows, run `friends-and-fables-desktop-0.3.0-windows-x64.exe`. The build is unsigned. This EXE includes the English–Russian translator and model. Native Linux and Windows CI checked the packaged app; the Windows model also passed its offline translation check.
+On Windows, run `friends-and-fables-desktop-0.5.2-windows-x64.exe`. The build is unsigned. This EXE includes the English–Russian translator and model. Native Linux and Windows CI checked the packaged app; the Windows model also passed its offline translation check.
 
 The [AUR guide](docs/AUR.md) includes a prepared binary-package recipe and submission steps. AUR publication requires an AUR account and SSH key.
 

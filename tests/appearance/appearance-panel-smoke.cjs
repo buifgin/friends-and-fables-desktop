@@ -40,7 +40,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   host.contentView.addChildView(website); manager.attach(website.webContents);
   const dock = manager.attachMain(host, website);
   const menu = Menu.buildFromTemplate(template);
-  bar = new LinuxMenuBar(host, website, menu, inset => dock.setInset(inset)); bar.setBlack(true);
+  bar = new LinuxMenuBar(host, website, menu, inset => dock.setInset(inset), () => host.contentView.addChildView(dock.launcher)); bar.setBlack(true);
   await host.loadURL(MENU_URL); await website.webContents.loadURL('https://play.fables.gg/');
   const separate = await manager.open(host); separate.hide();
   await until(() => separate.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
@@ -172,7 +172,9 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await assert.rejects(impostor.webContents.executeJavaScript('window.appearance.get()'), /only in the app settings window/); impostor.destroy();
   // Menus appear above the dock, without moving the website back over it.
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
-  assert.equal(host.contentView.children.at(-1), bar.overlay); assert.equal(website.getBounds().x, panel.getBounds().width);
+  assert.equal(host.contentView.children.at(-1), dock.launcher, 'Music/appearance controls remain above an open menu.');
+  assert(host.contentView.children.indexOf(bar.overlay)>host.contentView.children.indexOf(panel), 'Dropdown remains above the settings panel.');
+  assert.equal(website.getBounds().x, panel.getBounds().width);
   await host.webContents.executeJavaScript('window.desktopMenu.close()');
   if (process.env.FABLES_PANEL_SCREENSHOT) {
     await translation.save({ ...translation.getSettings(), showOriginal: false });

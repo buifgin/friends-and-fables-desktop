@@ -43,3 +43,27 @@ The user requested saving all progress because their usage limit is low. Source 
 ## Feature layout follow-up (2026-10-02)
 
 Source, assets and regression tests now use feature subfolders. Read docs/ARCHITECTURE.md for the map and nested local AGENTS.md for ownership. Runtime behavior, settings and protocol URLs are preserved. New builds clean dist before compilation; moved preloads and assets were verified in a real Linux app.asar. All seven Electron suites passed both from source and that package, along with 25 unit tests and the Python protocol test. No native Windows verification was run locally. The local worktree helper also copies nested guides; its 13 offline tests pass. Local guides/config/worktrees are ignored and excluded from Forge and builder packages. This follow-up is saved in the working tree; no release was published.
+
+
+## Latest completed live-test follow-up — 2026-10-02
+
+This section supersedes the earlier completion/checkpoint status. Current branch main, base0529cb0, version0.5.1. Follow-up source/tests and this handoff are saved uncommitted; no release/package version change.
+
+Completed fixes:
+- Embedded chat loading uses the selected wallpaper or black and preserves the combat map/sidebar.
+- Edit Encounter translates immediately to Редактировать бой.
+- All seven Linux top menus keep music/appearance controls visible and clickable; clicking volume dismisses the menu.
+- Fixed translation-induced editor freeze: Russian hints render through CSS, preserving native Tiptap placeholder attributes and drafts instead of repeatedly fighting editor reconciliation. Real Tiptap regression covers quiescence, async/source updates, replacement, restoration and ordinary textbox inputs.
+- Combat /sp detection now accepts the native numeric encounter ID as well as strings. Native boolean mode and queued-send cancellation remain supported.
+
+Final live campaign checks passed: translation enabled and renderer responsive; visible Russian hint with original native attribute; encounter and all four health labels Russian; custom wallpaper while jumping to bottom and intact combat sidebar; all menus/toolbars clickable. Intercepted Chromium keyboard check selected combat instructions, formatted /gm, triggered one Send click and preserved Shift+Enter soft break. No test messages reached the campaign; dummy draft/configuration were restored. Saved separate combat instructions remain an optional user setting, currently disabled; tests enabled them only in memory.
+
+Verification: type check/build/diff check passed. Full source suite after placeholder fix passed26 units and all seven Electron suites. After numeric-ID fix, full run passed26 units and first six fixtures; new hidden-window badge assertion used an unreliable fixed RAF wait. Corrected test synchronization to native input; final focused instructions fixture passed. Latest production behavior also passed the real campaign keyboard check. No updated package or Windows native runtime test for these follow-up edits.
+
+Final source app was left open in the chosen campaign. Temporary renderer debugging detached; main inspector closed; both diagnostic ports verified closed. No active test windows/parallel implementation remain. Existing preference/game state was preserved; user explicitly authorized discarding the earlier unsent draft when restarting the frozen diagnostic. Actual theme saves/folder selection/audio changes were not performed live; passing fixtures cover them.
+
+Full private results, selected campaign, worker branches/commits, logs and reproduction details: `.codex/workflow/tasks/live-campaign-2026-10-02/LIVE-REPORT.md`. Workflow files/guides/config remain privately ignored and must not be committed or packaged. Worker patches were reviewed and integrated sequentially without a primary commit, per the recorded task exception. Resume by inspecting the saved primary diff and following the user's next request; do not rerun already passed checks without a reason.
+
+## Release checkpoint — 0.5.2
+
+The user authorized committing the completed hotfix and publishing 0.5.2 before further work. The release includes the completed changes above and prior music/themes/instructions/layout changes since 0.5.1. A new two-campaign built-in translation sweep and requested centered toolbar/window controls are separate follow-up work, outside this release. Release verification and publication records are in docs/RELEASING.md. Local workflow artifacts remain excluded.

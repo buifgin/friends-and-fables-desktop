@@ -129,7 +129,7 @@ function createWindow(): void {
   const dock = appearance.attachMain(mainWindow, view);
   music.attachMain(mainWindow,dock.getLauncherContents(),view.webContents);
   if (linux) {
-    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => { dock.setInset(inset); music.setInset(inset); });
+    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => { dock.setInset(inset); music.setInset(inset); }, () => dock.raiseControls());
     linuxMenu.setMenu(applicationMenu, appearance.getLocale());
     linuxMenu.setBlack(appearance.getSettings().linuxBlackMenu);
   }
