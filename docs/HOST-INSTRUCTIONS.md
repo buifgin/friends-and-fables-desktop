@@ -4,6 +4,8 @@ Open **Appearance → Saved /sp Instructions…**, press **Ctrl+Shift+P**, or en
 
 Write up to 4,000 characters of guidance, enable **Append /sp to my messages**, and save. Scene-continuity, character-reaction, and separated-party templates can be inserted and edited. The settings apply to messages sent from this computer across campaigns and survive restarts in `host-instructions.json`. They are excluded from portable appearance themes.
 
+Enable **Use different instructions during combat** and enter a second text to switch automatically when an encounter starts or ends. Combat text replaces adventure text. The badge then shows `/sp · adventure` or `/sp · combat`; turning this option off uses the adventure text everywhere. Both texts support up to 4,000 characters. A queued send is canceled if encounter state changes during preparation.
+
 The command hint shows `/sp active` after instructions have been configured. Click its badge to edit settings. Disable the option to stop attaching instructions; the badge then shows `/sp inactive`. In Players Only mode it shows a paused state and attaches nothing. [Players Only excludes Franz](https://fables.gg/patch-notes/input-bar-redesign-player-chat-mode-toggles).
 
 Enter and Send prepare the ordinary draft, append one marked block, verify the editor's resulting content, and use the site's existing Send button. Retries replace the previous block instead of accumulating copies. Empty drafts, unavailable Send buttons, mode changes, or edits during queued submission stay unsent. Shift+Enter and Format command never attach or send instructions.

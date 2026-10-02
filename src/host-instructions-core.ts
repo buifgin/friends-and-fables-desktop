@@ -1,7 +1,7 @@
 import type { RichNode } from './message-commands';
 
-export interface HostInstructions { text: string; enabled: boolean; configured: boolean; hideMarked: boolean }
-export const DEFAULT_HOST_INSTRUCTIONS: HostInstructions = { text:'',enabled:false,configured:false,hideMarked:true };
+export interface HostInstructions { text: string; combatText?: string; combatEnabled?: boolean; enabled: boolean; configured: boolean; hideMarked: boolean }
+export const DEFAULT_HOST_INSTRUCTIONS: HostInstructions = { text:'',combatText:'',combatEnabled:false,enabled:false,configured:false,hideMarked:true };
 export const HOST_INSTRUCTIONS_URL = 'fables-desktop://settings/host-instructions.html';
 
 export function validateHostInstructions(value: unknown, configured = false): HostInstructions {
@@ -9,9 +9,13 @@ export function validateHostInstructions(value: unknown, configured = false): Ho
   const input = value as Record<string,unknown>;
   if (typeof input.text !== 'string' || input.text.length > 4000 || /\[\[(?:\/)?FF-SP:1\]\]/.test(input.text) || input.text.includes('\0')) throw new Error('Use up to 4,000 characters without reserved /sp markers.');
   if (typeof input.enabled !== 'boolean' || typeof input.hideMarked !== 'boolean') throw new Error('Invalid instruction options.');
+  if (input.combatEnabled !== undefined && typeof input.combatEnabled !== 'boolean') throw new Error('Invalid instruction options.');
+  if (input.combatText !== undefined && (typeof input.combatText !== 'string' || input.combatText.length > 4000 || /\[\[(?:\/)?FF-SP:1\]\]/.test(input.combatText) || input.combatText.includes('\0'))) throw new Error('Use up to 4,000 characters without reserved /sp markers.');
   const text = input.text.replace(/\r\n?/g,'\n').trim();
+  const combatText=typeof input.combatText==='string'?input.combatText.replace(/\r\n?/g,'\n').trim():'';
   if (input.enabled && !text) throw new Error('Add instructions before enabling /sp.');
-  return {text,enabled:input.enabled,hideMarked:input.hideMarked,configured:configured || !!text};
+  if (input.combatEnabled && !combatText) throw new Error('Add combat instructions before enabling the combat profile.');
+  return {text,combatText,combatEnabled:input.combatEnabled===true,enabled:input.enabled,hideMarked:input.hideMarked,configured:configured || !!text || !!combatText};
 }
 
 // Serialized with the editor handler; keep marker literals and helpers local.

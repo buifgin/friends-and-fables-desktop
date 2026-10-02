@@ -5,7 +5,7 @@ const hexInput = document.querySelector('#custom-hex');
 const preview = document.querySelector('#preview');
 const status = document.querySelector('#status');
 const element = id => document.getElementById(id);
-const roles = ['player', 'gm', 'context', 'context-block', 'context-bar', 'event', 'roll'];
+const roles = ['player', 'gm', 'input', 'context', 'context-block', 'context-bar', 'event', 'roll'];
 let busy = true;
 let customColor = '#161616';
 let backgroundImage = null;
@@ -17,6 +17,7 @@ let activePanel = 'theme-panel';
 let canUndoReset = false;
 let panelWidth = 420;
 let appliedRevision = -1;
+let appliedLocaleRevision = -1;
 const previousStyles = new Map();
 
 for (const field of document.querySelectorAll('[data-style]')) {
@@ -53,6 +54,7 @@ function selection() {
     backgroundImage, backgroundName, backgroundFit: element('image-fit').value,
     backgroundEffects: { blur: Number(element('image-blur').value), opacity: Number(element('image-opacity').value) / 100,
       overlayColor: element('image-overlay-color').value, overlayOpacity: Number(element('image-overlay-opacity').value) / 100 },
+    input: { enabled: element('input-styles').checked, style: readStyle('input') },
     messages: { enabled: element('message-styles').checked, player: readStyle('player'), gm: readStyle('gm') },
     context: { enabled: element('context-styles').checked, style: readStyle('context'), blocks: readStyle('context-block'), bar: readStyle('context-bar') },
     events: { enabled: element('event-styles').checked, style: readStyle('event') },
@@ -66,15 +68,22 @@ function selection() {
     linuxBlackMenu: element('black-menu').checked, linuxFloatingAppearance: element('floating-appearance').checked,
   };
 }
+function applyInterfaceLocale(state) {
+  const revision = state.localeRevision ?? 0;
+  if (revision < appliedLocaleRevision) return;
+  appliedLocaleRevision = revision; window.settingsLocale.set(state.locale);
+}
 function showSettings(settings) {
+  if ((settings.localeRevision ?? 0) < appliedLocaleRevision) return;
+  applyInterfaceLocale(settings);
   if (settings.revision < appliedRevision) return;
   appliedRevision = settings.revision;
   canUndoReset = settings.canUndoReset;
+  if (settings.themes) showThemes(settings.themes);
   panelWidth = settings.appearancePanelWidth;
   element('pin-appearance').checked = settings.appearancePinned;
   element('resizable-map').checked = settings.resizableMap;
   element('message-commands').checked = settings.messageCommands;
-  window.settingsLocale.set(settings.locale);
   if (settings.presentation) {
     document.body.classList.toggle('docked', settings.presentation === 'panel');
     element('panel-toolbar').hidden = element('panel-resizer').hidden = settings.presentation !== 'panel';
@@ -89,6 +98,7 @@ function showSettings(settings) {
   element('image-overlay-color').value = settings.backgroundEffects.overlayColor;
   element('image-overlay-opacity').value = settings.backgroundEffects.overlayOpacity * 100;
   element('message-styles').checked = settings.messages.enabled;
+  element('input-styles').checked = settings.input.enabled;
   element('context-styles').checked = settings.context.enabled;
   element('event-styles').checked = settings.events.enabled;
   element('roll-styles').checked = settings.dice.enabled;
@@ -102,7 +112,7 @@ function showSettings(settings) {
   }
   for (const role of roles) {
     const style = role === 'player' || role === 'gm' ? settings.messages[role]
-      : role === 'context' ? settings.context.style : role === 'context-block' ? settings.context.blocks : role === 'context-bar' ? settings.context.bar : role === 'event' ? settings.events.style : settings.dice.style;
+      : role === 'input' ? settings.input.style : role === 'context' ? settings.context.style : role === 'context-block' ? settings.context.blocks : role === 'context-bar' ? settings.context.bar : role === 'event' ? settings.events.style : settings.dice.style;
     element(`${role}-color`).value = style.color;
     element(`${role}-opacity`).value = Math.round(style.opacity * 100);
     element(`${role}-auto-text`).checked = !style.textColor;
@@ -121,6 +131,40 @@ function showSettings(settings) {
   element('app-platform-note').hidden = settings.platform === 'linux';
   updatePreview();
 }
+function appearanceError(error) { return error.message.replace(/^Error invoking remote method '[^']+': Error: /, ''); }
+function showThemes(themes) {
+  const list = element('theme-collection'); list.replaceChildren();
+  for (const theme of themes) {
+    const item = document.createElement('div'); item.className = 'theme-circle-item';
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'theme-circle';
+    const name = theme.name;
+    button.title = name; button.setAttribute('aria-label', name); button.dataset.themeId = theme.id;
+    if (theme.saved) button.dataset.noLocalize = ''; button.style.background = `conic-gradient(${theme.colors.map((color, i) => `${color} ${i * 100 / theme.colors.length}% ${(i + 1) * 100 / theme.colors.length}%`).join(',')})`;
+    button.addEventListener('click', async () => {
+      busy = true; updatePreview();
+      try { showSettings(await window.appearance.previewTheme(theme.id, selection())); notify('Theme ready in preview. Apply changes to use it.'); }
+      catch (error) { notify(appearanceError(error), true); }
+      finally { busy = false; updatePreview(); }
+    });
+    const label = document.createElement('span'); label.className = 'theme-circle-name'; label.textContent = name; if (theme.saved) label.dataset.noLocalize = '';
+    item.append(button, label);
+    if (theme.saved) {
+      const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'remove-saved-theme';
+      remove.textContent = '×'; remove.title = 'Remove saved theme'; remove.setAttribute('aria-label', `Remove saved theme: ${theme.name}`);
+      remove.addEventListener('click', async () => { busy = true; updatePreview(); try { showThemes(await window.appearance.removeTheme(theme.id)); notify('Saved theme removed.'); } catch (error) { notify(appearanceError(error), true); } finally { busy = false; updatePreview(); } });
+      item.append(remove);
+    }
+    list.append(item);
+  }
+}
+element('save-theme').addEventListener('click', async () => {
+  const name = element('theme-name').value.trim();
+  if (!name) { element('theme-name').focus(); notify('Enter a theme name.', true); return; }
+  busy = true; updatePreview();
+  try { showThemes(await window.appearance.saveTheme(name, selection())); element('theme-name').value = ''; notify('Theme saved in your collection.'); }
+  catch (error) { notify(appearanceError(error), true); }
+  finally { busy = false; updatePreview(); }
+});
 function luminance(color, opacity, background) {
   const channels = [1, 3, 5].map(offset => {
     const base = parseInt(background.slice(offset, offset + 2), 16);
@@ -143,7 +187,8 @@ function updatePreview() {
   const settings = selection();
   window.settingsTheme.apply(settings);
   fieldset.disabled = busy;
-  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance','pin-appearance','resizable-map','message-commands']) element(id).disabled = busy;
+  for (const button of element('theme-collection').querySelectorAll('button')) button.disabled = busy;
+  for (const id of ['apply','reset','undo-reset','import-image','browse-images','import-theme','export-theme','export-picture','save-theme','theme-name','input-styles','message-styles','context-styles','context-part','event-styles','roll-styles','dice-colors','black-menu','floating-appearance','pin-appearance','resizable-map','message-commands']) element(id).disabled = busy;
   element('floating-appearance').disabled = busy || settings.appearancePinned;
   element('undo-reset').hidden = !canUndoReset;
   element('dice-result-auto').disabled = busy;
@@ -158,7 +203,7 @@ function updatePreview() {
   const color = colors[settings.preset] ?? customColor;
   for (const role of roles) {
     const enabled = role.startsWith('context') ? settings.context.enabled : role === 'event' ? settings.events.enabled
-      : role === 'roll' ? settings.dice.enabled : settings.messages.enabled;
+      : role === 'roll' ? settings.dice.enabled : role === 'input' ? settings.input.enabled : settings.messages.enabled;
     const style = readStyle(role);
     for (const control of document.querySelectorAll(`[data-style="${role}"] input, [data-style="${role}"] select`)) {
       const part = control.dataset.control;
@@ -181,7 +226,7 @@ function updatePreview() {
     const decorated = enabled && style.border.enabled && style.border.variant !== 'plain';
     setPreview(`--${role}-padding`, decorated ? role==='context-bar'?'12px':'20px' : role==='context-bar'?'8px 14px':role==='roll'?'12px':role==='event'?'14px':'10px');
     setPreview(`--${role}-min-height`, decorated ? role==='context-bar'?'40px':'72px' : '0');
-    if(role==='player'){
+    if(role==='input'){
       setPreview('--input-padding',decorated?'12px':'10px');
       setPreview('--input-min-height',decorated?'40px':'0');
     }
@@ -402,7 +447,7 @@ picker.addEventListener('cancel', event => { event.preventDefault(); closePicker
 window.appearance.get().then(settings => { busy = false; showSettings(settings); notify('Choose your settings, then apply them.'); })
   .catch(error => { notify('Could not load preferences. Close this window and try again.', true); console.error(error); });
 
-window.appearance.onInterface(state => { window.settingsLocale.set(state.locale); panelWidth = state.width; });
+window.appearance.onInterface(state => { applyInterfaceLocale(state); panelWidth = state.width; });
 window.appearance.onSettings(showSettings);
 element('close-panel').addEventListener('click', () => { void window.appearance.closePanel().catch(console.error); });
 const resizer = element('panel-resizer');

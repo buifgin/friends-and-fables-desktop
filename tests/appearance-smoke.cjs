@@ -74,9 +74,9 @@ async function save(settings, window) {
     </style></head><body><button id="background-toggle" title="Hide background image">Background</button>
     <nav><div data-sidebar="footer"><button id="sidebar-account" class="bg-gray-800"><span class="text-gray-400">Player</span></button></div></nav>
     <div style="position:relative;width:300px"><svg id="search-icon" style="position:absolute;left:12px;top:12px;width:16px;height:16px"></svg><input id="hotfix-search" placeholder="Search relationships..." style="padding:8px 12px 8px 36px;width:300px"></div>
-    <div class="panel">Panel</div><div class="artwork">Campaign artwork</div>
+    <div class="panel">Panel</div><div id="spell-detail-fixture" class="border rounded-lg"><h3>Spell details</h3><span style="background:green;color:white">Level 2</span></div><div class="artwork">Campaign artwork</div>
     <div class="flex-1 h-full w-full"><div id="events-list">
-      <div id="event-container-1"><div id="event-message-card-1"><p>Player text</p></div></div>
+      <div id="event-container-1"><div id="event-message-card-1"><div class="prose"><p>Player text</p></div></div></div>
       <div id="event-container-2"><div id="event-message-card-2">
         <button id="thoughts" aria-controls="thoughts-content" class="text-gray-400"><svg></svg><span>Thoughts</span></button>
         <div class="prose"><p>GM text</p><strong id="gm-heading" class="fixed-white">Бой завершён</strong></div>
@@ -88,6 +88,7 @@ async function save(settings, window) {
           <div id="damage-track" class="bg-slate-700"><div id="damage-fill" style="background:red;width:50%"></div></div>
         </div>
       </div></div>
+      <div id="event-health"><div id="health-card" class="bg-card border rounded-md"><span>Player healed 4 HP</span><div id="health-bar" style="background:red;height:4px"></div></div></div>
       <div id="event-move"><div id="movement-card" class="p-2 md:p-4 bg-card-light rounded-md relative flex items-center border-solid border-2 border-blue-950 bg-gradient-to-l from-card to-blue-950"><span>Player Moves 5 feet south to (7, 8)</span></div></div>
       <div id="event-dice"><div id="event-message-card-roll" class="rounded-md relative bg-transparent p-0"><div id="roll-card" class="relative from-slate-900/95 to-slate-950/95 rounded-2xl border-2 backdrop-blur-sm animate-in fade-in-0">
         <div class="absolute inset-0 pointer-events-none" id="roll-ornament">Decoration</div><h3 class="text-amber-300">Death Save</h3>
@@ -96,7 +97,7 @@ async function save(settings, window) {
         ${rollResults}
       </div></div></div>
     </div><input type="text" value="Русский текст and English"><textarea>Input text</textarea>
-      <div class="grid relative" id="fixture-composer"><div id="working-context-bar-spacer"></div>
+      <div class="grid relative" id="fixture-composer">
         <div class="absolute bottom-full left-0 right-0"><div class="bg-gray-800" id="context-bar">
           <span class="text-gray-400">9 Active / 0 Idle</span><button aria-label="Expand working context"><svg></svg></button>
         </div><div class="relative bg-gray-800 border-x border-b border-gray-700/50 overflow-hidden shadow-md flex flex-col max-h-[calc(90dvh-200px)]" id="context-panel-root">
@@ -238,13 +239,19 @@ async function save(settings, window) {
   })`);
   assert.equal(chat.player, 'rgba(18, 52, 86, 0.4)');
   assert.equal(chat.gm, 'rgba(101, 67, 33, 0.7)');
-  assert.equal(chat.input, chat.player);
-  assert.equal(chat.textarea, chat.player);
+  assert.equal(chat.input, 'rgba(0, 0, 0, 0)', 'Unrelated inputs retain app styling.');
+  assert.equal(chat.textarea, 'rgb(255, 255, 255)');
   assert.equal(chat.composer, chat.player);
   assert.equal(chat.opacity, '1');
   assert(chat.image.includes(imported.preview));
   assert.equal(chat.fit, 'contain');
   assert.equal((await colors(website.webContents)).artwork, original.artwork);
+  // Full-screen native loaders use the chosen picture and keep native artwork underneath covered.
+  await website.webContents.executeJavaScript('document.body.insertAdjacentHTML("beforeend", `<div id="loading-fixture" class="flex flex-1 w-full h-[100dvh] justify-center items-center"><div class="w-full h-full flex items-center justify-center"><svg class="custom-spin"></svg></div></div>`)');
+  await until(website.webContents,'!!document.querySelector("[data-ff-desktop-loading]")');
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("loading-fixture")).backgroundColor'),'rgb(0, 0, 0)');
+  assert((await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("loading-fixture")).backgroundImage')).includes(imported.preview));
+  await website.webContents.executeJavaScript('document.getElementById("loading-fixture").remove()');
   // The site's existing background switch controls the local picture as well.
   await website.webContents.executeJavaScript("document.getElementById('background-toggle').title = 'Show background image'");
   await until(website.webContents, "!document.querySelector('[data-ff-desktop-chat]')");
@@ -302,10 +309,49 @@ async function save(settings, window) {
     document.querySelector('#appearance-form').requestSubmit();
   })`);
   await until(settingsContents, "!document.querySelector('#apply').disabled");
-  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('.composer')).backgroundColor"), 'rgba(18, 52, 86, 0)');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('.composer')).backgroundColor"), 'rgba(18, 52, 86, 0.4)', 'Changing player messages does not change input styling.');
   assert.equal(await settingsContents.executeJavaScript("document.querySelector('#player-opacity-label').value"), '0%');
-  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('.tiptap p')).color"), 'rgb(170, 187, 204)');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.querySelector('.tiptap p')).color"), 'rgb(255, 255, 255)');
   assert.equal(await settingsContents.executeJavaScript('window.appearance.get().then(s => s.messages.gm.textColor)'), '#ffeeaa');
+  await save(chatSettings, settingsWindow);
+  // A saved theme carries an independent input palette and preserves local app controls.
+  const collection = await settingsContents.executeJavaScript('window.appearance.get().then(s => s.themes)');
+  assert(collection.length >= 6); assert(collection.every(theme => theme.colors.length >= 4));
+  const selectedTheme = await settingsContents.executeJavaScript(`window.appearance.previewTheme('builtin-forest', ${JSON.stringify({...chatSettings,messageCommands:true})})`);
+  assert.equal(selectedTheme.customColor, '#0b1712'); assert.equal(selectedTheme.messageCommands, true);
+  assert.equal(selectedTheme.backgroundImage, imported.id);
+  const themed = {...selectedTheme,input:{...selectedTheme.input,style:{...selectedTheme.input.style,color:'#273a52'}}};
+  const savedThemes = await settingsContents.executeJavaScript(`window.appearance.saveTheme('My forest', ${JSON.stringify(themed)})`);
+  const named = savedThemes.find(theme => theme.name === 'My forest'); assert(named?.saved);
+  assert.equal(JSON.parse(await readFile(path.join(userData,'themes.json'),'utf8'))[0].appearance.input.style.color, '#273a52');
+  const restoredTheme = await settingsContents.executeJavaScript(`window.appearance.previewTheme(${JSON.stringify(named.id)}, ${JSON.stringify(chatSettings)})`);
+  assert.equal(restoredTheme.input.style.color,'#273a52');
+  assert.equal(restoredTheme.messages.player.color,'#183c2b');
+  await assert.rejects(settingsContents.executeJavaScript(`window.appearance.saveTheme('', ${JSON.stringify(chatSettings)})`), /theme name/);
+  await assert.rejects(settingsContents.executeJavaScript(`window.appearance.previewTheme('../../private', ${JSON.stringify(chatSettings)})`), /library/);
+  await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
+  assert.equal(await settingsContents.executeJavaScript('document.querySelectorAll(".theme-circle").length'),savedThemes.length);
+  assert.equal(await settingsContents.executeJavaScript('getComputedStyle(document.querySelector(".theme-circle")).borderRadius'),'50%');
+  await settingsContents.executeJavaScript(`window.appearance.removeTheme(${JSON.stringify(named.id)})`);
+  await save({...chatSettings,input:restoredTheme.input},settingsWindow);
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.querySelector(".composer")).backgroundColor'),'rgba(39, 58, 82, 0.94)');
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("event-message-card-1")).backgroundColor'),'rgba(18, 52, 86, 0.4)');
+  // Expanding preserves the original Tiptap node and uses context styling; outside click closes it.
+  await website.webContents.executeJavaScript('window.fixtureEditor=document.querySelector(".tiptap");document.querySelector("[data-ff-desktop-expand-input]").click()');
+  await until(website.webContents,'!!document.querySelector("[data-ff-desktop-message=input-expanded]")');
+  assert.equal(await website.webContents.executeJavaScript('window.fixtureEditor===document.querySelector(".tiptap")'),true);
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.querySelector(".composer")).backgroundColor'),'rgb(16, 16, 16)');
+  await website.webContents.executeJavaScript('document.querySelector(".panel").dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}))');
+  await until(website.webContents,'!document.querySelector("[data-ff-desktop-input-expanded]")');
+  // A same-card hydration gap retains only its already-visible player text, then removes the overlay.
+  await website.webContents.executeJavaScript('document.querySelector("#event-message-card-1 .prose").textContent=""');
+  await until(website.webContents,'!!document.querySelector("[data-ff-desktop-message-snapshot]")');
+  assert.equal(await website.webContents.executeJavaScript('document.querySelector("[data-ff-desktop-message-snapshot]").textContent'),'Player text');
+  await website.webContents.executeJavaScript('document.querySelector("#event-message-card-1 .prose").textContent="Player text restored"');
+  await until(website.webContents,'!document.querySelector("[data-ff-desktop-message-snapshot]")');
+  await website.webContents.executeJavaScript('document.querySelector("#event-message-card-1 .prose").setAttribute("data-ff-translation-blank","");document.querySelector("#event-message-card-1 .prose").textContent="";new Promise(resolve=>requestAnimationFrame(resolve))');
+  assert.equal(await website.webContents.executeJavaScript('!!document.querySelector("[data-ff-desktop-message-snapshot]")'),false,'Pending translation clears previous English snapshots.');
+  await website.webContents.executeJavaScript('document.querySelector("#event-message-card-1 .prose").removeAttribute("data-ff-translation-blank");document.querySelector("#event-message-card-1 .prose").textContent="Player text restored";document.dispatchEvent(new Event("ff-desktop-translation-ready"))');
   await save(chatSettings, settingsWindow);
   // Independent context styling must remain opaque when player messages disappear.
   const newSettings = { ...explicitText, preset:'amoled',
@@ -317,6 +363,10 @@ async function save(settings, window) {
     events:{enabled:true,style:{color:'#303040',opacity:.8,textColor:'#ddeeff',gradient:{enabled:true,color:'#010101',angle:90},border:{enabled:true,color:'#aa77ff',width:2,radius:4}}},
     dice:{enabled:true,style:{color:'#080808',opacity:1,textColor:'#dddddd',border:{enabled:true,color:'#777777',width:1,radius:16}},colorsEnabled:true,faceColor:'#7c3aed',edgeColor:'#aaaaaa',numberColor:'#ffffff',resultTextColor:'#23e2ab'} };
   await save(newSettings,settingsWindow);
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("health-card")).backgroundImage.includes("linear-gradient")'),true);
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("health-bar")).backgroundColor'),'rgb(255, 0, 0)');
+  assert.equal(await website.webContents.executeJavaScript('document.getElementById("spell-detail-fixture").hasAttribute("data-ff-desktop-detail-card")'),true);
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("spell-detail-fixture")).backgroundImage.includes("linear-gradient")'),true);
   const newStyles = await website.webContents.executeJavaScript(`(() => {
     const style = id => { const c=getComputedStyle(document.getElementById(id));return {bg:c.backgroundColor,image:c.backgroundImage,fg:c.color,border:c.borderTopColor,width:c.borderTopWidth,radius:c.borderRadius}; };
     const root=document.querySelector('[data-ff-desktop-chat]');
@@ -619,7 +669,7 @@ async function save(settings, window) {
   manager.attach(outsider.webContents);
   await outsider.loadURL('https://example.invalid/test');
   await assert.rejects(outsider.webContents.executeJavaScript('window.appearance.get()'), /only in the app settings window/);
-  for(const method of ['pictures()','folderPictures()','chooseFolder()','undoReset()','importTheme()']){
+  for(const method of ['pictures()','folderPictures()','chooseFolder()','undoReset()','importTheme()','saveTheme("Untrusted",{})','removeTheme("unknown")','previewTheme("builtin-forest",{})']){
     await assert.rejects(outsider.webContents.executeJavaScript(`window.appearance.${method}`),/only in the app settings window/);
   }
   await save({ preset: 'amoled', customColor: '#123456' }, settingsWindow);
@@ -647,7 +697,7 @@ async function save(settings, window) {
   if (process.env.FABLES_TEST_SCREENSHOT) {
     await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
     settingsWindow.show();
-    for (const panel of ['picture', 'messages', 'context', 'events', 'dice', 'sharing', 'app']) {
+    for (const panel of ['theme', 'picture', 'messages', 'context', 'events', 'dice', 'sharing', 'app']) {
       await settingsContents.executeJavaScript(`document.querySelector('[data-panel="${panel}-panel"]').click(); new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`);
       await new Promise(resolve => setTimeout(resolve, 100));
       await writeFile(process.env.FABLES_TEST_SCREENSHOT.replace(/\.png$/, `-${panel}.png`), (await settingsContents.capturePage()).toPNG());
@@ -657,11 +707,11 @@ async function save(settings, window) {
   // Leave a reset backup on disk to exercise Undo after a fresh manager starts.
   await settingsContents.executeJavaScript(`window.appearance.reset(${JSON.stringify(finalState)})`);
   await save(finalState,settingsWindow);
-  const { imagePreview: _preview, platform: _platform, canUndoReset: _undo, presentation: _presentation, locale: _locale, revision: _revision, ...persisted } = finalState;
+  const { imagePreview: _preview, platform: _platform, canUndoReset: _undo, presentation: _presentation, locale: _locale, localeRevision: _localeRevision, revision: _revision, themes: _themes, ...persisted } = finalState;
   assert.deepEqual(JSON.parse(await readFile(path.join(userData, 'appearance.json'), 'utf8')),
     persisted);
   settingsWindow.destroy();
-  for(const method of ['get','save','import-image','pictures','select-picture','folder-pictures','choose-folder','select-folder-picture','reset','undo-reset','export-theme','import-theme','close-panel','resize-panel'])ipcMain.removeHandler(`appearance:${method}`);
+  for(const method of ['get','save','import-image','pictures','select-picture','folder-pictures','choose-folder','select-folder-picture','reset','undo-reset','export-theme','import-theme','close-panel','resize-panel','save-theme','remove-theme','preview-theme'])ipcMain.removeHandler(`appearance:${method}`);
   session.fromPartition('fables-appearance').protocol.unhandle('fables-desktop');
   const restarted = new AppearanceManager();
   await restarted.initialize();
@@ -734,11 +784,9 @@ async function save(settings, window) {
     await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowDown',bubbles:true}))");
     assert.equal(await overlay.webContents.executeJavaScript('document.activeElement.dataset.index'),'1');
     await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
-    await until(overlay.webContents,"active==='music'");
-    await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
     await until(overlay.webContents,"active==='translation'");
     await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
-    await until(overlay.webContents,"active==='appearance'");
+    await until(overlay.webContents,"active==='edit'");
     await overlay.webContents.executeJavaScript("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
     await until(overlay.webContents,'dropdown.hidden');
     await assert.rejects(frame.webContents.executeJavaScript('window.desktopMenu.choose(0)'),/Invalid menu command/);

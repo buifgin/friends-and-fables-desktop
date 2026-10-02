@@ -16,7 +16,7 @@ test('mixed Russian, names, dice, URLs, whitespace, and long prose are preserved
    const source=part.request??part.text;assert(!/[\p{Script=Cyrillic}]/u.test(source));assert(!/Franz|Aria|1d20|https:\/\//.test(source));assert(source.length<=1500);
   }
  }
- assert.equal(RUSSIAN_DICTIONARY['wisdom saving throw'],'Спасбросок Мудрости');
+ assert.equal(RUSSIAN_DICTIONARY['wisdom saving throw'],'Спасбросок мудрости');
  assert.equal(translationPlan('Привет, мир!').some(part=>part.translate),false);
  assert.equal(translationPlan('Franziska greets Franz.',['Franz'])[0].request,'Franziska greets ZXQ0ZXQ.');
  const part=translationPlan('Franz greets Aria.',['Franz','Aria'])[0];
@@ -24,7 +24,7 @@ test('mixed Russian, names, dice, URLs, whitespace, and long prose are preserved
  assert.throws(()=>validateTranslationMarkers(part.request,'Приветствие.'),/protected/);
  const url=translationPlan('Visit https://example.com/room.',['Franz'])[0];
  assert.equal(renderTranslation(url,'Посетите ZXQ0ZXQ'),'Посетите https://example.com/room.');
- assert.equal(translationPlan('Make a Wisdom saving throw.')[0].local,'Совершите спасбросок Мудрости.');
+ assert.equal(translationPlan('Make a Wisdom saving throw.')[0].local,'Совершите спасбросок мудрости.');
 });
 
 test('translation preferences reject external endpoints and malformed options',()=>{
@@ -75,7 +75,7 @@ test('glossary covers screenshot labels and numeric UI immediately, including wh
  const {localTranslation}=require('../dist/translation-core');
  const {DND_GLOSSARY,INTERFACE_GLOSSARY}=require('../dist/russian-glossary');
  assert(Object.keys(DND_GLOSSARY).length>=500);assert(Object.keys(INTERFACE_GLOSSARY).length>=70);
- for(const [source,expected] of Object.entries({'Spellbook':'Книга заклинаний','Memories':'Воспоминания','Class Features':'Умения класса','Spellcasting':'Использование заклинаний','Prone':'Сбитый с ног','Action Surge: 0/1':'Всплеск действий: 0/1','Second Wind:1/2':'Второе дыхание:1/2','Bonuses: +2 Proficiency':'Бонусы: +2 Умение','1 Topic Researched':'1 Тема изучена','1,699 XP until level 6':'1,699 опыта до уровня 6','Level 5 Drow Fighter (Spellblade)':'Уровень 5 Дроу Воин (Клинок заклинаний)','Mira says or does...':'Mira говорит или делает…','  Add Spell\n':'  Добавить заклинание\n'})){
+ for(const [source,expected] of Object.entries({'Spellbook':'Книга заклинаний','Memories':'Воспоминания','Class Features':'Умения класса','Spellcasting':'Использование заклинаний','Prone':'Сбитый с ног','Action Surge: 0/1':'Всплеск действий: 0/1','Second Wind:1/2':'Второе дыхание:1/2','Bonuses: +2 Proficiency':'Бонусы: +2 умение','1 Topic Researched':'1 Тема изучена','1,699 XP until level 6':'1,699 опыта до уровня 6','Level 5 Drow Fighter (Spellblade)':'Уровень 5 Дроу Воин (Клинок заклинаний)','Mira says or does...':'Mira говорит или делает…','  Add Spell\n':'  Добавить заклинание\n'})){
   assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected);assert.equal(renderTranslation(translationPlan(source)[0]),expected);
  }
  assert.equal(localTranslation('constructor',RUSSIAN_DICTIONARY),undefined);
@@ -98,7 +98,7 @@ test('shared GUI and composite dice bonuses use the chosen vocabulary without a 
  const {localTranslation}=require('../dist/translation-core');
  const samples={
   'AC':'КБ','Armor Class':'Класс брони','Base AC':'Базовый КБ','PB':'БУ','Proficiency':'Умение','Proficiency Bonus':'Бонус умения',
-  'Bonuses: +2 Wisdom, +2 Proficiency':'Бонусы: +2 Мудрость, +2 Умение','+2 Proficiency':'+2 Умение','+2 Wisdom, +2 Proficiency':'+2 Мудрость, +2 Умение',
+  'Bonuses: +2 Wisdom, +2 Proficiency':'Бонусы: +2 мудрость, +2 умение','+2 Proficiency':'+2 умение','+2 Wisdom, +2 Proficiency':'+2 мудрость, +2 умение',
   'Details':'Сведения','Armor':'Доспехи','Open Spellbook':'Открыть книгу заклинаний','Gold Pieces':'Золотые монеты','Backstory':'Предыстория','Mannerisms':'Манеры',
   'Campaign Settings':'Настройки кампании','Campaign Pacing Mode':'Темп кампании','Select Franz’s narration model.':'Выберите модель повествования Франца.',
   "Select Franz's narration model.":'Выберите модель повествования Франца.','Franz':'Франц','Gemini 3.1 Pro':'Gemini 3.1 Pro',
@@ -130,10 +130,10 @@ test('roll outcomes, period-separated bonuses, healing and spell-slot events nev
   'OTHER':'Другое','Flee':'Отступление','Heal':'Лечение','Known':'Известные',
   'Melee Attack':'Атака в ближнем бою','Ranged Attack':'Атака в дальнем бою',
   'SUCCESS!':'Успех!','FAILURE!':'Провал!','CRITICAL SUCCESS!':'Критический успех!','CRITICAL FAILURE!':'Критический провал!',
-  'Bonuses: +4 Strength. +2 Proficiency':'Бонусы: +4 Сила. +2 Умение',
-  '+2 Wisdom. +2 Proficiency':'+2 Мудрость. +2 Умение',
-  '  Bonuses: -1 Dexterity, +2 Proficiency. +3 Expertise.\n':'  Бонусы: -1 Ловкость, +2 Умение. +3 Компетентность.\n',
-  '+3 Modifier':'+3 Модификатор',
+  'Bonuses: +4 Strength. +2 Proficiency':'Бонусы: +4 сила. +2 умение',
+  '+2 Wisdom. +2 Proficiency':'+2 мудрость. +2 умение',
+  '  Bonuses: -1 Dexterity, +2 Proficiency. +3 Expertise.\n':'  Бонусы: -1 ловкость, +2 умение. +3 компетентность.\n',
+  '+3 Modifier':'+3 модификатор',
   'Custom Instructions (1/15)':'Дополнительные инструкции (1/15)',
   '  Custom Instructions ( 0 / 15 )\n':'  Дополнительные инструкции ( 0 / 15 )\n',
   'Level 1 Spell Slot consumed':'Ячейка заклинания 1-го уровня использована',
@@ -145,9 +145,9 @@ test('roll outcomes, period-separated bonuses, healing and spell-slot events nev
   '0 HP Healed!':'0 ОЗ восстановлено!','1,234 HP Recovered':'1,234 ОЗ восстановлено',
   'Base Roll':'Базовый бросок','Base Roll (advantage)':'Базовый бросок (Преимущество)',
   '(disadvantage)':'(Помеха)',
-  'Strength Modifier':'Модификатор Силы','Dexterity Modifier':'Модификатор Ловкости',
-  'Constitution Modifier':'Модификатор Телосложения','Intelligence Modifier':'Модификатор Интеллекта',
-  'Wisdom Modifier':'Модификатор Мудрости','Charisma Modifier':'Модификатор Харизмы',
+  'Strength Modifier':'Модификатор силы','Dexterity Modifier':'Модификатор ловкости',
+  'Constitution Modifier':'Модификатор телосложения','Intelligence Modifier':'Модификатор интеллекта',
+  'Wisdom Modifier':'Модификатор мудрости','Charisma Modifier':'Модификатор харизмы',
  };
  for(const [source,target] of Object.entries(samples)){
   assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
@@ -173,7 +173,7 @@ test('battle summaries, inventory outcomes and progression terminology are deter
  const source='The Sorcerer uses Dexterity and Charisma modifiers and casts Command, Dragon’s Breath, Fear, Fly, Arcane Eye, Charm Monster, Legend Lore, and Summon Dragon.';
  const plan=translationPlan(source);assert.equal(plan.map(p=>p.text).join(''),source);
  const terms=plan.flatMap(p=>p.protected??[]).map(p=>p.text);
- for(const term of ['Чародей','Модификаторы Ловкости и Харизмы','Приказ','Дыхание дракона','Ужас','Полёт','Магический глаз','Очарование чудовища','Знание легенд','Призыв дракона']) assert(terms.includes(term),term);
+ for(const term of ['Чародей','Модификаторы ловкости и харизмы','Приказ','Дыхание дракона','Ужас','Полёт','Магический глаз','Очарование чудовища','Знание легенд','Призыв дракона']) assert(terms.includes(term),term);
  const ordinary=translationPlan('They command an army, fear the dark, and fly home.');
  assert(ordinary.filter(p=>p.translate).some(p=>/command.*fear.*fly/.test(p.request)),'Ordinary verbs remain prose.');
  const named=translationPlan('Command greets Fly.',['Command','Fly']);
@@ -233,4 +233,20 @@ test('profile, workshop, likes, and notification screenshot labels stay local',(
  for(const [source,target] of Object.entries(samples)){
   assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);const plan=translationPlan(source);assert(!plan.some(part=>part.translate),source);assert.equal(plan.map(part=>renderTranslation(part)).join(''),target);
  }
+});
+
+
+test('combat health, turn labels, skill casing, and remaining screenshot UI stay local',()=>{
+ const {localTranslation}=require('../dist/translation-core');
+ for(const [source,expected]of Object.entries({
+  'ABILITY CHECKS':'Проверки характеристик','Strength Check':'Проверка силы','Animal Handling Check':'Проверка ухода за животными',
+  'Unscathed':'Невредим','Severely Injured':'Тяжело ранен','Copy Event ID':'Копировать ID события','Collapse All':'Свернуть все','Entity':'Сущности',
+  "End Могнус's Turn":'Завершить ход Могнус',"Waiting for Писькогрыз jr.'s Turn":'Ожидание хода Писькогрыз jr.',
+  'Executor: Encounter':'Исполнитель: бой','Franz is imagining...':'Франц обдумывает ответ…','Franz is starting an encounter...':'Франц начинает бой…',
+  '2.0 / 150 lbs':'2.0 / 150 фунт.','+4 HP':'+4 ОЗ','Roll 1D20':'Бросить 1D20','Писькогрыз jr. cast Cure Wounds (Level 1)':'Писькогрыз jr. использует Лечение ран (уровень 1)',
+ }))assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected,source);
+ assert.equal(RUSSIAN_DICTIONARY.strength,'Сила','Standalone headings retain their initial capital.');
+ assert.equal(validateTranslation({...DEFAULT_TRANSLATION,hideUntranslated:true}).hideUntranslated,true);
+ assert.throws(()=>validateTranslation({...DEFAULT_TRANSLATION,hideUntranslated:'yes'}));
+ const legacy={...DEFAULT_TRANSLATION};delete legacy.hideUntranslated;assert.equal(validateTranslation(legacy).hideUntranslated,false);
 });

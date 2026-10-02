@@ -1,14 +1,16 @@
 const assert=require('node:assert/strict'),path=require('node:path'),os=require('node:os');
-const {mkdtemp,readFile,writeFile,rm}=require('node:fs/promises');
-const {app,BrowserWindow,session,clipboard,shell}=require('electron');
+const {mkdtemp,readFile,writeFile,rm,mkdir,symlink}=require('node:fs/promises');
+const {app,BrowserWindow,session,clipboard,shell,dialog,WebContentsView,ipcMain}=require('electron');
 const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'..');
 const {registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance'));
 const {MusicManager,MUSIC_URL}=require(path.join(appRoot,'dist/music'));
 const {DEFAULT_APPEARANCE}=require(path.join(appRoot,'dist/themes'));
 const {MUSIC_CATALOG}=require(path.join(appRoot,'dist/music-catalog'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
+// Prevent Electron's default fatal-error dialog from hiding teardown failures.
+for(const event of ['uncaughtException','unhandledRejection'])process.on(event,error=>{console.error(`Music smoke ${event}:`,error);app.exit(1)});
 const timer=setTimeout(()=>{console.error('Music test timed out.');app.exit(1)},50000);
-let profile,parent,player,forged,manager;
+let profile,parent,player,forged,manager,toolbar;
 let copied;
 const externalLinks=[];shell.openExternal=async url=>{externalLinks.push(url)};
 const writeClipboard=clipboard.writeText.bind(clipboard);
@@ -39,7 +41,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  assert.equal(await siteJs('typeof window.music'),'undefined');assert.equal(await siteJs('typeof window.require'),'undefined');
  assert.equal(await siteJs("document.getElementById('dice').nextElementSibling.hasAttribute('data-ff-desktop-music-button')"),true);
  await siteJs("document.querySelector('[data-ff-desktop-music-button]').click()");await until(()=>opened===1);
- player=await manager.open(parent);player.hide();const js=source=>player.webContents.executeJavaScript(source);
+ player=await manager.open(parent);manager.hide();const js=source=>player.webContents.executeJavaScript(source);
  await until(()=>js("!document.getElementById('title').disabled"));
  const saved=()=>readFile(path.join(profile,'music.json'),'utf8').then(JSON.parse).catch(()=>null);
  const add=async(title,url)=>js(`document.getElementById('title').value=${JSON.stringify(title)};document.getElementById('url').value=${JSON.stringify(url)};document.getElementById('add-track').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))`);
@@ -62,7 +64,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await js("document.getElementById('audio').currentTime=7.95");
  await until(()=>js("document.getElementById('audio').getAttribute('src')==='https://audio.fixture/second.wav' && !document.getElementById('audio').paused"));
  await js("document.getElementById('play').click();document.getElementById('loop').click()");
- player.show();player.focus();await sleep(100);
+ await manager.open(parent);parent.show();player.webContents.focus();await sleep(100);
  await js("document.getElementById('copy').click()");await until(()=>js("document.getElementById('save-status').textContent==='Track link copied.'"));
  assert.equal(copied,'https://audio.fixture/second.wav','The trusted handler passes only the saved URL to the system clipboard.');
  if(process.platform!=='linux'||!process.env.WAYLAND_DISPLAY)assert.equal(clipboard.readText(),copied);
@@ -85,17 +87,18 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await js("document.getElementById('play').click()");await until(()=>js("!document.getElementById('audio').paused && document.getElementById('audio').currentTime>0"));
  const beforeReload=requests;parent.webContents.reload();await sleep(150);assert.equal(requests,beforeReload,'Website reload does not restart the player.');
  assert.equal(await js("document.getElementById('audio').paused"),false);
+ const timeBeforeHide=await js("document.getElementById('audio').currentTime");await js("document.getElementById('close-library').click()");await sleep(200);assert.equal(player.getVisible(),false);assert.equal(await js("document.getElementById('audio').paused"),false,'Closing library keeps playback running.');assert((await js("document.getElementById('audio').currentTime"))>timeBeforeHide);await manager.open(parent);
  await js("document.getElementById('stop').click()");assert.equal(await js("document.getElementById('audio').hasAttribute('src')"),false);
  await js("document.getElementById('title').value='Tavern ambience';document.getElementById('url').value='https://audio.fixture/tavern.ogg'");
  if(process.env.FABLES_MUSIC_SCREENSHOT)await writeFile(process.env.FABLES_MUSIC_SCREENSHOT,(await player.webContents.capturePage()).toPNG());
- const closed=new Promise(resolve=>player.once('closed',resolve));player.close();player=await manager.open(parent);await closed;player.hide();const reopened=source=>player.webContents.executeJavaScript(source);await until(()=>reopened("!document.getElementById('title').disabled"));
+ const previousPlayer=player;manager.hide();player=await manager.open(parent);assert.equal(player,previousPlayer,'Closing the library retains its audio renderer.');manager.hide();const reopened=source=>player.webContents.executeJavaScript(source);await until(()=>reopened("!document.getElementById('title').disabled"));
  assert.equal(await reopened("document.querySelectorAll('#playlist li').length"),2);assert.equal(await reopened("document.getElementById('volume').value"),'23');assert.equal(await reopened("document.getElementById('audio').paused"),true);
  assert.equal(await reopened("document.getElementById('audio').hasAttribute('src')"),false,'Reopening never autoplays a saved track.');
  await reopened("document.querySelector('#playlist li[aria-current=true] .remove').click()");await until(async()=>(await saved())?.tracks.length===1);
  assert.equal(await reopened("document.querySelector('#playlist li[aria-current=true] .track').textContent.includes('<img')"),true);
  const final=await saved();await manager.shutdown();player=null;
  manager=new MusicManager();await manager.initialize();assert.deepEqual(manager.getSettings(),final,'Playlist and playback preferences survive restarting the manager.');
- const requestsBeforeRestart=requests;player=await manager.open(parent);player.hide();await until(()=>reopened("!document.getElementById('title').disabled"));
+ const requestsBeforeRestart=requests;player=await manager.open(parent);manager.hide();await until(()=>reopened("!document.getElementById('title').disabled"));
  assert.equal(requests,requestsBeforeRestart);assert.equal(await reopened("document.getElementById('audio').paused"),true);
  await add('Broken link','https://audio.fixture/broken.wav');await until(async()=>(await saved())?.tracks.length===2);
  await reopened("document.querySelector('#playlist li:last-child .track').click()");
@@ -126,9 +129,41 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await assert.rejects(reopened("window.music.openCatalogLink('scott-titan','https://example.com')"),/Unknown catalog link/);
  manager.setInterface({...DEFAULT_APPEARANCE,preset:'light'},'ru');await until(()=>reopened("document.documentElement.lang==='ru'"));
  assert.equal(await reopened("document.getElementById('catalog-heading').textContent"),'Каталог музыки');assert.equal(await reopened("document.getElementById('catalog-search').value"),'TiTaN','Language changes preserve the search.');assert.equal(await reopened("document.getElementById('catalog-mood').firstChild.textContent"),'Все настроения');
- player.setContentSize(420,850);await sleep(80);assert.equal(await reopened('document.documentElement.scrollWidth<=innerWidth'),true,'Catalog rows fit the minimum window width.');
- if(process.env.FABLES_MUSIC_SCREENSHOT){player.show();await reopened("document.getElementById('catalog-heading').scrollIntoView();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");await writeFile(process.env.FABLES_MUSIC_SCREENSHOT.replace(/\.png$/,'-catalog.png'),(await player.webContents.capturePage()).toPNG());}
- console.log('Music smoke passed: real audio, volume/mute/loop/seek, catalog search/filter/pagination, duplicate-free playlist actions, official source/license links, attribution copy, persistence, Russian/themes, composer placement, and restricted IPC.');
- assert.equal(manager.getSettings().tracks.length,3);
+ parent.setContentSize(740,880);await sleep(80);assert.equal(await reopened('document.documentElement.scrollWidth<=innerWidth'),true,'Catalog rows fit the minimum window width.');
+ if(process.env.FABLES_MUSIC_SCREENSHOT){await manager.open(parent);await reopened("document.getElementById('catalog-heading').scrollIntoView();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");await writeFile(process.env.FABLES_MUSIC_SCREENSHOT.replace(/\.png$/,'-catalog.png'),(await player.webContents.capturePage()).toPNG());}
+
+
+ manager.hide();
+ const owned=session.fromPartition('fables-appearance');owned.protocol.handle('fables-desktop',async request=>{const url=new URL(request.url),name=url.pathname.slice(1);if(url.host!=='settings'||!['appearance-button.html','appearance-button.css','appearance-button.js','settings-theme.js'].includes(name))return new Response('Not found',{status:404});return new Response(await readFile(path.join(appRoot,'assets',name)),{headers:{'Content-Type':name.endsWith('.html')?'text/html':name.endsWith('.css')?'text/css':'text/javascript'}});});
+ ipcMain.handle('appearance-dock:get',()=>({settings:DEFAULT_APPEARANCE,locale:'en',open:false}));ipcMain.handle('appearance-dock:popup',()=>{});ipcMain.handle('appearance-dock:toggle',()=>{});
+ toolbar=new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});parent.contentView.addChildView(toolbar);toolbar.setBounds({x:0,y:0,width:232,height:166});
+ manager.attachMain(parent,toolbar.webContents,parent.webContents);await toolbar.webContents.loadURL('fables-desktop://settings/appearance-button.html');const control=source=>toolbar.webContents.executeJavaScript(source);
+ await until(()=>control("!document.getElementById('play').disabled"));await control("document.getElementById('stop').click()");await until(()=>reopened("!document.getElementById('audio').hasAttribute('src')"));
+ await control("document.getElementById('play').click()");await until(()=>reopened("!document.getElementById('audio').paused"));
+ await control("document.getElementById('repeat').click();document.getElementById('volume').value=37;document.getElementById('volume').dispatchEvent(new Event('input'))");await until(()=>reopened("document.getElementById('audio').volume===.37"));assert.equal(await control("document.getElementById('volume-value').value"),'37%');
+ if(process.env.FABLES_MUSIC_SCREENSHOT){await control("document.getElementById('volume-button').click();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");await writeFile(process.env.FABLES_MUSIC_SCREENSHOT.replace(/\.png$/,'-toolbar.png'),(await toolbar.webContents.capturePage()).toPNG());await control("document.getElementById('volume-button').click()");}
+ const initialTitle=await reopened("document.getElementById('track-title').textContent");await control("document.getElementById('next').click()");await until(async()=>(await reopened("document.getElementById('track-title').textContent"))!==initialTitle);
+ await control("document.getElementById('library').click()");await until(()=>player.getVisible());await control("document.getElementById('library').click()");await until(()=>!player.getVisible());assert.equal(await reopened("document.getElementById('audio').paused"),false);
+ await assert.rejects(control("window.appearanceButton.control('volume',2)"),/Invalid volume/);await assert.rejects(control("window.appearanceButton.control('filesystem')"),/Invalid music control/);
+ const toolbarForgery=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});await toolbarForgery.loadURL('fables-desktop://settings/appearance-button.html');await assert.rejects(toolbarForgery.webContents.executeJavaScript("window.appearanceButton.control('play')"),/only in the app toolbar/);toolbarForgery.destroy();
+ await control("document.getElementById('stop').click()");
+ const folder=path.join(profile,'downloaded-music'),outside=path.join(profile,'private.wav');await mkdir(path.join(folder,'nested'),{recursive:true});await writeFile(path.join(folder,'Tavern.wav'),wav);await writeFile(path.join(folder,'nested','Battle.wav'),wav);await writeFile(outside,wav);await writeFile(path.join(folder,'notes.txt'),'not audio');
+ if(process.platform!=='win32')await symlink(outside,path.join(folder,'escape.wav'));
+ dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});
+ await reopened("document.getElementById('folders-tab').click();document.getElementById('choose-folder').click()");await until(()=>reopened("document.querySelectorAll('#local-tracks li').length===2"));
+ await reopened("document.getElementById('choose-folder').click()");await until(()=>reopened("!document.getElementById('choose-folder').disabled"));
+ const library=await reopened("window.music.get().then(state=>state.library)");assert.equal(library.folders.length,1,'Choosing the same source twice does not duplicate folders.');assert.equal(library.tracks.length,2);assert(!JSON.stringify(library).includes(folder),'Renderer receives names and virtual links, never chosen filesystem paths.');
+ if(process.env.FABLES_MUSIC_SCREENSHOT){await manager.open(parent);await reopened("document.getElementById('folders-panel').scrollIntoView();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");await writeFile(process.env.FABLES_MUSIC_SCREENSHOT.replace(/\.png$/,'-folders.png'),(await player.webContents.capturePage()).toPNG());}
+ const tavern=library.tracks.find(track=>track.title==='Tavern');assert.match(tavern.url,/^fables-desktop:\/\/music\/audio\/[a-f0-9]{64}$/);
+ await reopened("document.getElementById('local-search').value='Battle';document.getElementById('local-search').dispatchEvent(new Event('input'))");assert.equal(await reopened("document.querySelectorAll('#local-tracks li').length"),1);
+ await reopened("document.getElementById('local-search').value='Tavern';document.getElementById('local-search').dispatchEvent(new Event('input'));document.querySelector('#local-tracks [data-action=play]').click()");await until(()=>reopened("!document.getElementById('audio').paused && Number.isFinite(document.getElementById('audio').duration)"));assert.equal(await reopened("document.getElementById('audio').duration"),8);
+ await assert.rejects(reopened(`window.music.save({...${JSON.stringify(manager.getSettings())},tracks:[{id:'unknown',title:'Unknown',url:'fables-desktop://music/audio/${'f'.repeat(64)}'}],selected:'unknown'})`),/Unknown local audio track/);
+ const unauthorized=await session.fromPartition('fables-music').fetch('fables-desktop://music/audio/'+ 'f'.repeat(64));assert.equal(unauthorized.status,404);
+ if(process.platform!=='win32') {await rm(path.join(folder,'Tavern.wav'));await symlink(outside,path.join(folder,'Tavern.wav'));const escaped=await session.fromPartition('fables-music').fetch(tavern.url);assert.equal(escaped.status,404,'Replacing a scanned audio file with a symlink cannot expose files outside its chosen folder.');}
+ await reopened("document.getElementById('stop').click();document.querySelector('#folders button').click()");await until(()=>reopened("document.querySelectorAll('#folders li').length===0"));assert.equal((await readFile(outside)).length,wav.length,'Removing a source never deletes music files.');
+ const removed=await session.fromPartition('fables-music').fetch(tavern.url);assert.equal(removed.status,404);
+ const playbackContents=player.webContents;parent.destroy();parent=null;await until(()=>playbackContents.isDestroyed());await manager.shutdown();
+ console.log('Music smoke passed: persistent embedded audio, toolbar controls, local folder playback/search/removal and path boundaries, real audio, volume/mute/loop/seek, catalog search/filter/pagination, duplicate-free playlist actions, official source/license links, attribution copy, persistence, Russian/themes, composer placement, and restricted IPC.');
+ assert.equal(manager.getSettings().tracks.length,4);
 } )().then(()=>finish(0),async error=>{console.error(error);await finish(1)});
-async function finish(code){clearTimeout(timer);for(const window of [forged,player,parent])if(window&&!window.isDestroyed())window.destroy();if(manager)await manager.shutdown();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});app.exit(code)}
+async function finish(code){clearTimeout(timer);const toolbarContents=toolbar?.webContents;if(toolbarContents&&!toolbarContents.isDestroyed())toolbarContents.close();for(const window of [forged,parent])if(window&&!window.isDestroyed())window.destroy();if(manager)await manager.shutdown();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});app.exit(code)}

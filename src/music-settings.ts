@@ -1,3 +1,4 @@
+import { LOCAL_AUDIO } from './music-library';
 export interface MusicTrack { id: string; title: string; url: string }
 export interface MusicSettings {
   tracks: MusicTrack[];
@@ -11,7 +12,7 @@ export const DEFAULT_MUSIC: MusicSettings = { tracks: [], selected: null, volume
 export function audioUrl(value: unknown): string {
   if (typeof value !== 'string' || value.length > 2048) throw new Error('Invalid audio link.');
   const url = new URL(value.trim());
-  if (url.protocol !== 'https:' || url.username || url.password || url.href.length > 2048) throw new Error('Use an HTTPS audio link without credentials.');
+  if ((!LOCAL_AUDIO.test(url.href) && url.protocol !== 'https:') || url.username || url.password || url.href.length > 2048) throw new Error('Use an HTTPS audio link without credentials.');
   return url.href;
 }
 

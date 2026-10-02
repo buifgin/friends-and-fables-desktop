@@ -8,13 +8,66 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   const key = '__friendsFablesDesktopChatAppearance';
   const host = window as unknown as Record<string, { dispose(): void } | undefined>;
   host[key]?.dispose();
-  if (!settings.backgroundImage && !settings.messages.enabled && !settings.context.enabled
-    && !settings.events.enabled && !settings.dice.enabled && !settings.dice.colorsEnabled && !settings.dice.resultTextColor
-    && !settings.dice.natural20.enabled && !settings.dice.natural1.enabled) return;
+
 
   let marked = new Map<Element, Set<string>>();
   let next = new Map<Element, Set<string>>();
   let frame = 0;
+  let disposed = false;
+  let expandedComposer: HTMLElement | null = null;
+  const expandButtons = new Map<HTMLElement, HTMLButtonElement>();
+  const snapshots = new Map<string, { clone: HTMLElement; at: number; overlay?: HTMLElement }>();
+  let snapshotTimer = 0;
+  function closeExpanded(): void {
+    expandedComposer?.removeAttribute('data-ff-desktop-input-expanded'); expandedComposer = null;
+    for (const button of expandButtons.values()) { button.setAttribute('aria-expanded', 'false'); button.textContent = '↗'; button.title = 'Expand message input'; button.setAttribute('aria-label', 'Expand message input'); }
+    schedule();
+  }
+  function snapshotMessages(): void {
+    if (disposed) return;
+    const now = Date.now();
+    for (const card of document.querySelectorAll<HTMLElement>('[id^="event-message-card-"]')) {
+      if (roleFor(card) !== 'player') continue;
+      const body = Array.from(card.querySelectorAll<HTMLElement>('.prose')).find(element => !element.closest('[contenteditable="true"],[data-ff-desktop-message-snapshot]'));
+      const old = snapshots.get(card.id);
+      if (body && (body.closest('[data-ff-translation-blank],[data-ff-translation-pending]') || body.querySelector('[data-ff-translation-blank],[data-ff-translation-pending],[data-ff-translation-placeholder]'))) {
+        old?.overlay?.remove(); snapshots.delete(card.id); continue;
+      }
+      if (body?.textContent?.trim()) {
+        old?.overlay?.remove();
+        const clone = body.cloneNode(true) as HTMLElement;
+        for (const hidden of clone.querySelectorAll('[data-ff-desktop-hidden-instructions],[data-ff-desktop-sp-draft],script,style,[data-ff-translation-placeholder]')) hidden.remove();
+        for (const paragraph of clone.querySelectorAll('p')) if (/^\s*\[\[FF-SP:1\]\][\s\S]*\[\[\/FF-SP:1\]\]\s*$/.test(paragraph.textContent ?? '')) paragraph.remove();
+        if (!clone.textContent?.trim() || clone.textContent.includes('[[FF-SP:1]]') || clone.textContent.includes('[[/FF-SP:1]]')) continue;
+        clone.removeAttribute('id'); clone.removeAttribute('contenteditable');
+        for (const child of clone.querySelectorAll('[id]')) child.removeAttribute('id');
+        snapshots.set(card.id, { clone, at: now });
+      } else if (old && now - old.at < 4000) {
+        if (!old.overlay?.isConnected) {
+          old.overlay = old.clone.cloneNode(true) as HTMLElement;
+          old.overlay.setAttribute('data-ff-desktop-message-snapshot', 'true'); old.overlay.setAttribute('data-ff-translation-ignore', 'true');
+          old.overlay.setAttribute('aria-hidden', 'true'); old.overlay.style.pointerEvents = 'none';
+          card.append(old.overlay);
+        }
+      }
+    }
+    for (const [id, snapshot] of snapshots) if (now - snapshot.at > 4000 || !document.getElementById(id)) { snapshot.overlay?.remove(); snapshots.delete(id); }
+    while (snapshots.size > 32) { const id = snapshots.keys().next().value!; snapshots.get(id)?.overlay?.remove(); snapshots.delete(id); }
+    clearTimeout(snapshotTimer);
+    if (Array.from(snapshots.values()).some(snapshot => snapshot.overlay?.isConnected)) snapshotTimer = window.setTimeout(snapshotMessages, 4000);
+  }
+  function outside(event: PointerEvent): void {
+    if (!(event.target instanceof Element) || event.target.closest('[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]')) return;
+    if (expandedComposer && !expandedComposer.contains(event.target)) closeExpanded();
+    for (const root of document.querySelectorAll<HTMLElement>('[data-ff-desktop-context="panel"]')) {
+      const shell = root.closest('[class~="bottom-full"]');
+      if (!shell || shell.contains(event.target)) continue;
+      const toggle = shell.querySelector<HTMLButtonElement>('[aria-label="Expand working context"],[aria-label="Развернуть рабочий контекст"],button[aria-label="Collapse working context"],button[aria-label="Свернуть рабочий контекст"]');
+      toggle?.click();
+    }
+  }
+  function onEscape(event: KeyboardEvent): void { if (event.key === 'Escape' && expandedComposer) closeExpanded(); }
+
   function mark(element: Element, name: string, value: string): void {
     if (element.getAttribute(name) !== value) element.setAttribute(name, value);
     if (!next.has(element)) next.set(element, new Set());
@@ -59,21 +112,28 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   }
   function scan(): void {
     frame = 0;
+    if (disposed) return;
     next = new Map();
     const view = new URLSearchParams(location.search).get('view');
     if (!/\/play\/?$/.test(location.pathname) || (view && view !== 'play')) { clearMarks(); return; }
+    mark(document.documentElement, 'data-ff-desktop-play', 'true');
+    for (const spinner of document.querySelectorAll('svg.custom-spin')) {
+      const page = spinner.closest('[class~="h-[100dvh]"][class~="justify-center"][class~="items-center"]');
+      if (page) mark(page, 'data-ff-desktop-loading', 'true');
+    }
     const cards = Array.from(document.querySelectorAll('[id^="event-message-card-"]'));
     const anchor = document.getElementById('events-list') ?? cards[0];
     const chat = anchor?.closest('.flex-1.h-full.w-full');
     const composers = new Set<Element>();
     for (const anchor of document.querySelectorAll('#working-context-bar-spacer, [aria-label="Roll dice"], [aria-label="Бросить кости"], .tiptap[contenteditable="true"]')) {
-      const root = anchor.closest('.grid.relative');
-      if (root && chat?.contains(root) && !inCharacterForm(anchor)) composers.add(root);
+      const root = anchor.closest('[class~="bg-gray-800/80"]') ?? anchor.closest('.grid.relative');
+      if (root && !anchor.closest('form,[role="dialog"],[class~="bottom-full"]') && !inCharacterForm(anchor)
+        && root.querySelector('.tiptap[contenteditable="true"]') && root.querySelector('[aria-label="Roll dice"],[aria-label="Бросить кости"],[aria-label="More actions"]')) composers.add(root);
     }
     const contextRoots = new Set<Element>();
     for (const composer of composers) {
       // The expanded content and the tab bar are sibling surfaces in this wrapper.
-      for (const bar of composer.querySelectorAll('[class~="bottom-full"][class~="left-0"][class~="right-0"] > [class~="bg-gray-800"]')) {
+      for (const bar of (composer.closest('[class~="z-100"]') ?? composer.closest('.grid.relative') ?? composer).querySelectorAll('[class~="bottom-full"][class~="left-0"][class~="right-0"] > [class~="bg-gray-800"]')) {
         contextRoots.add(bar);
         if (settings.context.enabled) {
           mark(bar, 'data-ff-desktop-context', bar.querySelector('[aria-label="Expand working context"],[aria-label="Развернуть рабочий контекст"]') ? 'bar' : 'panel');
@@ -82,6 +142,16 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       }
     }
     const inContext = (element: Element): boolean => Array.from(contextRoots).some(root => root.contains(element));
+    if (settings.events.enabled || settings.preset !== 'website') {
+      // Spellbook, feat, and character detail rows are bordered neutral cards.
+      // Preserve editable controls and status/level badges inside them.
+      for (const detail of document.querySelectorAll('div.border.rounded-md, div.border.rounded-lg, [class~="rounded-md"][class~="border"][class~="bg-card"]')) {
+        if (detail.closest('[id^="event-"],[data-ff-desktop-composer],[contenteditable="true"],nav,aside,[data-sidebar]') || inContext(detail)) continue;
+        if (!detail.querySelector('img,h2,h3,h4,strong,input[type="number"]')) continue;
+        mark(detail, 'data-ff-desktop-detail-card', 'true');
+      }
+    }
+
     if (chat && settings.backgroundImage && backgroundEnabled()) {
       mark(chat, 'data-ff-desktop-chat', 'true');
       let layer: Element | null | undefined = anchor;
@@ -96,18 +166,6 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         const role = roleFor(card);
         if (role) mark(card, 'data-ff-desktop-message', role);
       }
-      for (const input of document.querySelectorAll('textarea, input:not([type]), input[type="text"], input[type="number"], input[type="search"], input[type="email"], input[type="url"], [contenteditable="true"]')) {
-        if (inCharacterForm(input) || inContext(input)) continue;
-        const wrapper = input.classList.contains('tiptap')
-          ? input.closest('[class~="bg-gray-800/80"]') ?? input : input;
-        mark(wrapper, 'data-ff-desktop-message', 'input');
-      }
-      for (const composer of composers) {
-        mark(composer, 'data-ff-desktop-composer', 'true');
-        for (const button of composer.querySelectorAll('button, [role="combobox"]')) {
-          if (!inContext(button)) mark(button, 'data-ff-desktop-message', 'control');
-        }
-      }
       for (const row of document.querySelectorAll('[class~="bg-slate-800/60"][class~="backdrop-blur-sm"][class~="border-slate-700"]')) {
         const summary = row.closest('[class~="bg-black/40"][class~="border-slate-700"]');
         if (!summary?.closest('[id^="event-"]')) continue;
@@ -115,9 +173,25 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         mark(row, 'data-ff-desktop-message', 'battle');
       }
     }
+    for (const element of composers) {
+      const composer = element as HTMLElement;
+      mark(composer, 'data-ff-desktop-composer', 'true');
+      if (settings.input.enabled || expandedComposer === composer) {
+        mark(composer, 'data-ff-desktop-message', composer === expandedComposer ? 'input-expanded' : 'input');
+        for (const button of composer.querySelectorAll('button, [role="combobox"]')) if (!inContext(button)) mark(button, 'data-ff-desktop-message', composer === expandedComposer ? 'control-expanded' : 'control');
+      }
+      if (!expandButtons.has(composer)) {
+        const button = document.createElement('button'); button.type = 'button'; button.textContent = '↗'; button.title = 'Expand message input'; button.setAttribute('aria-label', 'Expand message input'); button.setAttribute('aria-expanded', 'false');
+        button.setAttribute('data-ff-desktop-expand-input', 'true');
+        button.addEventListener('click', () => { if (expandedComposer === composer) closeExpanded(); else { closeExpanded(); expandedComposer = composer; composer.setAttribute('data-ff-desktop-input-expanded', 'true'); button.setAttribute('aria-expanded', 'true'); button.textContent = '↙'; button.title = 'Collapse message input'; button.setAttribute('aria-label', 'Collapse message input'); schedule(); } });
+        const tools = composer.querySelector('[aria-label="Roll dice"],[aria-label="Бросить кости"]')?.parentElement;
+        (tools ?? composer).append(button); expandButtons.set(composer, button);
+      }
+    }
+    for (const [composer, button] of expandButtons) if (!composers.has(composer)) { button.remove(); expandButtons.delete(composer); if (composer === expandedComposer) closeExpanded(); }
     if (settings.events.enabled) {
-      for (const event of document.querySelectorAll('[id^="event-"] [class~="bg-card-light"][class~="rounded-md"][class~="relative"][class~="flex"][class~="items-center"]')) {
-        if (event.classList.contains('border-blue-950') || event.classList.contains('border-red-950')) mark(event, 'data-ff-desktop-message', 'event');
+      for (const event of document.querySelectorAll('[id^="event-"] :is([class~="bg-card-light"][class~="rounded-md"],[class~="bg-card"][class~="border"][class~="rounded-md"])')) {
+        if (!event.closest('[id^="event-message-card-"]')) mark(event, 'data-ff-desktop-message', 'event');
       }
     }
     for (const die of document.querySelectorAll('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) {
@@ -159,19 +233,29 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       }
     }
     reconcile();
+    queueMicrotask(() => queueMicrotask(snapshotMessages));
   }
-  function schedule(): void { if (!frame) frame = requestAnimationFrame(scan); }
+  function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(scan); }
   const observer = new MutationObserver(records => {
+    if (records.some(record => record.type === 'childList' || record.type === 'characterData')) queueMicrotask(() => queueMicrotask(snapshotMessages));
     if (records.some(record => record.type !== 'characterData' || record.target.parentElement?.closest('svg[id="d20"]'))) schedule();
   });
   observer.observe(document.documentElement, {
-    childList: true, subtree: true, attributes: true, characterData: settings.dice.natural20.enabled || settings.dice.natural1.enabled,
+    childList: true, subtree: true, attributes: true, characterData: true,
     attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state'],
   });
+  function translationReady(): void { for (const snapshot of snapshots.values()) snapshot.overlay?.remove(); snapshots.clear(); queueMicrotask(() => queueMicrotask(snapshotMessages)); }
+  document.addEventListener('ff-desktop-translation-ready', translationReady);
+  window.addEventListener('pointerdown', outside, true);
+  window.addEventListener('keydown', onEscape, true);
   window.addEventListener('popstate', schedule);
   window.addEventListener('storage', schedule);
   host[key] = { dispose() {
-    observer.disconnect(); cancelAnimationFrame(frame);
+    disposed = true; observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(snapshotTimer);
+    closeExpanded(); for (const button of expandButtons.values()) button.remove();
+    for (const snapshot of snapshots.values()) snapshot.overlay?.remove();
+    document.removeEventListener('ff-desktop-translation-ready', translationReady);
+    window.removeEventListener('pointerdown', outside, true); window.removeEventListener('keydown', onEscape, true);
     window.removeEventListener('popstate', schedule);
     window.removeEventListener('storage', schedule);
     clearMarks();
@@ -180,7 +264,19 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
 }
 
 export function chatCss(settings: AppearanceSettings, image: string | null): string {
-  let css = '';
+  let css = `[data-ff-desktop-expand-input] { border:1px solid currentColor; background:transparent; color:inherit; border-radius:50%; height:32px; width:32px; cursor:pointer; font-size:18px; flex-shrink:0; }
+    [data-ff-desktop-input-expanded] { position:fixed !important; inset:12vh 10vw auto !important; z-index:1000 !important; width:80vw !important; max-height:76vh !important; box-shadow:0 16px 80px #0009; }
+    [data-ff-desktop-input-expanded] .tiptap { min-height:35vh !important; max-height:60vh !important; overflow:auto !important; }
+    [data-ff-desktop-message-snapshot] { pointer-events:none !important; }
+    [data-ff-desktop-detail-card] { background-color:hsl(var(--card)) !important; background-image:none !important; border-color:hsl(var(--border)) !important; color:hsl(var(--foreground)) !important; }
+    @media (max-width:600px) { [data-ff-desktop-input-expanded] { inset:8vh 4vw auto !important; width:92vw !important; } }`;
+
+  const loading = `html[data-ff-desktop-play] [data-ff-desktop-loading],
+    [class~="h-[100dvh]"][class~="justify-center"][class~="items-center"]:has(> [class~="w-full"][class~="h-full"] > svg.custom-spin),
+    html[data-ff-desktop-play] [class~="flex-1"][class~="h-full"][class~="w-full"]:has(> [class~="w-full"][class~="h-full"][class~="justify-center"] > svg.custom-spin)`;
+  css += `${loading} { background-color:#000000 !important; background-image:${image && settings.backgroundImage ? `linear-gradient(${rgba(settings.backgroundEffects.overlayColor, settings.backgroundEffects.overlayOpacity)},${rgba(settings.backgroundEffects.overlayColor, settings.backgroundEffects.overlayOpacity)}),url("${image}")` : 'none'} !important;
+    background-position:center !important; background-size:${settings.backgroundFit} !important; background-repeat:no-repeat !important; isolation:isolate; }
+    :is(${loading}) > :is(img,[class~="absolute"][class~="inset-0"]) { display:none !important; }`;
   if (image && settings.backgroundImage) {
     css += `[data-ff-desktop-chat] { position: relative !important; isolation: isolate; background-color: transparent !important; }
       [data-ff-desktop-chat]::before { content: ""; position: absolute; inset: 0; z-index: -1;
@@ -193,11 +289,14 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
   }
   {
     const roles = [
-      ...(settings.messages.enabled ? ['player', 'gm', 'input', 'control', 'battle'] : []),
+      ...(settings.messages.enabled ? ['player', 'gm', 'battle'] : []),
+      ...(settings.input.enabled ? ['input', 'control'] : []), 'input-expanded', 'control-expanded',
       ...(settings.events.enabled ? ['event'] : []), ...(settings.dice.enabled ? ['roll','roll-menu'] : []),
     ];
     for (const role of roles) {
       const style = role === 'roll' || role === 'roll-menu' ? settings.dice.style : role === 'event' ? settings.events.style
+        : role === 'input-expanded' || role === 'control-expanded' ? settings.context.style
+        : role === 'input' || role === 'control' ? settings.input.style
         : role === 'gm' || role === 'battle' ? settings.messages.gm : settings.messages.player;
       const foreground = messageForeground(style, settings);
       const target = `[data-ff-desktop-message="${role}"]`;
@@ -217,25 +316,31 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
           color: ${foreground} !important; -webkit-text-fill-color: ${foreground} !important; opacity: .65; }
         ${target} :is([class*="text-gray-"], [class*="text-slate-"], .text-muted-foreground, .text-foreground-muted) {
           color: ${foreground} !important; }`;
-      if (role === 'input' || role === 'control') {
+      if (role.startsWith('input') || role.startsWith('control')) {
         css += `${target} :is(svg, span, button), ${target}:is(button,[role="combobox"]) { color: ${foreground} !important; }
           ${target} .tiptap { background-color: transparent !important; }
           ${target} [class*="hover:bg-gray-"]:hover { background-color: transparent !important; }`;
       }
-      if (role === 'control') {
+      if (role.startsWith('control')) {
         css += `${target}:hover:not(:disabled) { box-shadow: inset 0 0 0 1px ${foreground}; }
           ${target}:focus-visible { outline: 2px solid ${foreground} !important; outline-offset: 2px; }`;
       }
       if (role === 'gm') css += `${target} :is(h1,h2,h3,h4,h5,h6,strong,b),
         ${target} button[aria-controls], ${target} button[aria-controls] :is(svg,span) { color: ${foreground} !important; }`;
       if (role === 'battle') css += `${target} [class~="bg-slate-700"] { background-color: color-mix(in srgb, ${foreground} 20%, transparent) !important; }`;
-      if (role !== 'control') css += borderCss(style,target,role === 'input',role === 'input');
+      if (!role.startsWith('control')) css += borderCss(style,target,role.startsWith('input'),role.startsWith('input'));
       if (role === 'event' || role === 'roll' || role === 'roll-menu') css += `${target} :is(span,button,h1,h2,h3,h4,p) { color: ${foreground} !important; }`;
       if (role === 'roll-menu') css += `${target} :is([class*="bg-slate-"],[class*="bg-amber-"]) { background-color: transparent !important; background-image: none !important; }
         ${target} [class*="border-amber-"] { border-color: ${style.border.color} !important; }`;
       if (role === 'roll') css += `${target} > [class~="absolute"][class~="inset-0"][class~="pointer-events-none"] { display: none !important; }
         [data-ff-desktop-roll-container] { background: transparent !important; border: 0 !important; }`;
     }
+  }
+  if (settings.events.enabled) {
+    const style = settings.events.style;
+    css += `[data-ff-desktop-detail-card] { background-color:${style.gradient.enabled ? 'transparent' : rgba(style.color, style.opacity)} !important; background-image:${styleBackground(style)} !important; color:${messageForeground(style, settings)} !important; }
+      [data-ff-desktop-detail-card] :is(h1,h2,h3,h4,p,strong,b,a) { color:${messageForeground(style, settings)} !important; }`;
+    css += borderCss(style, '[data-ff-desktop-detail-card]');
   }
   if (settings.context.enabled) {
     for (const [part,style] of [['panel',settings.context.style],['bar',settings.context.bar]] as const) {

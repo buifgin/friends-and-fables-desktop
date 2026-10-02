@@ -18,6 +18,12 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
 (async () => {
   profile = process.env.FABLES_TEST_PROFILE_DIR || await mkdtemp(path.join(os.tmpdir(), 'fables-panel-test-')); app.setPath('userData', profile); await app.whenReady();
   const manager = new AppearanceManager(); await manager.initialize();
+  // This fixture exercises Appearance only; use an inert owned toolbar state.
+  ipcMain.handle('music:toolbar-get', event => {
+    assert.equal(event.senderFrame, event.sender.mainFrame);
+    assert.equal(event.senderFrame.url, 'fables-desktop://settings/appearance-button.html');
+    return { paused:true,available:false,next:false,loop:false,volume:.5,muted:false,title:'',open:false,locale:manager.getLocale() };
+  });
   translation = new TranslationManager(); await translation.initialize();
   let bar; let chosen=0;
   const template=['File','Edit','Appearance','Translation','Music','View','Window'].map(label=>({id:label.toLowerCase(),label,submenu:[{label:label==='Appearance'?'Customize Appearance…':'Copy',click(){chosen++;}}]}));
@@ -44,6 +50,10 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await until(() => separate.isDestroyed() && dock.isOpen());
   assert.equal(BrowserWindow.getAllWindows().length, 1, 'Pinned Appearance must not require a second window.');
   const panel = dock.panel, contents = panel.webContents;
+  for (const checked of [contents,host.webContents,dock.launcher.webContents,bar.overlay.webContents]) {
+    const execute = checked.executeJavaScript.bind(checked);
+    checked.executeJavaScript = (script, ...args) => execute(script, ...args).catch(error => { console.error('Failed test renderer script:', script); throw error; });
+  }
   await until(() => contents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await contents.executeJavaScript("document.body.classList.contains('docked')"), true);
   assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32);
@@ -96,8 +106,13 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await contents.executeJavaScript("document.getElementById('custom-hex').value='#abcdef'");
   await translation.save({ ...translation.getSettings(), enabled: true, translateDescriptions: false });
   await until(() => contents.executeJavaScript('document.documentElement.lang === "ru"'));
-  await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=appearance]').textContent==='Оформление'"));
-  assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Оформление','Перевод','Музыка','Вид','Окно']);
+  // A drag-save/get reply captured before the locale toggle must not restore English or reset a draft.
+  await contents.executeJavaScript(`window.appearance.get().then(state => showSettings({...state,locale:'en',localeRevision:0,customColor:'#000000'}))`);
+  assert.equal(await contents.executeJavaScript('document.documentElement.lang'),'ru');
+  assert.equal(await contents.executeJavaScript('document.getElementById("custom-hex").value'),'#abcdef');
+
+  await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=translation]').textContent==='Перевод'"));
+  assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Перевод','Вид','Окно']);
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
   await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Настроить оформление…'"));
   assert(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').scrollHeight<=document.getElementById('dropdown').clientHeight"),'The settings dropdown must fit without scrolling.');
@@ -121,7 +136,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(await contents.executeJavaScript("document.getElementById('close-panel').textContent"), 'Закрыть панель');
   assert.equal(await contents.executeJavaScript("document.getElementById('custom-hex').value"), '#abcdef');
   assert.equal(await contents.executeJavaScript("document.getElementById('player-gradient-second-opacity').closest('fieldset').querySelector('[data-label=gradient-second-opacity]').firstChild.textContent.trim()"), 'Непрозрачность второго цвета');
-  await until(() => dock.launcher.webContents.executeJavaScript('document.getElementById("appearance-button").textContent === "Оформление"'));
+  await until(() => dock.launcher.webContents.executeJavaScript('document.getElementById("appearance-button").getAttribute("aria-label") === "Внешний вид"'));
   assert.equal(await contents.executeJavaScript("document.getElementById('panel-resizer').getAttribute('aria-label')"), 'Изменить ширину панели оформления');
   await contents.executeJavaScript('window.appearance.resizePanel(320,false)');
   await until(()=>contents.executeJavaScript('innerWidth===320'));
@@ -133,7 +148,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await translation.save({ ...translation.getSettings(), showOriginal: true });
   await until(() => contents.executeJavaScript('document.documentElement.lang === "en"'));
   assert.equal(await contents.executeJavaScript("document.querySelector('h1').textContent"), 'Make it yours.');
-  await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=appearance]').textContent==='Appearance'"));
+  await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=translation]').textContent==='Translation'"));
   // Light and custom presets update the entire editor as well as the game.
   await contents.executeJavaScript("document.querySelector('[name=preset][value=light]').checked=true;document.getElementById('appearance-form').dispatchEvent(new Event('input',{bubbles:true}))");
   await until(() => contents.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor === "rgb(245, 245, 245)"'));
@@ -173,7 +188,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   // Disabling the pin restores the standalone editor and full game width.
   await contents.executeJavaScript("document.getElementById('pin-appearance').checked=false;document.getElementById('appearance-form').requestSubmit()");
   await until(() => !manager.getSettings().appearancePinned && BrowserWindow.getAllWindows().length === 2);
-  assert.equal(dock.isOpen(), false); assert.equal(website.getBounds().x, 0);assert.equal(website.getBounds().y,0,'Unpinning restores the full website height without a custom menu row.');
+  assert.equal(dock.isOpen(), false); assert.equal(website.getBounds().x, 0);assert.equal(website.getBounds().y,32,'The music and appearance toolbar remains above the website after unpinning.');
   const reopened = manager.window;
   await until(() => reopened.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await reopened.webContents.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor'), 'rgb(35, 69, 103)');
@@ -189,7 +204,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(persisted.appearancePinned,true);assert.equal(persisted.appearancePanelWidth,savedWidth);
   await translation.save({...translation.getSettings(),showOriginal:false});
   host.destroy();
-  for(const method of ['get','save','import-image','pictures','select-picture','folder-pictures','choose-folder','select-folder-picture','reset','undo-reset','export-theme','import-theme','close-panel','resize-panel'])ipcMain.removeHandler(`appearance:${method}`);
+  for(const method of ['get','save','import-image','pictures','select-picture','folder-pictures','choose-folder','select-folder-picture','reset','undo-reset','export-theme','import-theme','close-panel','resize-panel','save-theme','remove-theme','preview-theme'])ipcMain.removeHandler(`appearance:${method}`);
   session.fromPartition('fables-appearance').protocol.unhandle('fables-desktop');
   const restarted=new AppearanceManager();await restarted.initialize();
   restarted.setLocale(translation.getSettings().enabled&&!translation.getSettings().showOriginal?'ru':'en');

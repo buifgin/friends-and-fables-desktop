@@ -22,10 +22,10 @@ window.contextEditor=new Editor({element:document.getElementById('context-conten
 document.getElementById('editor-content').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();window.sent.push(window.draftHTML)}},true);
 document.getElementById('send').addEventListener('click',()=>window.sent.push(window.draftHTML));
 `,resolveDir:path.join(__dirname,'..')},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
-const html=`<!doctype html><html><meta charset="utf-8"><body><div class="grid relative" id="composer">
-<div id="working-context-bar-spacer"></div><div id="editor-content"></div><button id="send" aria-label="Send message">Send</button>
+const html=`<!doctype html><html><meta charset="utf-8"><body><div class="grid relative"><div class="flex flex-col bg-gray-800/80 relative" id="composer">
+<button aria-label="More actions">Actions</button><div id="editor-content"></div><button id="send" aria-label="Send message">Send</button>
 <div class="bottom-full"><div id="context-content"></div></div></div>
-<form><div class="grid relative"><div id="form-content"></div></div><input value="Untouched field"></form>
+</div><form><div class="grid relative"><div id="form-content"></div></div><input value="Untouched field"></form>
 <script src="/editor.js"></script></body></html>`;
 (async()=>{
  profile=process.env.FABLES_TEST_PROFILE_DIR||await mkdtemp(path.join(os.tmpdir(),'fables-commands-test-'));app.setPath('userData',profile);await app.whenReady();
@@ -80,6 +80,17 @@ const html=`<!doctype html><html><meta charset="utf-8"><body><div class="grid re
  await draft('<p>/gm Проверка Enter.</p>');await enter();await sendCount(8);
  assert.equal(await js('sent[7]'),'<p>#Проверка Enter.#</p>','Plain Enter formats /gm before the native Send handler.');
  await draft('<p>/me Disabled command.</p>');await manager.save({...manager.getSettings(),messageCommands:false});await enter();await sendCount(9);assert.match(await js('editor.getHTML()'),/\/me/);assert.equal(await js("document.querySelector('[data-ff-desktop-command-controls]')"),null);
+ // Chromium keyboard input exercises the real native key path as well as DOM fixtures.
+ await manager.save({...manager.getSettings(),messageCommands:true});
+ await draft('<p></p>');await js('editor.view.dom.focus()');
+ contents.debugger.attach('1.3');
+ try{await contents.debugger.sendCommand('Input.insertText',{text:'/gm Native keyboard in combat.'});await sleep(35);
+ await js("{const button=document.createElement('button');button.id='combat-action';button.innerHTML='<svg class=\"lucide-swords\"></svg>';document.getElementById('composer').append(button)}");
+ await contents.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+ await contents.debugger.sendCommand('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+ }finally{contents.debugger.detach();}
+ await sendCount(10);assert.equal(await js('sent[9]'),'<p>#Native keyboard in combat.#</p>');
+ await sleep(40);assert.equal(await sent(),10,'One native Enter triggers one Send click.');
  await manager.save({...manager.getSettings(),messageCommands:true});await js("history.pushState(null,'','/');dispatchEvent(new PopStateEvent('popstate'))");await until("document.querySelector('[data-ff-desktop-command-controls]')===null");
  console.log('PASS: real Tiptap whole-draft preparation and validated submission after state commit, № conversion, soft breaks, split prefixes, mentions/links/code, review button, held Enter, duplicate clicks, pending edits, empty commands, editor exclusions, disable, and navigation.');
 })().then(async()=>{clearTimeout(timer);window?.destroy();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true});app.exit(0)}).catch(async error=>{console.error(error);clearTimeout(timer);window?.destroy();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true});app.exit(1)});

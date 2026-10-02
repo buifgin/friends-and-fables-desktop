@@ -16,7 +16,7 @@ import type { AppearanceSettings } from './themes';
 
 export const TRANSLATION_URL = 'fables-desktop://settings/translation.html';
 const DOM_KEY = '__friendsFablesDesktopTranslation';
-interface Website { contents: WebContents; token: string; pending: Promise<void> }
+interface Website { contents: WebContents; token: string; pending: Promise<void>; presentation?:{setVisible(value:boolean):void}; detach?:()=>void }
 interface TextRequest { id: number; version: number; text: string }
 interface TextResult { text: string | null; complete: boolean; retry?: boolean; pending?: {start:number;end:number}[] }
 export interface TranslationState extends TranslationSettings {
@@ -111,11 +111,19 @@ export class TranslationManager {
     });
     return this.writes;
   }
-  attach(contents: WebContents): void {
-    const website: Website = { contents, token: '', pending: Promise.resolve() };
+  attach(contents: WebContents,presentation?:{setVisible(value:boolean):void}): void {
+    const website: Website = { contents, token: '', pending: Promise.resolve(),presentation };
     this.websites.add(website);
-    contents.on('did-finish-load', () => { void this.configure(website); });
-    contents.on('destroyed', () => { website.token = ''; this.websites.delete(website); });
+    const navigating=(details:Electron.Event<Electron.WebContentsDidStartNavigationEventParams>):void=>{
+      if(!details.isMainFrame||details.isSameDocument)return;
+      let game=false;try{game=new URL(details.url).origin==='https://play.fables.gg';}catch{/* A non-web navigation stays visible. */}
+      presentation?.setVisible(!(game&&this.settings.enabled&&!this.settings.showOriginal&&this.settings.hideUntranslated));
+    };
+    const failed=(_event:Electron.Event,_code:number,_description:string,_url:string,isMainFrame:boolean):void=>{if(isMainFrame)presentation?.setVisible(true);};
+    const ready=():void=>{void this.configure(website);};
+    const destroyed=():void=>{website.token='';website.detach?.();this.websites.delete(website);};
+    website.detach=()=>{contents.off('did-start-navigation',navigating);contents.off('did-fail-load',failed);contents.off('dom-ready',ready);contents.off('destroyed',destroyed);};
+    contents.on('did-start-navigation',navigating);contents.on('did-fail-load',failed);contents.on('dom-ready',ready);contents.on('destroyed',destroyed);
   }
   private allowed(contents: WebContents): boolean {
     if (contents.isDestroyed()) return false;
@@ -126,10 +134,13 @@ export class TranslationManager {
     website.pending = website.pending.catch(() => {}).then(async () => {
       if (token !== website.token || !this.allowed(website.contents)) return;
       const settings = this.getSettings();
+      if(settings.enabled&&!settings.showOriginal&&settings.hideUntranslated)website.presentation?.setVisible(false);
       await website.contents.executeJavaScript(`window.${DOM_KEY}?.dispose()`);
       if (token !== website.token || !settings.enabled || settings.showOriginal || this.stopped) return;
-      await website.contents.executeJavaScript(`(${installTranslationDom.toString()})(${JSON.stringify(token)},${JSON.stringify(RUSSIAN_DICTIONARY)},${settings.translateDescriptions},${JSON.stringify(settings.preservedNames)},(${localTranslation.toString()}))`);
-    }).catch(() => { /* Navigation can discard an in-flight renderer call. */ });
+      await website.contents.executeJavaScript(`(${installTranslationDom.toString()})(${JSON.stringify(token)},${JSON.stringify(RUSSIAN_DICTIONARY)},${settings.translateDescriptions},${JSON.stringify(settings.preservedNames)},(${localTranslation.toString()}),${settings.hideUntranslated})`);
+    }).catch(() => { /* Navigation can discard an in-flight renderer call. */ }).finally(()=>{
+      if(token===website.token&&!website.contents.isDestroyed())website.presentation?.setVisible(true);
+    });
     return website.pending;
   }
   private async translateBatch(nodes: TextRequest[], progress: (results: TextResult[]) => Promise<void>): Promise<TextResult[]> {
@@ -228,6 +239,7 @@ export class TranslationManager {
     await this.writes.catch(() => {});
     await this.bundled?.stop();
     await Promise.all([...this.websites].map(website => this.configure(website)));
+    for(const website of this.websites)website.detach?.();this.websites.clear();
     await this.cache.flush().catch(() => {});
     for (const method of ['get', 'save', 'check', 'clear-cache']) ipcMain.removeHandler(`translation:${method}`);
   }

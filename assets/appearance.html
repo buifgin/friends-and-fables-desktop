@@ -30,6 +30,11 @@
 
       <form id="appearance-form">
         <section id="theme-panel" role="tabpanel">
+        <h2>Theme collection</h2>
+        <p class="help">Choose a color circle to preview a theme. Hover or focus to see its name, then apply your choices.</p>
+        <div id="theme-collection" class="theme-circles" aria-label="Theme collection"></div>
+        <div class="save-theme-row"><label for="theme-name">Theme name</label><input id="theme-name" type="text" maxlength="60" placeholder="My theme"><button id="save-theme" type="button" disabled>Save current theme</button></div>
+        <p class="help">Saved themes keep your colors, styles, and selected picture locally.</p>
         <fieldset id="theme-options" disabled>
           <legend>Background theme</legend>
           <div class="theme-grid">
@@ -97,11 +102,13 @@
 
         <section id="messages-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="message-styles" disabled> Customize message backgrounds</label>
-          <p class="help">Player styling also applies to campaign inputs and bottom buttons. Context has its own settings. GM styling includes battle summaries. Background opacity leaves text opaque.</p>
+          <p class="help">Player messages, GM messages, and the message input have independent settings. Expanded input uses the context-window style. Background opacity leaves text opaque.</p>
           <div class="message-controls">
-            <fieldset data-style="player"><legend>Player messages &amp; inputs</legend></fieldset>
+            <fieldset data-style="player"><legend>Player messages</legend></fieldset>
             <fieldset data-style="gm"><legend>Game master &amp; NPC messages</legend></fieldset>
           </div>
+          <label class="switch-row input-style-switch"><input type="checkbox" id="input-styles" disabled> Customize message input</label>
+          <div class="message-controls single"><fieldset data-style="input"><legend>Message input &amp; buttons</legend></fieldset></div>
           <p class="help">Automatic text color accounts for your theme and background opacity. Turn it off to choose readable text over a picture.</p>
         </section>
 
@@ -113,7 +120,7 @@
         </section>
         <section id="events-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="event-styles"> Customize movement &amp; action cards</label>
-          <p class="help">Style the compact combat event cards, such as “Moves 5 feet south”, separately from story messages.</p>
+          <p class="help">Style movement, health, spell-use, and action cards separately from story messages.</p>
           <div class="message-controls single"><fieldset data-style="event"><legend>Event cards</legend></fieldset></div>
         </section>
         <section id="dice-panel" role="tabpanel" hidden>

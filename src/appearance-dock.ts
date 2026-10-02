@@ -15,6 +15,7 @@ export class AppearanceDock {
   private panelReady: Promise<void> | null = null;
   private opened = false;
   private inset = 0;
+  private popup = false;
   private width: number;
   private revision = 0;
 
@@ -36,14 +37,17 @@ export class AppearanceDock {
     void this.ready.catch(console.error);
     ipcMain.handle('appearance-dock:get', event => { this.assertTrusted(event); return this.state(); });
     ipcMain.handle('appearance-dock:toggle', event => { this.assertTrusted(event); return this.toggle(); });
+    ipcMain.handle('appearance-dock:popup', (event,open: unknown) => { this.assertTrusted(event); if (typeof open !== 'boolean') throw new Error('Invalid popup state.'); this.popup = open; if (open) window.contentView.addChildView(this.launcher); this.layout(); });
+    window.on('blur', () => { this.popup = false; this.layout(); if (!contents.isDestroyed()) contents.send('appearance-dock:popup-close'); });
     window.on('resize', () => this.layout());
     window.on('enter-full-screen', () => this.layout());
     window.on('leave-full-screen', () => this.layout());
     window.on('closed', () => {
       this.revision++;
-      for (const name of ['get', 'toggle']) ipcMain.removeHandler(`appearance-dock:${name}`);
+      for (const name of ['get', 'toggle', 'popup']) ipcMain.removeHandler(`appearance-dock:${name}`);
       if (!contents.isDestroyed()) contents.close();
-      if (this.panel && !this.panel.webContents.isDestroyed()) this.panel.webContents.close();
+      const panelContents = this.panel?.webContents;
+      if (panelContents && !panelContents.isDestroyed()) panelContents.close();
     });
     this.sync();
   }
@@ -60,6 +64,7 @@ export class AppearanceDock {
     if (!this.launcher.webContents.isDestroyed()) this.launcher.webContents.send('appearance-dock:update', this.state());
   }
 
+  getLauncherContents() { return this.launcher.webContents; }
   setInset(inset: number): void { this.inset = inset; this.layout(); }
   sync(): void {
     if (!this.manager.getSettings().appearancePinned) this.hide();
@@ -68,7 +73,7 @@ export class AppearanceDock {
   }
   isOpen(): boolean { return this.opened; }
 
-  async toggle(): Promise<void> { if (this.opened) this.hide(); else await this.open(); }
+  async toggle(): Promise<void> { if (!this.manager.getSettings().appearancePinned) { await this.manager.open(this.window); return; } if (this.opened) this.hide(); else await this.open(); }
   async open(refresh = false): Promise<void> {
     if (!this.manager.getSettings().appearancePinned || this.window.isDestroyed()) return;
     const revision = ++this.revision;
@@ -101,15 +106,14 @@ export class AppearanceDock {
   private layout(): void {
     if (this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
-    const pinned = this.manager.getSettings().appearancePinned;
     // Reserve an app-owned row when there is no Linux toolbar. The launcher
     // must never cover the website's avatars, navigation, or map controls.
-    const inset = this.inset || (pinned ? 32 : 0);
+    const inset = this.inset || 32;
     const panelWidth = this.opened ? this.clamp(this.width) : 0;
     this.website.setBounds({ x: panelWidth, y: inset, width: Math.max(0, width - panelWidth), height: Math.max(0, height - inset) });
     this.panel?.setBounds({ x: 0, y: inset, width: panelWidth || this.clamp(this.width), height: Math.max(0, height - inset) });
     this.panel?.setVisible(this.opened);
-    this.launcher.setBounds({ x: Math.max(0, width - 156), y: 0, width: 148, height: 32 });
-    this.launcher.setVisible(pinned);
+    this.launcher.setBounds({ x: Math.max(0, width - 238), y: 0, width: 232, height: this.popup ? 166 : 32 });
+    this.launcher.setVisible(true);
   }
 }

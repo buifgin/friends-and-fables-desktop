@@ -9,6 +9,7 @@ function show(settings) {
   element('enabled').checked = settings.enabled;
   element('show-original').checked = settings.showOriginal;
   element('descriptions').checked = settings.translateDescriptions;
+  element('hide-untranslated').checked = settings.hideUntranslated;
   element('port').value = settings.port;
   element('port-row').hidden = settings.bundled;
   element('service-help').textContent = settings.bundled
@@ -23,7 +24,7 @@ function show(settings) {
 }
 function selection() {
   return { enabled: element('enabled').checked, showOriginal: element('enabled').checked && element('show-original').checked,
-    translateDescriptions: element('descriptions').checked, port: Number(element('port').value),
+    translateDescriptions: element('descriptions').checked, hideUntranslated: element('hide-untranslated').checked, port: Number(element('port').value),
     preservedNames: element('preserved-names').value.split(/\r?\n/).map(name => name.trim()).filter(Boolean) };
 }
 async function check() {

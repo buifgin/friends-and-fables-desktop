@@ -101,6 +101,8 @@
     'Read in Russian.': 'Читайте на русском.', 'Translate displayed English text locally. Russian passages stay as written.': 'Переводите отображаемый английский текст локально. Русские фрагменты сохраняются без изменений.',
     'English → Russian': 'Английский → Русский', 'Translate into Russian': 'Переводить на русский', 'Show original text': 'Показывать исходный текст',
     'Translate descriptions and story text': 'Переводить описания и историю',
+    'Hide text until translated': 'Скрывать текст до завершения перевода',
+    'Show animated dots while a translation is pending, then reveal the finished text.': 'Пока идёт перевод, показывать анимированные точки, затем готовый текст.',
     'Common interface labels and game terms use a built-in dictionary. Descriptions use your local translation service. Turn descriptions off for dictionary-only translation.': 'Подписи интерфейса и игровые термины используют встроенный словарь. Описания переводит локальный сервис. Отключите перевод описаний, чтобы использовать только словарь.',
     'Keep these names unchanged': 'Сохранять эти имена', 'One name per line': 'Одно имя в строке',
     'Add character and place names here to preserve their spelling in translated text. Names may otherwise be transliterated by the model.': 'Укажите имена персонажей и названия мест для сохранения их написания. Иначе модель может транслитерировать их.',
@@ -123,6 +125,21 @@
     'Changes stay local to this app.': 'Изменения сохраняются только в этом приложении.',
   };
   let locale = 'en';
+  Object.assign(russian, {
+    'Theme collection': 'Коллекция тем',
+    'Choose a color circle to preview a theme. Hover or focus to see its name, then apply your choices.': 'Выберите цветной круг для предпросмотра темы. Наведите курсор или выделите круг, чтобы увидеть название, затем примените настройки.',
+    'Theme name': 'Название темы', 'My theme': 'Моя тема', 'Save current theme': 'Сохранить текущую тему',
+    'Saved themes keep your colors, styles, and selected picture locally.': 'Сохранённые темы хранят ваши цвета, стили и выбранное изображение на этом компьютере.',
+    'Player messages': 'Сообщения игроков', 'Customize message input': 'Настроить поле сообщения',
+    'Message input & buttons': 'Поле сообщения и кнопки',
+    'Player messages, GM messages, and the message input have independent settings. Expanded input uses the context-window style. Background opacity leaves text opaque.': 'Сообщения игроков, ведущего и поле ввода настраиваются отдельно. Развёрнутое поле использует стиль окна контекста. Непрозрачность фона не влияет на текст.',
+    'Style movement, health, spell-use, and action cards separately from story messages.': 'Настройте карточки перемещений, здоровья, заклинаний и действий отдельно от сообщений истории.',
+    'Theme ready in preview. Apply changes to use it.': 'Тема показана в предпросмотре. Примените изменения.',
+    'Theme saved in your collection.': 'Тема сохранена в вашей коллекции.', 'Saved theme removed.': 'Сохранённая тема удалена.',
+    'Save up to 50 themes.': 'Можно сохранить до 50 тем.', 'Enter a theme name of 1–60 characters.': 'Введите название темы длиной от 1 до 60 символов.',
+    'Enter a theme name.': 'Введите название темы.', 'Remove saved theme': 'Удалить сохранённую тему',
+    'Midnight':'Полночь','Forest':'Лес','Arcane':'Магия','Ember':'Угли','Parchment':'Пергамент','Obsidian':'Обсидиан',
+  });
   const originals = new WeakMap();
   const attributes = new WeakMap();
   function translate(value) {
@@ -151,6 +168,7 @@
       if (node.data !== rendered) node.data = rendered;
     }
     for (const element of document.querySelectorAll('[aria-label],[title],[placeholder]')) {
+      if (element.closest('[data-no-localize]')) continue;
       const saved = attributes.get(element) ?? new Map();
       for (const name of ['aria-label', 'title', 'placeholder']) {
         if (!element.hasAttribute(name)) continue;

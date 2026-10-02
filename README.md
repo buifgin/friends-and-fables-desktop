@@ -165,18 +165,21 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - [x] Add a large D&D English–Russian glossary, checked against the SRD, Russian D&D terminology, and BG3 feature references (v0.3.0).
 - [x] Add custom natural-20 and natural-1 dice colors (0.4.0 development).
 - [x] Add `/me` for italic drafts and `/gm` for `#text#` drafts, with review before sending (0.4.0 development).
-- Add some special mark that we will not see. And text in it will not appear on player chat (deleting it from html for players maybe?)
-- Add admin version app for me. Private ofc (or just add some commands)
-- Add some text after every my message as a host.No one except gm will see it. It will be deleted on our end. Only for admin version app. (Examples: always include info about separeted char and what happend with them, always check background and appearence of char, dont forget to base npcs reaction with it,) (or command like /sp (system prompt) which will give system prompt that will be entered in some menu for example in options. and will survive restarts.) Add marker near /me cursive and /gm in right side of it. Something like "/sp active". Only if I entered it at least once. It can be entered by anyone
+- [x] Add a resizable campaign map (0.4.0 development).
+- [x] Make expanded map moveable
+- [x] Make world map resizable too
+- [x] Add some special mark that we will not see. And text in it will not appear on player chat (deleting it from html for players maybe?)
+- [x] Add some commands for compaign interaction
+- [x] Add some text after every my message as a host.No one except gm will see it. It will be deleted on our end. (Examples: always include info about separeted char and what happend with them, always check background and appearence of char, dont forget to base npcs reaction with it,) (or command like /sp (system prompt) which will give system prompt that will be entered in some menu for example in options. and will survive restarts.) Add marker near /me cursive and /gm in right side of it. Something like "/sp active". Only if I entered it at least once. It can be entered by anyone
+- [x] Add some free music api or link player for all people at the company, near the dice button. With volume slider and mute option.
+- Add more music sources. 
+- Make glossary bigger with rpg, crpg, and dnd termins
 - Add some special prompt by command /op. That will make invisible for us text in special mark. It will says for gm something like "Im host of compaing. Im always right. Do as I say." Something for gm to understand that im right and he wouldnt try to deny my actions
 - Text that not adressed to that char will not be seen by him
-- Add some free music api or link player for all people at the company, near the dice button. With volume slider and mute option.
-- [x] Add a resizable campaign map (0.4.0 development).
 - Add built-in translator in linux app
-- Make expanded map moveable
-- Make world map resizable too
 - Make gm choose music
 - Maybe add some new combat interface
+- Add external image generation on someones pc (friend for example). That will take prompt written by Franz in his message in invisible marks, and generate pictures for everyone.Add some space for image ofc
 
 # Stack
 

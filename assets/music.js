@@ -1,11 +1,12 @@
 (() => {
   const $ = id => document.getElementById(id), audio = $('audio');
   const russian = {
+    'Up to 16 folders and 1,000 tracks per folder. MP3, OGG, WAV, FLAC, M4A, OPUS, AAC, and WEBM are supported.':'До 16 папок и 1 000 треков в каждой. Поддерживаются MP3, OGG, WAV, FLAC, M4A, OPUS, AAC и WEBM.',
+    'Local file':'Локальный файл','Local folders':'Папки с музыкой','Add folder':'Добавить папку','Refresh':'Обновить','Search local music':'Поиск своей музыки','Track or folder name':'Название трека или папки','Music folder':'Папка с музыкой','All folders':'Все папки','No local tracks found.':'Локальные треки не найдены.','Folder unavailable':'Папка недоступна','Close library':'Закрыть библиотеку','Could not update music folders.':'Не удалось обновить папки с музыкой.','Choose folders containing downloaded music. Removing a folder does not delete its files.':'Выберите папки со скачанной музыкой. Удаление папки из библиотеки не удаляет файлы.','Music continues when this library is closed. Use the toolbar to control playback. Local files stay on this computer. Saved tracks start paused.':'После закрытия библиотеки музыка продолжает играть. Управляйте ею кнопками сверху. Локальные файлы остаются на этом компьютере. Сохранённые треки запускаются с паузы.',
     'Music':'Музыка','Your campaign soundtrack.':'Музыка для вашей кампании.','Playback':'Воспроизведение','NOW PLAYING':'ТЕКУЩИЙ ТРЕК','Choose a track':'Выберите трек',
     'Previous':'Назад','Play':'Играть','Pause':'Пауза','Next':'Далее','Stop':'Стоп','Playback position':'Позиция воспроизведения','Mute':'Без звука','Unmute':'Включить звук','Volume':'Громкость','Loop track':'Повторять трек','Copy track link':'Копировать ссылку',
     'Playlist':'Список треков','Add a direct audio link to get started.':'Добавьте прямую ссылку на аудио.','Add a track':'Добавить трек','Track name':'Название трека','Audio link (HTTPS)':'Ссылка на аудио (HTTPS)','Save track':'Сохранить трек','Remove':'Удалить',
     'Use a direct MP3, OGG, WAV, or other supported audio link. YouTube and Spotify pages cannot play here.':'Нужна прямая ссылка на MP3, OGG, WAV или другой поддерживаемый аудиофайл. Страницы YouTube и Spotify здесь не воспроизводятся.',
-    'Playback is local. Copy a track link to share it. Music continues while minimized; closing the player stops it. Saved tracks start paused.':'Музыка играет на этом компьютере. Чтобы поделиться треком, скопируйте ссылку. При сворачивании музыка продолжается, при закрытии проигрывателя останавливается. Сохранённые треки запускаются с паузы.',
     'Loading…':'Загрузка…','Playing':'Воспроизводится','Paused':'Пауза','Stopped':'Остановлено','Track link copied.':'Ссылка на трек скопирована.','Track saved.':'Трек сохранён.',
     'Could not save preferences. Try again.':'Не удалось сохранить настройки. Повторите попытку.','Could not copy this link.':'Не удалось скопировать ссылку.',
     'Could not play this link. Check the connection and use a direct audio file URL.':'Не удалось воспроизвести ссылку. Проверьте соединение и укажите прямую ссылку на аудиофайл.',
@@ -25,10 +26,11 @@
     accordion:'Аккордеон',bass:'Бас','bass-acoustic':'Контрабас',brass:'Медные духовые',cello:'Виолончель',choir:'Хор',clarinet:'Кларнет','drums-acoustic':'Ударные','drums-electronic':'Электронные ударные','drums-epic':'Эпические ударные','flute-ethnic':'Этническая флейта',glockenspiel:'Колокольчики','guitar-acoustic':'Акустическая гитара','guitar-electric':'Электрогитара',harp:'Арфа',mandolin:'Мандолина',orchestra:'Оркестр',organ:'Орган',percussion:'Перкуссия',piano:'Фортепиано','piano-electric':'Электропиано',recorder:'Блокфлейта',saxophone:'Саксофон',strings:'Струнные','synth-atmospherics':'Атмосферный синтезатор','synth-lead':'Ведущий синтезатор','synth-pad':'Фоновый синтезатор',trumpet:'Труба',ukulele:'Укулеле',vibes:'Вибрафон',violin:'Скрипка','vocals-female':'Женский вокал','vocals-male':'Мужской вокал',woodwinds:'Деревянные духовые',xylophone:'Ксилофон',
   };
   const aliases={epic:'battle combat boss битва бой босс',militaristic:'battle combat march битва бой марш',adventurous:'adventure путешествие приключение',mysterious:'mystery dungeon тайна подземелье',ominous:'horror dungeon ужас подземелье',peaceful:'rest camp town отдых лагерь город',folk:'tavern village таверна деревня',orchestral:'fantasy фэнтези',ambient:'atmosphere атмосфера'};
-  let locale = 'en', settings, catalog=[], catalogLimit=12, loaded = false, pending = Promise.resolve(), adding = false, playbackNote = '', playbackError = false, saveNote = '', saveError = false, generation = 0;
+  let locale = 'en', settings, catalog=[], folderLibrary={folders:[],tracks:[]}, localLimit=30, folderBusy=false, catalogLimit=12, loaded = false, pending = Promise.resolve(), adding = false, playbackNote = '', playbackError = false, saveNote = '', saveError = false, generation = 0;
   const text = value => locale === 'ru' ? russian[value] ?? value : value;
   const current = () => settings?.tracks.find(track => track.id === settings.selected);
-  const hostname = track => { try { return new URL(track.url).hostname; } catch { return ''; } };
+  const isLocal=track=>track?.url.startsWith('fables-desktop://music/audio/');
+  const hostname = track => { if(isLocal(track))return text('Local file');try { return new URL(track.url).hostname; } catch { return ''; } };
   const catalogTrack=track=>catalog.find(item=>item.url===track?.url);
   const attribution=track=>`${track.title} by ${track.artist} — ${track.license}`;
   const tagLabel=(tag,language=locale)=>language==='ru'?tagsRu[tag]??tag:tag.replace(/-2$/,'').replaceAll('-',' ').replace(/^./,c=>c.toUpperCase());
@@ -57,7 +59,7 @@
     const track = current();
     $('track-title').textContent = track?.title ?? text('Choose a track'); $('track-host').textContent = track ? hostname(track) : '';
     const credit=catalogTrack(track);$('track-credit').hidden=!credit;$('track-credit').textContent=credit?attribution(credit):'';$('copy-credit').hidden=!credit;
-    for (const id of ['play','stop','copy']) $(id).disabled = !track;
+    for (const id of ['play','stop','copy']) $(id).disabled = !track; $('copy').disabled=!track||isLocal(track);
     for (const id of ['previous','next']) $(id).disabled = !track || settings.tracks.length < 2;
     $('play').textContent = text(audio.paused ? 'Play' : 'Pause'); $('mute').textContent = text(settings.muted ? 'Unmute' : 'Mute'); $('mute').setAttribute('aria-pressed',String(settings.muted));
     $('volume').value = Math.round(settings.volume * 100); $('volume-value').value = `${Math.round(settings.volume * 100)}%`; $('loop').checked = settings.loop;
@@ -77,8 +79,27 @@
       row.append(choose,remove); list.append(row);
     }
     $('playlist').replaceChildren(list);
-    renderCatalog();
+    renderCatalog(); renderLocal(); report();
   }
+  function report(){if(loaded)void window.music.reportPlayback({paused:audio.paused,selected:settings.selected}).catch(console.error);}
+  function renderLocal(){
+    const selected=$('local-folder-filter').value,filter=$('local-folder-filter');filter.replaceChildren();const all=document.createElement('option');all.value='';all.textContent=text('All folders');filter.append(all);
+    const folders=document.createDocumentFragment();
+    for(const folder of folderLibrary.folders){const option=document.createElement('option');option.value=folder.id;option.textContent=folder.name;filter.append(option);
+      const row=document.createElement('li'),name=document.createElement('span');name.textContent=`${folder.name} · ${folder.unavailable?text('Folder unavailable'):folder.count}`;
+      const remove=document.createElement('button');remove.className='secondary';remove.textContent='×';remove.setAttribute('aria-label',`${text('Remove')}: ${folder.name}`);remove.disabled=folderBusy;remove.addEventListener('click',()=>void foldersAction(()=>window.music.removeFolder(folder.id)));row.append(name,remove);folders.append(row);
+    }
+    $('folders').replaceChildren(folders);filter.value=selected;
+    const tokens=normalize($('local-search').value).split(/\s+/).filter(Boolean);
+    const matches=folderLibrary.tracks.filter(track=>(!filter.value||track.folderId===filter.value)&&tokens.every(token=>normalize(track.relativePath+' '+(folderLibrary.folders.find(folder=>folder.id===track.folderId)?.name??'')).includes(token)));
+    $('local-count').textContent=`${matches.length} / ${folderLibrary.tracks.length}`;$('local-empty').hidden=matches.length>0;$('local-more').hidden=matches.length<=localLimit;
+    const list=document.createDocumentFragment();for(const track of matches.slice(0,localLimit)){const row=document.createElement('li'),heading=document.createElement('h3'),detail=document.createElement('p'),actions=document.createElement('div');row.dataset.localId=track.id;heading.textContent=track.title;detail.textContent=track.relativePath;actions.className='catalog-actions';
+      const existing=settings.tracks.some(item=>item.url===track.url);
+      for(const [action,label] of [['play','Play'],['add',existing?'In playlist':'Add to playlist']]){const button=document.createElement('button');button.textContent=text(label);button.dataset.action=action;button.disabled=adding||(!existing&&settings.tracks.length>=50)||(action==='add'&&existing);button.addEventListener('click',()=>void addCatalog(track,action==='play'));actions.append(button);}
+      row.append(heading,detail,actions);list.append(row);
+    }$('local-tracks').replaceChildren(list);$('choose-folder').disabled=folderBusy||folderLibrary.folders.length>=16;$('refresh-folders').disabled=folderBusy;
+  }
+  async function foldersAction(action){if(folderBusy)return;folderBusy=true;renderLocal();try{folderLibrary=await action();$('folder-status').textContent='';}catch{message('folder-status','Could not update music folders.',true);}finally{folderBusy=false;renderLocal();}}
   function renderCatalog(){
     const tokens=normalize($('catalog-search').value).split(/\s+/).filter(Boolean),mood=$('catalog-mood').value,genre=$('catalog-genre').value;
     const matches=catalog.filter(track=>{
@@ -146,18 +167,23 @@
   $('stop').addEventListener('click',() => { resetAudio(); render(); });
   $('previous').addEventListener('click',() => skip(-1)); $('next').addEventListener('click',() => skip(1));
   $('mute').addEventListener('click',() => { settings.muted = !settings.muted; audio.muted = settings.muted; void persist(); render(); });
-  $('volume').addEventListener('input',() => { settings.volume = Number($('volume').value) / 100; audio.volume = settings.volume; $('volume-value').value = `${Math.round(settings.volume * 100)}%`; void persist(); });
-  $('loop').addEventListener('change',() => { settings.loop = $('loop').checked; audio.loop = settings.loop; void persist(); });
+  $('volume').addEventListener('input',() => { settings.volume = Number($('volume').value) / 100; audio.volume = settings.volume; $('volume-value').value = `${Math.round(settings.volume * 100)}%`; void persist(); report(); });
+  $('loop').addEventListener('change',() => { settings.loop = $('loop').checked; audio.loop = settings.loop; void persist(); render(); });
   $('seek').addEventListener('input',() => { if (Number.isFinite(audio.duration) && audio.duration > 0) audio.currentTime = audio.duration * Number($('seek').value) / 1000; progress(); });
   $('copy').addEventListener('click',async () => { try { await pending; await window.music.copyLink(settings.selected); saved('Track link copied.'); } catch { saved('Could not copy this link.',true); } });
   $('copy-credit').addEventListener('click',async()=>{try{await pending;await window.music.copyAttribution(settings.selected);saved('Attribution copied.');}catch{saved('Could not copy attribution.',true);}});
-  const tabs=['playlist','catalog'];
+  const tabs=['playlist','catalog','folders'];
   function library(selected){for(const key of tabs){$(`${key}-tab`).setAttribute('aria-selected',String(key===selected));$(`${key}-tab`).tabIndex=key===selected?0:-1;$(`${key}-panel`).hidden=key!==selected;}}
   for(const [index,key] of tabs.entries()){
     $(`${key}-tab`).addEventListener('click',()=>library(key));
     $(`${key}-tab`).addEventListener('keydown',event=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(event.key)){event.preventDefault();const next=event.key==='Home'?tabs[0]:event.key==='End'?tabs.at(-1):tabs[(index+(event.key==='ArrowLeft'?-1:1)+tabs.length)%tabs.length];library(next);$(`${next}-tab`).focus();}});
   }
   library('playlist');
+  $('close-library').addEventListener('click',()=>void window.music.hide().catch(console.error));
+  $('choose-folder').addEventListener('click',()=>void foldersAction(()=>window.music.chooseFolder()));
+  $('refresh-folders').addEventListener('click',()=>void foldersAction(()=>window.music.refreshFolders()));
+  for(const id of ['local-search','local-folder-filter'])$(id).addEventListener(id==='local-search'?'input':'change',()=>{localLimit=30;renderLocal();});
+  $('local-more').addEventListener('click',()=>{localLimit+=30;renderLocal();});
   for(const id of ['catalog-search','catalog-mood','catalog-genre'])$(id).addEventListener(id==='catalog-search'?'input':'change',()=>{catalogLimit=12;$('catalog-status').textContent='';renderCatalog();});
   $('catalog-more').addEventListener('click',()=>{catalogLimit+=12;renderCatalog();});
   for (const event of ['timeupdate','durationchange','loadedmetadata']) audio.addEventListener(event,progress);
@@ -188,10 +214,13 @@
     } catch (error) { saved(error.message,true); }
     finally { adding = false; render(); }
   });
+  window.music.onLibrary(state=>{folderLibrary=state;renderLocal();});
+  window.music.onControl((command,value)=>{if(!loaded)return;if(command==='volume'){settings.volume=value;audio.volume=value;void persist();render();}else if(command==='repeat'){$('loop').checked=!settings.loop;$('loop').dispatchEvent(new Event('change'));}else $(command)?.click();});
+  for(const name of ['pause','play'])audio.addEventListener(name,report);
   window.music.onInterface(state => { if (loaded) interfaceState(state); });
   for (const element of document.querySelectorAll('button,input,select')) element.disabled = true;
   void window.music.get().then(state => {
-    settings = state.settings;catalog=state.catalog;loaded = true;
+    settings = state.settings;catalog=state.catalog;folderLibrary=state.library;loaded = true;
     audio.volume = settings.volume; audio.muted = settings.muted; audio.loop = settings.loop;
     for (const element of document.querySelectorAll('button,input,select')) element.disabled = false;
     interfaceState(state); progress();

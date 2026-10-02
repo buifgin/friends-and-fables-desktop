@@ -39,17 +39,17 @@ export function configureInstructionHiding(enabled: boolean): void {
   // /sp can open its editor before any instructions or commands are enabled.
   function launcher(target:EventTarget|null):HTMLElement|null{
     if(!(target instanceof Element)||!/\/play\/?$/.test(location.pathname))return null;
-    const root=target.closest<HTMLElement>('.grid.relative');
-    if(!root?.querySelector('#working-context-bar-spacer')||root.closest('form,[role="dialog"],.bottom-full'))return null;
+    const root=target.closest<HTMLElement>('[class~="bg-gray-800/80"]')??target.closest<HTMLElement>('.grid.relative');
+    if(!root?.querySelector('#working-context-bar-spacer,button[aria-label="Roll dice"],button[aria-label="Бросить кости"],button[aria-label="More actions"]')||root.closest('form,[role="dialog"],.bottom-full'))return null;
     const editor=root.querySelector<HTMLElement>('.tiptap[contenteditable="true"]');
     return editor?.textContent?.trim()==='/sp'&&!editor.querySelector('code,pre')?editor:null;
   }
-  document.addEventListener('keydown',event=>{
+  window.addEventListener('keydown',event=>{
     if(event.key!=='Enter'||event.shiftKey||event.isComposing)return;
     const editor=launcher(event.target);if(!editor?.contains(event.target as Node))return;
     event.preventDefault();event.stopImmediatePropagation();if(!event.repeat)window.open('fables-desktop://settings/host-instructions.html','_blank');
   },true);
-  document.addEventListener('click',event=>{
+  window.addEventListener('click',event=>{
     const button=event.target instanceof Element?event.target.closest('button[id="send"],button[aria-label="Send message"],button[aria-label="Send message (V2)"],button[aria-label="Отправить сообщение"]'):null;
     if(!button||!launcher(button))return;event.preventDefault();event.stopImmediatePropagation();window.open('fables-desktop://settings/host-instructions.html','_blank');
   },true);

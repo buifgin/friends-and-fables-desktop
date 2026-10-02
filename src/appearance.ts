@@ -7,6 +7,8 @@ import type { AppearanceSettings, AppearanceState } from './themes';
 import { backgroundLibrary, backgroundPreview, importBackground, selectBackground } from './backgrounds';
 import { chatCss, configureChatAppearance } from './chat-appearance';
 import { exportTheme, importTheme } from './theme-files';
+import { BUILT_IN_THEMES, applyLibraryTheme, makeSavedTheme, themeSummary, validateThemeLibrary } from './theme-library';
+import type { SavedTheme } from './theme-library';
 import { APPEARANCE_TITLE, floatAppearance } from './floating-appearance';
 import { ImageFolder } from './image-folder';
 import { AppearanceDock } from './appearance-dock';
@@ -24,7 +26,7 @@ const WEBSITE_ORIGIN = 'https://play.fables.gg';
 
 export function registerAppearanceScheme(): void {
   protocol.registerSchemesAsPrivileged([
-    { scheme: SCHEME, privileges: { standard: true, secure: true } },
+    { scheme: SCHEME, privileges: { standard: true, secure: true, stream: true } },
   ]);
 }
 
@@ -45,11 +47,16 @@ export class AppearanceManager {
   private dock: AppearanceDock | null = null;
   private locale: 'en' | 'ru' = 'en';
   private settingsRevision = 0;
+  private localeRevision = 0;
   private websites = new Set<WebsiteTheme>();
   private saves: Promise<unknown> = Promise.resolve();
   private file = path.join(app.getPath('userData'), 'appearance.json');
+  private cachedBackground: { id: string | null; preview: string | null } | undefined;
   private images = path.join(app.getPath('userData'), 'backgrounds');
   private backupFile = path.join(app.getPath('userData'), 'appearance-before-reset.json');
+  private themesFile = path.join(app.getPath('userData'), 'themes.json');
+  private savedThemes: SavedTheme[] = [];
+  private themeSaves: Promise<unknown> = Promise.resolve();
   private resetBackup: AppearanceSettings | null = null;
   private folder = new ImageFolder(path.join(app.getPath('userData'), 'background-folder.json'));
   onChange: ((settings: AppearanceSettings) => void) | undefined;
@@ -66,9 +73,11 @@ export class AppearanceManager {
       this.resetBackup = validateAppearance(JSON.parse(await readFile(this.backupFile, 'utf8')));
       await backgroundPreview(this.images, this.resetBackup.backgroundImage);
     } catch { this.resetBackup = null; }
+    try { this.savedThemes = validateThemeLibrary(JSON.parse(await readFile(this.themesFile, 'utf8'))); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') console.warn('Unable to read saved themes:', error); }
     await this.folder.initialize();
     try {
-      await backgroundPreview(this.images, this.settings.backgroundImage);
+      await this.picture(this.settings);
     } catch (error) {
       console.warn('Saved background is unavailable; using the campaign background:', error);
       this.settings = { ...this.settings, backgroundImage: null, backgroundName: '' };
@@ -123,6 +132,28 @@ export class AppearanceManager {
       }
       return result;
     });
+    ipcMain.handle('appearance:save-theme', (event, name: unknown, value: unknown) => {
+      this.assertTrusted(event);
+      const theme = makeSavedTheme(name, value);
+      return this.updateThemes(async () => {
+        await backgroundPreview(this.images, theme.appearance.backgroundImage);
+        if (this.savedThemes.length >= 50) throw new Error('Save up to 50 themes.');
+        this.savedThemes.push(theme);
+      });
+    });
+    ipcMain.handle('appearance:remove-theme', (event, id: unknown) => {
+      this.assertTrusted(event);
+      if (typeof id !== 'string' || !this.savedThemes.some(theme => theme.id === id)) throw new Error('Choose a saved theme.');
+      return this.updateThemes(async () => { this.savedThemes = this.savedThemes.filter(theme => theme.id !== id); });
+    });
+    ipcMain.handle('appearance:preview-theme', async (event, id: unknown, value: unknown) => {
+      this.assertTrusted(event);
+      const theme = [...BUILT_IN_THEMES, ...this.savedThemes].find(theme => theme.id === id);
+      if (!theme) throw new Error('Choose a theme from the library.');
+      const settings = applyLibraryTheme(theme, validateAppearance(value));
+      const imagePreview = await this.picture(settings);
+      return { ...await this.state(event.sender), ...settings, imagePreview };
+    });
     ipcMain.handle('appearance:close-panel', event => { this.assertPanel(event); this.dock?.hide(); });
     ipcMain.handle('appearance:resize-panel', async (event, width: unknown, finish: unknown) => {
       this.assertPanel(event);
@@ -168,7 +199,7 @@ export class AppearanceManager {
       const result=await dialog.showOpenDialog(this.dialogParent(event),{title:'Import appearance theme',properties:['openFile'],filters:[{name:'Friends & Fables theme',extensions:['json']}]});
       if (result.canceled || !result.filePaths[0]) return null;
       const imported=await importTheme(result.filePaths[0],this.settings,this.images);
-      return {...imported,imagePreview:await backgroundPreview(this.images,imported.backgroundImage),platform:process.platform,canUndoReset:!!this.resetBackup,presentation:event.sender===this.panel?.webContents?'panel':'window',locale:this.locale,revision:this.settingsRevision};
+      return {...imported,themes:this.themeSummaries(),imagePreview:await backgroundPreview(this.images,imported.backgroundImage),platform:process.platform,canUndoReset:!!this.resetBackup,presentation:event.sender===this.panel?.webContents?'panel':'window',locale:this.locale,localeRevision:this.localeRevision,revision:this.settingsRevision};
     });
   }
 
@@ -178,14 +209,32 @@ export class AppearanceManager {
     await Promise.all([...this.websites].map(website=>this.apply(website)));
   }
 
+  private async picture(settings: AppearanceSettings): Promise<string | null> {
+    if (this.cachedBackground?.id === settings.backgroundImage) return this.cachedBackground.preview;
+    const preview = await backgroundPreview(this.images, settings.backgroundImage);
+    this.cachedBackground = { id: settings.backgroundImage, preview }; return preview;
+  }
   private async state(contents?: WebContents): Promise<AppearanceState> {
     const settings = this.settings, revision = this.settingsRevision;
-    const imagePreview = await backgroundPreview(this.images, settings.backgroundImage);
-    return { ...settings, imagePreview, revision, platform: process.platform, canUndoReset: !!this.resetBackup,
-      presentation: (contents ? contents === this.panel?.webContents : this.dock?.isOpen()) ? 'panel' : 'window', locale: this.locale };
+    const imagePreview = await this.picture(settings);
+    return { ...settings, themes: this.themeSummaries(), imagePreview, revision, platform: process.platform, canUndoReset: !!this.resetBackup,
+      presentation: (contents ? contents === this.panel?.webContents : this.dock?.isOpen()) ? 'panel' : 'window', locale: this.locale, localeRevision: this.localeRevision };
+  }
+  private themeSummaries() { return [...BUILT_IN_THEMES.map(theme => themeSummary(theme, false)), ...this.savedThemes.map(theme => themeSummary(theme, true))]; }
+  private updateThemes(update: () => Promise<void>): Promise<ReturnType<AppearanceManager['themeSummaries']>> {
+    const save = this.themeSaves.catch(() => undefined).then(async () => {
+      const before = this.savedThemes.slice();
+      try {
+        await update(); await mkdir(path.dirname(this.themesFile), { recursive: true });
+        await writeFile(`${this.themesFile}.tmp`, `${JSON.stringify(this.savedThemes, null, 2)}\n`, 'utf8');
+        await rename(`${this.themesFile}.tmp`, this.themesFile);
+      } catch (error) { this.savedThemes = before; throw error; }
+      return this.themeSummaries();
+    });
+    this.themeSaves = save; return save;
   }
   private imageNames(): Record<string,string> {
-    return Object.fromEntries([this.settings,this.resetBackup].filter(s=>s?.backgroundImage).map(s=>[s!.backgroundImage!,s!.backgroundName]));
+    return Object.fromEntries([this.settings,this.resetBackup,...this.savedThemes.map(theme => theme.appearance)].filter(s=>s?.backgroundImage).map(s=>[s!.backgroundImage!,s!.backgroundName]));
   }
 
   private assertTrusted(event: IpcMainInvokeEvent): void {
@@ -211,12 +260,13 @@ export class AppearanceManager {
   setLocale(locale: 'en' | 'ru'): void {
     const changed = this.locale !== locale;
     this.locale = locale;
+    if (changed) this.localeRevision++;
     this.sendInterface(); this.dock?.sync();
     if (changed) for (const website of this.websites) void this.apply(website).catch(console.error);
   }
   private sendInterface(): void {
     for (const contents of [this.window?.webContents, this.panel?.webContents]) {
-      if (contents && !contents.isDestroyed()) contents.send('appearance:interface', { locale: this.locale, width: this.settings.appearancePanelWidth });
+      if (contents && !contents.isDestroyed()) contents.send('appearance:interface', { locale: this.locale, localeRevision: this.localeRevision, width: this.settings.appearancePanelWidth });
     }
   }
   attachMain(window: BrowserWindow, website: WebContentsView): AppearanceDock {
@@ -290,7 +340,7 @@ export class AppearanceManager {
   reset(value: unknown): Promise<AppearanceState> {
     const before=validateAppearance(value);
     return this.persist({...before,preset:'website',backgroundImage:null,backgroundName:'',
-      messages:{...before.messages,enabled:false},context:{...before.context,enabled:false},events:{...before.events,enabled:false},dice:{...before.dice,enabled:false,colorsEnabled:false,
+      input:{...before.input,enabled:false},messages:{...before.messages,enabled:false},context:{...before.context,enabled:false},events:{...before.events,enabled:false},dice:{...before.dice,enabled:false,colorsEnabled:false,
         natural20:{...before.dice.natural20,enabled:false},natural1:{...before.dice.natural1,enabled:false}},resizableMap:false,messageCommands:false},before);
   }
   private persist(next: AppearanceSettings, before?: AppearanceSettings, consumeReset = false): Promise<AppearanceState> {
@@ -336,6 +386,9 @@ export class AppearanceManager {
         if (key && !contents.isDestroyed()) await contents.removeInsertedCSS(key);
       });
     });
+    contents.on('dom-ready', () => {
+      website.ready = true; void this.apply(website).catch(console.error);
+    });
     contents.on('did-finish-load', () => {
       website.ready = true;
       void this.apply(website).catch(console.error);
@@ -351,7 +404,7 @@ export class AppearanceManager {
       const document = website.document;
       const settings = this.settings;
       const previous = website.cssKey;
-      const image = await backgroundPreview(this.images, settings.backgroundImage);
+      const image = await this.picture(settings);
       if (contents.isDestroyed() || document !== website.document) return;
       const css = themeCss(settings) + chatCss(settings, image);
       // Author styles can be removed reliably by this Electron version. User

@@ -4,12 +4,13 @@ import { SHARED_INTERFACE_GLOSSARY } from './interface-russian';
 export interface TranslationSettings {
   enabled: boolean;
   showOriginal: boolean;
+  hideUntranslated: boolean;
   translateDescriptions: boolean;
   port: number;
   preservedNames: string[];
 }
 export const DEFAULT_TRANSLATION: TranslationSettings = {
-  enabled: false, showOriginal: false, translateDescriptions: true, port: 5000,
+  enabled: false, showOriginal: false, hideUntranslated: false, translateDescriptions: true, port: 5000,
   preservedNames: ['Friends & Fables'],
 };
 export function validateTranslation(raw: unknown): TranslationSettings {
@@ -18,10 +19,11 @@ export function validateTranslation(raw: unknown): TranslationSettings {
   for (const name of ['enabled', 'showOriginal', 'translateDescriptions']) {
     if (typeof value[name] !== 'boolean') throw new Error('Invalid translation switch.');
   }
+  if (value.hideUntranslated !== undefined && typeof value.hideUntranslated !== 'boolean') throw new Error('Invalid translation switch.');
   if (!Number.isInteger(value.port) || Number(value.port) < 1 || Number(value.port) > 65535) throw new Error('Choose a local port between 1 and 65535.');
   if (!Array.isArray(value.preservedNames) || value.preservedNames.length > 30
     || value.preservedNames.some(name => typeof name !== 'string' || !name.trim() || name.length > 80 || /[\r\n\u0000-\u001f]/.test(name))) throw new Error('Keep up to 30 names, each on its own line (80 characters maximum).');
-  return { enabled: value.enabled as boolean, showOriginal: value.showOriginal as boolean,
+  return { enabled: value.enabled as boolean, showOriginal: value.showOriginal as boolean, hideUntranslated: value.hideUntranslated === true,
     translateDescriptions: value.translateDescriptions as boolean, port: value.port as number,
     preservedNames: [...new Set((value.preservedNames as string[]).map(name => name.trim()))] };
 }
@@ -34,10 +36,10 @@ export const RUSSIAN_DICTIONARY: Record<string, string> = {
   'spells':'Заклинания', 'spell':'Заклинание', 'abilities':'Характеристики', 'skills':'Навыки',
   'strength':'Сила', 'dexterity':'Ловкость', 'constitution':'Телосложение', 'intelligence':'Интеллект',
   'wisdom':'Мудрость', 'charisma':'Харизма', 'saving throws':'Спасброски', 'saving throw':'Спасбросок',
-  'strength saving throw':'Спасбросок Силы', 'dexterity saving throw':'Спасбросок Ловкости',
-  'constitution saving throw':'Спасбросок Телосложения', 'intelligence saving throw':'Спасбросок Интеллекта',
-  'wisdom saving throw':'Спасбросок Мудрости', 'charisma saving throw':'Спасбросок Харизмы',
-  'ability check':'Проверка характеристики', 'skill check':'Проверка навыка', 'attack roll':'Бросок атаки',
+  'strength saving throw':'Спасбросок силы', 'dexterity saving throw':'Спасбросок ловкости',
+  'constitution saving throw':'Спасбросок телосложения', 'intelligence saving throw':'Спасбросок интеллекта',
+  'wisdom saving throw':'Спасбросок мудрости', 'charisma saving throw':'Спасбросок харизмы',
+  'ability checks':'Проверки характеристик', 'skill checks':'Проверки навыков', 'ability check':'Проверка характеристики', 'skill check':'Проверка навыка', 'attack roll':'Бросок атаки',
   'death save':'Спасбросок от смерти', 'death saving throw':'Спасбросок от смерти',
   'hit points':'Очки здоровья', 'max hp':'Максимум ОЗ', 'temporary hp':'Временные ОЗ', 'hp':'ОЗ',
   'armor class':'Класс брони', 'ac':'КБ', 'initiative':'Инициатива', 'speed':'Скорость',
@@ -66,21 +68,36 @@ export const RUSSIAN_DICTIONARY: Record<string, string> = {
   'lawful good':'Законно-добрый', 'neutral good':'Нейтрально-добрый', 'chaotic good':'Хаотично-добрый',
   'lawful neutral':'Законно-нейтральный', 'true neutral':'Истинно нейтральный', 'chaotic neutral':'Хаотично-нейтральный',
   'lawful evil':'Законно-злой', 'neutral evil':'Нейтрально-злой', 'chaotic evil':'Хаотично-злой',
-  'acrobatics':'Акробатика', 'acrobatics check':'Проверка Акробатики',
-  'animal handling':'Уход за животными', 'animal handling check':'Проверка Ухода за животными',
-  'arcana':'Магия', 'arcana check':'Проверка Магии', 'athletics':'Атлетика', 'athletics check':'Проверка Атлетики',
-  'deception':'Обман', 'deception check':'Проверка Обмана', 'history':'История', 'history check':'Проверка Истории',
-  'insight':'Проницательность', 'insight check':'Проверка Проницательности',
-  'intimidation':'Запугивание', 'intimidation check':'Проверка Запугивания',
-  'investigation':'Анализ', 'investigation check':'Проверка Анализа', 'medicine':'Медицина', 'medicine check':'Проверка Медицины',
-  'nature':'Природа', 'nature check':'Проверка Природы', 'perception':'Внимательность', 'perception check':'Проверка Внимательности',
-  'performance':'Выступление', 'performance check':'Проверка Выступления',
-  'persuasion':'Убеждение', 'persuasion check':'Проверка Убеждения', 'religion':'Религия', 'religion check':'Проверка Религии',
-  'sleight of hand':'Ловкость рук', 'sleight of hand check':'Проверка Ловкости рук',
-  'stealth':'Скрытность', 'stealth check':'Проверка Скрытности', 'survival':'Выживание', 'survival check':'Проверка Выживания',
-  'strength check':'Проверка Силы', 'dexterity check':'Проверка Ловкости', 'constitution check':'Проверка Телосложения',
-  'intelligence check':'Проверка Интеллекта', 'wisdom check':'Проверка Мудрости', 'charisma check':'Проверка Харизмы',
+  'acrobatics':'Акробатика', 'acrobatics check':'Проверка акробатики',
+  'animal handling':'Уход за животными', 'animal handling check':'Проверка ухода за животными',
+  'arcana':'Магия', 'arcana check':'Проверка магии', 'athletics':'Атлетика', 'athletics check':'Проверка атлетики',
+  'deception':'Обман', 'deception check':'Проверка обмана', 'history':'История', 'history check':'Проверка истории',
+  'insight':'Проницательность', 'insight check':'Проверка проницательности',
+  'intimidation':'Запугивание', 'intimidation check':'Проверка запугивания',
+  'investigation':'Анализ', 'investigation check':'Проверка анализа', 'medicine':'Медицина', 'medicine check':'Проверка медицины',
+  'nature':'Природа', 'nature check':'Проверка природы', 'perception':'Внимательность', 'perception check':'Проверка внимательности',
+  'performance':'Выступление', 'performance check':'Проверка выступления',
+  'persuasion':'Убеждение', 'persuasion check':'Проверка убеждения', 'religion':'Религия', 'religion check':'Проверка религии',
+  'sleight of hand':'Ловкость рук', 'sleight of hand check':'Проверка ловкости рук',
+  'stealth':'Скрытность', 'stealth check':'Проверка скрытности', 'survival':'Выживание', 'survival check':'Проверка выживания',
+  'strength check':'Проверка силы', 'dexterity check':'Проверка ловкости', 'constitution check':'Проверка телосложения',
+  'intelligence check':'Проверка интеллекта', 'wisdom check':'Проверка мудрости', 'charisma check':'Проверка харизмы',
   ...SHARED_INTERFACE_GLOSSARY,
+  'copy event id':'Копировать ID события', 'exclude here':'Исключить здесь',
+  'collapse all':'Свернуть все', 'expand all':'Развернуть все',
+  'entity':'Сущности', 'entities':'Сущности', 'encounter':'Бой',
+  'unscathed':'Невредим', 'minor injuries':'Лёгкие травмы', 'injured':'Ранен',
+  'moderately injured':'Ранен', 'seriously injured':'Тяжело ранен', 'severely injured':'Тяжело ранен',
+  'critical injuries':'Критические травмы', 'critically injured':'При смерти', 'near death':'При смерти',
+  'healthy':'Здоров', 'dead':'Мёртв', 'defeated':'Повержен',
+  'end turn':'Завершить ход', 'run turn':'Разыграть ход', 'skip turn':'Пропустить ход',
+  'hide input':'Скрыть поле ввода', 'show input':'Показать поле ввода',
+  'expand message input':'Развернуть поле сообщения', 'collapse message input':'Свернуть поле сообщения',
+  'lbs':'фунт.', 'lb':'фунт.', 'enlarge':'Увеличение', 'reduce':'Уменьшение',
+  'franz is':'Франц', 'franz is...':'Франц обдумывает ответ…',
+  'thinking':'обдумывает ответ', 'thinking...':'обдумывает ответ…',
+  'starting an encounter':'начинает бой', 'starting an encounter...':'начинает бой…',
+
 };
 // Serialized into the renderer along with the dictionary, so these labels and
 // counters never wait for the model. Original whitespace and numbers survive.
@@ -138,6 +155,22 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   if (counter) return `${counter[1]}${counter[2]} ${dictionary[counter[3].toLowerCase()]}${counter[4]}`;
   const battle = text.match(/^(\s*)Battle lasted\s+(\d+)\s+turns?([.!]?)(\s*)$/i);
   if (battle) return `${battle[1]}Битва продолжалась ${battle[2]} ${localTranslation(battle[2]+' turns',dictionary)!.split(' ').slice(1).join(' ')}${battle[3]}${battle[4]}`;
+  const turnLabel = text.match(/^(\s*)(End|Waiting for|Run|Skip)\s+(.{1,100}?)(?:['’]s\s*|['’]\s*)?Turn([.!]?)(\s*)$/i);
+  if (turnLabel) {
+    const name=turnLabel[3].replace(/['’]s?\s*$/i,'').trim();
+    const verbs:Record<string,string>={end:'Завершить ход', 'waiting for':'Ожидание хода',run:'Разыграть ход',skip:'Пропустить ход'};
+    return turnLabel[1]+verbs[turnLabel[2].toLowerCase()]+' '+name+turnLabel[4]+turnLabel[5];
+  }
+  const executor=text.match(/^(\s*)Executor\s*:\s*(Encounter|Adventure)(\s*)$/i);
+  if(executor)return executor[1]+'Исполнитель: '+(/^encounter$/i.test(executor[2])?'бой':'приключение')+executor[3];
+  const thinking=text.match(/^(\s*)(Franz|Франц)\s+(is thinking|is imagining|is envisioning|is starting (?:an? )?encounter|is starting combat|is generating)(?:\.\.\.|…)?(\s*)$/i);
+  if(thinking)return thinking[1]+'Франц '+(/starting/i.test(thinking[3])?'начинает бой':/generating/i.test(thinking[3])?'готовит ответ':'обдумывает ответ')+'…'+thinking[4];
+  const hp=text.match(/^(\s*)([+−\-]?[\d.,]+)\s*HP(\s*)$/i);
+  if(hp)return hp[1]+hp[2]+' ОЗ'+hp[3];
+  const die=text.match(/^(\s*)Roll\s+(\d*d(?:4|6|8|10|12|20|100))(\s*)$/i);
+  if(die)return die[1]+'Бросить '+die[2]+die[3];
+  const cast=text.match(/^(\s*)(.{1,100}?)\s+cast(?:s)?\s+(.+?)(?:\s+\(Level\s+(\d+)\))?(\s*)$/i);
+  if(cast&&lookup(cast[3].toLowerCase()))return cast[1]+cast[2]+' использует '+lookup(cast[3].toLowerCase())+(cast[4]?' (уровень '+cast[4]+')':'')+cast[5];
   const turns = text.match(/^(\s*)turns?(\s*)$/i);
   if (turns) return turns[1]+'ходов'+turns[2];
   const metric = text.match(/^(\s*)(Damage Dealt|Healing Done|Distance Moved)(\s*:\s*)(\d+)(\s*(?:ft)?[.!]?)(\s*)$/i);
@@ -167,7 +200,7 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   // Dice bonuses are often one composite text node or several fragments.
   // Translate only known mechanical terms, preserving numbers and punctuation.
   const bonus = text.match(/^(\s*)(Bonuses:\s*)?((?:[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise|Modifier))(?:\s*[,.]\s*[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise|Modifier))*)([.]?\s*)$/i);
-  if(bonus) return bonus[1]+(bonus[2]?bonus[2].replace(/Bonuses/i,lookup('bonuses')!):'')+bonus[3].replace(/[A-Za-z]+/g,term=>lookup(term.toLowerCase())!)+bonus[4];
+  if(bonus) return bonus[1]+(bonus[2]?bonus[2].replace(/Bonuses/i,lookup('bonuses')!):'')+bonus[3].replace(/[A-Za-z]+/g,term=>lookup(term.toLowerCase())!.toLowerCase())+bonus[4];
   const composer = text.match(/^(.*?)\s+says or does(?:\.\.\.|…)(\s*)$/i);
   if(composer) return `${composer[1]} говорит или делает…${composer[2]}`;
   return undefined;
@@ -177,7 +210,7 @@ export interface TranslationPart {
 }
 function gameInstruction(text: string): string | undefined {
   const ability = text.match(/^(?:make|roll) (?:an? )?(strength|dexterity|constitution|intelligence|wisdom|charisma) (saving throw|check)([.!]?)$/i);
-  const genitive: Record<string, string> = { strength: 'Силы', dexterity: 'Ловкости', constitution: 'Телосложения', intelligence: 'Интеллекта', wisdom: 'Мудрости', charisma: 'Харизмы' };
+  const genitive: Record<string, string> = { strength: 'силы', dexterity: 'ловкости', constitution: 'телосложения', intelligence: 'интеллекта', wisdom: 'мудрости', charisma: 'харизмы' };
   if (ability) return `Совершите ${ability[2].toLowerCase() === 'check' ? 'проверку' : 'спасбросок'} ${genitive[ability[1].toLowerCase()]}${ability[3]}`;
   const damage = text.match(/^On (?:a )?failure, take (\d+) points? of (fire|cold|acid|lightning|thunder|poison|psychic|necrotic|radiant|force|slashing|piercing|bludgeoning) damage([.!]?)$/i);
   const types: Record<string, string> = { fire: 'огнём', cold: 'холодом', acid: 'кислотой', lightning: 'электричеством', thunder: 'звуком', poison: 'ядом', psychic: 'психической энергией', necrotic: 'некротической энергией', radiant: 'излучением', force: 'силовым полем', slashing: 'рубящего урона', piercing: 'колющего урона', bludgeoning: 'дробящего урона' };
@@ -219,8 +252,10 @@ export function translationPlan(text: string, names: string[] = []): Translation
     const token = `ZXQ${replacements.size}ZXQ`; replacements.set(token, {original:value,rendered:value.toLowerCase()==='franz'?'Франц':value}); return token;
   });
   const terms = Object.keys(PROSE_GLOSSARY).sort((a,b)=>b.length-a.length).map(value=>escape(value).replaceAll("'","['’‘]"));
-  masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'), value => {
-    const token=`ZXQ${replacements.size}ZXQ`; replacements.set(token,{original:value,rendered:PROSE_GLOSSARY[value.toLowerCase().replace(/[’‘]/g,"'")]}); return token;
+  masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'), (value,offset:number,source:string) => {
+    let rendered=PROSE_GLOSSARY[value.toLowerCase().replace(/[’‘]/g,"'")];
+    if(/^(strength|dexterity|constitution|intelligence|wisdom|charisma|run turn|end turn)$/i.test(value)&&(!source.slice(0,offset).trim()||/[.!?]\s*$/.test(source.slice(0,offset))))rendered=rendered[0].toUpperCase()+rendered.slice(1);
+    const token=`ZXQ${replacements.size}ZXQ`; replacements.set(token,{original:value,rendered}); return token;
   });
   masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${Object.keys(PROSE_TITLE_GLOSSARY).map(escape).join('|')})(?![\\p{L}\\p{N}_])`,'gu'), value => {
     const token=`ZXQ${replacements.size}ZXQ`; replacements.set(token,{original:value,rendered:PROSE_TITLE_GLOSSARY[value]}); return token;

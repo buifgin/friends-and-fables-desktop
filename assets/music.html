@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src https:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src https: fables-desktop:; connect-src 'none'; base-uri 'none'; form-action 'none'; frame-src 'none'">
 <title>Music — Friends &amp; Fables Desktop</title><link rel="stylesheet" href="music.css">
 <script src="settings-theme.js" defer></script><script src="music.js" defer></script></head>
 <body><main>
-<p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p><h1 data-label="Music">Music</h1>
+<p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p><button id="close-library" class="secondary close-library" type="button" aria-label="Close library" data-aria="Close library">×</button><h1 data-label="Music">Music</h1>
 <p class="intro" data-label="Your campaign soundtrack.">Your campaign soundtrack.</p>
 <section class="player" aria-label="Playback" data-aria="Playback">
 <p class="eyebrow" data-label="NOW PLAYING">NOW PLAYING</p><h2 id="track-title" data-label="Choose a track">Choose a track</h2>
@@ -19,7 +19,7 @@
 <button id="copy-credit" class="secondary" type="button" data-label="Copy attribution" hidden>Copy attribution</button>
 <p id="playback-status" role="status" aria-live="polite"></p><audio id="audio" preload="none"></audio>
 </section>
-<div class="library-tabs" role="tablist" data-aria="Music library" aria-label="Music library"><button id="playlist-tab" type="button" role="tab" aria-selected="true" aria-controls="playlist-panel" data-label="Playlist">Playlist</button><button id="catalog-tab" type="button" role="tab" aria-selected="false" aria-controls="catalog-panel" data-label="Music catalog">Music catalog</button></div>
+<div class="library-tabs" role="tablist" data-aria="Music library" aria-label="Music library"><button id="playlist-tab" type="button" role="tab" aria-selected="true" aria-controls="playlist-panel" data-label="Playlist">Playlist</button><button id="catalog-tab" type="button" role="tab" aria-selected="false" aria-controls="catalog-panel" data-label="Music catalog">Music catalog</button><button id="folders-tab" type="button" role="tab" aria-selected="false" aria-controls="folders-panel" data-label="Local folders">Local folders</button></div>
 <section class="playlist-section" id="playlist-panel" role="tabpanel" aria-labelledby="playlist-tab"><div class="playlist-heading"><h2 data-label="Playlist">Playlist</h2><span id="track-count" class="muted">0 / 50</span></div>
 <p id="empty" class="muted" data-label="Add a direct audio link to get started.">Add a direct audio link to get started.</p><ol id="playlist"></ol><form id="add-track"><h2 data-label="Add a track">Add a track</h2>
 <label for="title" data-label="Track name">Track name</label><input id="title" type="text" maxlength="100" required autocomplete="off">
@@ -35,5 +35,14 @@
 <p class="muted help" data-label="Music by Scott Buckley, licensed under CC BY 4.0. Attribution is available for each track. Audio loads only when you press Play.">Music by Scott Buckley, licensed under CC BY 4.0. Attribution is available for each track. Audio loads only when you press Play.</p>
 <p id="catalog-status" role="status" aria-live="polite"></p></section>
 
-<p class="muted help" data-label="Playback is local. Copy a track link to share it. Music continues while minimized; closing the player stops it. Saved tracks start paused.">Playback is local. Copy a track link to share it. Music continues while minimized; closing the player stops it. Saved tracks start paused.</p>
+<section id="folders-panel" role="tabpanel" aria-labelledby="folders-tab" hidden>
+<div class="playlist-heading"><h2 data-label="Local folders">Local folders</h2><span id="local-count" class="muted"></span></div>
+<p class="muted help" data-label="Choose folders containing downloaded music. Removing a folder does not delete its files.">Choose folders containing downloaded music. Removing a folder does not delete its files.</p>
+<p class="muted help" data-label="Up to 16 folders and 1,000 tracks per folder. MP3, OGG, WAV, FLAC, M4A, OPUS, AAC, and WEBM are supported.">Up to 16 folders and 1,000 tracks per folder. MP3, OGG, WAV, FLAC, M4A, OPUS, AAC, and WEBM are supported.</p>
+<div class="folder-actions"><button id="choose-folder" type="button" data-label="Add folder">Add folder</button><button id="refresh-folders" type="button" class="secondary" data-label="Refresh">Refresh</button></div>
+<ul id="folders"></ul><label for="local-search" class="sr-only" data-label="Search local music">Search local music</label><input id="local-search" type="search" maxlength="200" autocomplete="off" placeholder="Track or folder name" data-placeholder="Track or folder name">
+<label for="local-folder-filter" class="sr-only" data-label="Music folder">Music folder</label><select id="local-folder-filter"></select>
+<p id="local-empty" class="muted" data-label="No local tracks found.">No local tracks found.</p><ol id="local-tracks"></ol><button id="local-more" type="button" class="secondary" data-label="Show more">Show more</button><p id="folder-status" role="status"></p>
+</section>
+<p class="muted help" data-label="Music continues when this library is closed. Use the toolbar to control playback. Local files stay on this computer. Saved tracks start paused.">Music continues when this library is closed. Use the toolbar to control playback. Local files stay on this computer. Saved tracks start paused.</p>
 </main></body></html>

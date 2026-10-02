@@ -15,8 +15,8 @@ export function configureMusicButton(locale: 'en' | 'ru', playerUrl: string): vo
     const playing = /\/play\/?$/.test(location.pathname) && (!new URL(location.href).searchParams.has('view') || new URL(location.href).searchParams.get('view') === 'play');
     if (!playing) { for (const button of buttons.values()) button.remove(); buttons.clear(); return; }
     for (const dice of document.querySelectorAll<HTMLButtonElement>('button[aria-label="Roll dice"],button[aria-label="Бросить кости"]')) {
-      const composer = dice.closest('.grid.relative');
-      if (!composer?.querySelector('#working-context-bar-spacer') || !composer.querySelector('.tiptap[contenteditable="true"]')
+      const composer = dice.closest('[class~="bg-gray-800/80"]') ?? dice.closest('.grid.relative');
+      if (!composer || !composer.querySelector('.tiptap[contenteditable="true"]')
         || dice.closest('form,[role="dialog"],.bottom-full') || buttons.has(dice)) continue;
       const button = document.createElement('button'); button.type = 'button';
       button.className = dice.className; button.setAttribute('data-ff-desktop-music-button', 'true'); button.setAttribute('translate', 'no');

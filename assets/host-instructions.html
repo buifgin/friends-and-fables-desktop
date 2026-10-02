@@ -6,8 +6,12 @@
 <p class="intro" data-label="Attach your saved guidance when sending a message to Franz.">Attach your saved guidance when sending a message to Franz.</p>
 <form id="instructions-form"><fieldset id="options" disabled>
 <label class="switch-row"><input id="enabled" type="checkbox"><span data-label="Append /sp to my messages">Append /sp to my messages</span></label>
-<label for="instructions" data-label="Instructions for Franz">Instructions for Franz</label><textarea id="instructions" rows="8" maxlength="4000" spellcheck="true"></textarea>
+<label for="instructions" data-label="Adventure instructions">Adventure instructions</label><textarea id="instructions" rows="8" maxlength="4000" spellcheck="true"></textarea>
 <p class="help" id="count">0 / 4,000</p>
+<label class="switch-row"><input id="combat-enabled" type="checkbox"><span data-label="Use different instructions during combat">Use different instructions during combat</span></label>
+<label for="combat-instructions" data-label="Combat instructions">Combat instructions</label><textarea id="combat-instructions" rows="5" maxlength="4000" spellcheck="true"></textarea>
+<p class="help" id="combat-count">0 / 4,000</p>
+<p class="help" data-label="Combat starts and ends select the profile automatically. Leave this option off to use adventure instructions everywhere.">Combat starts and ends select the profile automatically. Leave this option off to use adventure instructions everywhere.</p>
 <div class="templates"><button type="button" class="secondary" id="continuity" data-label="Scene continuity">Scene continuity</button><button type="button" class="secondary" id="characters" data-label="Character reactions">Character reactions</button><button type="button" class="secondary" id="party" data-label="Separated party">Separated party</button></div>
 <p class="help" data-label="Templates are editable. They add narration guidance and do not change game mechanics.">Templates are editable. They add narration guidance and do not change game mechanics.</p>
 <label class="switch-row"><input id="show-marked" type="checkbox"><span data-label="Show marked instructions in chat">Show marked instructions in chat</span></label>

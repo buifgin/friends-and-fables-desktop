@@ -5,6 +5,8 @@ test('Music preferences validate track links, selection and playback bounds',()=
  const settings={...DEFAULT_MUSIC,tracks:[track],selected:track.id,volume:0,muted:true,loop:true};
  const valid=validateMusic(settings);assert.equal(valid.tracks[0].title,'Tavern');assert.equal(valid.volume,0);
  settings.tracks[0].title='Changed';assert.equal(valid.tracks[0].title,'Tavern','Returned settings do not alias input.');
+ assert.equal(audioUrl('fables-desktop://music/audio/'+ 'a'.repeat(64)),'fables-desktop://music/audio/'+ 'a'.repeat(64));
+ for(const url of ['fables-desktop://music/audio/../private.wav','fables-desktop://settings/music.json','fables-desktop://music/audio/'+ 'a'.repeat(64)+'?path=/etc/passwd','fables-desktop://music/audio/'+ 'b'.repeat(63)])assert.throws(()=>audioUrl(url));
  assert.equal(audioUrl(' https://audio.example/music.mp3 '),'https://audio.example/music.mp3');
  for(const url of ['http://audio.example/music.mp3','file:///etc/passwd','javascript:alert(1)','data:audio/wav,aaa','https://user:secret@audio.example/music.mp3','https://audio.example/'+ 'a'.repeat(2050)])assert.throws(()=>audioUrl(url));
  for(const patch of [{volume:NaN},{volume:-.1},{volume:1.1},{muted:'true'},{loop:1},{selected:'missing'},

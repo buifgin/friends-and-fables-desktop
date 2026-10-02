@@ -49,7 +49,9 @@ A small «Перевод: completed / total» badge appears during work, and dot
 
 Model results are cached in `translation-cache.json` inside the normal application user-data folder. Source keys are SHA256 hashes; cached translated text stays local. The cache is capped at 2,000 fragments and approximately 6 MiB. Translation preferences are separate from appearance/theme exports. **Clear translation cache** removes the saved entries.
 
-If the service is unavailable, uncached prose stays original; dictionary labels and cached translations continue to work. The app retries conservatively. **Check translator** makes pending text eligible for an immediate retry after recovery.
+Enable **Hide text until translated** to conceal pending prose with animated dots. A block appears after its entire translation is complete, without exposing intermediate English or partial results. Glossary labels are processed before the next paint, and the main website view waits for its first scan on full navigation. Names and editable drafts retain their original content. Disabling the option returns to progressive display. If the translator is unavailable, pending blocks keep their dots; turn on **Show original text** to review the source.
+
+With the default progressive display, if the service is unavailable, uncached prose stays original; dictionary labels and cached translations continue to work. The app retries conservatively. **Check translator** makes pending text eligible for an immediate retry after recovery.
 
 ## Evaluation on this computer
 

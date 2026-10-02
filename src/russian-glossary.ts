@@ -1,6 +1,6 @@
 // Term names only; Russian wording is curated for this app. See docs/GLOSSARY.md
 // for SRD attribution and the community terminology references used to check it.
-export const GLOSSARY_VERSION = 6;
+export const GLOSSARY_VERSION = 7;
 export const DND_GLOSSARY: Record<string, string> = {
   'cantrip':'Заговор', 'cantrips':'Заговоры', 'spellcasting':'Использование заклинаний',
   'spellcasting ability':'Базовая характеристика заклинаний', 'spellcasting focus':'Магическая фокусировка',
@@ -59,10 +59,10 @@ export const DND_GLOSSARY: Record<string, string> = {
   'draconic spell list':'Драконьи заклинания', 'general feat':'Общая черта',
   "dragon's breath":'Дыхание дракона', 'arcane eye':'Магический глаз', 'charm monster':'Очарование чудовища',
   'legend lore':'Знание легенд', 'summon dragon':'Призыв дракона', 'sorcerer level spells':'Уровень чародея — заклинания',
-  'strength modifier':'Модификатор Силы', 'dexterity modifier':'Модификатор Ловкости',
-  'constitution modifier':'Модификатор Телосложения', 'intelligence modifier':'Модификатор Интеллекта',
-  'wisdom modifier':'Модификатор Мудрости', 'charisma modifier':'Модификатор Харизмы',
-  'dexterity and charisma modifiers':'Модификаторы Ловкости и Харизмы',
+  'strength modifier':'Модификатор силы', 'dexterity modifier':'Модификатор ловкости',
+  'constitution modifier':'Модификатор телосложения', 'intelligence modifier':'Модификатор интеллекта',
+  'wisdom modifier':'Модификатор мудрости', 'charisma modifier':'Модификатор харизмы',
+  'dexterity and charisma modifiers':'Модификаторы ловкости и харизмы',
   'champion':'Чемпион', 'battle master':'Мастер боевых искусств', 'eldritch knight':'Мистический рыцарь',
   'spellblade':'Клинок заклинаний', 'berserker':'Берсерк', 'assassin':'Убийца',
   'arcane trickster':'Мистический ловкач', 'thief':'Вор', 'hunter':'Охотник',
@@ -235,8 +235,9 @@ export const INTERFACE_GLOSSARY: Record<string,string> = {
 export const PROSE_GLOSSARY: Record<string, string> = { ...Object.fromEntries(Object.entries(DND_GLOSSARY)
   .filter(([english]) => english.includes(' ') || ['cantrip','cantrips','spellcasting','metamagic','prestidigitation','thaumaturgy','counterspell'].includes(english))),
   'armor class':'Класс брони', 'proficiency bonus':'Бонус умения',
-  'sorcerer':'Чародей', 'strength':'Сила', 'dexterity':'Ловкость', 'constitution':'Телосложение',
-  'intelligence':'Интеллект', 'wisdom':'Мудрость', 'charisma':'Харизма',
+  'sorcerer':'Чародей', 'strength':'сила', 'dexterity':'ловкость', 'constitution':'телосложение',
+  'intelligence':'интеллект', 'wisdom':'мудрость', 'charisma':'харизма',
+  'run turn':'разыграть ход', 'end turn':'завершить ход',
 };
 // These one-word spell names are also ordinary English words. Only title-case
 // names are canonicalized in prose; lowercase verbs and emotions stay natural.

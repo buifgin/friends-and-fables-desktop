@@ -28,7 +28,7 @@
     "dist:linux": "npm run build && electron-builder --config electron-builder.config.cjs --linux AppImage --x64 --publish never",
     "dist:windows": "npm run prepare:translator:windows && npm run build && electron-builder --config electron-builder.config.cjs --win portable --x64 --publish never",
     "checksums": "node scripts/release-checksums.cjs",
-    "test:unit": "node --test tests/translation-core.test.cjs tests/bundled-translator.test.cjs tests/music-settings.test.cjs tests/music-catalog.test.cjs tests/host-instructions-core.test.cjs",
+    "test:unit": "node --test tests/translation-core.test.cjs tests/bundled-translator.test.cjs tests/music-settings.test.cjs tests/music-library.test.cjs tests/music-catalog.test.cjs tests/host-instructions-core.test.cjs",
     "test:appearance": "node scripts/run-electron-test.cjs tests/appearance-smoke.cjs",
     "test:translation": "node scripts/run-electron-test.cjs tests/translation-smoke.cjs",
     "benchmark:translation": "npm run build && node scripts/translation-benchmark.cjs",

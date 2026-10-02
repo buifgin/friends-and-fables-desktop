@@ -88,7 +88,24 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     return stable(normalized);
   };
   const playersOnly=(entry:Entry):boolean=>Array.from(entry.root.querySelectorAll('[role="combobox"]')).some(button=>/^(?:Players Only|Только игроки)$/i.test(button.textContent?.trim()??''));
-  const active=(entry:Entry):boolean=>preferences.enabled&&!!preferences.text&&!playersOnly(entry);
+  function combat(entry:Entry):boolean {
+    // Both composers use the same editor. Read the native campaign/encounter
+    // props rather than translated turn labels or old messages in the feed.
+    for(const element of [entry.root,...entry.root.querySelectorAll('button')]){
+      let fiber=Object.entries(element).find(([name])=>name.startsWith('__reactFiber'))?.[1] as {memoizedProps?:Record<string,unknown>;return?:unknown}|undefined;
+      for(let depth=0;fiber&&depth<30;depth++,fiber=fiber.return as typeof fiber){
+        const props=fiber.memoizedProps;
+        if(typeof props?.encounterActive==='boolean')return props.encounterActive;
+        const value=props?.value as {campaign?:Record<string,unknown>}|undefined;
+        const campaign=(props?.campaign??value?.campaign) as Record<string,unknown>|undefined;
+        if(campaign&&Object.hasOwn(campaign,'active_encounter_id'))return typeof campaign.active_encounter_id==='string'&&!!campaign.active_encounter_id;
+      }
+    }
+    // The native action button is only rendered while an encounter is active.
+    return !!entry.root.querySelector('button .lucide-swords');
+  }
+  const instructionText=(entry:Entry):string=>combat(entry)&&preferences.combatEnabled?preferences.combatText??'':preferences.text;
+  const active=(entry:Entry):boolean=>preferences.enabled&&!!instructionText(entry)&&!playersOnly(entry);
   function spCommand(node:RichNode):boolean{
     if(node.type==='codeBlock')return false;
     if(node.type==='paragraph')return (node.content??[]).map(child=>child.type==='hardBreak'?'\n':child.marks?.some(mark=>mark.type==='code')?'':child.text??'').join('').split('\n').some(line=>/^\/sp(?:\s|$)/i.test(line));
@@ -131,7 +148,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
       : entry.note === 'configure' ? text('Configure /sp in the instruction settings.', 'Настройте /sp в окне инструкций.')
       : commandsEnabled ? text('/me: italic text · /gm: #text#', '/me: курсив · /gm: #текст#') : '';
     entry.badge.hidden=!preferences.configured;
-    entry.badge.textContent=active(entry)?text('/sp active','/sp активен'):preferences.enabled&&playersOnly(entry)?text('/sp paused · Players Only','/sp приостановлен · Только игроки'):text('/sp inactive','/sp выключен');
+    entry.badge.textContent=active(entry)?preferences.combatEnabled?(combat(entry)?text('/sp · combat','/sp · бой'):text('/sp · adventure','/sp · приключение')):text('/sp active','/sp активен'):preferences.enabled&&playersOnly(entry)?text('/sp paused · Players Only','/sp приостановлен · Только игроки'):text('/sp inactive','/sp выключен');
     entry.badge.title=text('Edit saved /sp instructions','Изменить сохранённые инструкции /sp');
     entry.controls.hidden = !command && !entry.note && !preferences.configured;
     entry.controls.style.display = entry.controls.hidden ? 'none' : 'flex';
@@ -180,13 +197,16 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     render(entry);
   }
   function scan(): void {
+    if (disposed) return;
     frame = 0;
     const view = new URLSearchParams(location.search).get('view'), found = new Map<HTMLElement, HTMLElement>();
     if (/\/play\/?$/.test(location.pathname) && (!view || view === 'play')) {
       for (const element of document.querySelectorAll<HTMLElement>('.tiptap[contenteditable="true"]')) {
         if (element.closest('form,[role="dialog"],[class~="bottom-full"]')) continue;
-        const root = element.closest<HTMLElement>('.grid.relative');
-        if (root?.querySelector('#working-context-bar-spacer') && editorFor(element)) found.set(root, element);
+        // The current normal and combat input has no working-context spacer.
+        // Find its own action surface, rather than an unrelated outer grid.
+        const root = element.closest<HTMLElement>('[class~="bg-gray-800/80"]') ?? element.closest<HTMLElement>('.grid.relative');
+        if (root && root.querySelector('#working-context-bar-spacer,button[aria-label="Roll dice"],button[aria-label="Бросить кости"],button[aria-label="More actions"]') && editorFor(element)) found.set(root, element);
       }
     }
     for (const [root, entry] of entries) {
@@ -196,6 +216,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     for (const [root, element] of found) if (!entries.has(root)) add(root, element);
   }
   function schedule(records?: MutationRecord[]): void {
+    if (disposed) return;
     if (records && records.every(record => (record.target instanceof Element ? record.target : record.target.parentElement)?.closest('[data-ff-desktop-command-controls]'))) return;
     if (!frame) frame = requestAnimationFrame(scan);
   }
@@ -215,15 +236,15 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     if (!hasContent(source) || result?.invalid) { cleanDraft(entry);entry.note='empty'; render(entry); return; }
     try {
       entry.editorElement.parentElement?.removeAttribute('data-ff-desktop-sp-draft');
-      const selection=editor.state.selection.from,mode=playersOnly(entry),attach=active(entry);
-      const candidate=withInstructions?withInstructions(result?.document??source,attach?preferences.text:null):result?.document??source;
+      const selection=editor.state.selection.from,mode=playersOnly(entry),inCombat=combat(entry),guidance=instructionText(entry),attach=active(entry);
+      const candidate=withInstructions?withInstructions(result?.document??source,attach?guidance:null):result?.document??source;
       if (JSON.stringify(candidate)!==JSON.stringify(original) && !editor.commands.setContent(candidate,{emitUpdate:true})) throw new Error('Editor refused the draft.');
       // Round-trip through the editor schema, then check that no command remains
       // unformatted. The JSON comparison below also detects edits while queued.
       const roundTrip=editor.getJSON(),expected=JSON.stringify(roundTrip), check=commandsEnabled?format(roundTrip):null;
       if (check?.invalid || check?.document) throw new Error('Draft formatting did not complete.');
       if(fingerprint(cleanDocument(roundTrip))!==fingerprint(cleanDocument(candidate)))throw new Error('Editor changed the draft.');
-      if(playersOnly(entry)!==mode)throw new Error('The message mode changed.');
+      if(playersOnly(entry)!==mode||combat(entry)!==inCombat)throw new Error('The message mode changed.');
       if(attach){
         const value=(node:RichNode|undefined):string=>node?.type==='hardBreak'?'\n':node?.text??(node?.content??[]).map(value).join('');
         if(value(roundTrip.content?.at(-1))!==value(candidate.content?.at(-1)))throw new Error('Editor changed the instruction block.');
@@ -242,7 +263,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
         if (sequence!==entry.sequence) return;
         entry.pending=false;
         if (disposed || location.href!==route || entries.get(entry.root)!==entry || !entry.root.isConnected || editorFor(entry.editorElement)!==editor
-          || JSON.stringify(editor.getJSON())!==expected || playersOnly(entry)!==mode) {cleanDraft(entry);return;}
+          || JSON.stringify(editor.getJSON())!==expected || playersOnly(entry)!==mode || combat(entry)!==inCombat || instructionText(entry)!==guidance) {cleanDraft(entry);return;}
         const send=entry.root.querySelector<HTMLButtonElement>(sendSelector);
         if (!send || send.disabled) {cleanDraft(entry);entry.note='unavailable';render(entry);return;}
         entry.bypass=send;
@@ -252,6 +273,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
   }
   function onKeyDown(event: KeyboardEvent): void {
     if (event.key !== 'Enter' || event.isComposing) return;
+    scan();
     const entry = entryFor(event.target);
     if (!entry || !entry.editorElement.contains(event.target as Node)) return;
     if (event.shiftKey && !entry.blockEnter && !event.repeat) {
@@ -261,6 +283,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
   }
   function onKeyUp(event: KeyboardEvent): void { if (event.key === 'Enter') for (const entry of entries.values()) entry.blockEnter = false; }
   function onClick(event: MouseEvent): void {
+    scan();
     const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>(sendSelector) : null;
     const entry = entryFor(button);
     if (button && entry && entry.bypass!==button) { event.preventDefault(); event.stopImmediatePropagation(); submit(entry); }
@@ -268,7 +291,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
   const observer = new MutationObserver(schedule);
   observer.observe(document.documentElement, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['class','contenteditable'] });
   const onNavigation = (): void => schedule();
-  document.addEventListener('input', onInput, true); document.addEventListener('keydown', onKeyDown, true); document.addEventListener('keyup', onKeyUp, true); document.addEventListener('click', onClick, true); window.addEventListener('popstate', onNavigation);
+  document.addEventListener('input', onInput, true); window.addEventListener('keydown', onKeyDown, true); window.addEventListener('keyup', onKeyUp, true); document.addEventListener('click', onClick, true); window.addEventListener('popstate', onNavigation);
   host[key] = {
     update(value,locale,next) {
       const changed=commandsEnabled!==value || JSON.stringify(preferences)!==JSON.stringify(next);
@@ -277,7 +300,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     },
     dispose() {
       disposed=true;observer.disconnect(); cancelAnimationFrame(frame);
-      document.removeEventListener('input', onInput, true); document.removeEventListener('keydown', onKeyDown, true); document.removeEventListener('keyup', onKeyUp, true); document.removeEventListener('click', onClick, true); window.removeEventListener('popstate', onNavigation);
+      document.removeEventListener('input', onInput, true); window.removeEventListener('keydown', onKeyDown, true); window.removeEventListener('keyup', onKeyUp, true); document.removeEventListener('click', onClick, true); window.removeEventListener('popstate', onNavigation);
       for (const entry of entries.values()) {cleanDraft(entry);entry.controls.remove();} entries.clear(); delete host[key];
     },
   };

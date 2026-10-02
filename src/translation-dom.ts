@@ -1,6 +1,6 @@
 // Serialized into the website. This function has ordinary DOM access only:
 // no preload, IPC, network requests, or Electron APIs are exposed to the page.
-export function installTranslationDom(token: string, dictionary: Record<string, string>, descriptions: boolean, names: string[], local: (text: string, dictionary: Record<string,string>) => string | undefined): void {
+export function installTranslationDom(token: string, dictionary: Record<string, string>, descriptions: boolean, names: string[], local: (text: string, dictionary: Record<string,string>) => string | undefined, hideUntranslated = false): void {
   type Entry = { id: number; node: Text | Attr; original: string; rendered: string | null; version: number; due: number; waiting: boolean; complete?: boolean; fragments?: boolean; pending?: {start:number;end:number}[] };
   type Result = { id: number; version: number; text: string | null; complete: boolean; retry?: boolean; pending?: {start:number;end:number}[] };
   type Controller = { collect(): unknown; retry(): void; finish(token: string, results: Result[]): void; dispose(): void };
@@ -16,6 +16,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   const oldHighlight=CSS.highlights.get(highlightName);
   const memo = new Map<string,string>();
   const marked = new Map<Element,string|null>();
+  const blanked = new Map<Element,{overlay:HTMLElement;position:string;priority:string;busy:string|null}>();
   let completed=0;
   const status=document.createElement('div');status.setAttribute('data-ff-translation-status','true');status.setAttribute('data-ff-translation-ignore','true');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
   status.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483000;display:none;align-items:center;gap:8px;padding:7px 10px;border:1px solid hsl(var(--border,0 0% 40%));border-radius:8px;background:hsl(var(--background,0 0% 8%));color:hsl(var(--foreground,0 0% 96%));box-shadow:0 2px 8px #0004;font:12px system-ui;pointer-events:none';
@@ -23,10 +24,18 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   const label=document.createElement('span');status.append(spinner,label);
   const style=document.createElement('style');style.setAttribute('data-ff-translation-ignore','true');style.textContent='@keyframes ff-translation-spin{to{transform:rotate(360deg)}} ::highlight(ff-desktop-untranslated){text-decoration:underline dotted;text-underline-offset:.2em} @media(prefers-reduced-motion:reduce){[data-ff-translation-status] span{animation:none!important}}';
   document.body.append(style,status);
+  style.textContent += '[data-ff-translation-blank]:not(#ff-translation-never){color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important} [data-ff-translation-blank]>*:not([data-ff-translation-placeholder]){opacity:0!important} [data-ff-translation-placeholder]{position:absolute;inset-inline-start:0;top:0;color:var(--ff-translation-ink,#aaa)!important;-webkit-text-fill-color:var(--ff-translation-ink,#aaa)!important;opacity:1!important;pointer-events:none;white-space:pre} [data-ff-translation-placeholder]::after{content:".";animation:ff-translation-dots 1.2s steps(1,end) infinite}@keyframes ff-translation-dots{0%,100%{content:"."}20%,80%{content:".."}40%,60%{content:"..."}}';
   const read = (node: Text | Attr): string => node instanceof Attr ? node.value : node.data;
   const write = (node: Text | Attr, text: string): void => { if(node instanceof Attr) node.value=text; else node.data=text; };
   const parent = (node: Text | Attr): Element | null => node instanceof Attr ? node.ownerElement : node.parentElement;
-  let next = 0, timer: ReturnType<typeof setTimeout> | undefined;
+  let next = 0, timer: ReturnType<typeof setTimeout> | undefined, queued=false,disposed=false;
+  function reveal(element:Element):void {
+    const previous=blanked.get(element);if(!previous)return;
+    previous.overlay.remove();element.removeAttribute('data-ff-translation-blank');
+    if(element instanceof HTMLElement){element.style.setProperty('position',previous.position,previous.priority);element.style.removeProperty('--ff-translation-ink');}
+    if(previous.busy===null)element.removeAttribute('aria-busy');else element.setAttribute('aria-busy',previous.busy);
+    blanked.delete(element);
+  }
   function eligible(node: Text | Attr): boolean {
     const element = parent(node);
     // Friends & Fables disables browser translation on its entire document.
@@ -46,6 +55,18 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     entries.delete(entry.id); nodes.delete(entry.node);
   }
   function updateStatus(): void {
+    // Hide whole text blocks until all their fragments are ready. The original
+    // Text nodes remain in place for React and for restoring the source view.
+    const unfinished=[...entries.values()].filter(entry=>!entry.complete&&eligible(entry.node));
+    const hiddenParents=new Set(hideUntranslated?unfinished.filter(entry=>entry.node instanceof Text).map(entry=>parent(entry.node)!):[]);
+    for(const element of blanked.keys())if(!hiddenParents.has(element))reveal(element);
+    for(const element of hiddenParents)if(!blanked.has(element)&&element instanceof HTMLElement){
+      const overlay=document.createElement('span');overlay.setAttribute('data-ff-translation-placeholder','true');overlay.setAttribute('data-ff-translation-ignore','true');overlay.setAttribute('aria-label','Переводится');overlay.setAttribute('role','status');
+      const position=element.style.getPropertyValue('position'),priority=element.style.getPropertyPriority('position');
+      blanked.set(element,{overlay,position,priority,busy:element.getAttribute('aria-busy')});
+      element.style.setProperty('--ff-translation-ink',getComputedStyle(element).color);if(getComputedStyle(element).position==='static')element.style.position='relative';
+      element.setAttribute('data-ff-translation-blank','true');element.setAttribute('aria-busy','true');element.append(overlay);
+    }
     const pending=[...entries.values()].filter(entry=>!entry.complete && (entry.waiting || entry.due<=performance.now()) && eligible(entry.node));
     const parents=new Set(pending.filter(entry=>entry.node instanceof Text).map(entry=>parent(entry.node)!));
     for(const [element,value] of marked) if(!parents.has(element)) { if(value===null) element.removeAttribute('data-ff-translation-pending'); else element.setAttribute('data-ff-translation-pending',value); marked.delete(element); }
@@ -66,11 +87,11 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   function examineFragments(element: Element): boolean {
     const parts = [...element.childNodes].filter((node): node is Text => node instanceof Text);
     const reset = (): false => { for (const node of parts) { const entry=nodes.get(node); if(entry?.fragments) restore(entry); } return false; };
-    if (element.childElementCount || parts.length < 2 || parts.length > 12) return reset();
+    if ([...element.children].some(child=>!child.hasAttribute('data-ff-translation-placeholder')) || parts.length < 2 || parts.length > 12) return reset();
     const originals = parts.map(node => { const entry=nodes.get(node); return entry && read(node)===entry.rendered ? entry.original : read(node); });
     const source = originals.join('');
-    if (source.length > 512 || !/^(?:\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Modifier\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*[\d,.]+\s+(?:Followers|Following)\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*)$/i.test(source)
-      || names.some(name => [source,...originals].some(value=>value.trim().toLowerCase()===name.toLowerCase()))
+    if (source.length > 512 || !/^(?:\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Modifier\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*[\d,.]+\s+(?:Followers|Following)\s*|\s*[+−\-]?[\d.,]+(?:\s*\/\s*[\d.,]+)?\s*(?:lbs?\.?|ft\.?|HP)\s*|\s*(?:End|Waiting for|Run|Skip)\s+.{1,100}?Turn\s*|\s*(?:Franz|Франц)\s+is\s+(?:thinking|imagining|envisioning|starting (?:an? )?encounter|starting combat|generating)(?:\.\.\.|…)?\s*|\s*Executor\s*:\s*(?:Encounter|Adventure)\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*)$/i.test(source)
+      || names.some(name => name.toLowerCase()!=='franz'&&[source,...originals].some(value=>value.trim().toLowerCase()===name.toLowerCase()))
       || parts.some(node=>!eligible(node)) || entries.size + parts.filter(node=>!nodes.has(node)).length > 4000) return reset();
     const translated = local(source,dictionary);
     if (translated === undefined) return reset();
@@ -117,8 +138,11 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     entry.original = original; entry.rendered = null; entry.version++; entry.waiting = false; entry.complete=false; entry.pending=undefined; entry.due = performance.now() + (/[.!?]\s*$/.test(original)?80:180);
     const cached = translated ?? memo.get(original);
     if (cached !== undefined) { entry.rendered=cached; entry.complete=true; write(node,cached); }
+    else if(hideUntranslated&&node instanceof Attr&&['placeholder','data-placeholder'].includes(node.name)){entry.rendered='…';write(node,'…');}
   }
   function scan(): void {
+    if(disposed)return;
+    queued=false;
     if (timer) clearTimeout(timer); timer = undefined;
     for (const entry of entries.values()) if (!parent(entry.node)?.isConnected) { entries.delete(entry.id); nodes.delete(entry.node); }
     for (const root of roots) {
@@ -134,8 +158,11 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     updateStatus();
   }
   function schedule(root: Node): void {
+    if(disposed)return;
     roots.add(root);
-    if (!timer) timer = setTimeout(scan, 16);
+    // A microtask translates glossary labels and hides pending prose before
+    // the browser paints newly rendered English, including streaming updates.
+    if (!queued){queued=true;queueMicrotask(scan);}
   }
   const observer = new MutationObserver(mutations => {
     for (const mutation of mutations) {
@@ -184,6 +211,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
         if (result.text === null) { entry.due = performance.now() + 15000; continue; }
         if(result.complete && !entry.complete) completed++;
         entry.pending=result.pending;entry.complete=result.complete;entry.due=performance.now()+(result.retry?15000:0);
+        if(hideUntranslated&&!result.complete)continue;
         entry.rendered = result.text; if(result.complete) memo.set(entry.original,result.text);
         if(memo.size>3000) memo.delete(memo.keys().next().value!);
         if(read(entry.node)!==result.text) write(entry.node,result.text);
@@ -191,6 +219,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       updateStatus();
     },
     dispose() {
+      disposed=true;
       observer.disconnect(); if (timer) clearTimeout(timer);
       document.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', onScroll);
       document.removeEventListener('focusin', onFocus, true);
@@ -198,9 +227,11 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       for (const entry of entries.values()) restore(entry);
       for(const [element,value] of marked) { if(value===null) element.removeAttribute('data-ff-translation-pending'); else element.setAttribute('data-ff-translation-pending',value); }
       marked.clear();status.remove();style.remove();
+      for(const element of blanked.keys())reveal(element);
       if(oldHighlight) CSS.highlights.set(highlightName,oldHighlight); else CSS.highlights.delete(highlightName);
       roots.clear(); memo.clear(); delete host[key];
     },
   };
   scan();
+  document.dispatchEvent(new Event('ff-desktop-translation-ready'));
 }

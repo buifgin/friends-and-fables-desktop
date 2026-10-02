@@ -35,11 +35,11 @@ function isHttpsUrl(value: string): boolean {
   }
 }
 
-function configureWebsiteContents(contents: WebContents, window: BrowserWindow): void {
+function configureWebsiteContents(contents: WebContents, window: BrowserWindow, presentation?: WebContentsView): void {
   configureZoomShortcuts(contents);
   configureFullscreenShortcuts(contents, window);
   appearance.attach(contents);
-  translation.attach(contents);
+  translation.attach(contents,presentation);
   music.attach(contents);
   // Keep HTTPS authentication redirects in the sandboxed browser session.
   // The website has no preload script, Node access, or application IPC bridge.
@@ -127,8 +127,9 @@ function createWindow(): void {
   mainWindow.contentView.addChildView(view);
   websiteContents = view.webContents;
   const dock = appearance.attachMain(mainWindow, view);
+  music.attachMain(mainWindow,dock.getLauncherContents(),view.webContents);
   if (linux) {
-    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => dock.setInset(inset));
+    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => { dock.setInset(inset); music.setInset(inset); });
     linuxMenu.setMenu(applicationMenu, appearance.getLocale());
     linuxMenu.setBlack(appearance.getSettings().linuxBlackMenu);
   }
@@ -139,7 +140,7 @@ function createWindow(): void {
   if (!linux) mainWindow.webContents.on('did-finish-load', () => { void mainWindow?.webContents.insertCSS('html,body{margin:0;background:#000;}'); });
   void mainWindow.loadURL(linux ? MENU_URL : 'about:blank').catch(console.error);
   const contents = websiteContents;
-  configureWebsiteContents(contents, mainWindow);
+  configureWebsiteContents(contents, mainWindow,view);
   contents.once('did-finish-load', () => contents.focus());
   mainWindow.on('closed', () => {
     mainWindow = null;

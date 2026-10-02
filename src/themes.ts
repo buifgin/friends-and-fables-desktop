@@ -7,6 +7,7 @@ export interface AppearanceSettings {
   backgroundName: string;
   backgroundFit: 'cover' | 'contain';
   backgroundEffects: { blur: number; opacity: number; overlayColor: string; overlayOpacity: number };
+  input: { enabled: boolean; style: MessageStyle };
   messages: { enabled: boolean; player: MessageStyle; gm: MessageStyle };
   context: { enabled: boolean; style: MessageStyle; blocks: MessageStyle; bar: MessageStyle };
   events: { enabled: boolean; style: MessageStyle };
@@ -27,7 +28,8 @@ export interface MessageStyle {
   gradient: { enabled: boolean; color: string; angle: number; secondOpacity: number; balance: number };
   border: { enabled: boolean; color: string; width: number; radius: number; variant: 'plain' | 'ornate' | 'arcane' | 'runic' };
 }
-export interface AppearanceState extends AppearanceSettings { imagePreview: string | null; platform: string; canUndoReset: boolean; presentation: 'window' | 'panel'; locale: 'en' | 'ru'; revision: number }
+export interface ThemeSummary { id: string; name: string; colors: string[]; saved: boolean }
+export interface AppearanceState extends AppearanceSettings { themes: ThemeSummary[]; imagePreview: string | null; platform: string; canUndoReset: boolean; presentation: 'window' | 'panel'; locale: 'en' | 'ru'; localeRevision: number; revision: number }
 
 const baseStyle = (color: string, opacity: number): MessageStyle => ({ color, opacity, textColor: null,
   gradient: { enabled: false, color: '#000000', angle: 90, secondOpacity: opacity, balance: 50 },
@@ -39,6 +41,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   backgroundName: '',
   backgroundFit: 'cover',
   backgroundEffects: { blur: 0, opacity: 1, overlayColor: '#000000', overlayOpacity: 0 },
+  input: { enabled: false, style: baseStyle('#16202a', .85) },
   messages: { enabled: false, player: baseStyle('#16202a', .85), gm: baseStyle('#101010', .85) },
   context: { enabled: false, style: baseStyle('#101010', 1),
     blocks: { ...baseStyle('#101010', 1), border: { enabled: true, color: '#444444', width: 1, radius: 8, variant: 'plain' } },
@@ -123,6 +126,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     return raw;
   }
   // Migrate existing message preferences to an independent, solid context panel.
+  const composer = record(input.input ?? { enabled: styles.enabled, style: styles.player });
   const context = record(input.context ?? { ...DEFAULT_APPEARANCE.context, enabled: styles.enabled });
   const events = record(input.events ?? DEFAULT_APPEARANCE.events);
   const dice = record(input.dice ?? DEFAULT_APPEARANCE.dice);
@@ -148,6 +152,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     backgroundImage, backgroundName, backgroundFit,
     backgroundEffects: { blur: range(effects.blur, 0, 30), opacity: range(effects.opacity, 0, 1),
       overlayColor: hex(effects.overlayColor), overlayOpacity: range(effects.overlayOpacity, 0, 1) },
+    input: { enabled: flag(composer.enabled), style: messageStyle(composer.style) },
     messages: { enabled: styles.enabled, player: messageStyle(styles.player), gm: messageStyle(styles.gm) },
     context: { enabled: flag(context.enabled), style: contextStyle,
       blocks: messageStyle(context.blocks ?? { ...contextStyle, opacity: 1 }), bar: messageStyle(context.bar ?? contextStyle) },

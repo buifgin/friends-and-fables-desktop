@@ -1,7 +1,18 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; base-uri 'none'">
-  <title>Appearance button</title>
-  <link rel="stylesheet" href="appearance-button.css">
-  <script src="settings-theme.js" defer></script><script src="settings-locale.js" defer></script><script src="appearance-button.js" defer></script>
-</head><body><button id="appearance-button" aria-expanded="false" title="Open appearance settings">Appearance</button></body></html>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; script-src 'self'; base-uri 'none'">
+<title>Campaign controls</title><link rel="stylesheet" href="appearance-button.css">
+<script src="settings-theme.js" defer></script><script src="appearance-button.js" defer></script>
+</head><body><nav aria-label="Campaign controls">
+<button id="appearance-button" aria-expanded="false" title="Appearance" aria-label="Appearance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 1.6-3.2 1.5 1.5 0 0 1 1.2-2.4H18a3 3 0 0 0 3-3A9 9 0 0 0 12 3Z"/><circle cx="8" cy="9" r=".7"/><circle cx="13" cy="7" r=".7"/><circle cx="17" cy="10" r=".7"/><circle cx="7" cy="14" r=".7"/></svg></button>
+<button id="library" title="Music library" aria-label="Music library" aria-expanded="false">♫</button>
+<button id="play" title="Play" aria-label="Play" disabled>▶</button>
+<button id="stop" title="Stop" aria-label="Stop" disabled>■</button>
+<button id="next" title="Next track" aria-label="Next track" disabled>⏭</button>
+<button id="repeat" title="Repeat track" aria-label="Repeat track" aria-pressed="false">↻</button>
+<button id="volume-button" title="Volume" aria-label="Volume" aria-expanded="false" aria-controls="volume-popup"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m11 5-5 4H3v6h3l5 4Z"/><path id="volume-wave" d="M15 8a6 6 0 0 1 0 8"/></svg></button>
+</nav><section id="volume-popup" hidden aria-label="Volume">
+<p id="track-name"></p><label for="volume">Volume</label>
+<div class="slider"><input id="volume" type="range" min="0" max="100" value="50"><output id="volume-value">50%</output></div>
+<button id="mute" aria-pressed="false">Mute</button>
+</section></body></html>
