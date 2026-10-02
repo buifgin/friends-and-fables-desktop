@@ -10,7 +10,7 @@ test('Folder sources restore stable audio URLs and restrict links to authorized 
   const folder=await chosenFolder(root),library=new MusicLibrary();await library.scan([folder]);
   const first=library.state();assert.equal(first.tracks.length,2);assert.equal(first.folders[0].count,2);assert(!JSON.stringify(first).includes(root));
   const restored=new MusicLibrary();await restored.scan(validateFolders(JSON.parse(JSON.stringify([folder]))));assert.deepEqual(restored.state(),first,'Reopening preserves opaque audio URLs without revealing filesystem paths.');
-  const song=first.tracks.find(track=>track.title==='song');assert.equal(await restored.file(song.id),path.join(root,'song.MP3'));assert.equal(await restored.file('..'),null);
+  const song=first.tracks.find(track=>track.title==='song');assert.equal(await restored.file(song.id),path.join(folder.path,'song.MP3'));assert.equal(await restored.file('..'),null);
   if(process.platform!=='win32'){
    await symlink(temporary,path.join(root,'external-directory'));await restored.scan([folder]);assert.equal(restored.state().tracks.length,2,'Symlink directories are not followed.');
    await rm(path.join(root,'song.MP3'));await symlink(path.join(temporary,'private.mp3'),path.join(root,'song.MP3'));await writeFile(path.join(temporary,'private.mp3'),'private');

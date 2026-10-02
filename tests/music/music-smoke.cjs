@@ -67,7 +67,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await manager.open(parent);parent.show();player.webContents.focus();await sleep(100);
  await js("document.getElementById('copy').click()");await until(()=>js("document.getElementById('save-status').textContent==='Track link copied.'"));
  assert.equal(copied,'https://audio.fixture/second.wav','The trusted handler passes only the saved URL to the system clipboard.');
- if(process.platform!=='linux'||!process.env.WAYLAND_DISPLAY)assert.equal(clipboard.readText(),copied);
+ if(process.platform!=='linux'||!process.env.WAYLAND_DISPLAY)assert.equal(await clipboard.readText(),copied);
  manager.setInterface({...DEFAULT_APPEARANCE,preset:'light'},'ru');
  await until(()=>js("document.documentElement.lang==='ru'"));assert.equal(await js("document.getElementById('mute').textContent"),'Включить звук');assert.equal(await js("document.documentElement.style.getPropertyValue('--ui-bg')"),'#f5f5f5');
  await until(()=>siteJs("document.querySelector('[data-ff-desktop-music-button]').title==='Музыкальный проигрыватель'"));
