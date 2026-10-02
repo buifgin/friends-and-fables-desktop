@@ -67,3 +67,5 @@ Full private results, selected campaign, worker branches/commits, logs and repro
 ## Release checkpoint — 0.5.2
 
 The user authorized committing the completed hotfix and publishing 0.5.2 before further work. The release includes the completed changes above and prior music/themes/instructions/layout changes since 0.5.1. A new two-campaign built-in translation sweep and requested centered toolbar/window controls are separate follow-up work, outside this release. Release verification and publication records are in docs/RELEASING.md. Local workflow artifacts remain excluded.
+
+0.5.2 is published at https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.5.2. Exact release source is c9ceb0e; native Linux/Windows workflow37036457745 passed source/packages and Windows model. Both CI binaries and combined checksums were uploaded unchanged; Arch recipe source verification passed. Future toolbar/translation requests remain separate follow-up work.
