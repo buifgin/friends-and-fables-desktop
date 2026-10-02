@@ -4,9 +4,9 @@ const http = require('node:http');
 const {mkdtemp,readFile,rm} = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
-const {translationPlan,renderTranslation,validateTranslationMarkers,validateTranslation,DEFAULT_TRANSLATION,RUSSIAN_DICTIONARY}=require('../dist/translation-core');
-const {TranslationCache}=require('../dist/translation-cache');
-const {LocalTranslator}=require('../dist/local-translator');
+const {translationPlan,renderTranslation,validateTranslationMarkers,validateTranslation,DEFAULT_TRANSLATION,RUSSIAN_DICTIONARY}=require('../../dist/translation/translation-core');
+const {TranslationCache}=require('../../dist/translation/translation-cache');
+const {LocalTranslator}=require('../../dist/translation/local-translator');
 
 test('mixed Russian, names, dice, URLs, whitespace, and long prose are preserved around English fragments',()=>{
  for(const value of ['The inn is open. Привет, путник! Take a seat.','Franz greets Aria. Брось 1d20 + 5. Visit https://example.com/room.',
@@ -72,8 +72,8 @@ test('loopback client uses bounded plain-text batches and refuses redirects, ove
 });
 
 test('glossary covers screenshot labels and numeric UI immediately, including whitespace and preserved names',()=>{
- const {localTranslation}=require('../dist/translation-core');
- const {DND_GLOSSARY,INTERFACE_GLOSSARY}=require('../dist/russian-glossary');
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ const {DND_GLOSSARY,INTERFACE_GLOSSARY}=require('../../dist/translation/russian-glossary');
  assert(Object.keys(DND_GLOSSARY).length>=500);assert(Object.keys(INTERFACE_GLOSSARY).length>=70);
  for(const [source,expected] of Object.entries({'Spellbook':'Книга заклинаний','Memories':'Воспоминания','Class Features':'Умения класса','Spellcasting':'Использование заклинаний','Prone':'Сбитый с ног','Action Surge: 0/1':'Всплеск действий: 0/1','Second Wind:1/2':'Второе дыхание:1/2','Bonuses: +2 Proficiency':'Бонусы: +2 умение','1 Topic Researched':'1 Тема изучена','1,699 XP until level 6':'1,699 опыта до уровня 6','Level 5 Drow Fighter (Spellblade)':'Уровень 5 Дроу Воин (Клинок заклинаний)','Mira says or does...':'Mira говорит или делает…','  Add Spell\n':'  Добавить заклинание\n'})){
   assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected);assert.equal(renderTranslation(translationPlan(source)[0]),expected);
@@ -95,7 +95,7 @@ test('specialized terms retain canonical Russian names in prose without changing
 
 
 test('shared GUI and composite dice bonuses use the chosen vocabulary without a model',()=>{
- const {localTranslation}=require('../dist/translation-core');
+ const {localTranslation}=require('../../dist/translation/translation-core');
  const samples={
   'AC':'КБ','Armor Class':'Класс брони','Base AC':'Базовый КБ','PB':'БУ','Proficiency':'Умение','Proficiency Bonus':'Бонус умения',
   'Bonuses: +2 Wisdom, +2 Proficiency':'Бонусы: +2 мудрость, +2 умение','+2 Proficiency':'+2 умение','+2 Wisdom, +2 Proficiency':'+2 мудрость, +2 умение',
@@ -114,8 +114,8 @@ test('shared GUI and composite dice bonuses use the chosen vocabulary without a 
 });
 
 test('every authored shared interface string is deterministic, with whitespace and case variants',()=>{
- const {SHARED_INTERFACE_GLOSSARY}=require('../dist/interface-russian');
- const {localTranslation}=require('../dist/translation-core');
+ const {SHARED_INTERFACE_GLOSSARY}=require('../../dist/translation/interface-russian');
+ const {localTranslation}=require('../../dist/translation/translation-core');
  assert(Object.keys(SHARED_INTERFACE_GLOSSARY).length>900);
  for(const [source,target] of Object.entries(SHARED_INTERFACE_GLOSSARY)){
   assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
@@ -125,7 +125,7 @@ test('every authored shared interface string is deterministic, with whitespace a
 });
 
 test('roll outcomes, period-separated bonuses, healing and spell-slot events never use the model',()=>{
- const {localTranslation}=require('../dist/translation-core');
+ const {localTranslation}=require('../../dist/translation/translation-core');
  const samples={
   'OTHER':'Другое','Flee':'Отступление','Heal':'Лечение','Known':'Известные',
   'Melee Attack':'Атака в ближнем бою','Ranged Attack':'Атака в дальнем бою',
@@ -161,7 +161,7 @@ test('roll outcomes, period-separated bonuses, healing and spell-slot events nev
 });
 
 test('battle summaries, inventory outcomes and progression terminology are deterministic',()=>{
- const {localTranslation}=require('../dist/translation-core');
+ const {localTranslation}=require('../../dist/translation/translation-core');
  for(const [source,target] of Object.entries({
   'VICTORY':'Победа','DEFEAT':'Поражение','ALLY':'Союзник','ENEMY':'Враг',
   'Battle lasted 1 turn':'Битва продолжалась 1 ход','Battle lasted 2 turns':'Битва продолжалась 2 хода','Battle lasted 16 turns':'Битва продолжалась 16 ходов',
@@ -182,7 +182,7 @@ test('battle summaries, inventory outcomes and progression terminology are deter
 
 
 test('hotfix common pages, counts, addresses, and partial progress spans',()=>{
- const {localTranslation}=require('../dist/translation-core');
+ const {localTranslation}=require('../../dist/translation/translation-core');
  for(const [input,expected] of Object.entries({
   '(284 characters remaining)':'(осталось символов: 284)',
   '(2 active, 0 idle)':'(2 активных, 0 неактивных)',
@@ -208,7 +208,7 @@ test('hotfix common pages, counts, addresses, and partial progress spans',()=>{
 });
 
 test('whole draft commands are idempotent, preserve code, and reject every empty command',()=>{
- const {formatMessageCommand}=require('../dist/message-commands');
+ const {formatMessageCommand}=require('../../dist/commands/message-commands');
  const source={type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'/me Hello №1.'},{type:'hardBreak'},{type:'text',text:'/gm Note №2.'}]},{type:'codeBlock',content:[{type:'text',text:'№ /me literal'}]}]};
  const result=formatMessageCommand(source);assert.equal(result.invalid,false);
  assert.equal(formatMessageCommand(result.document),null);
@@ -221,7 +221,7 @@ test('whole draft commands are idempotent, preserve code, and reject every empty
 });
 
 test('profile, workshop, likes, and notification screenshot labels stay local',()=>{
- const {localTranslation}=require('../dist/translation-core');
+ const {localTranslation}=require('../../dist/translation/translation-core');
  const samples={
   'Create your first race!':'Создайте свою первую расу!', 'Create your first class!':'Создайте свой первый класс!',
   'Create your first world!':'Создайте свой первый мир!', 'Followers':'Подписчики', 'Following':'Подписки', '0 Followers':'0 подписчиков', '1 Followers':'1 подписчик', '2 Followers':'2 подписчика', '11 Followers':'11 подписчиков', '1 Following':'1 подписка', '2 Following':'2 подписки',
@@ -237,7 +237,7 @@ test('profile, workshop, likes, and notification screenshot labels stay local',(
 
 
 test('combat health, turn labels, skill casing, and remaining screenshot UI stay local',()=>{
- const {localTranslation}=require('../dist/translation-core');
+ const {localTranslation}=require('../../dist/translation/translation-core');
  for(const [source,expected]of Object.entries({
   'ABILITY CHECKS':'Проверки характеристик','Strength Check':'Проверка силы','Animal Handling Check':'Проверка ухода за животными',
   'Unscathed':'Невредим','Severely Injured':'Тяжело ранен','Copy Event ID':'Копировать ID события','Collapse All':'Свернуть все','Entity':'Сущности',

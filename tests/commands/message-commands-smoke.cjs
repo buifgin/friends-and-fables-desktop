@@ -1,8 +1,8 @@
 const assert=require('node:assert/strict'),path=require('node:path'),os=require('node:os');
 const {mkdtemp,rm}=require('node:fs/promises');
 const {app,BrowserWindow,session}=require('electron');
-const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'..');
-const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance'));
+const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname, '..', '..');
+const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance/appearance'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
 let profile,window;
 const timer=setTimeout(()=>{console.error('Message commands test timed out.');app.exit(1)},40000);
@@ -21,7 +21,7 @@ window.formEditor=new Editor({element:document.getElementById('form-content'),ex
 window.contextEditor=new Editor({element:document.getElementById('context-content'),extensions,content:'<p>Context notes</p>'});
 document.getElementById('editor-content').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();window.sent.push(window.draftHTML)}},true);
 document.getElementById('send').addEventListener('click',()=>window.sent.push(window.draftHTML));
-`,resolveDir:path.join(__dirname,'..')},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
+`,resolveDir:path.join(__dirname, '..', '..')},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
 const html=`<!doctype html><html><meta charset="utf-8"><body><div class="grid relative"><div class="flex flex-col bg-gray-800/80 relative" id="composer">
 <button aria-label="More actions">Actions</button><div id="editor-content"></div><button id="send" aria-label="Send message">Send</button>
 <div class="bottom-full"><div id="context-content"></div></div></div>

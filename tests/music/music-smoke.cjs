@@ -1,11 +1,11 @@
 const assert=require('node:assert/strict'),path=require('node:path'),os=require('node:os');
 const {mkdtemp,readFile,writeFile,rm,mkdir,symlink}=require('node:fs/promises');
 const {app,BrowserWindow,session,clipboard,shell,dialog,WebContentsView,ipcMain}=require('electron');
-const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'..');
-const {registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance'));
-const {MusicManager,MUSIC_URL}=require(path.join(appRoot,'dist/music'));
-const {DEFAULT_APPEARANCE}=require(path.join(appRoot,'dist/themes'));
-const {MUSIC_CATALOG}=require(path.join(appRoot,'dist/music-catalog'));
+const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname, '..', '..');
+const {registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance/appearance'));
+const {MusicManager,MUSIC_URL}=require(path.join(appRoot,'dist/music/music'));
+const {DEFAULT_APPEARANCE}=require(path.join(appRoot,'dist/appearance/themes'));
+const {MUSIC_CATALOG}=require(path.join(appRoot,'dist/music/music-catalog'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
 // Prevent Electron's default fatal-error dialog from hiding teardown failures.
 for(const event of ['uncaughtException','unhandledRejection'])process.on(event,error=>{console.error(`Music smoke ${event}:`,error);app.exit(1)});
@@ -73,7 +73,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await until(()=>siteJs("document.querySelector('[data-ff-desktop-music-button]').title==='Музыкальный проигрыватель'"));
  await add('Page link','https://www.youtube.com/watch?v=test');assert.equal(await js("document.getElementById('save-status').textContent"),'Это ссылка на веб-страницу. Укажите прямую ссылку на аудиофайл.');
  assert.equal((await saved()).tracks.length,2);
- forged=new BrowserWindow({show:false,webPreferences:{partition:'fables-music',preload:path.join(appRoot,'dist/music-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
+ forged=new BrowserWindow({show:false,webPreferences:{partition:'fables-music',preload:path.join(appRoot,'dist/music/music-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
  await forged.loadURL(MUSIC_URL);
  assert.match(await forged.webContents.executeJavaScript("window.music.get().then(()=> 'allowed',error=>error.message)"),/only in the app player/);
  assert.match(await forged.webContents.executeJavaScript("window.music.save({}).then(()=> 'allowed',error=>error.message)"),/only in the app player/);
@@ -134,9 +134,9 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
 
 
  manager.hide();
- const owned=session.fromPartition('fables-appearance');owned.protocol.handle('fables-desktop',async request=>{const url=new URL(request.url),name=url.pathname.slice(1);if(url.host!=='settings'||!['appearance-button.html','appearance-button.css','appearance-button.js','settings-theme.js'].includes(name))return new Response('Not found',{status:404});return new Response(await readFile(path.join(appRoot,'assets',name)),{headers:{'Content-Type':name.endsWith('.html')?'text/html':name.endsWith('.css')?'text/css':'text/javascript'}});});
+ const owned=session.fromPartition('fables-appearance');owned.protocol.handle('fables-desktop',async request=>{const url=new URL(request.url),name=url.pathname.slice(1);if(url.host!=='settings'||!['appearance-button.html','appearance-button.css','appearance-button.js','settings-theme.js'].includes(name))return new Response('Not found',{status:404});return new Response(await readFile(path.join(appRoot,'assets',name==='settings-theme.js'?'shared':'shell',name)),{headers:{'Content-Type':name.endsWith('.html')?'text/html':name.endsWith('.css')?'text/css':'text/javascript'}});});
  ipcMain.handle('appearance-dock:get',()=>({settings:DEFAULT_APPEARANCE,locale:'en',open:false}));ipcMain.handle('appearance-dock:popup',()=>{});ipcMain.handle('appearance-dock:toggle',()=>{});
- toolbar=new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});parent.contentView.addChildView(toolbar);toolbar.setBounds({x:0,y:0,width:232,height:166});
+ toolbar=new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/shell/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});parent.contentView.addChildView(toolbar);toolbar.setBounds({x:0,y:0,width:232,height:166});
  manager.attachMain(parent,toolbar.webContents,parent.webContents);await toolbar.webContents.loadURL('fables-desktop://settings/appearance-button.html');const control=source=>toolbar.webContents.executeJavaScript(source);
  await until(()=>control("!document.getElementById('play').disabled"));await control("document.getElementById('stop').click()");await until(()=>reopened("!document.getElementById('audio').hasAttribute('src')"));
  await control("document.getElementById('play').click()");await until(()=>reopened("!document.getElementById('audio').paused"));
@@ -145,7 +145,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  const initialTitle=await reopened("document.getElementById('track-title').textContent");await control("document.getElementById('next').click()");await until(async()=>(await reopened("document.getElementById('track-title').textContent"))!==initialTitle);
  await control("document.getElementById('library').click()");await until(()=>player.getVisible());await control("document.getElementById('library').click()");await until(()=>!player.getVisible());assert.equal(await reopened("document.getElementById('audio').paused"),false);
  await assert.rejects(control("window.appearanceButton.control('volume',2)"),/Invalid volume/);await assert.rejects(control("window.appearanceButton.control('filesystem')"),/Invalid music control/);
- const toolbarForgery=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});await toolbarForgery.loadURL('fables-desktop://settings/appearance-button.html');await assert.rejects(toolbarForgery.webContents.executeJavaScript("window.appearanceButton.control('play')"),/only in the app toolbar/);toolbarForgery.destroy();
+ const toolbarForgery=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/shell/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});await toolbarForgery.loadURL('fables-desktop://settings/appearance-button.html');await assert.rejects(toolbarForgery.webContents.executeJavaScript("window.appearanceButton.control('play')"),/only in the app toolbar/);toolbarForgery.destroy();
  await control("document.getElementById('stop').click()");
  const folder=path.join(profile,'downloaded-music'),outside=path.join(profile,'private.wav');await mkdir(path.join(folder,'nested'),{recursive:true});await writeFile(path.join(folder,'Tavern.wav'),wav);await writeFile(path.join(folder,'nested','Battle.wav'),wav);await writeFile(outside,wav);await writeFile(path.join(folder,'notes.txt'),'not audio');
  if(process.platform!=='win32')await symlink(outside,path.join(folder,'escape.wav'));

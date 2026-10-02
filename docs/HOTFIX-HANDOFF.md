@@ -37,5 +37,9 @@ The user requested saving all progress because their usage limit is low. Source 
 
 - Full change history: `docs/CHANGES-SINCE-0.5.0.md`.
 - Updated user guides: `docs/MUSIC.md`, `docs/HOST-INSTRUCTIONS.md`, `docs/MESSAGE-COMMANDS.md`, `docs/TRANSLATION.md`.
-- New implementation modules: `src/music-library.ts`, `src/theme-library.ts`; the working tree contains the remaining modified source, assets, and regression tests.
+- New implementation modules: `src/music/music-library.ts`, `src/appearance/theme-library.ts`; the working tree contains the remaining modified source, assets, and regression tests.
 - All parallel agent work is complete. No further feature implementation is pending from the current hotfix. Resume by reading this file and the change history, inspecting the working tree, and following the user's next instruction. Do not repeat already passed checks unless source changes or new failures justify it.
+
+## Feature layout follow-up (2026-10-02)
+
+Source, assets and regression tests now use feature subfolders. Read docs/ARCHITECTURE.md for the map and nested local AGENTS.md for ownership. Runtime behavior, settings and protocol URLs are preserved. New builds clean dist before compilation; moved preloads and assets were verified in a real Linux app.asar. All seven Electron suites passed both from source and that package, along with 25 unit tests and the Python protocol test. No native Windows verification was run locally. The local worktree helper also copies nested guides; its 13 offline tests pass. Local guides/config/worktrees are ignored and excluded from Forge and builder packages. This follow-up is saved in the working tree; no release was published.

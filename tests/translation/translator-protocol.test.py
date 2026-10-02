@@ -7,7 +7,7 @@ import sys
 import time
 import unittest
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 TOKEN = 'a' * 64
 
 

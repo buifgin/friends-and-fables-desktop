@@ -1,3 +1,4 @@
+import { appPath } from '../shared/app-paths';
 import { app, BrowserWindow, ipcMain } from 'electron';
 import type { IpcMainInvokeEvent, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
@@ -10,9 +11,9 @@ import { installTranslationDom } from './translation-dom';
 import { LocalTranslator } from './local-translator';
 import { BundledTranslator } from './bundled-translator';
 import type { TranslatorEndpoint } from './bundled-translator';
-import { floatSettingsWindow } from './floating-appearance';
-import { DEFAULT_APPEARANCE, themeBackground } from './themes';
-import type { AppearanceSettings } from './themes';
+import { floatSettingsWindow } from '../shell/floating-appearance';
+import { DEFAULT_APPEARANCE, themeBackground } from '../appearance/themes';
+import type { AppearanceSettings } from '../appearance/themes';
 
 export const TRANSLATION_URL = 'fables-desktop://settings/translation.html';
 const DOM_KEY = '__friendsFablesDesktopTranslation';
@@ -41,7 +42,7 @@ export class TranslationManager {
   private theme = { preset: DEFAULT_APPEARANCE.preset, customColor: DEFAULT_APPEARANCE.customColor };
   onChange: ((settings: TranslationSettings) => void) | undefined;
   constructor(folder = app.getPath('userData'), bundledRoot: string | null = process.platform === 'win32'
-    ? (app.isPackaged ? path.join(process.resourcesPath, 'translator') : path.join(__dirname, '../build/translator')) : null) {
+    ? (app.isPackaged ? path.join(process.resourcesPath, 'translator') : appPath('build', 'translator')) : null) {
     this.file = path.join(folder, 'translation.json');
     this.cache = new TranslationCache(path.join(folder, 'translation-cache.json'));
     if (bundledRoot) this.bundled = new BundledTranslator(bundledRoot);

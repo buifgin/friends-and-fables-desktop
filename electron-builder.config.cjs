@@ -4,7 +4,7 @@ module.exports = {
   directories: { output: 'out/releases', buildResources: 'build' },
   asar: true,
   npmRebuild: false,
-  files: ['dist/**/*', 'assets/**/*', 'package.json', 'LICENSE'],
+  files: ['dist/**/*', 'assets/**/*', 'package.json', 'LICENSE', '!**/AGENTS.md'],
   extraResources: [{ from: 'LICENSE', to: 'LICENSE' }, { from: 'docs/GLOSSARY.md', to: 'GLOSSARY.md' }],
   publish: null,
   linux: {

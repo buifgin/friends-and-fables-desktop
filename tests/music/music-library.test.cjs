@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
 const {mkdtemp,mkdir,writeFile,symlink,rm}=require('node:fs/promises');
 const path=require('node:path'),os=require('node:os');
-const {MusicLibrary,chosenFolder,validateFolders}=require('../dist/music-library');
+const {MusicLibrary,chosenFolder,validateFolders}=require('../../dist/music/music-library');
 test('Folder sources restore stable audio URLs and restrict links to authorized files',async()=>{
  const temporary=await mkdtemp(path.join(os.tmpdir(),'fables-local-music-'));
  try {

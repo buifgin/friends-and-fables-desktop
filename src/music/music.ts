@@ -1,3 +1,4 @@
+import { appPath } from '../shared/app-paths';
 import { app, clipboard, dialog, ipcMain, net, session, shell, WebContentsView } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent, WebContents } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -5,13 +6,13 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { DEFAULT_MUSIC, validateMusic } from './music-settings';
 import type { MusicSettings } from './music-settings';
-import { DEFAULT_APPEARANCE, themeBackground } from './themes';
-import type { AppearanceSettings } from './themes';
+import { DEFAULT_APPEARANCE, themeBackground } from '../appearance/themes';
+import type { AppearanceSettings } from '../appearance/themes';
 import { configureMusicButton } from './music-button';
 import { MUSIC_CATALOG, catalogAttribution } from './music-catalog';
 import { chosenFolder, LOCAL_AUDIO, MusicLibrary, validateFolders } from './music-library';
 import type { MusicFolder } from './music-library';
-import { DOCK_URL } from './appearance-dock';
+import { DOCK_URL } from '../shell/appearance-dock';
 
 export const MUSIC_URL = 'fables-desktop://music/';
 export type MusicControl = 'play' | 'stop' | 'next' | 'repeat' | 'mute' | 'volume' | 'library';
@@ -47,8 +48,8 @@ export class MusicManager {
     playerSession.setPermissionRequestHandler((_contents,_permission,callback) => callback(false));
     playerSession.setPermissionCheckHandler(() => false);
     const assets: Record<string,[string,string]> = {
-      '/':['music.html','text/html; charset=utf-8'], '/music.css':['music.css','text/css; charset=utf-8'],
-      '/music.js':['music.js','text/javascript; charset=utf-8'], '/settings-theme.js':['settings-theme.js','text/javascript; charset=utf-8'],
+      '/':['music/music.html','text/html; charset=utf-8'], '/music.css':['music/music.css','text/css; charset=utf-8'],
+      '/music.js':['music/music.js','text/javascript; charset=utf-8'], '/settings-theme.js':['shared/settings-theme.js','text/javascript; charset=utf-8'],
     };
     playerSession.protocol.handle('fables-desktop',async request => {
       const url = new URL(request.url);
@@ -60,7 +61,7 @@ export class MusicManager {
         return net.fetch(pathToFileURL(file).href,{headers:request.headers});
       }
       const asset = assets[url.pathname]; if (!asset) return new Response('Not found',{status:404});
-      return new Response(await readFile(path.join(__dirname,'../assets',asset[0]),'utf8'),{headers:{'Content-Type':asset[1],'X-Content-Type-Options':'nosniff'}});
+      return new Response(await readFile(appPath('assets', asset[0]),'utf8'),{headers:{'Content-Type':asset[1],'X-Content-Type-Options':'nosniff'}});
     });
     ipcMain.handle('music:get',event => { this.assertTrusted(event); return this.state(); });
     ipcMain.handle('music:save',async (event,value: unknown) => { this.assertTrusted(event); await this.save(value); return this.state(); });

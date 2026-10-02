@@ -3,12 +3,12 @@ const { mkdtemp, readFile, rm, writeFile } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, ipcMain, Menu, session, WebContentsView } = require('electron');
-const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..');
-const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance'));
-const { TranslationManager } = require(path.join(appRoot, 'dist/translation'));
-const { floatSettingsWindow } = require(path.join(appRoot, 'dist/floating-appearance'));
-const {localizeMenu}=require(path.join(appRoot,'dist/app-menu-locale'));
-const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/linux-menu'));
+const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
+const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance/appearance'));
+const { TranslationManager } = require(path.join(appRoot, 'dist/translation/translation'));
+const { floatSettingsWindow } = require(path.join(appRoot, 'dist/shell/floating-appearance'));
+const {localizeMenu}=require(path.join(appRoot,'dist/shell/app-menu-locale'));
+const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/shell/linux-menu'));
 registerAppearanceScheme(); app.on('window-all-closed', () => {});
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const until = async check => { for (let i = 0; i < 150; i++) { if (await check()) return; await sleep(25); } throw Error('Condition timed out.'); };
@@ -32,7 +32,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   template[4].submenu=[{id:'music-player',label:'Music Player…',accelerator:'CmdOrCtrl+Shift+M',click(){chosen++;}}];
   translation.onChange = settings => {const locale=settings.enabled&&!settings.showOriginal?'ru':'en';manager.setLocale(locale);const translated=localizeMenu(template,locale);translated[3].submenu[0].checked=settings.enabled;bar?.setMenu(Menu.buildFromTemplate(translated),locale);};
   const host = new BrowserWindow({ show: false, type: process.platform==='linux'?'dialog':undefined, width: 1100, height: 820, webPreferences: {
-    partition: 'fables-appearance', preload: path.join(appRoot, 'dist/menu-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
+    partition: 'fables-appearance', preload: path.join(appRoot, 'dist/shell/menu-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
   } });
   const websiteSession = session.fromPartition('panel-test');
   websiteSession.protocol.handle('https', () => new Response('<!doctype html><html><meta charset="utf-8"><style>body{background:hsl(var(--background,195 86% 3%));color:hsl(var(--foreground,0 0% 100%))}</style><body><h1>Sample game</h1><input value="My draft stays unchanged."></body></html>', { headers: { 'Content-Type': 'text/html; charset=utf-8' } }));
@@ -167,7 +167,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await dock.launcher.webContents.executeJavaScript("document.getElementById('appearance-button').click()"); await until(() => dock.isOpen());
   assert.equal(await contents.executeJavaScript("document.getElementById('player-opacity').value"), '37');
   // A local impostor cannot access either editor IPC or launcher IPC.
-  const impostor = new BrowserWindow({ show: false, webPreferences: { partition: 'fables-appearance', preload: path.join(appRoot, 'dist/appearance-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const impostor = new BrowserWindow({ show: false, webPreferences: { partition: 'fables-appearance', preload: path.join(appRoot, 'dist/appearance/appearance-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
   await impostor.loadURL('fables-desktop://settings/');
   await assert.rejects(impostor.webContents.executeJavaScript('window.appearance.get()'), /only in the app settings window/); impostor.destroy();
   // Menus appear above the dock, without moving the website back over it.

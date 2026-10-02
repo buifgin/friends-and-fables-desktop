@@ -1,7 +1,7 @@
 import { ipcMain, WebContentsView } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
-import type { AppearanceManager } from './appearance';
+import type { AppearanceManager } from '../appearance/appearance';
 import { configureFullscreenShortcuts } from './window-shortcuts';
 
 export const DOCK_URL = 'fables-desktop://settings/appearance-button.html';

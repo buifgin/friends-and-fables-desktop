@@ -18,4 +18,4 @@ The **Music folders** tab lets you choose folders containing downloaded MP3, OGG
 
 The player runs in a persistent sandboxed main-window view and its own browser session. Only that view can read/save music preferences or copy a saved link. The app-owned toolbar has a restricted transport API. The Friends & Fables website receives an ordinary DOM button and no preload or application IPC API. Audio links load as media, with no remote scripts or embedded website players.
 
-Run `npm run build`, `node --test tests/music-settings.test.cjs`, and `npm run test:music` to check validation, real offline WAV playback, seeking, mute/volume/repeat, saved playlists, button placement, theme/localization changes, and IPC restrictions. Native CI repeats the Electron test against packaged assets on Linux and Windows.
+Run `npm run build`, `node --test tests/music/music-settings.test.cjs`, and `npm run test:music` to check validation, real offline WAV playback, seeking, mute/volume/repeat, saved playlists, button placement, theme/localization changes, and IPC restrictions. Native CI repeats the Electron test against packaged assets on Linux and Windows.

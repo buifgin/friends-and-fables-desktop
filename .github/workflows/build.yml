@@ -60,7 +60,7 @@ jobs:
         if: runner.os == 'Windows'
         run: npm test
       - name: Test translator adapter protocol
-        run: python -B tests/translator-protocol.test.py
+        run: python -B tests/translation/translator-protocol.test.py
       - name: Build package
         run: npm run dist:${{ matrix.target }}
       - name: Verify packaged resources on Linux

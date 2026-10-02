@@ -1,9 +1,9 @@
 // Run on native Windows after packaging; the runtime comes from extraResources.
 const assert=require('node:assert/strict'),path=require('node:path'),http=require('node:http');
-const {BundledTranslator}=require('../dist/bundled-translator');
-const {LocalTranslator}=require('../dist/local-translator');
-const {translationPlan,renderTranslation}=require('../dist/translation-core');
-const root=process.env.FABLES_BUNDLED_TRANSLATOR_ROOT||path.join(__dirname,'../out/releases/win-unpacked/resources/translator');
+const {BundledTranslator}=require('../../dist/translation/bundled-translator');
+const {LocalTranslator}=require('../../dist/translation/local-translator');
+const {translationPlan,renderTranslation}=require('../../dist/translation/translation-core');
+const root=process.env.FABLES_BUNDLED_TRANSLATOR_ROOT||path.join(__dirname,'../../out/releases/win-unpacked/resources/translator');
 const runtime=new BundledTranslator(root,process.env.FABLES_TEST_WINE_COMMAND ? {
  command:process.env.FABLES_TEST_WINE_COMMAND,
  args:[path.join(root,'python.exe'),'-I','-B','-u','Z:'+path.join(root,'service.py').replaceAll('/','\\')],

@@ -1,3 +1,4 @@
+import { appPath } from '../shared/app-paths';
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, WebContentsView } from 'electron';
 import type { IpcMainInvokeEvent, WebContents } from 'electron';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -9,15 +10,15 @@ import { chatCss, configureChatAppearance } from './chat-appearance';
 import { exportTheme, importTheme } from './theme-files';
 import { BUILT_IN_THEMES, applyLibraryTheme, makeSavedTheme, themeSummary, validateThemeLibrary } from './theme-library';
 import type { SavedTheme } from './theme-library';
-import { APPEARANCE_TITLE, floatAppearance } from './floating-appearance';
+import { APPEARANCE_TITLE, floatAppearance } from '../shell/floating-appearance';
 import { ImageFolder } from './image-folder';
-import { AppearanceDock } from './appearance-dock';
-import { configureFullscreenShortcuts } from './window-shortcuts';
-import { configureCampaignMap } from './campaign-map';
-import { configureMessageCommands, formatMessageCommand } from './message-commands';
-import { DEFAULT_HOST_INSTRUCTIONS, instructionDocument } from './host-instructions-core';
-import type { HostInstructions } from './host-instructions-core';
-import { configureInstructionHiding } from './host-instructions-dom';
+import { AppearanceDock } from '../shell/appearance-dock';
+import { configureFullscreenShortcuts } from '../shell/window-shortcuts';
+import { configureCampaignMap } from '../map/campaign-map';
+import { configureMessageCommands, formatMessageCommand } from '../commands/message-commands';
+import { DEFAULT_HOST_INSTRUCTIONS, instructionDocument } from '../commands/host-instructions-core';
+import type { HostInstructions } from '../commands/host-instructions-core';
+import { configureInstructionHiding } from '../commands/host-instructions-dom';
 
 const SCHEME = 'fables-desktop';
 const SETTINGS_ORIGIN = `${SCHEME}://settings`;
@@ -87,29 +88,29 @@ export class AppearanceManager {
     settingsSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     settingsSession.setPermissionCheckHandler(() => false);
     const assets: Record<string, [string, string]> = {
-      '/': ['appearance.html', 'text/html; charset=utf-8'],
-      '/appearance.css': ['appearance.css', 'text/css; charset=utf-8'],
-      '/appearance.js': ['appearance.js', 'text/javascript; charset=utf-8'],
-      '/settings-theme.js': ['settings-theme.js', 'text/javascript; charset=utf-8'],
-      '/settings-locale.js': ['settings-locale.js', 'text/javascript; charset=utf-8'],
-      '/appearance-button.html': ['appearance-button.html', 'text/html; charset=utf-8'],
-      '/appearance-button.js': ['appearance-button.js', 'text/javascript; charset=utf-8'],
-      '/appearance-button.css': ['appearance-button.css', 'text/css; charset=utf-8'],
-      '/menu.html': ['menu.html', 'text/html; charset=utf-8'],
-      '/menu.css': ['menu.css', 'text/css; charset=utf-8'],
-      '/menu.js': ['menu.js', 'text/javascript; charset=utf-8'],
-      '/translation.html': ['translation.html', 'text/html; charset=utf-8'],
-      '/translation.css': ['translation.css', 'text/css; charset=utf-8'],
-      '/translation.js': ['translation.js', 'text/javascript; charset=utf-8'],
-      '/host-instructions.html':['host-instructions.html','text/html; charset=utf-8'],
-      '/host-instructions.css':['host-instructions.css','text/css; charset=utf-8'],
-      '/host-instructions.js':['host-instructions.js','text/javascript; charset=utf-8'],
+      '/': ['appearance/appearance.html', 'text/html; charset=utf-8'],
+      '/appearance.css': ['appearance/appearance.css', 'text/css; charset=utf-8'],
+      '/appearance.js': ['appearance/appearance.js', 'text/javascript; charset=utf-8'],
+      '/settings-theme.js': ['shared/settings-theme.js', 'text/javascript; charset=utf-8'],
+      '/settings-locale.js': ['shared/settings-locale.js', 'text/javascript; charset=utf-8'],
+      '/appearance-button.html': ['shell/appearance-button.html', 'text/html; charset=utf-8'],
+      '/appearance-button.js': ['shell/appearance-button.js', 'text/javascript; charset=utf-8'],
+      '/appearance-button.css': ['shell/appearance-button.css', 'text/css; charset=utf-8'],
+      '/menu.html': ['shell/menu.html', 'text/html; charset=utf-8'],
+      '/menu.css': ['shell/menu.css', 'text/css; charset=utf-8'],
+      '/menu.js': ['shell/menu.js', 'text/javascript; charset=utf-8'],
+      '/translation.html': ['translation/translation.html', 'text/html; charset=utf-8'],
+      '/translation.css': ['translation/translation.css', 'text/css; charset=utf-8'],
+      '/translation.js': ['translation/translation.js', 'text/javascript; charset=utf-8'],
+      '/host-instructions.html':['commands/host-instructions.html','text/html; charset=utf-8'],
+      '/host-instructions.css':['commands/host-instructions.css','text/css; charset=utf-8'],
+      '/host-instructions.js':['commands/host-instructions.js','text/javascript; charset=utf-8'],
     };
     settingsSession.protocol.handle(SCHEME, async (request) => {
       const url = new URL(request.url);
       const asset = url.host === 'settings' ? assets[url.pathname] : undefined;
       if (request.method !== 'GET' || !asset) return new Response('Not found', { status: 404 });
-      return new Response(await readFile(path.join(__dirname, '../assets', asset[0]), 'utf8'), {
+      return new Response(await readFile(appPath('assets', asset[0]), 'utf8'), {
         headers: { 'Content-Type': asset[1], 'X-Content-Type-Options': 'nosniff' },
       });
     });

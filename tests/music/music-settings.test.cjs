@@ -1,5 +1,5 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {DEFAULT_MUSIC,audioUrl,validateMusic}=require('../dist/music-settings');
+const {DEFAULT_MUSIC,audioUrl,validateMusic}=require('../../dist/music/music-settings');
 test('Music preferences validate track links, selection and playback bounds',()=>{
  const track={id:'track-1',title:'  Tavern  ',url:'https://audio.example/tavern.ogg?token=one'};
  const settings={...DEFAULT_MUSIC,tracks:[track],selected:track.id,volume:0,muted:true,loop:true};

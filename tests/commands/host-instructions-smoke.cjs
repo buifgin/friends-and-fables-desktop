@@ -1,10 +1,10 @@
 const assert=require('node:assert/strict'),path=require('node:path'),os=require('node:os');
 const {mkdtemp,readFile,rm,writeFile}=require('node:fs/promises');
 const {app,BrowserWindow,session}=require('electron');
-const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'..');
-const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance'));
-const {HostInstructionsManager}=require(path.join(appRoot,'dist/host-instructions'));
-const {HOST_INSTRUCTIONS_URL}=require(path.join(appRoot,'dist/host-instructions-core'));
+const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname, '..', '..');
+const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance/appearance'));
+const {HostInstructionsManager}=require(path.join(appRoot,'dist/commands/host-instructions'));
+const {HOST_INSTRUCTIONS_URL}=require(path.join(appRoot,'dist/commands/host-instructions-core'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
 let parent,settingsWindow,forged,profile,host,appearance,stage='initialize';
 const timer=setTimeout(()=>{console.error('Instruction test timed out.');app.exit(1)},50000);
@@ -18,7 +18,7 @@ window.editor=new Editor({...options,element:document.getElementById('editor-con
 window.formEditor=new Editor({...options,element:document.getElementById('form-content'),content:'<p>/sp</p>'});
 document.getElementById('send').addEventListener('click',()=>{window.sent.push({html:window.draftHTML,json:window.editor.getJSON()});const article=document.createElement('article');article.className='prose';article.innerHTML=window.draftHTML;window.originalNodes.push(article.lastElementChild.firstChild);document.getElementById('feed').append(article)});
 document.getElementById('editor-content').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();document.getElementById('send').click()}},true);
-`,resolveDir:path.join(__dirname,'..')},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
+`,resolveDir:path.join(__dirname, '..', '..')},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
 const html='<!doctype html><html><meta charset="utf-8"><body><div class="flex flex-col bg-gray-800/80 relative" id="composer"><button aria-label="More actions">More actions</button><div id="editor-content"></div><button role="combobox" id="mode">Manual</button><button id="send" aria-label="Send message">Send</button></div><div id="feed"></div><form><div class="grid relative"><div id="working-context-bar-spacer"></div><div id="form-content"></div></div></form><script src="/editor.js"></script></body></html>';
 (async()=>{
  profile=process.env.FABLES_TEST_PROFILE_DIR||await mkdtemp(path.join(os.tmpdir(),'fables-sp-test-'));app.setPath('userData',profile);await app.whenReady();
@@ -66,7 +66,7 @@ const html='<!doctype html><html><meta charset="utf-8"><body><div class="flex fl
  await host.save({...host.getSettings(),hideMarked:true});await until(()=>js("document.querySelector('#split-block ul').hasAttribute('data-ff-desktop-hidden-instructions')"));assert.equal(await js("getComputedStyle(document.getElementById('ordinary-after')).display==='none'"),false);assert.equal(await js("document.querySelectorAll('#incomplete [data-ff-desktop-hidden-instructions]').length"),0,'Unbalanced markers do not hide unrelated messages.');
  await js("{const article=document.createElement('article');article.className='prose';article.id='inline-code';article.innerHTML='<p>[[FF-SP:1]]<br>Use <code>literal code</code> in guidance.<br>[[/FF-SP:1]]</p><p><code>[[FF-SP:1]] literal example [[/FF-SP:1]]</code></p>';document.getElementById('feed').append(article)}");
  await until(()=>js("document.querySelector('#inline-code p:first-child').hasAttribute('data-ff-desktop-hidden-instructions')"));assert.equal(await js("document.querySelector('#inline-code p:last-child').hasAttribute('data-ff-desktop-hidden-instructions')"),false,'Literal marker examples in code remain visible.');
- forged=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/host-instructions-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});await forged.loadURL(HOST_INSTRUCTIONS_URL);
+ forged=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/commands/host-instructions-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});await forged.loadURL(HOST_INSTRUCTIONS_URL);
  assert.match(await forged.webContents.executeJavaScript("window.hostInstructions.get().then(()=> 'allowed',error=>error.message)"),/only in the app settings/);assert.match(await forged.webContents.executeJavaScript("window.hostInstructions.save({}).then(()=> 'allowed',error=>error.message)"),/only in the app settings/);forged.destroy();forged=null;
  if(process.env.FABLES_SP_SCREENSHOT){settingsWindow.show();await writeFile(process.env.FABLES_SP_SCREENSHOT,(await settingsWindow.webContents.capturePage()).toPNG());}
  const stored=host.getSettings();await host.shutdown();host=new HostInstructionsManager();await host.initialize();host.onChange=value=>appearance.setHostInstructions(value);assert.deepEqual(host.getSettings(),stored,'Instructions survive restart.');

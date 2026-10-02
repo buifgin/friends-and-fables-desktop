@@ -1,6 +1,6 @@
 # English–Russian D&D glossary
 
-Version 5 contains over 550 D&D term names, over 1,800 fixed shared-interface labels/help strings, and the app’s navigation, abilities, skills, and alignment dictionary. Sources: `src/russian-glossary.ts`, `src/interface-russian.ts`, and `src/translation-core.ts`. Common CRUD controls use explicit Russian grammatical forms. The combined dictionary contains over 2,600 entries.
+Version 5 contains over 550 D&D term names, over 1,800 fixed shared-interface labels/help strings, and the app’s navigation, abilities, skills, and alignment dictionary. Sources: `src/translation/russian-glossary.ts`, `src/translation/interface-russian.ts`, and `src/translation/translation-core.ts`. Common CRUD controls use explicit Russian grammatical forms. The combined dictionary contains over 2,600 entries.
 
 The app uses fixed translations for navigation, account menus, character tabs, conditions, damage types, resources, feats, spell schools, class features, equipment, and many cantrips and level 1–3 spells. Numeric labels retain their numbers: `Second Wind:1/2` becomes `Второе дыхание:1/2`, and `Level 5 Drow Fighter (Spellblade)` becomes `Уровень 5 Дроу Воин (Клинок заклинаний)`.
 

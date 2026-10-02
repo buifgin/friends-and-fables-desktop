@@ -4,6 +4,8 @@ module.exports = {
     extraResource: process.platform === 'win32' ? ['build/translator'] : [],
     executableName: 'friends-and-fables-desktop',
     ignore: [
+      /^\/\.codex(?:\/|$)/,
+      /(?:^|\/)AGENTS\.md$/,
       /^\/src(?:\/|$)/,
       /^\/translator(?:\/|$)/,
       /^\/\.cache(?:\/|$)/,

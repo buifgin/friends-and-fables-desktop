@@ -38,6 +38,13 @@ The package version is still **0.5.1**. Music, saved instructions, and the lates
 - Russian fixes include ability/skill checks, natural lowercase terms in compound labels, health states, turn actions, typing indicators, Event ID, Collapse All, Entity/Encounter, HP and weight units, and common spell/action labels.
 - **Hide text until translated** shows animated dots while a block is pending. It reveals only its completed result, preserves native nodes and drafts, and restores originals when disabled. Glossary changes are applied before the next paint. Initial main-window navigation is held until the first local translation scan.
 
+## Development layout (unreleased)
+
+- Source, renderer assets and tests are grouped by appearance, music, translation, commands, map and shared shell responsibilities. The main entry remains dist/main.js.
+- Bundled resource/preload paths, documentation and CI commands follow the new folders. Builds clean generated output so moved modules cannot remain in release packages.
+- Local agent ownership guides are excluded from Git and both package formats. Shared integration has one owner; parallel changes use isolated worktrees and disjoint file assignments.
+- Folder refactor verified with 25 unit tests, all seven Electron suites from source and the Linux app.asar package, and the Python adapter test. Native Windows verification remains in CI.
+
 ## Validation
 
 The hotfix has TypeScript, core/unit, and offline Electron regression coverage. The fixtures exercise real Tiptap and Chromium keyboard input, both instruction profiles, blank translation, appearance persistence, music playback and teardown, and settings/file access boundaries. These source checks do not imply a new published release or native Windows runtime verification.

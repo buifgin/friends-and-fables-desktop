@@ -1,8 +1,8 @@
 const {readFile,mkdtemp,rm} = require('node:fs/promises');
 const path=require('node:path');const os=require('node:os');
-const {translationPlan,renderTranslation}=require('../dist/translation-core');
-const {LocalTranslator}=require('../dist/local-translator');
-const {TranslationCache}=require('../dist/translation-cache');
+const {translationPlan,renderTranslation}=require('../dist/translation/translation-core');
+const {LocalTranslator}=require('../dist/translation/local-translator');
+const {TranslationCache}=require('../dist/translation/translation-cache');
 (async()=>{
  const samples=JSON.parse(await readFile(path.join(__dirname,'../tests/fixtures/translation-cases.json'),'utf8'));
  const directory=await mkdtemp(path.join(os.tmpdir(),'fables-translation-benchmark-'));

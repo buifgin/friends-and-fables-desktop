@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {MUSIC_CATALOG,catalogAttribution}=require('../dist/music-catalog');
-const {validateMusic,DEFAULT_MUSIC}=require('../dist/music-settings');
+const {MUSIC_CATALOG,catalogAttribution}=require('../../dist/music/music-catalog');
+const {validateMusic,DEFAULT_MUSIC}=require('../../dist/music/music-settings');
 test('Bundled catalog has unique official audio links, source pages, license credits and searchable metadata',()=>{
  assert.equal(MUSIC_CATALOG.length,266);const ids=new Set(),urls=new Set();
  for(const track of MUSIC_CATALOG){

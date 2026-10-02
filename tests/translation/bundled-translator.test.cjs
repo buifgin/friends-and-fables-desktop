@@ -1,7 +1,7 @@
 const test=require('node:test'),assert=require('node:assert/strict'),path=require('node:path');
-const {BundledTranslator}=require('../dist/bundled-translator');
-const {LocalTranslator}=require('../dist/local-translator');
-const root=path.join(__dirname,'fixtures'),fixture=path.join(root,'bundled-translator.cjs');
+const {BundledTranslator}=require('../../dist/translation/bundled-translator');
+const {LocalTranslator}=require('../../dist/translation/local-translator');
+const root=path.join(__dirname,'../fixtures'),fixture=path.join(root,'bundled-translator.cjs');
 const create=(mode='')=>new BundledTranslator(root,{command:process.execPath,args:[fixture,mode],startupTimeoutMs:mode==='hang'?200:3000});
 test('owned translator starts once, requires its private token, stops on parent EOF, and can restart',async()=>{
  const runtime=create();

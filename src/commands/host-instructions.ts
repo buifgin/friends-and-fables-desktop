@@ -4,8 +4,8 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { DEFAULT_HOST_INSTRUCTIONS, HOST_INSTRUCTIONS_URL, validateHostInstructions } from './host-instructions-core';
 import type { HostInstructions } from './host-instructions-core';
-import { DEFAULT_APPEARANCE, themeBackground } from './themes';
-import type { AppearanceSettings } from './themes';
+import { DEFAULT_APPEARANCE, themeBackground } from '../appearance/themes';
+import type { AppearanceSettings } from '../appearance/themes';
 
 export class HostInstructionsManager {
   private settings=structuredClone(DEFAULT_HOST_INSTRUCTIONS);

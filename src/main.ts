@@ -1,14 +1,14 @@
 import { app, BrowserWindow, dialog, Menu, nativeTheme, session, shell, webContents, WebContentsView } from 'electron';
 import type { WebContents, MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
-import { configureZoomShortcuts } from './zoom';
-import { configureFullscreenShortcuts } from './window-shortcuts';
-import { AppearanceManager, registerAppearanceScheme } from './appearance';
-import { LinuxMenuBar, MENU_URL } from './linux-menu';
-import { TranslationManager } from './translation';
-import { appText, localizeMenu } from './app-menu-locale';
-import { MusicManager } from './music';
-import { HostInstructionsManager } from './host-instructions';
+import { configureZoomShortcuts } from './shell/zoom';
+import { configureFullscreenShortcuts } from './shell/window-shortcuts';
+import { AppearanceManager, registerAppearanceScheme } from './appearance/appearance';
+import { LinuxMenuBar, MENU_URL } from './shell/linux-menu';
+import { TranslationManager } from './translation/translation';
+import { appText, localizeMenu } from './shell/app-menu-locale';
+import { MusicManager } from './music/music';
+import { HostInstructionsManager } from './commands/host-instructions';
 
 const APP_NAME = 'Friends & Fables Desktop';
 const WEBSITE_URL = 'https://play.fables.gg/';
@@ -113,7 +113,7 @@ function createWindow(): void {
     backgroundColor: '#000000',
     webPreferences: {
       partition: 'fables-appearance',
-      ...(linux ? { preload: path.join(__dirname, 'menu-preload.js') } : {}),
+      ...(linux ? { preload: path.join(__dirname, 'shell/menu-preload.js') } : {}),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,

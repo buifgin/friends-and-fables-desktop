@@ -3,11 +3,11 @@ const { mkdir, mkdtemp, readFile, rename, rm, writeFile } = require('node:fs/pro
 const os = require('node:os');
 const path = require('node:path');
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, WebContentsView } = require('electron');
-const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..');
-const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance'));
-const { configureZoomShortcuts } = require(path.join(appRoot, 'dist/zoom'));
-const { configureFullscreenShortcuts } = require(path.join(appRoot, 'dist/window-shortcuts'));
-const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/linux-menu'));
+const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
+const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance/appearance'));
+const { configureZoomShortcuts } = require(path.join(appRoot, 'dist/shell/zoom'));
+const { configureFullscreenShortcuts } = require(path.join(appRoot, 'dist/shell/window-shortcuts'));
+const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/shell/linux-menu'));
 
 registerAppearanceScheme();
 app.on('window-all-closed', () => {});
@@ -44,8 +44,8 @@ async function save(settings, window) {
   await app.whenReady();
   const manager = new AppearanceManager();
   await manager.initialize();
-  const rollResults = await readFile(path.join(__dirname, 'fixtures/roll-results.html'), 'utf8');
-  const webpBytes = await readFile(path.join(__dirname, 'fixtures/colors.webp'));
+  const rollResults = await readFile(path.join(__dirname, '../fixtures/roll-results.html'), 'utf8');
+  const webpBytes = await readFile(path.join(__dirname, '../fixtures/colors.webp'));
 
   const testSession = session.fromPartition('appearance-smoke');
   testSession.protocol.handle('https', () => new Response(`<!doctype html>
@@ -216,7 +216,7 @@ async function save(settings, window) {
   await writeFile(invalidWebp, Buffer.from('RIFF0000WEBPnot an image'));
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [invalidWebp] });
   await assert.rejects(settingsContents.executeJavaScript('window.appearance.importImage()'), /could not be read as an image/);
-  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path.join(__dirname, 'fixtures/oversized.webp')] });
+  dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [path.join(__dirname, '../fixtures/oversized.webp')] });
   await assert.rejects(settingsContents.executeJavaScript('window.appearance.importImage()'), /16 million pixels/);
   assert.equal(BrowserWindow.getAllWindows().length, windowsBeforeWebp);
   dialog.showOpenDialog = async () => ({ canceled: false, filePaths: [picture] });
@@ -552,7 +552,7 @@ async function save(settings, window) {
   if(process.env.FABLES_TEST_SCREENSHOT){
     await settingsContents.executeJavaScript("window.appearance.get().then(showSettings);document.querySelector('[data-panel=\"context-panel\"]').click()");
     website.show();settingsWindow.show();
-    const {floatAppearance}=require(path.join(appRoot,'dist/floating-appearance'));
+    const {floatAppearance}=require(path.join(appRoot,'dist/shell/floating-appearance'));
     await floatAppearance(settingsWindow,true);await new Promise(resolve=>setTimeout(resolve,250));
     await writeFile(process.env.FABLES_TEST_SCREENSHOT.replace(/\.png$/,'-ornaments.png'),(await settingsContents.capturePage()).toPNG());
     settingsWindow.hide();
@@ -623,7 +623,7 @@ async function save(settings, window) {
   assert.equal(await settingsContents.executeJavaScript("document.getElementById('browser-status').textContent"),'background-options · 14 pictures');
   if(process.env.FABLES_TEST_SCREENSHOT){
     website.show();settingsWindow.show();
-    const {floatAppearance}=require(path.join(appRoot,'dist/floating-appearance'));
+    const {floatAppearance}=require(path.join(appRoot,'dist/shell/floating-appearance'));
     await floatAppearance(settingsWindow,true);await new Promise(resolve=>setTimeout(resolve,250));
     await writeFile(process.env.FABLES_TEST_SCREENSHOT.replace(/\.png$/,'-gallery.png'),(await settingsContents.capturePage()).toPNG());
     settingsWindow.hide();
@@ -664,7 +664,7 @@ async function save(settings, window) {
   // Even a window with the same preload cannot use the settings bridge.
   const outsider = new BrowserWindow({ show: false, webPreferences: {
     session: testSession, sandbox: true, contextIsolation: true, nodeIntegration: false,
-    preload: path.join(appRoot, 'dist/appearance-preload.js'),
+    preload: path.join(appRoot, 'dist/appearance/appearance-preload.js'),
   } });
   manager.attach(outsider.webContents);
   await outsider.loadURL('https://example.invalid/test');
@@ -731,7 +731,7 @@ async function save(settings, window) {
 
   if (process.platform === 'linux') {
     const frame = new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',sandbox:true,
-      contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/menu-preload.js')}});
+      contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/shell/menu-preload.js')}});
     const view = new WebContentsView({webPreferences:{session:testSession,sandbox:true,nodeIntegration:false}});
     frame.contentView.addChildView(view);
     let reloads = 0, appearances = 0, minimizes = 0;
@@ -797,7 +797,7 @@ async function save(settings, window) {
     await overlay.webContents.executeJavaScript("document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))");
     await until(overlay.webContents,'dropdown.hidden');
     const impostor = new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',sandbox:true,
-      contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/menu-preload.js')}});
+      contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/shell/menu-preload.js')}});
     await impostor.loadURL(MENU_URL);
     await assert.rejects(impostor.webContents.executeJavaScript("window.desktopMenu.open('view',0)"),/only in the app menu bar/);
     impostor.destroy();

@@ -1,6 +1,6 @@
 const {test}=require('node:test'),assert=require('node:assert/strict');
-const {DEFAULT_HOST_INSTRUCTIONS,validateHostInstructions,instructionDocument}=require('../dist/host-instructions-core');
-const {formatMessageCommand}=require('../dist/message-commands');
+const {DEFAULT_HOST_INSTRUCTIONS,validateHostInstructions,instructionDocument}=require('../../dist/commands/host-instructions-core');
+const {formatMessageCommand}=require('../../dist/commands/message-commands');
 test('Instruction settings persist configuration history and reject reserved markers',()=>{
  assert.deepEqual(validateHostInstructions(DEFAULT_HOST_INSTRUCTIONS),DEFAULT_HOST_INSTRUCTIONS);
  assert.deepEqual(validateHostInstructions({text:'\r\n Keep continuity. \r\n',enabled:true,hideMarked:true}),{text:'Keep continuity.',combatText:'',combatEnabled:false,enabled:true,hideMarked:true,configured:true});

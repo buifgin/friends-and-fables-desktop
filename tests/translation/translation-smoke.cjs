@@ -3,9 +3,9 @@ const http=require('node:http');
 const {mkdtemp,readFile,rm,writeFile}=require('node:fs/promises');
 const os=require('node:os');const path=require('node:path');
 const {app,BrowserWindow,session}=require('electron');
-const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'..');
-const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance'));
-const {TranslationManager,TRANSLATION_URL}=require(path.join(appRoot,'dist/translation'));
+const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname, '..', '..');
+const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance/appearance'));
+const {TranslationManager,TRANSLATION_URL}=require(path.join(appRoot,'dist/translation/translation'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
 let profile,manager,server,mode='ready',calls=[],delays=0,batches=[],progressBatches=0,releaseProgress;
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -39,7 +39,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(manager.getSettings().enabled,false);
  const preferences={...manager.getSettings(),port:server.address().port,preservedNames:['Franz','Aria Moonwhisper']};
  await manager.save(preferences);
- const html=await readFile(path.join(__dirname,'fixtures/translation-page.html'),'utf8');
+ const html=await readFile(path.join(__dirname,'../fixtures/translation-page.html'),'utf8');
  const siteSession=session.fromPartition('translation-smoke');siteSession.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
  const website=new BrowserWindow({show:false,width:1000,height:900,webPreferences:{session:siteSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});
  let display=true,displayChanges=[];manager.attach(website.webContents,{setVisible(value){display=value;displayChanges.push(value)}});await website.loadURL('https://play.fables.gg/campaign/play');
@@ -223,7 +223,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await contents.executeJavaScript("document.getElementById('late').innerHTML='<p id=recovered>The unfamiliar cave appears.</p>'");
  await until(contents,"document.getElementById('recovered').textContent.startsWith('Перевод')");
  await assert.rejects(settings.webContents.executeJavaScript(`window.translation.save(${JSON.stringify({...manager.getSettings(),port:'https://example.com'})})`),/local port/);
- const impostor=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',sandbox:true,contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/translation-preload.js')}});
+ const impostor=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',sandbox:true,contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/translation/translation-preload.js')}});
  await impostor.loadURL(TRANSLATION_URL);await assert.rejects(impostor.webContents.executeJavaScript('window.translation.get()'),/only in the app translation window/);impostor.destroy();
  await website.loadURL('https://accounts.example.com/login');await sleep(800);
  assert.equal(await contents.executeJavaScript('typeof window.__friendsFablesDesktopTranslation'),'undefined');
@@ -239,8 +239,8 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal((await reopened.webContents.executeJavaScript('window.translation.clearCache()')).cacheEntries,0);
  if(process.env.FABLES_TEST_SCREENSHOT){reopened.show();await sleep(150);await writeFile(process.env.FABLES_TEST_SCREENSHOT,(await reopened.webContents.capturePage()).toPNG());}
  // Blank mode keeps native text nodes and never paints a newly inserted source label.
- const {installTranslationDom}=require(path.join(appRoot,'dist/translation-dom'));
- const {RUSSIAN_DICTIONARY,localTranslation}=require(path.join(appRoot,'dist/translation-core'));
+ const {installTranslationDom}=require(path.join(appRoot,'dist/translation/translation-dom'));
+ const {RUSSIAN_DICTIONARY,localTranslation}=require(path.join(appRoot,'dist/translation/translation-core'));
  await contents.executeJavaScript(`document.body.innerHTML='<style>#blank-story{color:red!important}</style><p id="blank-story" aria-busy="false">The untranslated river flows.</p><div contenteditable="true" id="blank-editor">Original English draft.</div><section id="blank-late"></section>';window.blankText=document.getElementById('blank-story').firstChild;(${installTranslationDom.toString()})('blank-test',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}),true)`);
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').hasAttribute('data-ff-translation-blank')"),true);
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').firstChild===blankText"),true);

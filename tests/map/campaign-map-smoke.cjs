@@ -1,9 +1,9 @@
 const assert=require('node:assert/strict'),path=require('node:path');
 const {mkdtemp,rm}=require('node:fs/promises'),os=require('node:os');
 const {app,BrowserWindow,session}=require('electron');
-const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'..');
-const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance'));
-const {floatSettingsWindow}=require(path.join(appRoot,'dist/floating-appearance'));
+const appRoot=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname, '..', '..');
+const {AppearanceManager,registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance/appearance'));
+const {floatSettingsWindow}=require(path.join(appRoot,'dist/shell/floating-appearance'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 let profile,window;

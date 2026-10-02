@@ -16,4 +16,4 @@ Completed marked sections are hidden by default in this app. Enable **Show marke
 
 The website receives no preload or application IPC API. Only the owned app instruction window can read/save preferences. The instruction text reaches the ordinary website renderer when enabled, as required for preparing the message.
 
-Run `npm run build`, `node --test tests/host-instructions-core.test.cjs`, and `npm run test:instructions`. The offline Electron test uses a real Tiptap editor and synthetic messages; it sends nothing to a live campaign. It checks persistence, first-use `/sp`, native schema normalization, retries, mode/edit/disabled guards, reversible hiding, original node preservation, translated settings, and IPC restrictions.
+Run `npm run build`, `node --test tests/commands/host-instructions-core.test.cjs`, and `npm run test:instructions`. The offline Electron test uses a real Tiptap editor and synthetic messages; it sends nothing to a live campaign. It checks persistence, first-use `/sp`, native schema normalization, retries, mode/edit/disabled guards, reversible hiding, original node preservation, translated settings, and IPC restrictions.
