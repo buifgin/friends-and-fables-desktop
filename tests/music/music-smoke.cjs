@@ -43,21 +43,24 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await siteJs("document.querySelector('[data-ff-desktop-music-button]').click()");await until(()=>opened===1);
  player=await manager.open(parent);manager.hide();const js=source=>player.webContents.executeJavaScript(source);
  await until(()=>js("!document.getElementById('title').disabled"));
- const saved=()=>readFile(path.join(profile,'music.json'),'utf8').then(JSON.parse).catch(()=>null);
+ // Settings are published only after the atomic rename succeeds. Polling the file
+ // itself can hold its destination open during a Windows save.
+ const committed=()=>manager.getSettings();
+ const persisted=async()=>JSON.parse(await readFile(path.join(profile,'music.json'),'utf8'));
  const add=async(title,url)=>js(`document.getElementById('title').value=${JSON.stringify(title)};document.getElementById('url').value=${JSON.stringify(url)};document.getElementById('add-track').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))`);
- await add('<img src=x onerror=alert(1)>','https://audio.fixture/first.wav');await until(async()=>(await saved())?.tracks.length===1);
+ await add('<img src=x onerror=alert(1)>','https://audio.fixture/first.wav');await until(()=>committed().tracks.length===1);
  assert.equal(await js("document.querySelector('#playlist img')"),null);
  assert.equal(requests,0,'Saved tracks do not contact audio hosts until Play.');
- await add('Second track','https://audio.fixture/second.wav');await until(async()=>(await saved())?.tracks.length===2);
+ await add('Second track','https://audio.fixture/second.wav');await until(()=>committed().tracks.length===2);
  await js("document.getElementById('play').click()");await until(()=>js("!document.getElementById('audio').paused && Number.isFinite(document.getElementById('audio').duration)"));
  assert(requests>0);assert.equal(await js("document.getElementById('audio').duration"),8);
  await js("document.getElementById('volume').value=23;document.getElementById('volume').dispatchEvent(new Event('input'));document.getElementById('volume').dispatchEvent(new Event('change'));document.getElementById('mute').click();document.getElementById('loop').click()");
- await until(async()=>{const state=await saved();return state?.volume===.23&&state.muted&&state.loop});
+ await until(()=>{const state=committed();return state.volume===.23&&state.muted&&state.loop});
  assert.equal(await js("document.getElementById('audio').volume"),.23);assert.equal(await js("document.getElementById('audio').muted"),true);assert.equal(await js("document.getElementById('audio').loop"),true);
  await js("document.getElementById('seek').value=500;document.getElementById('seek').dispatchEvent(new Event('input'))");
  assert((await js("document.getElementById('audio').currentTime"))>=4);
  await js("document.getElementById('play').click()");assert.equal(await js("document.getElementById('audio').paused"),true);
- await js("document.getElementById('next').click()");await until(async()=>(await saved())?.selected===(await saved())?.tracks[1].id);
+ await js("document.getElementById('next').click()");await until(()=>{const state=committed();return state.selected===state.tracks[1].id});
  assert.equal(await js("document.getElementById('audio').paused"),true,'Skipping while paused does not start playback.');
  await js("document.getElementById('loop').click();document.querySelector('#playlist .track').click()");
  await until(()=>js("!document.getElementById('audio').paused && Number.isFinite(document.getElementById('audio').duration)"));
@@ -72,7 +75,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await until(()=>js("document.documentElement.lang==='ru'"));assert.equal(await js("document.getElementById('mute').textContent"),'Включить звук');assert.equal(await js("document.documentElement.style.getPropertyValue('--ui-bg')"),'#f5f5f5');
  await until(()=>siteJs("document.querySelector('[data-ff-desktop-music-button]').title==='Музыкальный проигрыватель'"));
  await add('Page link','https://www.youtube.com/watch?v=test');assert.equal(await js("document.getElementById('save-status').textContent"),'Это ссылка на веб-страницу. Укажите прямую ссылку на аудиофайл.');
- assert.equal((await saved()).tracks.length,2);
+ assert.equal(committed().tracks.length,2);
  forged=new BrowserWindow({show:false,webPreferences:{partition:'fables-music',preload:path.join(appRoot,'dist/music/music-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
  await forged.loadURL(MUSIC_URL);
  assert.match(await forged.webContents.executeJavaScript("window.music.get().then(()=> 'allowed',error=>error.message)"),/only in the app player/);
@@ -94,13 +97,15 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  const previousPlayer=player;manager.hide();player=await manager.open(parent);assert.equal(player,previousPlayer,'Closing the library retains its audio renderer.');manager.hide();const reopened=source=>player.webContents.executeJavaScript(source);await until(()=>reopened("!document.getElementById('title').disabled"));
  assert.equal(await reopened("document.querySelectorAll('#playlist li').length"),2);assert.equal(await reopened("document.getElementById('volume').value"),'23');assert.equal(await reopened("document.getElementById('audio').paused"),true);
  assert.equal(await reopened("document.getElementById('audio').hasAttribute('src')"),false,'Reopening never autoplays a saved track.');
- await reopened("document.querySelector('#playlist li[aria-current=true] .remove').click()");await until(async()=>(await saved())?.tracks.length===1);
+ await reopened("document.querySelector('#playlist li[aria-current=true] .remove').click()");await until(()=>committed().tracks.length===1);
  assert.equal(await reopened("document.querySelector('#playlist li[aria-current=true] .track').textContent.includes('<img')"),true);
- const final=await saved();await manager.shutdown();player=null;
+ await manager.shutdown();player=null;const final=committed();
+ assert.equal(final.volume,.23);assert.equal(final.muted,true);assert.equal(final.loop,true);assert.equal(final.selected,final.tracks[0].id);
+ assert.deepEqual(await persisted(),final,'Committed playlist, selection, volume, mute and loop are persisted on disk after writes drain.');
  manager=new MusicManager();await manager.initialize();assert.deepEqual(manager.getSettings(),final,'Playlist and playback preferences survive restarting the manager.');
  const requestsBeforeRestart=requests;player=await manager.open(parent);manager.hide();await until(()=>reopened("!document.getElementById('title').disabled"));
  assert.equal(requests,requestsBeforeRestart);assert.equal(await reopened("document.getElementById('audio').paused"),true);
- await add('Broken link','https://audio.fixture/broken.wav');await until(async()=>(await saved())?.tracks.length===2);
+ await add('Broken link','https://audio.fixture/broken.wav');await until(()=>committed().tracks.length===2);
  await reopened("document.querySelector('#playlist li:last-child .track').click()");
  await until(()=>reopened("document.getElementById('playback-status').classList.contains('error')"));
  assert.equal(await reopened("document.getElementById('audio').paused"),true);
@@ -118,11 +123,11 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await reopened("document.getElementById('catalog-mood').value='';document.getElementById('catalog-genre').value=''");await search('TiTaN');
  assert.equal(await reopened("document.querySelectorAll('#catalog li').length"),1);assert.equal(await reopened("document.querySelector('#catalog h3').textContent"),'Titan');
  assert.equal(requests,requestsBeforeCatalog,'Browsing and searching the whole catalog makes no audio request.');
- await reopened("document.querySelector('#catalog [data-action=add]').click();document.querySelector('#catalog [data-action=add]').click()");await until(async()=>(await saved())?.tracks.length===3);
- assert.equal(requests,requestsBeforeCatalog,'Adding a catalog track never autoplays.');assert.equal((await saved()).tracks.filter(track=>track.url===MUSIC_CATALOG.find(track=>track.id==='scott-titan').url).length,1);
+ await reopened("document.querySelector('#catalog [data-action=add]').click();document.querySelector('#catalog [data-action=add]').click()");await until(()=>committed().tracks.length===3);
+ assert.equal(requests,requestsBeforeCatalog,'Adding a catalog track never autoplays.');assert.equal(committed().tracks.filter(track=>track.url===MUSIC_CATALOG.find(track=>track.id==='scott-titan').url).length,1);
  await until(()=>reopened("!document.querySelector('#catalog [data-action=play]').disabled"));await reopened("{const a=document.getElementById('audio'),play=a.play.bind(a);a.play=async()=>{try{return await play()}catch(error){window.fixturePlayError={name:error.name,message:error.message};throw error}}}document.querySelector('#catalog [data-action=play]').click()");
  try{await until(()=>reopened("!document.getElementById('audio').paused && Number.isFinite(document.getElementById('audio').duration)"));}catch(error){console.error('Catalog playback diagnostic',requestUrls.slice(-4),await reopened("(()=>{const a=document.getElementById('audio');return {src:a.getAttribute('src'),paused:a.paused,duration:a.duration,error:a.error?.message,playError:window.fixturePlayError,status:document.getElementById('playback-status').textContent,title:document.getElementById('track-title').textContent}})()"));throw error;}
- assert.equal((await saved()).tracks.length,3,'Playing an added track reuses it.');assert.equal(await reopened("document.getElementById('track-credit').hidden"),false);
+ assert.equal(committed().tracks.length,3,'Playing an added track reuses it.');assert.equal(await reopened("document.getElementById('track-credit').hidden"),false);
  await reopened("document.getElementById('copy-credit').click()");await until(()=>reopened("document.getElementById('save-status').textContent==='Attribution copied.'"));assert.match(copied,/Titan by Scott Buckley/);assert.match(copied,/creativecommons.org\/licenses\/by\/4.0/);
  await reopened("document.querySelector('#catalog [data-action=source]').click();document.querySelector('#catalog [data-action=license]').click()");await until(()=>externalLinks.length===2);
  assert.deepEqual(externalLinks,['https://www.scottbuckley.com.au/library/titan/','https://creativecommons.org/licenses/by/4.0/']);
@@ -140,7 +145,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  manager.attachMain(parent,toolbar.webContents,parent.webContents);await toolbar.webContents.loadURL('fables-desktop://settings/appearance-button.html');const control=source=>toolbar.webContents.executeJavaScript(source);
  await until(()=>control("!document.getElementById('play').disabled"));await control("document.getElementById('stop').click()");await until(()=>reopened("!document.getElementById('audio').hasAttribute('src')"));
  await control("document.getElementById('play').click()");await until(()=>reopened("!document.getElementById('audio').paused"));
- await control("document.getElementById('repeat').click();document.getElementById('volume').value=37;document.getElementById('volume').dispatchEvent(new Event('input'))");await until(()=>reopened("document.getElementById('audio').volume===.37"));assert.equal(await control("document.getElementById('volume-value').value"),'37%');
+ await control("document.getElementById('repeat').click();document.getElementById('volume').value=37;document.getElementById('volume').dispatchEvent(new Event('input'))");await until(async()=>committed().volume===.37&&await reopened("document.getElementById('audio').volume===.37")&&await control("document.getElementById('volume-value').value==='37%'"));assert.equal(await control("document.getElementById('volume-value').value"),'37%');
  if(process.env.FABLES_MUSIC_SCREENSHOT){await control("document.getElementById('volume-button').click();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");await writeFile(process.env.FABLES_MUSIC_SCREENSHOT.replace(/\.png$/,'-toolbar.png'),(await toolbar.webContents.capturePage()).toPNG());await control("document.getElementById('volume-button').click()");}
  const initialTitle=await reopened("document.getElementById('track-title').textContent");await control("document.getElementById('next').click()");await until(async()=>(await reopened("document.getElementById('track-title').textContent"))!==initialTitle);
  await control("document.getElementById('library').click()");await until(()=>player.getVisible());await control("document.getElementById('library').click()");await until(()=>!player.getVisible());assert.equal(await reopened("document.getElementById('audio').paused"),false);
@@ -163,6 +168,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  await reopened("document.getElementById('stop').click();document.querySelector('#folders button').click()");await until(()=>reopened("document.querySelectorAll('#folders li').length===0"));assert.equal((await readFile(outside)).length,wav.length,'Removing a source never deletes music files.');
  const removed=await session.fromPartition('fables-music').fetch(tavern.url);assert.equal(removed.status,404);
  const playbackContents=player.webContents;parent.destroy();parent=null;await until(()=>playbackContents.isDestroyed());await manager.shutdown();
+ assert.deepEqual(await persisted(),committed(),'The final playlist and playback preferences are persisted on disk after writes drain.');
  console.log('Music smoke passed: persistent embedded audio, toolbar controls, local folder playback/search/removal and path boundaries, real audio, volume/mute/loop/seek, catalog search/filter/pagination, duplicate-free playlist actions, official source/license links, attribution copy, persistence, Russian/themes, composer placement, and restricted IPC.');
  assert.equal(manager.getSettings().tracks.length,4);
 } )().then(()=>finish(0),async error=>{console.error(error);await finish(1)});
