@@ -65,6 +65,8 @@ function selection() {
     appearancePinned: element('pin-appearance').checked, appearancePanelWidth: panelWidth,
     resizableMap: element('resizable-map').checked,
     messageCommands: element('message-commands').checked,
+    expandMessageInput: element('expand-message-input').checked,
+    nativeWindowsFrame: element('native-windows-frame').checked,
     linuxBlackMenu: element('black-menu').checked, linuxFloatingAppearance: element('floating-appearance').checked,
   };
 }
@@ -125,6 +127,9 @@ function showSettings(settings) {
     element(`${role}-border`).checked = style.border.enabled;
     for (const part of ['color','width','radius','variant']) element(`${role}-border-${part}`).value = style.border[part];
   }
+  element('expand-message-input').checked = settings.expandMessageInput;
+  element('native-windows-frame').checked = settings.nativeWindowsFrame;
+  element('windows-frame-setting').hidden = settings.platform !== 'win32';
   element('black-menu').checked = settings.linuxBlackMenu;
   element('floating-appearance').checked = settings.linuxFloatingAppearance;
   element('linux-menu-setting').hidden = settings.platform !== 'linux';

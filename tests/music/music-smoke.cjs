@@ -31,16 +31,17 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  });
  const website=session.fromPartition('music-test-site');website.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
  parent=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{session:website,sandbox:true,contextIsolation:true,nodeIntegration:false}});
+ const {WindowMinimizer}=require(path.join(appRoot,'dist/shell/window-minimizer'));const minimizer=new WindowMinimizer(parent,()=> 'en');
  manager.attach(parent.webContents);let opened=0;
  parent.webContents.setWindowOpenHandler(({url})=>{if(manager.handleOpenRequest(parent.webContents,parent,url))opened++;return {action:'deny'}});
  await parent.loadURL('https://play.fables.gg/campaign/play');
  const siteJs=source=>parent.webContents.executeJavaScript(source);
  const until=async predicate=>{for(let i=0;i<250;i++){if(await predicate())return;await sleep(20)}throw Error('Timed out waiting for music state')};
- await until(()=>siteJs("!!document.querySelector('[data-ff-desktop-music-button]')"));
- assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),1);
+ await sleep(250);
+ assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),0,'The app does not inject a Music shortcut into the website composer.');
  assert.equal(await siteJs('typeof window.music'),'undefined');assert.equal(await siteJs('typeof window.require'),'undefined');
- assert.equal(await siteJs("document.getElementById('dice').nextElementSibling.hasAttribute('data-ff-desktop-music-button')"),true);
- await siteJs("document.querySelector('[data-ff-desktop-music-button]').click()");await until(()=>opened===1);
+ assert.equal(await siteJs("document.querySelector('.tiptap').textContent"),'Draft unchanged');
+ await siteJs("window.open('fables-desktop://music/','_blank')");await until(()=>opened===1);
  player=await manager.open(parent);manager.hide();const js=source=>player.webContents.executeJavaScript(source);
  await until(()=>js("!document.getElementById('title').disabled"));
  // Settings are published only after the atomic rename succeeds. Polling the file
@@ -73,7 +74,6 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  if(process.platform!=='linux'||!process.env.WAYLAND_DISPLAY)assert.equal(await clipboard.readText(),copied);
  manager.setInterface({...DEFAULT_APPEARANCE,preset:'light'},'ru');
  await until(()=>js("document.documentElement.lang==='ru'"));assert.equal(await js("document.getElementById('mute').textContent"),'Включить звук');assert.equal(await js("document.documentElement.style.getPropertyValue('--ui-bg')"),'#f5f5f5');
- await until(()=>siteJs("document.querySelector('[data-ff-desktop-music-button]').title==='Музыкальный проигрыватель'"));
  await add('Page link','https://www.youtube.com/watch?v=test');assert.equal(await js("document.getElementById('save-status').textContent"),'Это ссылка на веб-страницу. Укажите прямую ссылку на аудиофайл.');
  assert.equal(committed().tracks.length,2);
  forged=new BrowserWindow({show:false,webPreferences:{partition:'fables-music',preload:path.join(appRoot,'dist/music/music-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
@@ -84,12 +84,16 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  assert.match(await forged.webContents.executeJavaScript("window.music.openCatalogLink('scott-titan','source').then(()=> 'allowed',error=>error.message)"),/only in the app player/);
  forged.destroy();forged=null;
  assert.equal(manager.handleOpenRequest(parent.webContents,parent,MUSIC_URL+'other'),false);
- await siteJs("history.pushState({},'', '/campaign/play?view=world');document.body.append(document.createElement('div'))");await until(()=>siteJs("!document.querySelector('[data-ff-desktop-music-button]')"));
- await siteJs("history.pushState({},'', '/campaign/play');document.body.append(document.createElement('div'))");await until(()=>siteJs("!!document.querySelector('[data-ff-desktop-music-button]')"));
+ await siteJs("history.pushState({},'', '/campaign/play?view=world');document.body.append(document.createElement('div'))");await sleep(100);
+ assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),0,'In-page navigation never adds a composer shortcut.');
+ await siteJs("history.pushState({},'', '/campaign/play');document.body.append(document.createElement('div'))");await sleep(100);
+ assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),0,'Returning to play never adds a composer shortcut.');
  assert.equal(await siteJs("document.querySelector('.tiptap').textContent"),'Draft unchanged');
  await js("document.getElementById('play').click()");await until(()=>js("!document.getElementById('audio').paused && document.getElementById('audio').currentTime>0"));
- const beforeReload=requests;parent.webContents.reload();await sleep(150);assert.equal(requests,beforeReload,'Website reload does not restart the player.');
+ const beforeReload=requests;parent.webContents.reload();await until(()=>siteJs("document.readyState==='complete' && !!document.querySelector('.tiptap')"));assert.equal(requests,beforeReload,'Website reload does not restart the player.');
+ assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),0,'A page reload never adds a composer shortcut.');
  assert.equal(await js("document.getElementById('audio').paused"),false);
+ minimizer.minimize();await sleep(120);assert.equal(await js("document.getElementById('audio').paused"),false,'Minimizing keeps main-window playback running.');minimizer.restore();
  const timeBeforeHide=await js("document.getElementById('audio').currentTime");await js("document.getElementById('close-library').click()");await sleep(200);assert.equal(player.getVisible(),false);assert.equal(await js("document.getElementById('audio').paused"),false,'Closing library keeps playback running.');assert((await js("document.getElementById('audio').currentTime"))>timeBeforeHide);await manager.open(parent);
  await js("document.getElementById('stop').click()");assert.equal(await js("document.getElementById('audio').hasAttribute('src')"),false);
  await js("document.getElementById('title').value='Tavern ambience';document.getElementById('url').value='https://audio.fixture/tavern.ogg'");
@@ -143,15 +147,23 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  ipcMain.handle('appearance-dock:get',()=>({settings:DEFAULT_APPEARANCE,locale:'en',open:false}));ipcMain.handle('appearance-dock:popup',()=>{});ipcMain.handle('appearance-dock:toggle',()=>{});
  toolbar=new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/shell/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});parent.contentView.addChildView(toolbar);toolbar.setBounds({x:0,y:0,width:232,height:166});
  manager.attachMain(parent,toolbar.webContents,parent.webContents);await toolbar.webContents.loadURL('fables-desktop://settings/appearance-button.html');const control=source=>toolbar.webContents.executeJavaScript(source);
- await until(()=>control("!document.getElementById('play').disabled"));await control("document.getElementById('stop').click()");await until(()=>reopened("!document.getElementById('audio').hasAttribute('src')"));
+ assert.equal(await control("document.getElementById('library').getAttribute('aria-expanded')"),'false','Music starts collapsed.');assert.equal(await control("document.getElementById('music-controls').inert"),true);assert.equal(await control("[...document.querySelector('nav').children].filter(node=>node.matches('button')).length"),2,'Only Appearance and Music are visible initially.');
+ await control("document.getElementById('library').click()");await until(()=>control("document.getElementById('music-controls').getAttribute('aria-hidden')==='false'"));assert.equal(await control("document.getElementById('music-controls').inert"),false);assert.equal(await control("document.getElementById('music-controls').querySelectorAll('button').length"),5);assert.equal(await control("document.querySelector('nav').scrollWidth<=232"),true,'All seven round buttons fit the 232-pixel toolbar.');
+ await control("document.getElementById('library').click()");assert.equal(await control("document.getElementById('music-controls').inert"),true);assert.equal(await control("document.getElementById('volume-popup').hidden"),true);assert.equal(player.getVisible(),false,'The Music toggle does not open the native library.');
+ await until(()=>control("!document.getElementById('play').disabled"));await control("document.getElementById('library').click();window.appearanceButton.control('stop')");await until(()=>reopened("!document.getElementById('audio').hasAttribute('src')"));
  await control("document.getElementById('play').click()");await until(()=>reopened("!document.getElementById('audio').paused"));
+ await until(()=>control("document.getElementById('play-icon').hasAttribute('hidden') && !document.getElementById('pause-icon').hasAttribute('hidden')"));
+ assert.equal(await control("document.getElementById('stop')"),null,'Transport uses Play/Pause without a Stop button.');
  await control("document.getElementById('repeat').click();document.getElementById('volume').value=37;document.getElementById('volume').dispatchEvent(new Event('input'))");await until(async()=>committed().volume===.37&&await reopened("document.getElementById('audio').volume===.37")&&await control("document.getElementById('volume-value').value==='37%'"));assert.equal(await control("document.getElementById('volume-value').value"),'37%');
  if(process.env.FABLES_MUSIC_SCREENSHOT){await control("document.getElementById('volume-button').click();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");await writeFile(process.env.FABLES_MUSIC_SCREENSHOT.replace(/\.png$/,'-toolbar.png'),(await toolbar.webContents.capturePage()).toPNG());await control("document.getElementById('volume-button').click()");}
  const initialTitle=await reopened("document.getElementById('track-title').textContent");await control("document.getElementById('next').click()");await until(async()=>(await reopened("document.getElementById('track-title').textContent"))!==initialTitle);
- await control("document.getElementById('library').click()");await until(()=>player.getVisible());await control("document.getElementById('library').click()");await until(()=>!player.getVisible());assert.equal(await reopened("document.getElementById('audio').paused"),false);
+ await control("document.getElementById('open-library').click()");await until(()=>player.getVisible());assert.equal(await reopened("document.getElementById('audio').paused"),false);
+ await control("document.getElementById('library').click()");await until(()=>control("document.getElementById('library').getAttribute('aria-expanded')==='false'"));
+ toolbar.webContents.focus();await control("document.getElementById('library').focus()");assert.equal(toolbar.webContents.isFocused(),true,'The toolbar owns focus before keyboard input.');toolbar.webContents.sendInputEvent({type:'keyDown',keyCode:'ENTER'});toolbar.webContents.sendInputEvent({type:'char',keyCode:'\r'});toolbar.webContents.sendInputEvent({type:'keyUp',keyCode:'ENTER'});await until(()=>control("document.getElementById('music-controls').getAttribute('aria-hidden')==='false'"));assert.equal(await control("document.getElementById('library').tabIndex"),0,'Music remains keyboard focusable.');assert.equal(await control("document.getElementById('library').getAttribute('aria-expanded')"),'true','Enter opens the Music group.');await control("document.getElementById('volume-button').click();document.getElementById('open-library').focus();document.getElementById('library').click()");
+ assert.equal(await control("document.getElementById('volume-popup').hidden"),true,'Collapsing closes the volume popup.');assert.equal(await control("document.activeElement.id"),'library','Collapsing returns focus to Music.');assert.equal(player.getVisible(),true,'Collapsing leaves the native library open.');await until(()=>reopened("!document.getElementById('audio').paused"));assert.equal(await reopened("document.getElementById('audio').paused"),false,'Collapsing the toolbar leaves playback running.');toolbar.webContents.focus();assert.equal(toolbar.webContents.isFocused(),true);toolbar.webContents.sendInputEvent({type:'keyDown',keyCode:'ENTER'});toolbar.webContents.sendInputEvent({type:'char',keyCode:'\r'});toolbar.webContents.sendInputEvent({type:'keyUp',keyCode:'ENTER'});await until(()=>control("document.getElementById('music-controls').getAttribute('aria-hidden')==='false'"));await control("document.getElementById('open-library').click()");await until(()=>!player.getVisible());
  await assert.rejects(control("window.appearanceButton.control('volume',2)"),/Invalid volume/);await assert.rejects(control("window.appearanceButton.control('filesystem')"),/Invalid music control/);
  const toolbarForgery=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/shell/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});await toolbarForgery.loadURL('fables-desktop://settings/appearance-button.html');await assert.rejects(toolbarForgery.webContents.executeJavaScript("window.appearanceButton.control('play')"),/only in the app toolbar/);toolbarForgery.destroy();
- await control("document.getElementById('stop').click()");
+ await control("window.appearanceButton.control('stop')");
  const folder=path.join(profile,'downloaded-music'),outside=path.join(profile,'private.wav');await mkdir(path.join(folder,'nested'),{recursive:true});await writeFile(path.join(folder,'Tavern.wav'),wav);await writeFile(path.join(folder,'nested','Battle.wav'),wav);await writeFile(outside,wav);await writeFile(path.join(folder,'notes.txt'),'not audio');
  if(process.platform!=='win32')await symlink(outside,path.join(folder,'escape.wav'));
  dialog.showOpenDialog=async()=>({canceled:false,filePaths:[folder]});
@@ -169,7 +181,7 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  const removed=await session.fromPartition('fables-music').fetch(tavern.url);assert.equal(removed.status,404);
  const playbackContents=player.webContents;parent.destroy();parent=null;await until(()=>playbackContents.isDestroyed());await manager.shutdown();
  assert.deepEqual(await persisted(),committed(),'The final playlist and playback preferences are persisted on disk after writes drain.');
- console.log('Music smoke passed: persistent embedded audio, toolbar controls, local folder playback/search/removal and path boundaries, real audio, volume/mute/loop/seek, catalog search/filter/pagination, duplicate-free playlist actions, official source/license links, attribution copy, persistence, Russian/themes, composer placement, and restricted IPC.');
+ console.log('Music smoke passed: persistent embedded audio, toolbar controls, local folder playback/search/removal and path boundaries, real audio, volume/mute/loop/seek, catalog search/filter/pagination, duplicate-free playlist actions, official source/license links, attribution copy, persistence, Russian/themes, no composer injection, and restricted IPC.');
  assert.equal(manager.getSettings().tracks.length,4);
 } )().then(()=>finish(0),async error=>{console.error(error);await finish(1)});
 async function finish(code){clearTimeout(timer);const toolbarContents=toolbar?.webContents;if(toolbarContents&&!toolbarContents.isDestroyed())toolbarContents.close();for(const window of [forged,parent])if(window&&!window.isDestroyed())window.destroy();if(manager)await manager.shutdown();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await rm(profile,{recursive:true,force:true,maxRetries:10,retryDelay:100});app.exit(code)}

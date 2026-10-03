@@ -16,3 +16,5 @@ Disabling the setting restores the site's normal keyboard and Send behavior when
 The current adventure and combat inputs share one redesigned action surface. The handler finds that surface without relying on the former working-context spacer and captures Enter at the window level before native input handlers.
 
 The composer uses Tiptap’s native editor reference, with a React lookup fallback. Enter and Send format `/gm` and attach enabled `/sp` guidance before the website receives the message. Offline integration tests use that native reference without fabricated React fibers.
+
+The formatting hint and saved `/sp` status appear in a row below the native composer border. They do not change the editor’s layout or add another enclosing border.

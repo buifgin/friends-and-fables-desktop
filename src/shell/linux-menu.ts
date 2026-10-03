@@ -138,7 +138,7 @@ export class LinuxMenuBar {
     this.onOverlayOpen?.();
     this.overlay.setVisible(true);
     this.overlay.webContents.send('desktop-menu:show', {
-      id, x: Math.round(Math.max(0, Math.min(this.window.getContentSize()[0], x))),
+      id, top: MENU_HEIGHT, x: Math.round(Math.max(0, Math.min(this.window.getContentSize()[0], x))),
       items: submenu.items.flatMap((item, index) => item.visible ? [{ index, label: item.label,
         accelerator: item.accelerator?.replace(/CmdOrCtrl|CommandOrControl/g, 'Ctrl') ?? '',
         separator: item.type === 'separator', enabled: item.enabled && !item.submenu, checked: item.checked,

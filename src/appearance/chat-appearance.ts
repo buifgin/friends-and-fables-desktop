@@ -133,15 +133,26 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     const chat = anchor?.closest('.flex-1.h-full.w-full');
     const composers = new Set<Element>();
     for (const anchor of document.querySelectorAll('#working-context-bar-spacer, [aria-label="Roll dice"], [aria-label="Бросить кости"], .tiptap[contenteditable="true"]')) {
-      const root = anchor.closest('[class~="bg-gray-800/80"]') ?? anchor.closest('.grid.relative');
+      const grid = anchor.closest('.grid.relative');
+      // The adventure context spacer is outside the bordered input. Resolve
+      // that grid through its editor so all anchors identify one native surface.
+      const editor = Array.from(grid?.querySelectorAll('.tiptap[contenteditable="true"]') ?? [])
+        .find(element => !element.closest('form,[role="dialog"],[class~="bottom-full"]'));
+      const native = editor?.closest('[class~="bg-gray-800/80"]');
+      const root = anchor.closest('[class~="bg-gray-800/80"]') ?? (native && grid?.contains(native) ? native : grid);
       if (root && !anchor.closest('form,[role="dialog"],[class~="bottom-full"]') && !inCharacterForm(anchor)
         && root.querySelector('.tiptap[contenteditable="true"]') && root.querySelector('[aria-label="Roll dice"],[aria-label="Бросить кости"],[aria-label="More actions"]')) composers.add(root);
     }
     const contextRoots = new Set<Element>();
+    const contextExpanded = new Set<Element>();
     for (const composer of composers) {
       // The expanded content and the tab bar are sibling surfaces in this wrapper.
       for (const bar of (composer.closest('[class~="z-100"]') ?? composer.closest('.grid.relative') ?? composer).querySelectorAll('[class~="bottom-full"][class~="left-0"][class~="right-0"] > [class~="bg-gray-800"]')) {
         contextRoots.add(bar);
+        // Native expanded context replaces the expand header with its panel.
+        // Read that native state independently of our optional input popup.
+        if (!bar.querySelector('[aria-label="Expand working context"],[aria-label="Развернуть рабочий контекст"]')
+          && (bar.querySelector('[aria-label="Collapse working context"],[aria-label="Свернуть рабочий контекст"]') || bar.parentElement?.firstElementChild === bar)) contextExpanded.add(composer);
         if (settings.context.enabled) {
           mark(bar, 'data-ff-desktop-context', bar.querySelector('[aria-label="Expand working context"],[aria-label="Развернуть рабочий контекст"]') ? 'bar' : 'panel');
           for (const block of bar.querySelectorAll('.group.rounded-lg.border')) mark(block,'data-ff-desktop-context-block','true');
@@ -149,11 +160,11 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       }
     }
     const inContext = (element: Element): boolean => Array.from(contextRoots).some(root => root.contains(element));
-    if (settings.events.enabled || settings.preset !== 'website') {
-      // Spellbook, feat, and character detail rows are bordered neutral cards.
-      // Preserve editable controls and status/level badges inside them.
+    if (settings.preset !== 'website') {
+      // Character dialogs are application surfaces. Limit these neutral-card
+      // overrides to dialogs rather than classifying arbitrary campaign rows.
       for (const detail of document.querySelectorAll('div.border.rounded-md, div.border.rounded-lg, [class~="rounded-md"][class~="border"][class~="bg-card"]')) {
-        if (detail.closest('[id^="event-"],[data-ff-desktop-composer],[contenteditable="true"],nav,aside,[data-sidebar]') || inContext(detail)) continue;
+        if (!detail.closest('[role="dialog"]') || detail.closest('[id^="event-"],[contenteditable="true"],nav,aside,[data-sidebar]') || inContext(detail) || Array.from(composers).some(composer => composer.contains(detail))) continue;
         if (!detail.querySelector('img,h2,h3,h4,strong,input[type="number"]')) continue;
         mark(detail, 'data-ff-desktop-detail-card', 'true');
       }
@@ -183,11 +194,14 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     for (const element of composers) {
       const composer = element as HTMLElement;
       mark(composer, 'data-ff-desktop-composer', 'true');
-      if (settings.input.enabled || expandedComposer === composer) {
-        mark(composer, 'data-ff-desktop-message', composer === expandedComposer ? 'input-expanded' : 'input');
-        for (const button of composer.querySelectorAll('button, [role="combobox"]')) if (!inContext(button)) mark(button, 'data-ff-desktop-message', composer === expandedComposer ? 'control-expanded' : 'control');
+      const useContext = expandedComposer === composer || settings.context.enabled && contextExpanded.has(composer);
+      if (settings.input.enabled || useContext) {
+        mark(composer, 'data-ff-desktop-message', useContext ? 'input-expanded' : 'input');
+        for (const button of composer.querySelectorAll('button, [role="combobox"]')) if (!inContext(button)) mark(button, 'data-ff-desktop-message', useContext ? 'control-expanded' : 'control');
       }
-      if (!expandButtons.has(composer)) {
+      const nativeExpand = composer.querySelector('button:not([data-ff-desktop-expand-input]):is([aria-label="Expand message input"],[aria-label="Развернуть поле сообщения"],[title="Expand message input"])');
+      if (nativeExpand && expandButtons.has(composer)) { expandButtons.get(composer)!.remove(); expandButtons.delete(composer); if (expandedComposer === composer) closeExpanded(); }
+      if (settings.expandMessageInput && !nativeExpand && !expandButtons.has(composer)) {
         const button = document.createElement('button'); button.type = 'button'; button.textContent = '↗'; button.title = 'Expand message input'; button.setAttribute('aria-label', 'Expand message input'); button.setAttribute('aria-expanded', 'false');
         button.setAttribute('data-ff-desktop-expand-input', 'true');
         button.addEventListener('click', () => { if (expandedComposer === composer) closeExpanded(); else { closeExpanded(); expandedComposer = composer; composer.setAttribute('data-ff-desktop-input-expanded', 'true'); button.setAttribute('aria-expanded', 'true'); button.textContent = '↙'; button.title = 'Collapse message input'; button.setAttribute('aria-label', 'Collapse message input'); schedule(); } });
@@ -195,7 +209,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         (tools ?? composer).append(button); expandButtons.set(composer, button);
       }
     }
-    for (const [composer, button] of expandButtons) if (!composers.has(composer)) { button.remove(); expandButtons.delete(composer); if (composer === expandedComposer) closeExpanded(); }
+    for (const [composer, button] of expandButtons) if (!settings.expandMessageInput || !composers.has(composer)) { button.remove(); expandButtons.delete(composer); if (composer === expandedComposer) closeExpanded(); }
     if (settings.events.enabled) {
       for (const event of document.querySelectorAll('[id^="event-"] :is([class~="bg-card-light"][class~="rounded-md"],[class~="bg-card"][class~="border"][class~="rounded-md"])')) {
         if (!event.closest('[id^="event-message-card-"]')) mark(event, 'data-ff-desktop-message', 'event');
@@ -230,13 +244,18 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         }
       }
     }
+    // The action picker keeps the app palette and accent border on every tab.
+    for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+      if([...dialog.querySelectorAll('h2')].some(title=>/^(?:Choose Action|Выберите действие)$/i.test(title.textContent?.trim()??'')))mark(dialog,'data-ff-desktop-action-picker','true');
+    }
     if (settings.dice.enabled) {
       // This roll-breakdown popover is rendered in a Radix portal, outside its card.
       for (const menu of document.querySelectorAll('[role="dialog"][class~="bg-slate-900/95"][class~="border-amber-600/50"]')) {
         mark(menu,'data-ff-desktop-message','roll-menu');
       }
       for (const dialog of document.querySelectorAll('[role="dialog"]')) {
-        if (dialog.querySelector('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) mark(dialog,'data-ff-desktop-message','roll-menu');
+        const actionPicker=next.get(dialog)?.has('data-ff-desktop-action-picker');
+        if (!actionPicker && dialog.querySelector('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) mark(dialog,'data-ff-desktop-message','roll-menu');
       }
     }
     reconcile();
@@ -275,7 +294,12 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
     [data-ff-desktop-input-expanded] { position:fixed !important; inset:12vh 10vw auto !important; z-index:1000 !important; width:80vw !important; max-height:76vh !important; box-shadow:0 16px 80px #0009; }
     [data-ff-desktop-input-expanded] .tiptap { min-height:35vh !important; max-height:60vh !important; overflow:auto !important; }
     [data-ff-desktop-message-snapshot] { pointer-events:none !important; }
+    html[data-ff-desktop-play] [role="dialog"][data-ff-desktop-action-picker] { border:1px solid hsl(var(--border)) !important; }
+    html[data-ff-desktop-play] button[role="switch"] { box-sizing:border-box; border:1px solid hsl(var(--border, 0 0% 50%)) !important; }
+    html[data-ff-desktop-play] [data-ff-desktop-action-picker] [role="tab"] { border:1px solid transparent !important; }
+    html[data-ff-desktop-play] [data-ff-desktop-action-picker] [role="tab"][data-state="active"] { border-color:hsl(var(--primary)) !important; }
     [data-ff-desktop-detail-card] { background-color:hsl(var(--card)) !important; background-image:none !important; border-color:hsl(var(--border)) !important; color:hsl(var(--foreground)) !important; }
+    [data-ff-desktop-detail-card] :is(h1,h2,h3,h4,p,strong,b,a) { color:hsl(var(--foreground)) !important; }
     @media (max-width:600px) { [data-ff-desktop-input-expanded] { inset:8vh 4vw auto !important; width:92vw !important; } }`;
 
   const loading = `html[data-ff-desktop-play] [data-ff-desktop-loading],
@@ -336,19 +360,21 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
       if (role === 'gm') css += `${target} :is(h1,h2,h3,h4,h5,h6,strong,b),
         ${target} button[aria-controls], ${target} button[aria-controls] :is(svg,span) { color: ${foreground} !important; }`;
       if (role === 'battle') css += `${target} [class~="bg-slate-700"] { background-color: color-mix(in srgb, ${foreground} 20%, transparent) !important; }`;
-      if (!role.startsWith('control')) css += borderCss(style,target,role.startsWith('input'),role.startsWith('input'));
+      if (role === 'battle' || role === 'roll-menu') {
+        // Battle summaries and native dice subwindows follow the app's simple
+        // surface outline while chat cards continue to use their chosen frame.
+        css += `${target} { border:1px solid hsl(var(--border, 0 0% 50%)) !important; border-radius:4px !important;
+          box-shadow:none !important; }
+          ${target}::after { content:none !important; background:none !important; border:0 !important; }`;
+        if (role === 'roll-menu') css += `${target} { background-color:color-mix(in srgb, hsl(var(--card)) 88%, transparent) !important;
+          background-image:none !important; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }`;
+      } else if (!role.startsWith('control')) css += borderCss(style,target,role.startsWith('input'),role.startsWith('input'));
       if (role === 'event' || role === 'roll' || role === 'roll-menu') css += `${target} :is(span,button,h1,h2,h3,h4,p) { color: ${foreground} !important; }`;
       if (role === 'roll-menu') css += `${target} :is([class*="bg-slate-"],[class*="bg-amber-"]) { background-color: transparent !important; background-image: none !important; }
         ${target} [class*="border-amber-"] { border-color: ${style.border.color} !important; }`;
       if (role === 'roll') css += `${target} > [class~="absolute"][class~="inset-0"][class~="pointer-events-none"] { display: none !important; }
         [data-ff-desktop-roll-container] { background: transparent !important; border: 0 !important; }`;
     }
-  }
-  if (settings.events.enabled) {
-    const style = settings.events.style;
-    css += `[data-ff-desktop-detail-card] { background-color:${style.gradient.enabled ? 'transparent' : rgba(style.color, style.opacity)} !important; background-image:${styleBackground(style)} !important; color:${messageForeground(style, settings)} !important; }
-      [data-ff-desktop-detail-card] :is(h1,h2,h3,h4,p,strong,b,a) { color:${messageForeground(style, settings)} !important; }`;
-    css += borderCss(style, '[data-ff-desktop-detail-card]');
   }
   if (settings.context.enabled) {
     for (const [part,style] of [['panel',settings.context.style],['bar',settings.context.bar]] as const) {

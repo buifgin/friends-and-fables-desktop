@@ -1,7 +1,7 @@
 // Serialized into the website. This function has ordinary DOM access only:
 // no preload, IPC, network requests, or Electron APIs are exposed to the page.
-export function installTranslationDom(token: string, dictionary: Record<string, string>, descriptions: boolean, names: string[], local: (text: string, dictionary: Record<string,string>) => string | undefined, hideUntranslated = false): void {
-  type Entry = { id: number; node: Text | Attr; original: string; rendered: string | null; version: number; due: number; waiting: boolean; complete?: boolean; fragments?: boolean; pending?: {start:number;end:number}[] };
+export function installTranslationDom(token: string, dictionary: Record<string, string>, descriptions: boolean, names: string[], local: (text: string, dictionary: Record<string,string>) => string | undefined, hideUntranslated = false, dynamicTranslationLayout = false): void {
+  type Entry = { id: number; node: Text | Attr; original: string; rendered: string | null; version: number; due: number; waiting: boolean; complete?: boolean; fragments?: boolean; pending?: {start:number;end:number}[]; visual?:string };
   type Result = { id: number; version: number; text: string | null; complete: boolean; retry?: boolean; pending?: {start:number;end:number}[] };
   type Controller = { collect(): unknown; retry(): void; finish(token: string, results: Result[]): void; dispose(): void };
   const key = '__friendsFablesDesktopTranslation';
@@ -10,13 +10,14 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   const entries = new Map<number, Entry>();
   const nodes = new WeakMap<Text | Attr, Entry>();
   const roots = new Set<Node>([document.body]);
+  const fragmentOwners = new WeakMap<Text, Element>();
   const protectedSelector = 'script,style,noscript,template,svg,math,textarea,input,select,option,code,pre,[contenteditable]:not([contenteditable="false"]),[role="textbox"],[data-ff-translation-ignore]';
   const sensitiveForm = 'form:has(input[type="password"]),form:has(input[type="email"])';
   const highlightName='ff-desktop-untranslated';
   const oldHighlight=CSS.highlights.get(highlightName);
   const memo = new Map<string,string>();
   const marked = new Map<Element,string|null>();
-  const blanked = new Map<Element,{overlay:HTMLElement;position:string;priority:string;busy:string|null}>();
+  const blanked = new Map<Element,{overlay:HTMLElement;position:string;priority:string;minHeight:string;minHeightPriority:string;busy:string|null}>();
   let completed=0;
   const status=document.createElement('div');status.setAttribute('data-ff-translation-status','true');status.setAttribute('data-ff-translation-ignore','true');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
   status.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483000;display:none;align-items:center;gap:8px;padding:7px 10px;border:1px solid hsl(var(--border,0 0% 40%));border-radius:8px;background:hsl(var(--background,0 0% 8%));color:hsl(var(--foreground,0 0% 96%));box-shadow:0 2px 8px #0004;font:12px system-ui;pointer-events:none';
@@ -24,7 +25,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   const label=document.createElement('span');status.append(spinner,label);
   const style=document.createElement('style');style.setAttribute('data-ff-translation-ignore','true');style.textContent='@keyframes ff-translation-spin{to{transform:rotate(360deg)}} ::highlight(ff-desktop-untranslated){text-decoration:underline dotted;text-underline-offset:.2em} @media(prefers-reduced-motion:reduce){[data-ff-translation-status] span{animation:none!important}}';
   document.body.append(style,status);
-  style.textContent += '[data-ff-translation-blank]:not(#ff-translation-never){color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important} [data-ff-translation-blank]>*:not([data-ff-translation-placeholder]){opacity:0!important} [data-ff-translation-placeholder]{position:absolute;inset-inline-start:0;top:0;color:var(--ff-translation-ink,#aaa)!important;-webkit-text-fill-color:var(--ff-translation-ink,#aaa)!important;opacity:1!important;pointer-events:none;white-space:pre} [data-ff-translation-placeholder]::after{content:".";animation:ff-translation-dots 1.2s steps(1,end) infinite}@keyframes ff-translation-dots{0%,100%{content:"."}20%,80%{content:".."}40%,60%{content:"..."}}';
+  style.textContent += '[data-ff-translation-blank]:not(#ff-translation-never){color:transparent!important;-webkit-text-fill-color:transparent!important;text-shadow:none!important} [data-ff-translation-blank]>*:not([data-ff-translation-placeholder]){opacity:0!important} [data-ff-translation-placeholder]{position:absolute;inset-inline-start:0;inset-inline-end:0;top:0;color:var(--ff-translation-ink,#aaa)!important;-webkit-text-fill-color:var(--ff-translation-ink,#aaa)!important;opacity:1!important;pointer-events:none;white-space:pre-wrap!important} [data-ff-translation-dot]::after{content:".";animation:ff-translation-dots 1.2s steps(1,end) infinite}@keyframes ff-translation-dots{0%,100%{content:"."}20%,80%{content:".."}40%,60%{content:"..."}}';
   const read = (node: Text | Attr): string => node instanceof Attr ? node.value : node.data;
   const editorSelector = '[contenteditable]:not([contenteditable="false"])';
   const editorPlaceholder = (node: Text | Attr): node is Attr => node instanceof Attr && ['placeholder','data-placeholder'].includes(node.name) && !!node.ownerElement?.closest(editorSelector);
@@ -53,13 +54,21 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   let next = 0, timer: ReturnType<typeof setTimeout> | undefined, queued=false,disposed=false;
   function reveal(element:Element):void {
     const previous=blanked.get(element);if(!previous)return;
-    previous.overlay.remove();element.removeAttribute('data-ff-translation-blank');
-    if(element instanceof HTMLElement){element.style.setProperty('position',previous.position,previous.priority);element.style.removeProperty('--ff-translation-ink');}
+    previewSizes.unobserve(previous.overlay);previous.overlay.remove();element.removeAttribute('data-ff-translation-blank');
+    if(element instanceof HTMLElement){element.style.setProperty('position',previous.position,previous.priority);element.style.removeProperty('--ff-translation-ink');element.style.setProperty('min-height',previous.minHeight,previous.minHeightPriority);}
     if(previous.busy===null)element.removeAttribute('aria-busy');else element.setAttribute('aria-busy',previous.busy);
     blanked.delete(element);
   }
   function eligible(node: Text | Attr): boolean {
     const element = parent(node);
+    // Catalog card headings are creator-owned world/campaign names, including
+    // titles that happen to match a glossary term. Protect before local lookup.
+    const namedHeading=element?.closest('h1,h2,h3,h4,[role="heading"]');
+    if(namedHeading && (namedHeading.closest('[data-world-name],[data-world-title],a[href*="/worlds/"],a[href*="/world/"]') ||
+      namedHeading.matches('h3.font-header') && namedHeading.closest('.clickable.bg-card') ||
+      namedHeading.matches('h1') && /^\/worlds?\//.test(location.pathname)))return false;
+    // Never consume instruction delimiters before the hiding controller scans them.
+    if(node instanceof Text && /\[\[\/?FF-SP:1\]\]/.test(nodes.get(node)?.original??node.data))return false;
     // Friends & Fables disables browser translation on its entire document.
     // The user's app toggle overrides that page-wide flag. Local exclusions
     // (names, editors, individual blocks) still protect their original text.
@@ -76,18 +85,61 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     if (!clearPlaceholder(entry.node) && entry.rendered !== null && read(entry.node) === entry.rendered) write(entry.node, entry.original);
     entries.delete(entry.id); nodes.delete(entry.node);
   }
+  function fitPreview(element:Element,overlay:HTMLElement):void {
+    const record=blanked.get(element);if(!record || !(element instanceof HTMLElement))return;
+    const computed=getComputedStyle(element);
+    const extra=computed.boxSizing==='border-box' ? ['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth'].reduce((sum,key)=>sum+(parseFloat(computed[key as keyof CSSStyleDeclaration] as string)||0),0) : 0;
+    const height=Math.ceil(overlay.getBoundingClientRect().height+extra);
+    const value=`max(${record.minHeight||'0px'}, ${height}px)`;
+    if(element.style.getPropertyValue('min-height')!==value)element.style.setProperty('min-height',value,'important');
+  }
+  const previewSizes=new ResizeObserver(records=>{
+    if(disposed)return;
+    for(const record of records){const overlay=record.target as HTMLElement;const element=overlay.parentElement;if(element)fitPreview(element,overlay);}
+  });
   function updateStatus(): void {
-    // Hide whole text blocks until all their fragments are ready. The original
-    // Text nodes remain in place for React and for restoring the source view.
+    // Paint a reversible presentation over native text. A ready prefix
+    // is visible immediately; later fragments wait behind the first unresolved range.
     const unfinished=[...entries.values()].filter(entry=>!entry.complete&&eligible(entry.node));
-    const hiddenParents=new Set(hideUntranslated?unfinished.filter(entry=>entry.node instanceof Text).map(entry=>parent(entry.node)!):[]);
+    const hiddenParents=new Set(hideUntranslated?unfinished.filter(entry=>entry.node instanceof Text).map(entry=>parent(entry.node)!.closest('[data-ff-desktop-detail-card],.prose')??parent(entry.node)!):[]);
     for(const element of blanked.keys())if(!hiddenParents.has(element))reveal(element);
+    // Capture ink before concealing ancestors, so nested blocks retain their color.
+    const ink=new Map([...hiddenParents].filter(element=>!blanked.has(element)).map(element=>[element,getComputedStyle(element).color]));
     for(const element of hiddenParents)if(!blanked.has(element)&&element instanceof HTMLElement){
       const overlay=document.createElement('span');overlay.setAttribute('data-ff-translation-placeholder','true');overlay.setAttribute('data-ff-translation-ignore','true');overlay.setAttribute('aria-label','Переводится');overlay.setAttribute('role','status');
       const position=element.style.getPropertyValue('position'),priority=element.style.getPropertyPriority('position');
-      blanked.set(element,{overlay,position,priority,busy:element.getAttribute('aria-busy')});
-      element.style.setProperty('--ff-translation-ink',getComputedStyle(element).color);if(getComputedStyle(element).position==='static')element.style.position='relative';
-      element.setAttribute('data-ff-translation-blank','true');element.setAttribute('aria-busy','true');element.append(overlay);
+      blanked.set(element,{overlay,position,priority,minHeight:element.style.getPropertyValue('min-height'),minHeightPriority:element.style.getPropertyPriority('min-height'),busy:element.getAttribute('aria-busy')});
+      element.style.setProperty('--ff-translation-ink',ink.get(element)??'currentColor');if(getComputedStyle(element).position==='static')element.style.position='relative';
+      element.setAttribute('data-ff-translation-blank','true');element.setAttribute('aria-busy','true');element.append(overlay);previewSizes.observe(overlay);
+    }
+    for(const [element,{overlay}] of blanked){
+      let blocked=false;
+      const render=(node:Node):Node|null=>{
+        if(blocked)return null;
+        if(node===overlay || node instanceof Element && node.hasAttribute('data-ff-translation-placeholder'))return null;
+        if(node instanceof Text){
+          const entry=nodes.get(node);
+          if(!entry || entry.complete)return document.createTextNode(entry?.rendered??node.data);
+          const value=entry.visual??entry.original;
+          const ranges=entry.pending??[{start:0,end:value.length}];
+          const fragment=document.createDocumentFragment();
+          const first=ranges.find(range=>range.start>=0 && range.end<=value.length && range.end>range.start);
+          if(!first)return document.createTextNode(value);
+          fragment.append(document.createTextNode(value.slice(0,first.start)));
+          const dots=document.createElement('span');dots.setAttribute('data-ff-translation-dot','true');dots.setAttribute('aria-label','Переводится');fragment.append(dots);
+          blocked=true;return fragment;
+        }
+        if(node instanceof Element){
+          const clone=node.cloneNode(false) as Element;clone.removeAttribute('id');clone.removeAttribute('data-ff-translation-blank');clone.removeAttribute('aria-busy');
+          for(const child of node.childNodes){const rendered=render(child);if(rendered)clone.append(rendered);}return clone;
+        }
+        return node.cloneNode(false);
+      };
+      const fragment=document.createDocumentFragment();for(const node of element.childNodes){const rendered=render(node);if(rendered)fragment.append(rendered);}
+      // Do not restart dot animations or mutate the DOM for unchanged polls.
+      const preview=document.createElement('span');preview.append(fragment);
+      if(overlay.innerHTML!==preview.innerHTML)overlay.replaceChildren(...preview.childNodes);
+      fitPreview(element,overlay);
     }
     const pending=[...entries.values()].filter(entry=>!entry.complete && (entry.waiting || entry.due<=performance.now()) && eligible(entry.node));
     const parents=new Set(pending.filter(entry=>entry.node instanceof Text).map(entry=>parent(entry.node)!));
@@ -107,12 +159,22 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   // grammatical unit without replacing nodes, comments, or numeric counters.
   // The whitelist keeps this treatment away from narration and user names.
   function examineFragments(element: Element): boolean {
-    const parts = [...element.childNodes].filter((node): node is Text => node instanceof Text);
-    const reset = (): false => { for (const node of parts) { const entry=nodes.get(node); if(entry?.fragments) restore(entry); } return false; };
-    if ([...element.children].some(child=>!child.hasAttribute('data-ff-translation-placeholder')) || parts.length < 2 || parts.length > 12) return reset();
+    let parts = [...element.childNodes].filter((node): node is Text => node instanceof Text);
+    const children = [...element.children].filter(child=>!child.hasAttribute('data-ff-translation-placeholder'));
+    // Research summaries use one leaf span per count/label. Keep those native
+    // spans and their numeric text nodes intact while translating the unit.
+    const leaves = [2,3,4].includes(children.length) && children.every(child=>child.tagName==='SPAN' && child.children.length===0 && [...child.childNodes].every(node=>node instanceof Text || node.nodeType===Node.COMMENT_NODE))
+      ? children.flatMap(child=>[...child.childNodes].filter((node): node is Text=>node instanceof Text)) : [];
+    const original = (node: Text): string => { const entry=nodes.get(node); return entry && read(node)===entry.rendered ? entry.original : read(node); };
+    const counterSource = leaves.map(original).join(' ').replace(/\s+/g,' ').trim();
+    const counterGroup = /^[\d,]+\s+XP until level\s+\d+$/i.test(counterSource) || /^\d+ (?:Topics? Researched|Blocks? Created|Memor(?:y|ies) Saved)(?: \d+ Blocks? Created)?$/i.test(counterSource);
+    const mechanicsGroup=/^(?:(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder) damage|Preview:\s*\d+d\d+(?:\s*[+−-]\s*\d+)?\s+(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)|Bonuses:\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise)(?:[.,]\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*)$/i.test(counterSource);
+    if(leaves.length) parts=leaves;
+    const reset = (): false => { for (const node of parts) { const entry=nodes.get(node); if(entry?.fragments && fragmentOwners.get(node)===element) { restore(entry); fragmentOwners.delete(node); } } return false; };
+    if ((!counterGroup && !mechanicsGroup && children.length>0) || parts.length < 2 || parts.length > 12) return reset();
     const originals = parts.map(node => { const entry=nodes.get(node); return entry && read(node)===entry.rendered ? entry.original : read(node); });
-    const source = originals.join('');
-    if (source.length > 512 || !/^(?:\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Modifier\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*[\d,.]+\s+(?:Followers|Following)\s*|\s*[+−\-]?[\d.,]+(?:\s*\/\s*[\d.,]+)?\s*(?:lbs?\.?|ft\.?|HP)\s*|\s*(?:End|Waiting for|Run|Skip)\s+.{1,100}?Turn\s*|\s*(?:Franz|Франц)\s+is\s+(?:thinking|imagining|envisioning|starting (?:an? )?encounter|starting combat|generating)(?:\.\.\.|…)?\s*|\s*Executor\s*:\s*(?:Encounter|Adventure)\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*)$/i.test(source)
+    const source = counterGroup || mechanicsGroup ? originals.join(' ').replace(/\s+/g,' ').trim() : originals.join('');
+    if (source.length > 512 || !counterGroup && !mechanicsGroup && !/^(?:\s*[\d,]+\s*XP until level\s*\d+\s*|\s*DC\s+\d+\s*|\s*Your turn,\s*.{1,100}\s*|\s*\d+\s+(?:Topics? Researched|Blocks? Created|Memor(?:y|ies) Saved)\s*|\s*\d+\s+credits?(?:\s*\+)?\s*\/\s*turn\s*|\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+(?:Modifier|Save)\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*[\d,.]+\s+(?:Followers|Following)\s*|\s*[+−\-]?[\d.,]+(?:\s*\/\s*[\d.,]+)?\s*(?:lbs?\.?|ft\.?|HP)\s*|\s*(?:End|Waiting for|Run|Skip)\s+.{1,100}?Turn\s*|\s*(?:Franz|Франц)\s+is\s+(?:thinking|imagining|envisioning|starting (?:an? )?encounter|starting combat|generating)(?:\.\.\.|…)?\s*|\s*Executor\s*:\s*(?:Encounter|Adventure)\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*|\s*(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s+damage\s*|\s*Preview:\s*\d+d\d+(?:\s*[+−-]\s*\d+)?\s+(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s*|\s*Bonuses:\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise)(?:[.,]\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*\s*)$/i.test(source)
       || names.some(name => name.toLowerCase()!=='franz'&&[source,...originals].some(value=>value.trim().toLowerCase()===name.toLowerCase()))
       || parts.some(node=>!eligible(node)) || entries.size + parts.filter(node=>!nodes.has(node)).length > 4000) return reset();
     const translated = local(source,dictionary);
@@ -120,7 +182,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     const rendered = parts.map(()=>'');
     let start=0, offset=0;
     for (let i=0;i<parts.length;i++) {
-      if (!/^\d[\d,.]*$/.test(originals[i])) continue;
+      if (!/^\s*\d[\d,.]*\s*$/.test(originals[i])) continue;
       const at=translated.indexOf(originals[i],offset);
       if (at<0 || i===start && at!==offset) return reset();
       if (i>start) rendered[start]=translated.slice(offset,at);
@@ -132,6 +194,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       const node=parts[i]; let entry=nodes.get(node);
       if (entry?.fragments && entry.original===originals[i] && entry.rendered===rendered[i] && read(node)===rendered[i]) continue;
       if (!entry) { entry={id:++next,node,original:originals[i],rendered:null,version:0,due:0,waiting:false}; entries.set(entry.id,entry); nodes.set(node,entry); }
+      fragmentOwners.set(node,element);
       entry.original=originals[i]; entry.rendered=rendered[i]; entry.version++; entry.waiting=false; entry.complete=true; entry.fragments=true;
       if (read(node)!==rendered[i]) write(node,rendered[i]);
     }
@@ -150,17 +213,41 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       const card = parent(node)?.closest('.border,section,[data-equipment]');
       if (card && [...card.querySelectorAll('h2,h3,h4,.font-semibold.leading-none.tracking-tight')].some(heading => heading.closest('.border,section,[data-equipment]') === card && /^(Equipped Items|Надетые предметы)$/i.test(heading.textContent?.trim() ?? ''))) translated = original.replace(/Back/i,'Спина');
     }
+    const actionDialog=parent(node)?.closest('[role=dialog]');
+    if(!preserved && core.toLowerCase()==='custom' && actionDialog && [...actionDialog.querySelectorAll('h2')].some(title=>/^(?:Choose Action|Выберите действие)$/i.test(title.textContent?.trim()??'')))translated=original.replace(/custom/i,'Своя атака');
+    // The dice operator is a presentation label beside native quantity/faces controls.
+    // Restrict this to the attack/dice dialog; never rewrite form values or a general letter d.
+    if(!preserved && core==='d' && actionDialog && [...actionDialog.querySelectorAll('h2')].some(title=>/^(?:Choose Action|Выберите действие|Roll Dice|Бросить кости|Бросок костей)$/i.test(title.textContent?.trim()??''))) {
+      const row=parent(node)?.parentElement;
+      if(row?.querySelector('input[type=number]') && row.querySelector('select,[role=combobox]'))translated=original.replace('d','к');
+    }
     const known = translated !== undefined;
-    const prose = descriptions && !parent(node)?.closest(sensitiveForm) && (!(node instanceof Attr) || ['placeholder','data-placeholder'].includes(node.name)) && !/DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(core)
-      && (!parent(node)?.closest('h1,h2,h3,h4,h5,h6') || /\b(?:the|to|of|in|at|with|for|and|your)\b/i.test(core))
-      && (core.match(/[A-Za-z]{2,}/g)?.length ?? 0) >= 2;
+    const element=parent(node);
+    const headingElement=element?.closest('h1,h2,h3,h4,h5,h6,[role=heading],.font-semibold.leading-none.tracking-tight');
+    const heading=!!headingElement;
+    // A dialog also contains the character's name. Restrict model fallback to
+    // feature card headings in its active panel, independently of translated tabs.
+    const panel=element?.closest('[role=tabpanel],[data-progression],[data-skills],[data-class]');
+    const featureLabels=/^(?:progression|class features|skills|class|прогрессия|развитие|особенности класса|умения класса|навыки|класс)$/i;
+    const panelTab=panel?.getAttribute('aria-labelledby')?.split(/\s+/).map(id=>document.getElementById(id)).find(tab=>tab?.matches('[role=tab]'));
+    const featurePanel=!!panel && !panel.matches('[data-state=inactive],[aria-hidden=true],[hidden]') &&
+      (panel.matches('[data-progression],[data-skills],[data-class]') || featureLabels.test(panelTab?.textContent?.trim()??'') ||
+       [...panel.querySelectorAll('h2,h3,[role=heading]')].some(title=>featureLabels.test(title.textContent?.trim()??'')));
+    const customHeading=featurePanel && !!headingElement?.matches('h3,h4,h5,h6,[role=heading]:not([aria-level="1"]):not([aria-level="2"])') &&
+      !!headingElement.closest('.border,[data-progression],[data-skills],[data-class]');
+    const dialogTitle=!!headingElement?.matches('h1,h2,[role=heading][aria-level="1"],[role=heading][aria-level="2"]') && !!headingElement.closest('[role=dialog]');
+    if(translated!==undefined && heading)translated=translated.replace(/^(\s*)(\p{L})/u,(_,space,letter)=>space+(core.match(/[A-Za-z]/)?.[0]===core.match(/[a-z]/)?.[0]?letter.toLocaleLowerCase('ru'):letter.toLocaleUpperCase('ru')));
+    const prose = !preserved && !dialogTitle && descriptions && !parent(node)?.closest(sensitiveForm) && (!(node instanceof Attr) || ['placeholder','data-placeholder'].includes(node.name)) && !/DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(core)
+      && (customHeading || !heading || /\b(?:the|to|of|in|at|with|for|and|your)\b/i.test(core))
+      && (core.match(/[A-Za-z]{2,}/g)?.length ?? 0) >= (customHeading?1:2);
     if ((!known && !prose) || !/[A-Za-z]/.test(core) || original.length > 16000 || entries.size >= 4000 && !entry) {
       if (entry) { entry.rendered = null; entries.delete(entry.id); nodes.delete(node); } return;
     }
     if (!entry) { entry = { id: ++next, node, original, rendered: null, version: 0, due: 0, waiting: false }; entries.set(entry.id, entry); nodes.set(node, entry); }
-    entry.original = original; entry.rendered = null; entry.version++; entry.waiting = false; entry.complete=false; entry.pending=undefined; entry.due = performance.now() + (/[.!?]\s*$/.test(original)?80:180);
+    entry.original = original; entry.rendered = null; entry.version++; entry.waiting = false; entry.complete=false; entry.pending=undefined;entry.visual=undefined; entry.due = performance.now() + (/[.!?]\s*$/.test(original)?80:180);
     const cached = translated ?? memo.get(original);
     if (cached !== undefined) { entry.rendered=cached; entry.complete=true; write(node,cached); }
+    else if(hideUntranslated&&dynamicTranslationLayout&&node instanceof Text){entry.rendered='…';write(node,'…');}
     else if(hideUntranslated&&node instanceof Attr&&['placeholder','data-placeholder'].includes(node.name)){entry.rendered='…';write(node,'…');}
   }
   function scan(): void {
@@ -182,21 +269,35 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   }
   function schedule(root: Node): void {
     if(disposed)return;
-    roots.add(root);
+    const owner=root instanceof Text ? fragmentOwners.get(root) : root instanceof Element && root.firstChild instanceof Text ? fragmentOwners.get(root.firstChild) : undefined;
+    roots.add(owner?.isConnected ? owner : root);
     // A microtask translates glossary labels and hides pending prose before
     // the browser paints newly rendered English, including streaming updates.
     if (!queued){queued=true;queueMicrotask(scan);}
   }
   const observer = new MutationObserver(mutations => {
     for (const mutation of mutations) {
-      if ((mutation.target instanceof Element ? mutation.target : mutation.target.parentElement)?.closest('[data-ff-translation-status],[data-ff-translation-ignore]')) continue;
+      const ignoreChanged=mutation.type==='attributes' && ['data-ff-translation-ignore','data-ff-desktop-instruction-block'].includes(mutation.attributeName ?? '');
+      if (!ignoreChanged && (mutation.target instanceof Element ? mutation.target : mutation.target.parentElement)?.closest('[data-ff-translation-status],[data-ff-translation-ignore]')) continue;
       if (mutation.type === 'childList') { schedule(mutation.target); for (const node of mutation.addedNodes) schedule(node); }
       else schedule(mutation.target);
     }
   });
   observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true,
-    attributeFilter: ['contenteditable', 'hidden', 'translate', 'class', 'style','placeholder','data-placeholder','title','aria-label'] });
+    attributeFilter: ['contenteditable', 'hidden', 'translate', 'class', 'style','placeholder','data-placeholder','title','aria-label','data-ff-translation-ignore','data-ff-desktop-instruction-block'] });
   const onScroll = (): void => schedule(document.body);
+  function progressionRegion(node:Text|Attr):Element|null {
+    const panel=parent(node)?.closest('[role=tabpanel],[data-progression]');
+    if(!panel || panel.matches('[data-state=inactive],[aria-hidden=true],[hidden]'))return null;
+    const tab=panel.getAttribute('aria-labelledby')?.split(/\s+/).map(id=>document.getElementById(id)).find(element=>element?.matches('[role=tab]'));
+    return panel.matches('[data-progression]') || /^(progression|прогрессия|развитие)$/i.test(tab?.textContent?.trim()??'') ||
+      [...panel.querySelectorAll('h2,h3,[role=heading]')].some(title=>/^(class features|особенности класса|умения класса)$/i.test(title.textContent?.trim()??'')) ? panel : null;
+  }
+  function documentOrder(a:Entry,b:Entry):number {
+    const left=a.node instanceof Attr?parent(a.node)!:a.node,right=b.node instanceof Attr?parent(b.node)!:b.node;
+    const position=left.compareDocumentPosition(right);
+    return position&Node.DOCUMENT_POSITION_FOLLOWING?-1:position&Node.DOCUMENT_POSITION_PRECEDING?1:a.id-b.id;
+  }
   const onFocus = (event: Event): void => {
     const target = event.target instanceof Element ? event.target.closest('[contenteditable]:not([contenteditable="false"]),[role="textbox"]') : null;
     if (target) for (const entry of entries.values()) if (entry.node instanceof Text && target.contains(entry.node)) restore(entry);
@@ -210,15 +311,20 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     retry() { for (const entry of entries.values()) if (!entry.complete && !entry.waiting) entry.due = 0; updateStatus(); },
     collect() {
       scan();
-      const result: { id: number; version: number; text: string }[] = []; let length = 0;
-      const pending=[...entries.values()].filter(entry=>!entry.complete && !entry.waiting && entry.due<=performance.now() && eligible(entry.node));
-      // Finish visible blocks first; off-screen descriptions remain queued.
+      const result: { id: number; version: number; text: string; ordered?:boolean }[] = []; let length = 0;
+      const unfinished=[...entries.values()].filter(entry=>!entry.complete && eligible(entry.node));
+      // Each progression pane drains its earliest unfinished node completely.
+      // Include waiting/backoff entries in the barrier so later levels cannot leapfrog.
+      const earliest=new Map<Element,Entry>();
+      for(const entry of unfinished){const region=progressionRegion(entry.node);if(region){const before=earliest.get(region);if(!before||documentOrder(entry,before)<0)earliest.set(region,entry);}}
+      const pending=unfinished.filter(entry=>!entry.waiting && entry.due<=performance.now() && (!progressionRegion(entry.node)||earliest.get(progressionRegion(entry.node)!)===entry));
+      // General prose keeps viewport priority; progression respects document order.
       const priority=new Map(pending.map(entry=>{const rect=parent(entry.node)!.getBoundingClientRect();return [entry.id,rect.bottom>0 && rect.top<innerHeight ? 0 : 1] as const;}));
       pending.sort((a,b)=>priority.get(a.id)!-priority.get(b.id)!||a.id-b.id);
       for (const entry of pending) {
         if (result.length >= 32 || length + entry.original.length > 48000) break;
         entry.waiting = true; length += entry.original.length;
-        result.push({ id: entry.id, version: entry.version, text: entry.original });
+        result.push({ id: entry.id, version: entry.version, text: entry.original, ...(progressionRegion(entry.node)?{ordered:true}:{}) });
       }
       updateStatus();
       return { token, nodes: result };
@@ -234,7 +340,16 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
         if (result.text === null) { entry.due = performance.now() + 15000; continue; }
         if(result.complete && !entry.complete) completed++;
         entry.pending=result.pending;entry.complete=result.complete;entry.due=performance.now()+(result.retry?15000:0);
-        if(hideUntranslated&&!result.complete)continue;
+        if(parent(entry.node)?.closest('h1,h2,h3,h4,h5,h6,[role=heading],.font-semibold.leading-none.tracking-tight'))result.text=result.text.replace(/^(\s*)(\p{L})/u,(_,space,letter)=>space+(entry.original.match(/[A-Za-z]/)?.[0]===entry.original.match(/[a-z]/)?.[0]?letter.toLocaleLowerCase('ru'):letter.toLocaleUpperCase('ru')));
+        entry.visual=result.text;
+        if(hideUntranslated&&!result.complete){
+          if(dynamicTranslationLayout && entry.node instanceof Text){
+            const first=(result.pending??[{start:0,end:result.text.length}]).find(range=>range.start>=0 && range.end<=result.text!.length && range.end>range.start);
+            const masked=first?result.text.slice(0,first.start)+'…':result.text;
+            entry.rendered=masked;if(read(entry.node)!==masked)write(entry.node,masked);
+          }
+          continue;
+        }
         entry.rendered = result.text; if(result.complete) memo.set(entry.original,result.text);
         if(memo.size>3000) memo.delete(memo.keys().next().value!);
         if(read(entry.node)!==result.text) write(entry.node,result.text);
@@ -243,7 +358,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     },
     dispose() {
       disposed=true;
-      observer.disconnect(); if (timer) clearTimeout(timer);
+      observer.disconnect();previewSizes.disconnect(); if (timer) clearTimeout(timer);
       document.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', onScroll);
       document.removeEventListener('focusin', onFocus, true);
       document.removeEventListener('beforeinput', onFocus, true);

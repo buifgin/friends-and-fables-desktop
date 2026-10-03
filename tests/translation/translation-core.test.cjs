@@ -75,11 +75,28 @@ test('glossary covers screenshot labels and numeric UI immediately, including wh
  const {localTranslation}=require('../../dist/translation/translation-core');
  const {DND_GLOSSARY,INTERFACE_GLOSSARY}=require('../../dist/translation/russian-glossary');
  assert(Object.keys(DND_GLOSSARY).length>=500);assert(Object.keys(INTERFACE_GLOSSARY).length>=70);
- for(const [source,expected] of Object.entries({'Spellbook':'Книга заклинаний','Memories':'Воспоминания','Class Features':'Умения класса','Spellcasting':'Использование заклинаний','Prone':'Сбитый с ног','Action Surge: 0/1':'Всплеск действий: 0/1','Second Wind:1/2':'Второе дыхание:1/2','Bonuses: +2 Proficiency':'Бонусы: +2 умение','1 Topic Researched':'1 Тема изучена','1,699 XP until level 6':'1,699 опыта до уровня 6','Level 5 Drow Fighter (Spellblade)':'Уровень 5 Дроу Воин (Клинок заклинаний)','Mira says or does...':'Mira говорит или делает…','  Add Spell\n':'  Добавить заклинание\n'})){
+ for(const [source,expected] of Object.entries({'Spellbook':'Книга заклинаний','Memories':'Воспоминания','Class Features':'Умения класса','Spellcasting':'Использование заклинаний','Prone':'Сбитый с ног','Action Surge: 0/1':'Всплеск действий: 0/1','Second Wind:1/2':'Второе дыхание:1/2','Bonuses: +2 Proficiency':'Бонусы: +2 Умение','1 Topic Researched':'1 тема исследована','1,699 XP until level 6':'1,699 опыта до уровня 6','Level 5 Drow Fighter (Spellblade)':'Уровень 5 Дроу Воин (Клинок заклинаний)','Mira says or does...':'Mira говорит или делает…','  Add Spell\n':'  Добавить заклинание\n'})){
   assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected);assert.equal(renderTranslation(translationPlan(source)[0]),expected);
  }
  assert.equal(localTranslation('constructor',RUSSIAN_DICTIONARY),undefined);
  assert.equal(translationPlan('Light',['Light']).map(part=>renderTranslation(part)).join(''),'Light');
+});
+
+test('custom attack headings and damage labels use bounded Russian interface terms',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ for(const [source,target] of Object.entries({
+  'Attack Modifiers':'Модификаторы атаки',
+  'Spell Options':'Параметры заклинания',
+  'Roll Type':'Тип броска',
+  'Bludgeoning Damage':'Дробящий урон',
+  'Add Damage Roll':'Добавить бросок урона',
+  'Roll Attack':'Бросок атаки',
+ })) {
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+  assert.equal(localTranslation(source.toLowerCase(),RUSSIAN_DICTIONARY),target[0].toLowerCase()+target.slice(1),source+' casing');
+ }
+ assert.equal(localTranslation('the attack modifiers changed the spell options and roll type',RUSSIAN_DICTIONARY),undefined,
+  'Specific interface labels do not trigger broad prose rewriting.');
 });
 
 test('specialized terms retain canonical Russian names in prose without changing literal names or ordinary words',()=>{
@@ -98,11 +115,12 @@ test('shared GUI and composite dice bonuses use the chosen vocabulary without a 
  const {localTranslation}=require('../../dist/translation/translation-core');
  const samples={
   'AC':'КБ','Armor Class':'Класс брони','Base AC':'Базовый КБ','PB':'БУ','Proficiency':'Умение','Proficiency Bonus':'Бонус умения',
-  'Bonuses: +2 Wisdom, +2 Proficiency':'Бонусы: +2 мудрость, +2 умение','+2 Proficiency':'+2 умение','+2 Wisdom, +2 Proficiency':'+2 мудрость, +2 умение',
+  'Bonuses: +2 Wisdom, +2 Proficiency':'Бонусы: +2 Мудрости, +2 Умение','+2 Proficiency':'+2 Умение','+2 Wisdom, +2 Proficiency':'+2 Мудрости, +2 Умение',
+  'Bonuses: +5 Dexterity':'Бонусы: +5 Ловкости','Bonuses: +5 dexterity':'Бонусы: +5 ловкости',
   'Details':'Сведения','Armor':'Доспехи','Open Spellbook':'Открыть книгу заклинаний','Gold Pieces':'Золотые монеты','Backstory':'Предыстория','Mannerisms':'Манеры',
   'Campaign Settings':'Настройки кампании','Campaign Pacing Mode':'Темп кампании','Select Franz’s narration model.':'Выберите модель повествования Франца.',
   "Select Franz's narration model.":'Выберите модель повествования Франца.','Franz':'Франц','Gemini 3.1 Pro':'Gemini 3.1 Pro',
-  'XP until level':'опыта до уровня','30ft':'30 фт.','10 / 150 lbs':'10 / 150 фунт.','1 credit/turn':'1 кредит / ход','2 credits/turn':'2 кредита / ход','11 credits/turn':'11 кредитов / ход',
+  'XP until level':'Опыта до уровня','30ft':'30 фт.','10 / 150 lbs':'10 / 150 фунт.','1 credit/turn':'1 кредит / ход','2 credits/turn':'2 кредита / ход','11 credits/turn':'11 кредитов / ход',
   'Source *':'Источник *','Select race':'Выберите расу','Select subclass':'Выберите подкласс','STR - Strength':'СИЛ — Сила',
  };
  for(const [source,target] of Object.entries(samples)) assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
@@ -118,9 +136,11 @@ test('every authored shared interface string is deterministic, with whitespace a
  const {localTranslation}=require('../../dist/translation/translation-core');
  assert(Object.keys(SHARED_INTERFACE_GLOSSARY).length>900);
  for(const [source,target] of Object.entries(SHARED_INTERFACE_GLOSSARY)){
-  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
-  assert.equal(localTranslation('  '+source.toUpperCase()+'\n',RUSSIAN_DICTIONARY),'  '+target+'\n',source);
-  const plan=translationPlan(source);assert(!plan.some(p=>p.translate),source);assert.equal(plan.map(p=>renderTranslation(p)).join(''),target,source);
+  const lower=/^[А-ЯЁ]{2,}(?!\p{L})/u.test(target)||target.startsWith('Франц')?target:target.replace(/^(\p{L})/u,l=>l.toLowerCase());
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),lower,source);
+  const upper=/^к\d+$/i.test(target)?target:target.replace(/^(\p{L})/u,l=>l.toUpperCase());
+  assert.equal(localTranslation('  '+source.toUpperCase()+'\n',RUSSIAN_DICTIONARY),'  '+upper+'\n',source);
+  const plan=translationPlan(source);assert(!plan.some(p=>p.translate),source);assert.equal(plan.map(p=>renderTranslation(p)).join(''),lower,source);
  }
 });
 
@@ -130,10 +150,10 @@ test('roll outcomes, period-separated bonuses, healing and spell-slot events nev
   'OTHER':'Другое','Flee':'Отступление','Heal':'Лечение','Known':'Известные',
   'Melee Attack':'Атака в ближнем бою','Ranged Attack':'Атака в дальнем бою',
   'SUCCESS!':'Успех!','FAILURE!':'Провал!','CRITICAL SUCCESS!':'Критический успех!','CRITICAL FAILURE!':'Критический провал!',
-  'Bonuses: +4 Strength. +2 Proficiency':'Бонусы: +4 сила. +2 умение',
-  '+2 Wisdom. +2 Proficiency':'+2 мудрость. +2 умение',
-  '  Bonuses: -1 Dexterity, +2 Proficiency. +3 Expertise.\n':'  Бонусы: -1 ловкость, +2 умение. +3 компетентность.\n',
-  '+3 Modifier':'+3 модификатор',
+  'Bonuses: +4 Strength. +2 Proficiency':'Бонусы: +4 Силы. +2 Умение',
+  '+2 Wisdom. +2 Proficiency':'+2 Мудрости. +2 Умение',
+  '  Bonuses: -1 Dexterity, +2 Proficiency. +3 Expertise.\n':'  Бонусы: -1 Ловкости, +2 Умение. +3 Компетентность.\n',
+  '+3 Modifier':'+3 Модификатор',
   'Custom Instructions (1/15)':'Дополнительные инструкции (1/15)',
   '  Custom Instructions ( 0 / 15 )\n':'  Дополнительные инструкции ( 0 / 15 )\n',
   'Level 1 Spell Slot consumed':'Ячейка заклинания 1-го уровня использована',
@@ -243,7 +263,7 @@ test('combat health, turn labels, skill casing, and remaining screenshot UI stay
   'Unscathed':'Невредим','Severely Injured':'Тяжело ранен','Copy Event ID':'Копировать ID события','Collapse All':'Свернуть все','Entity':'Сущности',
   "End Могнус's Turn":'Завершить ход Могнус',"Waiting for Писькогрыз jr.'s Turn":'Ожидание хода Писькогрыз jr.',
   'Executor: Encounter':'Исполнитель: бой','Franz is imagining...':'Франц обдумывает ответ…','Franz is starting an encounter...':'Франц начинает бой…',
-  '2.0 / 150 lbs':'2.0 / 150 фунт.','+4 HP':'+4 ОЗ','Roll 1D20':'Бросить 1D20','Писькогрыз jr. cast Cure Wounds (Level 1)':'Писькогрыз jr. использует Лечение ран (уровень 1)',
+  '2.0 / 150 lbs':'2.0 / 150 фунт.','+4 HP':'+4 ОЗ','Roll 1D20':'Бросить 1к20','Писькогрыз jr. cast Cure Wounds (Level 1)':'Писькогрыз jr. использует Лечение ран (уровень 1)',
  }))assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected,source);
  assert.equal(RUSSIAN_DICTIONARY.strength,'Сила','Standalone headings retain their initial capital.');
  assert.equal(validateTranslation({...DEFAULT_TRANSLATION,hideUntranslated:true}).hideUntranslated,true);
@@ -256,6 +276,125 @@ test('Edit Encounter combat button is local across case and whitespace variants'
  for(const [source,expected] of Object.entries({
   'Edit Encounter':'Редактировать бой',
   '  EDIT ENCOUNTER\n':'  Редактировать бой\n',
-  '  edit   encounter  ':'  Редактировать бой  ',
+  '  edit   encounter  ':'  редактировать бой  ',
  })) assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected,source);
+});
+
+test('confirmed campaign labels and numeric counters use natural Russian locally',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ for(const [source,target] of Object.entries({
+  'Your turn, Могнус':'Ваш ход, Могнус',
+  'Hide panels':'Скрыть панели','Load Previous':'Загрузить предыдущие','Play audio':'Воспроизвести аудио',
+  'Show stats':'Показать характеристики','Add entity to map':'Добавить сущность на карту',
+  'Open left hand slot menu':'Открыть меню слота левой руки','Open armor slot menu':'Открыть меню слота доспехов',
+  'Open right hand slot menu':'Открыть меню слота правой руки','Open Card Dropdown Menu':'Открыть выпадающее меню карточки',
+  'Change Image':'Изменить изображение','Previous slide':'Предыдущий слайд','Next slide':'Следующий слайд',
+  'Campaign Dropdown Menu':'Выпадающее меню кампании','Like':'Нравится','Add Generation Instruction':'Добавить инструкцию для генерации',
+  'Generate Areas':'Создать области','Allow the AI to generate new areas.':'Разрешить ИИ создавать новые области.',
+  'Generate Races':'Создать расы','Allow the AI to generate new character races.':'Разрешить ИИ создавать новые расы персонажей.',
+  'Generate Items':'Создать предметы','Allow the AI to generate new items.':'Разрешить ИИ создавать новые предметы.',
+  'Newer':'Более новые','Older':'Более старые','Topics Researched':'Исследовано тем:',
+  'Topic Researched':'Исследована тема','Blocks Created':'Создано блоков:','Block Created':'Создан блок',
+  '1 Topic Researched':'1 тема исследована','2 Topics Researched':'2 темы исследованы',
+  '5 Topics Researched':'5 тем исследовано','21 Topics Researched':'21 тема исследована',
+  '2 Blocks Created':'2 блока создано','5 Blocks Created':'5 блоков создано','21 Blocks Created':'21 блок создан',
+  '2 Topics Researched 2 Blocks Created':'2 темы исследованы, 2 блока создано',
+  '1 Block Created':'1 блок создан','3 Topic Researched':'3 темы исследованы','11 Topic Researched':'11 тем исследовано',
+  '1 credit/turn':'1 кредит / ход','2 credits/turn':'2 кредита / ход','5 credits/turn':'5 кредитов / ход','2 credits + /turn':'2 кредита + / ход',
+  'credit':'кредит','credits':'кредиты','/turn':'/ход',
+  'Memory':'Воспоминание','Saved':'Сохранено',
+  '2 days ago':'2 дня назад','1 hour ago':'1 час назад','3 minutes ago':'3 минуты назад',
+  'Сареф, Салазар , Элендар, and Догун traveled 0.001 KM South West':'Сареф, Салазар , Элендар и Догун переместились на 0.001 км на юго-запад',
+  '4 characters traveled 0.001 KM South West':'4 персонажа переместились на 0.001 км на юго-запад',
+  'Сареф, Догун, Салазар получает 450 XP each.':'Сареф, Догун, Салазар получают 450 опыта каждый.',
+  'Светожильный кабан was reduced to 0 HP':'Светожильный кабан: ОЗ снижено до 0',
+  'These memories are searchable by the GM and may be automatically brought into context when relevant. To guarantee a specific memory is in the current Working Context, you can manually add it as a Working Context block.':'Эти воспоминания доступны мастеру для поиска и могут автоматически добавляться в контекст при необходимости. Чтобы гарантированно включить конкретное воспоминание в текущий рабочий контекст, добавьте его вручную в виде блока рабочего контекста.',
+ })) assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+});
+
+
+test('dynamic blank layout is opt-in, validated and survives preference normalization',()=>{
+ assert.equal(DEFAULT_TRANSLATION.dynamicTranslationLayout,false);
+ assert.equal(validateTranslation({...DEFAULT_TRANSLATION,dynamicTranslationLayout:true}).dynamicTranslationLayout,true);
+ const legacy={...DEFAULT_TRANSLATION};delete legacy.dynamicTranslationLayout;
+ assert.equal(validateTranslation(legacy).dynamicTranslationLayout,false);
+ assert.throws(()=>validateTranslation({...DEFAULT_TRANSLATION,dynamicTranslationLayout:'yes'}));
+});
+
+test('dice controls localize D notation and combat menu labels without matching names',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ for(const [source,target] of Object.entries({'1D20':'1к20','D6':'к6','Roll 2D6 + 3':'Бросить 2к6 + 3','Attacks':'Атаки','Skills & Attacks':'Навыки и атаки','Choose Action':'Выберите действие','Weapons':'Оружие','Spells':'Заклинания','Favorited':'В избранном',"You don't have any weapons equipped. Go to your inventory and equip a weapon!":'У вас нет оружия в руках. Откройте инвентарь и возьмите оружие.'}))
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+ assert.equal(localTranslation('D20 Drake',RUSSIAN_DICTIONARY),undefined);
+});
+
+
+test('combat damage labels, abbreviated saves, and compound dice are deterministic',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ const types={acid:'Кислотный',bludgeoning:'Дробящий',cold:'Холодовой',fire:'Огненный',force:'Силовой',lightning:'Электрический',necrotic:'Некротический',piercing:'Колющий',poison:'Ядовитый',psychic:'Психический',radiant:'Лучистый',slashing:'Рубящий',thunder:'Звуковой'};
+ for(const [type,label] of Object.entries(types)) {
+  assert.equal(localTranslation(type,RUSSIAN_DICTIONARY),label[0].toLowerCase()+label.slice(1));
+  assert.equal(localTranslation(type[0].toUpperCase()+type.slice(1),RUSSIAN_DICTIONARY),label);
+  assert.equal(localTranslation(type+' damage',RUSSIAN_DICTIONARY),label[0].toLowerCase()+label.slice(1)+' урон');
+ }
+ for(const [ability,label] of Object.entries({Strength:'силы',Dexterity:'ловкости',Constitution:'телосложения',Intelligence:'интеллекта',Wisdom:'мудрости',Charisma:'харизмы'}))
+  assert.equal(localTranslation(ability+' Save',RUSSIAN_DICTIONARY),'Спасбросок '+label);
+ assert.equal(translationPlan('They deal force damage.')[0].protected[0].text,'силовой урон');
+ assert.equal(translationPlan('Force damage hurts.')[0].protected[0].text,'Силовой урон');
+ assert.equal(localTranslation('Save',RUSSIAN_DICTIONARY),'Сохранить');
+ assert.equal(localTranslation('DC 12',RUSSIAN_DICTIONARY),'Сл 12');
+ assert.equal(localTranslation('1d4 + 1d4 + 1d4',RUSSIAN_DICTIONARY),'1к4 + 1к4 + 1к4');
+ assert.equal(localTranslation('2d6 + 1d4 - 3',RUSSIAN_DICTIONARY),'2к6 + 1к4 - 3');
+ assert.equal(localTranslation('.Intelligence modifier.',RUSSIAN_DICTIONARY),'.Модификатор интеллекта.');
+ assert.equal(localTranslation('1d4 + invalid',RUSSIAN_DICTIONARY),undefined);
+});
+
+test('damage type lists are protected as canonical terms and preview dice render locally',()=>{
+ const source='You have Resistance to Bludgeoning, Piercing, and Slashing damage.';
+ const part=translationPlan(source)[0];
+ assert.deepEqual(part.protected.map(item=>item.text),['Сопротивление Дробящему, Колющему и Рубящему урону']);
+ assert.equal(renderTranslation(part,'У вас ZXQ0ZXQ.'),'У вас Сопротивление Дробящему, Колющему и Рубящему урону.');
+ assert(!renderTranslation(part,'У вас ZXQ0ZXQ.').match(/Resistance|Bludgeoning|Piercing|Slashing/));
+ assert.equal(translationPlan('You have resistance to bludgeoning, piercing, and slashing damage.')[0].protected[0].text,'сопротивление дробящему, колющему и рубящему урону');
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ assert.equal(localTranslation('Preview: 1d6 bludgeoning',RUSSIAN_DICTIONARY),'Предпросмотр: 1к6 дробящий');
+ assert.equal(localTranslation('Preview: 2d8 + 3 fire',RUSSIAN_DICTIONARY),'Предпросмотр: 2к8 + 3 огненный');
+});
+
+test('critical RPG terms have scoped canonical labels and roll keeps its noun/verb context',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ for(const [source,target] of Object.entries({
+  'Roll':'Бросок','roll':'бросок','Roll Dice':'Бросить кости','Roll Attack':'Бросок атаки',
+  'D20 Test':'Проверка к20','D20 Tests':'Проверки к20','Ability Check':'Проверка характеристики',
+  'Attack Action':'Действие «Атака»','Object Interaction':'Взаимодействие с объектом',
+  'Bloodied':'Ранен','Temporary Hit Points':'Временные ОЗ','Hit Point Maximum':'Максимум ОЗ',
+  'Grapple':'Захват','Help Action':'Действие «Помощь»','Hide Action':'Действие «Скрыться»',
+  'Ready Action':'Подготовка действия','Study Action':'Действие «Изучение»','Utilize Action':'Действие «Использование предмета»',
+  'Material Component':'Материальный компонент','Area of Effect':'Область действия',
+  'Experience Points':'Очки опыта','Level Up':'Повышение уровня','Multiclassing':'Мультиклассирование',
+ })) assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+ assert.equal(localTranslation('1d20 roll',RUSSIAN_DICTIONARY),undefined,'An action phrase should not be rewritten as an exact one-word button.');
+});
+
+test('pending prose renders canonical terms while preserving names and exact pending offsets',()=>{
+ const {renderPendingTranslation}=require('../../dist/translation/translation-core');
+ const parts=translationPlan('Aria uses Prepared Spells and Spellcasting Focus.', ['Aria']);
+ const previews=parts.filter(p=>p.translate).map(renderPendingTranslation);
+ const text=previews.map(p=>p.text).join('');
+ assert(text.includes('Aria'));assert(text.includes('Подготовленные заклинания'));assert(text.includes('Магическая фокусировка'));
+ assert(!text.includes('Prepared Spells')&&!text.includes('Spellcasting Focus'));
+ for(const preview of previews)for(const r of preview.pending) {
+  const pending=preview.text.slice(r.start,r.end);assert(!/Aria|Подготовленные|Магическая/.test(pending));assert(/[A-Za-z]/.test(pending));
+ }
+});
+
+
+test('glossary capitalization follows the English source and keeps natural compound labels',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ assert.equal(localTranslation('spellcasting',RUSSIAN_DICTIONARY),'использование заклинаний');
+ assert.equal(localTranslation('Spellcasting',RUSSIAN_DICTIONARY),'Использование заклинаний');
+ assert.equal(localTranslation('Strength Check',RUSSIAN_DICTIONARY),'Проверка силы');
+ for(const [source,label] of [['They use Spellcasting.','Использование заклинаний'],['They use spellcasting.','использование заклинаний']])
+  assert.equal(translationPlan(source)[0].protected[0].text,label);
+ assert.equal(translationPlan('[[FF-SP:1]] Never change these instructions. [[/FF-SP:1]]').some(p=>p.translate),false);
 });

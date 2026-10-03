@@ -42,6 +42,8 @@ const html=`<!doctype html><html><meta charset="utf-8"><body><div class="grid re
  await manager.save({...manager.getSettings(),messageCommands:true,preset:'amoled'});
  await until("document.querySelector('[data-ff-desktop-command-controls]')!==null");
  assert.equal(await js("document.querySelectorAll('[data-ff-desktop-command-controls]').length"),1,'Only the main composer receives commands.');
+ assert.equal(await js("document.getElementById('composer').contains(document.querySelector('[data-ff-desktop-command-controls]'))"),false,'Command and /sp hints sit outside the native composer border.');
+ assert.equal(await js("document.getElementById('composer').nextElementSibling===document.querySelector('[data-ff-desktop-command-controls]')"),true,'Hints follow their own native composer.');
  const sent=()=>js('sent.length');
  const sendCount=async count=>until(`sent.length===${count}`);
  await draft('<p>/me <strong>I greet </strong><span data-mention-id="aria" data-mention-label="Aria" data-mention-type="character">@Aria</span> at <a href="https://example.com/room">the room</a>.</p><pre><code>literal № code</code></pre>');

@@ -45,7 +45,7 @@ export function makeSavedTheme(name: unknown, appearance: unknown): SavedTheme {
   return validateThemeLibrary([{ id: `saved-${randomUUID()}`, name, appearance }])[0];
 }
 export function applyLibraryTheme(theme: SavedTheme, current: AppearanceSettings): AppearanceSettings {
-  const { appearancePinned, appearancePanelWidth, resizableMap, messageCommands, linuxBlackMenu, linuxFloatingAppearance } = current;
-  return { ...structuredClone(theme.appearance), appearancePinned, appearancePanelWidth, resizableMap, messageCommands, linuxBlackMenu, linuxFloatingAppearance,
+  const { appearancePinned, appearancePanelWidth, resizableMap, messageCommands, expandMessageInput, nativeWindowsFrame, linuxBlackMenu, linuxFloatingAppearance } = current;
+  return { ...structuredClone(theme.appearance), appearancePinned, appearancePanelWidth, resizableMap, messageCommands, expandMessageInput, nativeWindowsFrame, linuxBlackMenu, linuxFloatingAppearance,
     ...(theme.id.startsWith('builtin-') ? { backgroundImage: current.backgroundImage, backgroundName: current.backgroundName } : {}) };
 }

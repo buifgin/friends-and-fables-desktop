@@ -8,7 +8,6 @@ import { DEFAULT_MUSIC, validateMusic } from './music-settings';
 import type { MusicSettings } from './music-settings';
 import { DEFAULT_APPEARANCE, themeBackground } from '../appearance/themes';
 import type { AppearanceSettings } from '../appearance/themes';
-import { configureMusicButton } from './music-button';
 import { MUSIC_CATALOG, catalogAttribution } from './music-catalog';
 import { chosenFolder, LOCAL_AUDIO, MusicLibrary, validateFolders } from './music-library';
 import type { MusicFolder } from './music-library';
@@ -145,11 +144,10 @@ export class MusicManager {
   setInterface(settings: AppearanceSettings,locale: 'en' | 'ru'): void {
     this.theme = {preset:settings.preset,customColor:settings.customColor}; this.locale = locale;
     if (this.player && !this.player.webContents.isDestroyed()) { this.player.setBackgroundColor(themeBackground(this.theme)); this.player.webContents.send('music:interface',this.state()); }
-    this.broadcast(); for (const contents of this.websites) void this.configure(contents).catch(() => {});
+    this.broadcast();
   }
   attach(contents: WebContents): void {
-    this.websites.add(contents); contents.on('did-finish-load',() => { void this.configure(contents).catch(console.error); });
-    contents.on('did-navigate-in-page',() => { void this.configure(contents).catch(console.error); }); contents.on('destroyed',() => this.websites.delete(contents));
+    this.websites.add(contents); contents.on('destroyed',() => this.websites.delete(contents));
   }
   attachMain(parent: BrowserWindow,launcher?: WebContents,website?: WebContents): void {
     if (this.parent === parent && this.player) { if (launcher) this.launcher = launcher; if (website) this.activeWebsite = website; return; }
@@ -174,16 +172,12 @@ export class MusicManager {
     if (url !== MUSIC_URL || !this.websites.has(contents) || new URL(contents.getURL()).origin !== 'https://play.fables.gg') return false;
     void this.open(parent).catch(console.error); return true;
   }
-  private async configure(contents: WebContents): Promise<void> {
-    if (contents.isDestroyed() || !contents.getURL().startsWith('https://play.fables.gg/')) return;
-    await contents.executeJavaScript(`(${configureMusicButton.toString()})(${JSON.stringify(this.locale)},${JSON.stringify(MUSIC_URL)})`);
-  }
   async open(parent: BrowserWindow): Promise<WebContentsView> {
     if (this.stopped) throw new Error('The music player has stopped.');
     if (this.parent !== parent || !this.player) this.attachMain(parent);
     const player = this.player!; await this.loading;
     if (this.player !== player || parent.isDestroyed()) throw new Error('The main window has closed.');
-    this.visible = true; this.layout(); this.broadcast(); player.webContents.focus(); return player;
+    this.visible = true; this.layout(); this.broadcast(); return player;
   }
   async shutdown(): Promise<void> {
     if (this.stopped) return;

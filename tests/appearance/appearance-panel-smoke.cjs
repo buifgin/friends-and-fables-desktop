@@ -40,7 +40,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   host.contentView.addChildView(website); manager.attach(website.webContents);
   const dock = manager.attachMain(host, website);
   const menu = Menu.buildFromTemplate(template);
-  bar = new LinuxMenuBar(host, website, menu, inset => dock.setInset(inset), () => host.contentView.addChildView(dock.launcher)); bar.setBlack(true);
+  bar = new LinuxMenuBar(host, website, menu, inset => dock.setInset(inset), () => dock.raiseControls()); bar.setBlack(true);
   await host.loadURL(MENU_URL); await website.webContents.loadURL('https://play.fables.gg/');
   const separate = await manager.open(host); separate.hide();
   await until(() => separate.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
@@ -56,7 +56,16 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   }
   await until(() => contents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await contents.executeJavaScript("document.body.classList.contains('docked')"), true);
-  assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32);
+  assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32, 'Menus and centered controls share one row above the game.');
+  const centered=dock.launcher.getBounds();assert.equal(centered.y,0,'Toolbar shares menu baseline.');assert(Math.abs(centered.x+centered.width/2-host.getContentSize()[0]/2)<=1, 'Toolbar is centered in the main window.');
+  const windowControls=dock.windowControls.view.webContents;
+  await until(()=>windowControls.executeJavaScript('!!window.windowControls'));
+  const centeredWindowIcons=await windowControls.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).map(button=>{const b=button.getBoundingClientRect(),s=button.querySelector('svg').getBoundingClientRect();return {x:Math.abs(b.x+b.width/2-s.x-s.width/2),y:Math.abs(b.y+b.height/2-s.y-s.height/2)}})`);
+  assert(centeredWindowIcons.every(value=>value.x<=.5&&value.y<=.5),'Window icons stay geometrically centered in their circles.');
+  const right=dock.windowControls.view.getBounds();assert.equal(right.x+right.width,host.getContentSize()[0]);assert.equal(right.y,0);
+  await until(()=>dock.launcher.webContents.executeJavaScript("getComputedStyle(document.getElementById('appearance-button')).borderRadius==='50%'"));
+  assert.equal(await dock.launcher.webContents.executeJavaScript("getComputedStyle(document.getElementById('appearance-button')).borderRadius===getComputedStyle(document.getElementById('library')).borderRadius"),true);
+
   assert.equal(website.getBounds().x, panel.getBounds().width);
   assert.equal(await website.webContents.executeJavaScript('typeof window.appearance'), 'undefined');
   assert.equal(await website.webContents.executeJavaScript('typeof window.appearanceButton'), 'undefined');
@@ -74,6 +83,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   // A small viewport clamps the panel while remembering the requested width.
   host.setContentSize(820, 680); await until(() => host.getContentSize()[0] === 820);
   assert.equal(panel.getBounds().width, 460); assert.equal(website.getBounds().width, 360);
+  const narrow=dock.launcher.getBounds();assert(Math.abs(narrow.x+narrow.width/2-host.getContentSize()[0]/2)<=1);assert(narrow.y+narrow.height<=website.getBounds().y);assert.equal(dock.windowControls.view.getBounds().x+108,host.getContentSize()[0]);
   host.setContentSize(1100, 820); await until(() => host.getContentSize()[0] === 1100); assert.equal(panel.getBounds().width, 540);
   // The shared layout also works without the Linux app bar (Windows/fullscreen).
   dock.setInset(0); assert.equal(panel.getBounds().y, 32); assert.equal(website.getBounds().y, 32);
@@ -100,8 +110,11 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   contents.sendInputEvent({type:'mouseMove',globalX:screenX-40,globalY:screenY,modifiers:['leftButtonDown'],x:handle.x-40,y:handle.y,movementX:-40,movementY:0});
   try { await until(() => panel.getBounds().width < startWidth); }
   catch(error){console.error('Resize diagnostic',JSON.stringify({startWidth,handle,focused:host.isFocused(),trace:await contents.executeJavaScript('window.resizeTrace')}));throw error;}
+  await until(()=>contents.executeJavaScript(`innerWidth===${panel.getBounds().width}`));
+  await contents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>resolve(true)))');
   contents.sendInputEvent({type:'mouseUp',globalX:screenX-40,globalY:screenY,x:handle.x-40,y:handle.y,button:'left',clickCount:1});
-  await until(() => manager.getSettings().appearancePanelWidth < startWidth);
+  try { await until(() => manager.getSettings().appearancePanelWidth < startWidth); }
+  catch(error){console.error('Persist resize diagnostic',JSON.stringify({startWidth,width:panel.getBounds().width,saved:manager.getSettings().appearancePanelWidth,trace:await contents.executeJavaScript('window.resizeTrace'),drag:await contents.executeJavaScript('({drag,desiredWidth,resizeFrame})')}));throw error;}
   // Built-in labels change without a model and preserve unsaved color values.
   await contents.executeJavaScript("document.getElementById('custom-hex').value='#abcdef'");
   await translation.save({ ...translation.getSettings(), enabled: true, translateDescriptions: false });
@@ -133,7 +146,10 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   bar.setBlack(false);await until(()=>host.webContents.executeJavaScript("document.querySelector('nav').hidden"));assert.equal(website.getBounds().y,32);assert.equal(bar.menu.items[0].label,'Файл');
   bar.setBlack(true);
   assert.equal(await contents.executeJavaScript("document.querySelector('h1').textContent"), 'Настройте под себя.');
-  assert.equal(await contents.executeJavaScript("document.getElementById('close-panel').textContent"), 'Закрыть панель');
+  assert.equal(await contents.executeJavaScript("document.querySelector('#close-panel svg')?.getAttribute('aria-hidden')"), 'true');
+  assert.equal(await contents.executeJavaScript("document.getElementById('close-panel').getAttribute('aria-label')"),'Закрыть панель');
+  assert.equal(await contents.executeJavaScript("getComputedStyle(document.getElementById('close-panel')).borderRadius"),'50%');
+  assert.equal(await contents.executeJavaScript("(()=>{const b=document.getElementById('close-panel').getBoundingClientRect(),g=document.querySelector('#close-panel svg').getBoundingClientRect();return Math.abs(b.x+b.width/2-g.x-g.width/2)<=.5&&Math.abs(b.y+b.height/2-g.y-g.height/2)<=.5})()"),true);
   assert.equal(await contents.executeJavaScript("document.getElementById('custom-hex').value"), '#abcdef');
   assert.equal(await contents.executeJavaScript("document.getElementById('player-gradient-second-opacity').closest('fieldset').querySelector('[data-label=gradient-second-opacity]').firstChild.textContent.trim()"), 'Непрозрачность второго цвета');
   await until(() => dock.launcher.webContents.executeJavaScript('document.getElementById("appearance-button").getAttribute("aria-label") === "Внешний вид"'));
@@ -173,6 +189,8 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   // Menus appear above the dock, without moving the website back over it.
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
   assert.equal(host.contentView.children.at(-1), dock.launcher, 'Music/appearance controls remain above an open menu.');
+  assert(host.contentView.children.indexOf(dock.windowControls.view)>host.contentView.children.indexOf(bar.overlay), 'Window controls stay above menu overlays.');
+  await until(()=>bar.overlay.webContents.executeJavaScript("getComputedStyle(document.getElementById('dropdown')).top==='32px'"));
   assert(host.contentView.children.indexOf(bar.overlay)>host.contentView.children.indexOf(panel), 'Dropdown remains above the settings panel.');
   assert.equal(website.getBounds().x, panel.getBounds().width);
   await host.webContents.executeJavaScript('window.desktopMenu.close()');
@@ -190,7 +208,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   // Disabling the pin restores the standalone editor and full game width.
   await contents.executeJavaScript("document.getElementById('pin-appearance').checked=false;document.getElementById('appearance-form').requestSubmit()");
   await until(() => !manager.getSettings().appearancePinned && BrowserWindow.getAllWindows().length === 2);
-  assert.equal(dock.isOpen(), false); assert.equal(website.getBounds().x, 0);assert.equal(website.getBounds().y,32,'The music and appearance toolbar remains above the website after unpinning.');
+  assert.equal(dock.isOpen(), false); assert.equal(website.getBounds().x, 0);assert.equal(website.getBounds().y,32,'The centered controls retain their row above the website with native menus after unpinning.');
   const reopened = manager.window;
   await until(() => reopened.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await reopened.webContents.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor'), 'rgb(35, 69, 103)');
@@ -205,6 +223,21 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const persisted=JSON.parse(await readFile(path.join(profile,'appearance.json'),'utf8'));
   assert.equal(persisted.appearancePinned,true);assert.equal(persisted.appearancePanelWidth,savedWidth);
   await translation.save({...translation.getSettings(),showOriginal:false});
+  // Only the registered sandboxed toolbar may control the native window.
+  const forgedControls=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/shell/window-controls-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
+  await forgedControls.loadURL('fables-desktop://settings/window-controls.html');
+  await assert.rejects(forgedControls.webContents.executeJavaScript('window.windowControls.get()'),/only in the app toolbar/);
+  await assert.rejects(forgedControls.webContents.executeJavaScript("window.windowControls.action('quit')"),/only in the app toolbar/);forgedControls.destroy();
+  await assert.rejects(windowControls.executeJavaScript("window.windowControls.action('delete')"),/Invalid window action/);
+  await until(()=>windowControls.executeJavaScript("document.getElementById('minimize').title==='Свернуть'"));
+  const wasFull=host.isFullScreen();await windowControls.executeJavaScript("document.getElementById('fullscreen').click()");await until(()=>host.isFullScreen()!==wasFull);
+  await until(()=>windowControls.executeJavaScript(`document.getElementById('fullscreen').getAttribute('aria-pressed')==='${!wasFull}'`));
+  await windowControls.executeJavaScript("document.getElementById('fullscreen').click()");await until(()=>host.isFullScreen()===wasFull);
+  // Test minimize independently after the fullscreen toggle contract above.
+  host.setFullScreen(false);await until(()=>!host.isFullScreen());
+  host.show();await windowControls.executeJavaScript("document.getElementById('minimize').click()");if(dock.windowControls.minimizer.trayMode){await until(()=>!host.isVisible());assert.equal(host.isMinimized(),false,'Hyprland hides without entering a frozen native minimized state.');dock.windowControls.minimizer.restore();await until(()=>host.isVisible());}else{await until(()=>host.isMinimized());host.restore();await until(()=>!host.isMinimized());}
+  const originalQuit=app.quit;let quitRequests=0;app.quit=()=>{quitRequests++};
+  try{await windowControls.executeJavaScript("window.windowControls.action('quit')");assert.equal(quitRequests,1,'Exit dispatches normal app.quit exactly once.')}finally{app.quit=originalQuit;}
   host.destroy();
   for(const method of ['get','save','import-image','pictures','select-picture','folder-pictures','choose-folder','select-folder-picture','reset','undo-reset','export-theme','import-theme','close-panel','resize-panel','save-theme','remove-theme','preview-theme'])ipcMain.removeHandler(`appearance:${method}`);
   session.fromPartition('fables-appearance').protocol.unhandle('fables-desktop');

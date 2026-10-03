@@ -187,6 +187,11 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     render(entry);
     return true;
   }
+  function placeControls(entry: Entry): void {
+    // Keep native editor/actions inside their original surface. Guidance is a
+    // sibling row so the website and input theme border never encloses it.
+    if (entry.root.nextElementSibling !== entry.controls) entry.root.after(entry.controls);
+  }
   function add(root: HTMLElement, editorElement: HTMLElement): void {
     const controls = document.createElement('div'); controls.setAttribute('data-ff-desktop-command-controls', 'true'); controls.setAttribute('translate', 'no');
     controls.style.cssText = 'display:flex;align-items:center;justify-content:center;flex-wrap:wrap;text-align:center;gap:10px;padding:4px 8px;font:12px system-ui;grid-column:1/-1;width:100%;box-sizing:border-box';
@@ -194,7 +199,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     const status = document.createElement('span'); status.setAttribute('role', 'status');
     const badge=document.createElement('button');badge.type='button';badge.setAttribute('data-ff-desktop-sp-status','true');badge.style.cssText=button.style.cssText;controls.append(button,status,badge);
     const entry: Entry = { root, editorElement, controls, button, status, badge, note: null, blockEnter: false, pending:false, sequence:0, bypass:null };
-    entries.set(root, entry); root.append(controls);
+    entries.set(root, entry); placeControls(entry);
     button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); prepare(entry); });
     badge.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();openInstructions(entry);});
     render(entry);
@@ -214,7 +219,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
     }
     for (const [root, entry] of entries) {
       if (found.get(root) !== entry.editorElement) { entry.controls.remove(); entries.delete(root); }
-      else { if (!root.contains(entry.controls)) root.append(entry.controls); render(entry); }
+      else { placeControls(entry); render(entry); }
     }
     for (const [root, element] of found) if (!entries.has(root)) add(root, element);
   }

@@ -4,6 +4,7 @@ import type { TranslationState } from './translation';
 
 // Available only in the bundled local settings window.
 contextBridge.exposeInMainWorld('translation', {
+  close: (): Promise<void> => ipcRenderer.invoke('translation:close'),
   get: (): Promise<TranslationState> => ipcRenderer.invoke('translation:get'),
   save: (value: TranslationSettings): Promise<TranslationState> => ipcRenderer.invoke('translation:save', value),
   check: (): Promise<{ available: boolean; message: string }> => ipcRenderer.invoke('translation:check'),

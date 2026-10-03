@@ -19,6 +19,7 @@ export class HostInstructionsManager {
   constructor(folder=app.getPath('userData')){this.file=path.join(folder,'host-instructions.json');}
   async initialize():Promise<void>{
     try{const stored=JSON.parse(await readFile(this.file,'utf8'));this.settings=validateHostInstructions(stored,stored.configured===true);}catch{/* Start disabled when preferences are missing or invalid. */}
+    ipcMain.handle('host-instructions:close',event=>{this.assertTrusted(event);this.window?.close();});
     ipcMain.handle('host-instructions:get',async event=>{this.assertTrusted(event);await this.writes.catch(()=>{});return this.state();});
     ipcMain.handle('host-instructions:save',async(event,value:unknown)=>{this.assertTrusted(event);await this.save(value);return this.state();});
   }
@@ -44,14 +45,14 @@ export class HostInstructionsManager {
   }
   async open(parent:BrowserWindow):Promise<BrowserWindow>{
     if(this.window&&!this.window.isDestroyed()){
-      const existing=this.window;await this.loading;if(existing.isDestroyed()||this.window!==existing)return this.open(parent);existing.show();existing.focus();return existing;
+      const existing=this.window;await this.loading;if(existing.isDestroyed()||this.window!==existing)return this.open(parent);existing.showInactive();return existing;
     }
-    const window=new BrowserWindow({parent,width:650,height:790,minWidth:500,minHeight:600,autoHideMenuBar:true,backgroundColor:themeBackground(this.theme),
+    const window=new BrowserWindow({parent,show:false,width:650,height:790,minWidth:500,minHeight:600,autoHideMenuBar:true,backgroundColor:themeBackground(this.theme),
       webPreferences:{partition:'fables-appearance',preload:path.join(__dirname,'host-instructions-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
     this.window=window;window.setMenu(null);
     window.webContents.on('will-navigate',event=>event.preventDefault());window.webContents.on('will-redirect',event=>event.preventDefault());window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     const closed=()=>{if(this.window===window){this.window=null;this.loading=undefined;}};window.on('close',closed);window.on('closed',closed);
-    this.loading=window.loadURL(HOST_INSTRUCTIONS_URL);await this.loading;return window;
+    this.loading=window.loadURL(HOST_INSTRUCTIONS_URL);await this.loading;window.showInactive();return window;
   }
-  async shutdown():Promise<void>{this.window?.destroy();await this.writes.catch(()=>{});for(const name of ['get','save'])ipcMain.removeHandler(`host-instructions:${name}`);}
+  async shutdown():Promise<void>{this.window?.destroy();await this.writes.catch(()=>{});for(const name of ['close','get','save'])ipcMain.removeHandler(`host-instructions:${name}`);}
 }

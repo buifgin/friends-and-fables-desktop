@@ -5,12 +5,13 @@ export interface TranslationSettings {
   enabled: boolean;
   showOriginal: boolean;
   hideUntranslated: boolean;
+  dynamicTranslationLayout: boolean;
   translateDescriptions: boolean;
   port: number;
   preservedNames: string[];
 }
 export const DEFAULT_TRANSLATION: TranslationSettings = {
-  enabled: false, showOriginal: false, hideUntranslated: false, translateDescriptions: true, port: 5000,
+  enabled: false, showOriginal: false, hideUntranslated: false, dynamicTranslationLayout: false, translateDescriptions: true, port: 5000,
   preservedNames: ['Friends & Fables'],
 };
 export function validateTranslation(raw: unknown): TranslationSettings {
@@ -19,11 +20,11 @@ export function validateTranslation(raw: unknown): TranslationSettings {
   for (const name of ['enabled', 'showOriginal', 'translateDescriptions']) {
     if (typeof value[name] !== 'boolean') throw new Error('Invalid translation switch.');
   }
-  if (value.hideUntranslated !== undefined && typeof value.hideUntranslated !== 'boolean') throw new Error('Invalid translation switch.');
+  if (['hideUntranslated','dynamicTranslationLayout'].some(name=>value[name] !== undefined && typeof value[name] !== 'boolean')) throw new Error('Invalid translation switch.');
   if (!Number.isInteger(value.port) || Number(value.port) < 1 || Number(value.port) > 65535) throw new Error('Choose a local port between 1 and 65535.');
   if (!Array.isArray(value.preservedNames) || value.preservedNames.length > 30
     || value.preservedNames.some(name => typeof name !== 'string' || !name.trim() || name.length > 80 || /[\r\n\u0000-\u001f]/.test(name))) throw new Error('Keep up to 30 names, each on its own line (80 characters maximum).');
-  return { enabled: value.enabled as boolean, showOriginal: value.showOriginal as boolean, hideUntranslated: value.hideUntranslated === true,
+  return { enabled: value.enabled as boolean, showOriginal: value.showOriginal as boolean, hideUntranslated: value.hideUntranslated === true, dynamicTranslationLayout: value.dynamicTranslationLayout === true,
     translateDescriptions: value.translateDescriptions as boolean, port: value.port as number,
     preservedNames: [...new Set((value.preservedNames as string[]).map(name => name.trim()))] };
 }
@@ -47,7 +48,8 @@ export const RUSSIAN_DICTIONARY: Record<string, string> = {
   'disadvantage':'Помеха', 'short rest':'Короткий отдых', 'long rest':'Продолжительный отдых',
   'damage':'Урон', 'healing':'Лечение', 'success':'Успех', 'failure':'Провал', 'critical hit':'Критическое попадание',
   'combat':'Бой', 'action':'Действие', 'bonus action':'Бонусное действие', 'reaction':'Реакция',
-  'roll dice':'Бросить кости', 'dice':'Кости', 'roll':'Бросить', 'manual':'Вручную',
+  'attacks':'Атаки', 'skills & attacks':'Навыки и атаки', 'skills and attacks':'Навыки и атаки', 'attack':'Атака',
+  'roll dice':'Бросить кости', 'dice':'Кости', 'roll':'Бросок', 'manual':'Вручную',
   'context':'Контекст', 'working context':'Рабочий контекст', 'thoughts':'Мысли', 'game master':'Мастер игры',
   'description':'Описание', 'background':'Предыстория', 'appearance':'Внешность', 'personality':'Характер',
   'quests':'Задания', 'quest':'Задание', 'journal':'Журнал', 'locations':'Места', 'location':'Место',
@@ -103,15 +105,29 @@ export const RUSSIAN_DICTIONARY: Record<string, string> = {
 // counters never wait for the model. Original whitespace and numbers survive.
 export function localTranslation(text: string, dictionary: Record<string,string>): string | undefined {
   const lookup = (key: string): string | undefined => Object.hasOwn(dictionary,key) ? dictionary[key] : undefined;
+  const casing=(source:string,value:string):string=>{
+    const first=source.match(/[A-Za-z]/)?.[0];
+    if(/^\d*d(?:4|6|8|10|12|20|100)$/i.test(source.trim()))return value;
+    if(!first || /^Франц(?!\p{L})/u.test(value) || /^[А-ЯЁ]{2,}(?!\p{L})/u.test(value))return value;
+    return value.replace(/^(\s*)(\p{L})/u,(_,space,letter)=>space+(first===first.toLowerCase()?letter.toLocaleLowerCase('ru'):letter.toLocaleUpperCase('ru')));
+  };
   const normalized = text.replace(/\s+/g,' ').replace(/[’‘]/g,"'").trim().toLowerCase();
   const exact = lookup(normalized) ?? lookup(normalized.replace(/…/g,'...'));
-  if (exact !== undefined) return text.slice(0,text.indexOf(text.trim())) + exact + text.slice(text.indexOf(text.trim())+text.trim().length);
+  if (exact !== undefined) return text.slice(0,text.indexOf(text.trim())) + casing(text.trim(),exact) + text.slice(text.indexOf(text.trim())+text.trim().length);
+  const wrapped = text.match(/^(\s*[.·:;!?]+\s*)(.*?)(\s*[.·:;!?]*\s*)$/);
+  if (wrapped && lookup(wrapped[2].trim().toLowerCase())) return wrapped[1]+casing(wrapped[2],lookup(wrapped[2].trim().toLowerCase())!)+wrapped[3];
+  const save = text.match(/^(\s*)(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Save(\s*)$/i);
+  if (save) return save[1]+lookup(save[2].toLowerCase()+' saving throw')+save[3];
+  const difficulty = text.match(/^(\s*)DC(\s+\d+)(\s*)$/i);
+  if (difficulty) return difficulty[1]+'Сл'+difficulty[2]+difficulty[3];
   const prefix = text.match(/^(\s*)(.*?)(\s*:\s*[+\-\d][\d\s,./+\-]*\s*)$/);
   if (prefix && lookup(prefix[2].trim().toLowerCase())) return prefix[1]+lookup(prefix[2].trim().toLowerCase())+prefix[3];
   const colon = text.match(/^(\s*)(.*?)(\s*:\s*)$/);
   if (colon && lookup(colon[2].trim().toLowerCase())) return colon[1]+lookup(colon[2].trim().toLowerCase())+colon[3];
   const decorated = text.match(/^(\s*)(.*?)(\s*\*|\.\.\.|…|[.!?])(\s*)$/);
   if (decorated && lookup(decorated[2].trim().toLowerCase())) return decorated[1]+lookup(decorated[2].trim().toLowerCase())+decorated[3]+decorated[4];
+  const yourTurn=text.match(/^(\s*)Your turn,\s*(.*?)(\s*)$/i);
+  if(yourTurn)return `${yourTurn[1]}Ваш ход,${yourTurn[2]?' '+yourTurn[2]:''}${yourTurn[3]}`;
   const remaining = text.match(/^(\s*)\(\s*(\d+)\s+characters? remaining\s*\)(\s*)$/i);
   if (remaining) return `${remaining[1]}(осталось символов: ${remaining[2]})${remaining[3]}`;
   const contextCount = text.match(/^(\s*)(\()?\s*(\d+)\s+active\s*[,/]\s*(\d+)\s+idle\s*(\))?(\s*)$/i);
@@ -140,18 +156,29 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   if (xp) return `${xp[1]}${xp[2]} опыта до уровня ${xp[3]}${xp[4]}`;
   const units = text.match(/^(\s*)([\d.,]+(?:\s*\/\s*[\d.,]+)?)\s*(ft\.?|lbs?\.?)(\s*)$/i);
   if (units) return `${units[1]}${units[2]} ${/^ft/i.test(units[3])?'фт.':'фунт.'}${units[4]}`;
+  const pluralWord=(n:number,forms:[string,string,string]):string=>n%100>=11&&n%100<=14?forms[2]:n%10===1?forms[0]:n%10>=2&&n%10<=4?forms[1]:forms[2];
+  const age=text.match(/^(\s*)(\d+)\s+(seconds?|minutes?|hours?|days?|weeks?|months?|years?)\s+ago(\s*)$/i);
+  if(age){const n=Number(age[2]),unit=age[3].toLowerCase().replace(/s$/,'');const forms:Record<string,[string,string,string]>={second:['секунду назад','секунды назад','секунд назад'],minute:['минуту назад','минуты назад','минут назад'],hour:['час назад','часа назад','часов назад'],day:['день назад','дня назад','дней назад'],week:['неделю назад','недели назад','недель назад'],month:['месяц назад','месяца назад','месяцев назад'],year:['год назад','года назад','лет назад']};return `${age[1]}${age[2]} ${pluralWord(n,forms[unit])}${age[4]}`;}
   const voice = text.match(/^(\s*)([A-Za-z][A-Za-z -]+) \((American|British|Portuguese|Spanish|Japanese|Chinese|Italian|French|Indian) (Male|Female)\)(\s*)$/i);
   if (voice) {
     const accents: Record<string,string>={american:'американский',british:'британский',portuguese:'португальский',spanish:'испанский',japanese:'японский',chinese:'китайский',italian:'итальянский',french:'французский',indian:'индийский'};
     return `${voice[1]}${/^franz$/i.test(voice[2])?'Франц':voice[2]} (${accents[voice[3].toLowerCase()]}, ${/^male$/i.test(voice[4])?'мужской':'женский'} голос)${voice[5]}`;
   }
-  const credits = text.match(/^(\s*)(\d+)\s+(credits?|turns?)(\s*\/\s*turn)?(\s*)$/i);
+  const credits = text.match(/^(\s*)(\d+)\s+(credits?|turns?)(\s*\+)?(\s*\/\s*turn)?(\s*)$/i);
   if (credits) {
     const n=Number(credits[2]), forms=/^credit/i.test(credits[3])?['кредит','кредита','кредитов']:['ход','хода','ходов'];
     const word=n%100>=11&&n%100<=14?forms[2]:n%10===1?forms[0]:n%10>=2&&n%10<=4?forms[1]:forms[2];
-    return `${credits[1]}${credits[2]} ${word}${credits[4]?' / ход':''}${credits[5]}`;
+    return `${credits[1]}${credits[2]} ${word}${credits[4]?' +':''}${credits[5]?' / ход':''}${credits[6]}`;
   }
-  const counter = text.match(/^(\s*)(\d+)\s+(Topic Researched|Block Created|Memory Saved|Active|Idle)(\s*(?:\/\s*)?)$/i);
+  const researched=text.match(/^(\s*)([\d,]+)\s+(Topics? Researched)(\s*)$/i);
+  if(researched){const n=Number(researched[2].replace(/,/g,''));return `${researched[1]}${researched[2]} ${pluralWord(n,['тема исследована','темы исследованы','тем исследовано'])}${researched[4]}`;}
+  const blocks=text.match(/^(\s*)([\d,]+)\s+(Blocks? Created)(\s*)$/i);
+  if(blocks){const n=Number(blocks[2].replace(/,/g,''));return `${blocks[1]}${blocks[2]} ${pluralWord(n,['блок создан','блока создано','блоков создано'])}${blocks[4]}`;}
+  const researchAndBlocks=text.match(/^(\s*)([\d,]+)\s+Topics? Researched\s+([\d,]+)\s+Blocks? Created(\s*)$/i);
+  if(researchAndBlocks){const topics=Number(researchAndBlocks[2].replace(/,/g,'')),blocksCount=Number(researchAndBlocks[3].replace(/,/g,''));return `${researchAndBlocks[1]}${researchAndBlocks[2]} ${pluralWord(topics,['тема исследована','темы исследованы','тем исследовано'])}, ${researchAndBlocks[3]} ${pluralWord(blocksCount,['блок создан','блока создано','блоков создано'])}${researchAndBlocks[4]}`;}
+  const memories=text.match(/^(\s*)([\d,]+)\s+Memor(?:y|ies) Saved(\s*)$/i);
+  if(memories)return `${memories[1]}${memories[2]} ${pluralWord(Number(memories[2].replace(/,/g,'')),['воспоминание сохранено','воспоминания сохранены','воспоминаний сохранено'])}${memories[3]}`;
+  const counter = text.match(/^(\s*)(\d+)\s+(Memory Saved|Active|Idle)(\s*(?:\/\s*)?)$/i);
   if (counter) return `${counter[1]}${counter[2]} ${dictionary[counter[3].toLowerCase()]}${counter[4]}`;
   const battle = text.match(/^(\s*)Battle lasted\s+(\d+)\s+turns?([.!]?)(\s*)$/i);
   if (battle) return `${battle[1]}Битва продолжалась ${battle[2]} ${localTranslation(battle[2]+' turns',dictionary)!.split(' ').slice(1).join(' ')}${battle[3]}${battle[4]}`;
@@ -167,8 +194,10 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   if(thinking)return thinking[1]+'Франц '+(/starting/i.test(thinking[3])?'начинает бой':/generating/i.test(thinking[3])?'готовит ответ':'обдумывает ответ')+'…'+thinking[4];
   const hp=text.match(/^(\s*)([+−\-]?[\d.,]+)\s*HP(\s*)$/i);
   if(hp)return hp[1]+hp[2]+' ОЗ'+hp[3];
-  const die=text.match(/^(\s*)Roll\s+(\d*d(?:4|6|8|10|12|20|100))(\s*)$/i);
-  if(die)return die[1]+'Бросить '+die[2]+die[3];
+  const preview=text.match(/^(\s*)Preview:\s*(\d*d(?:100|20|12|10|8|6|4)(?:\s*[+−-]\s*\d+)?)(\s+)(acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)(\s*)$/i);
+  if(preview){const labels:Record<string,string>={acid:'кислотный',bludgeoning:'дробящий',cold:'холодовой',fire:'огненный',force:'силовой',lightning:'электрический',necrotic:'некротический',piercing:'колющий',poison:'ядовитый',psychic:'психический',radiant:'лучистый',slashing:'рубящий',thunder:'звуковой'};return `${preview[1]}Предпросмотр: ${preview[2].replace(/d/gi,'к')}${preview[3]}${labels[preview[4].toLowerCase()]}${preview[5]}`;}
+  const die=text.match(/^(\s*)(Roll\s+)?(\d*d(?:100|20|12|10|8|6|4)(?:\s*[+−-]\s*(?:\d*d(?:100|20|12|10|8|6|4)|\d+))*)(\s*)$/i);
+  if(die)return die[1]+(die[2]?'Бросить ':'')+die[3].replace(/d/gi,'к')+die[4];
   const cast=text.match(/^(\s*)(.{1,100}?)\s+cast(?:s)?\s+(.+?)(?:\s+\(Level\s+(\d+)\))?(\s*)$/i);
   if(cast&&lookup(cast[3].toLowerCase()))return cast[1]+cast[2]+' использует '+lookup(cast[3].toLowerCase())+(cast[4]?' (уровень '+cast[4]+')':'')+cast[5];
   const turns = text.match(/^(\s*)turns?(\s*)$/i);
@@ -185,6 +214,12 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   if (slot) return `${slot[1]}Ячейка заклинания ${slot[2]}-го уровня ${/^consumed$/i.test(slot[3])?'использована':'восстановлена'}${slot[4]}${slot[5]}`;
   const recovered = text.match(/^(\s*)([\d,]+)\s+(HP Healed|HP Recovered|Damage)([.!]?)(\s*)$/i);
   if (recovered) return `${recovered[1]}${recovered[2]} ${lookup(recovered[3].toLowerCase())}${recovered[4]}${recovered[5]}`;
+  const movement=text.match(/^(\s*)(.+?)\s+traveled\s+([\d.,]+)\s+KM\s+(North|South|East|West)(?:\s+(East|West))?([.!]?)(\s*)$/i);
+  if(movement){const dir=(movement[4]+' '+(movement[5]??'')).trim().toLowerCase();const directions:Record<string,string>={north:'север',south:'юг',east:'восток',west:'запад','north east':'северо-восток','north west':'северо-запад','south east':'юго-восток','south west':'юго-запад'};const numericCharacters=movement[2].match(/^(\d+)\s+characters?$/i);const n=numericCharacters?Number(numericCharacters[1]):0;const singular=n===1;const characters=numericCharacters?`${numericCharacters[1]} ${pluralWord(n,['персонаж','персонажа','персонажей'])}`:movement[2].replace(/,\s+and\s+/i,' и ');return `${movement[1]}${characters} ${singular?'переместился':'переместились'} на ${movement[3]} км на ${directions[dir]}${movement[6]}${movement[7]}`;}
+  const xpEach=text.match(/^(\s*)(.+?)\s+(?:gains?|receives?|earned|получает|получают)\s+([\d,]+)\s+(?:XP|опыта)\s+(?:each|каждый)([.!]?)(\s*)$/i);
+  if(xpEach)return `${xpEach[1]}${xpEach[2]} получают ${xpEach[3]} опыта каждый${xpEach[4]}${xpEach[5]}`;
+  const reduced=text.match(/^(\s*)(.+?)\s+was reduced to\s+([\d,]+)\s+HP([.!]?)(\s*)$/i);
+  if(reduced)return `${reduced[1]}${reduced[2]}: ОЗ снижено до ${reduced[3]}${reduced[4]}${reduced[5]}`;
   const baseRoll = text.match(/^(\s*)Base Roll\s*\((advantage|disadvantage)\)(\s*)$/i);
   if (baseRoll) return `${baseRoll[1]}${lookup('base roll')} (${lookup(baseRoll[2].toLowerCase())})${baseRoll[3]}`;
   const vantage = text.match(/^(\s*)\((advantage|disadvantage)\)(\s*)$/i);
@@ -200,7 +235,14 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   // Dice bonuses are often one composite text node or several fragments.
   // Translate only known mechanical terms, preserving numbers and punctuation.
   const bonus = text.match(/^(\s*)(Bonuses:\s*)?((?:[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise|Modifier))(?:\s*[,.]\s*[+\-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise|Modifier))*)([.]?\s*)$/i);
-  if(bonus) return bonus[1]+(bonus[2]?bonus[2].replace(/Bonuses/i,lookup('bonuses')!):'')+bonus[3].replace(/[A-Za-z]+/g,term=>lookup(term.toLowerCase())!.toLowerCase())+bonus[4];
+  if(bonus) {
+    const genitive:Record<string,string>={strength:'силы',dexterity:'ловкости',constitution:'телосложения',intelligence:'интеллекта',wisdom:'мудрости',charisma:'харизмы'};
+    const terms=bonus[3].replace(/[A-Za-z]+/g,term=>{
+      const translated=genitive[term.toLowerCase()]??lookup(term.toLowerCase())!;
+      return /^[A-Z]/.test(term)?translated[0].toLocaleUpperCase('ru')+translated.slice(1):translated[0].toLocaleLowerCase('ru')+translated.slice(1);
+    });
+    return bonus[1]+(bonus[2]?bonus[2].replace(/Bonuses/i,lookup('bonuses')!):'')+terms+bonus[4];
+  }
   const composer = text.match(/^(.*?)\s+says or does(?:\.\.\.|…)(\s*)$/i);
   if(composer) return `${composer[1]} говорит или делает…${composer[2]}`;
   return undefined;
@@ -233,11 +275,31 @@ export function renderTranslation(part: TranslationPart, translated?: string): s
   return translated;
 }
 
+// Pending prose uses the same canonical placeholders as completed translation.
+// Offsets refer to this preview, whose Russian terms can differ in length.
+export function renderPendingTranslation(part: TranslationPart): {text:string;pending:{start:number;end:number}[]} {
+  if (!part.translate) return {text:renderTranslation(part),pending:[]};
+  const source=part.request??part.text;
+  const replacements=new Map((part.protected??[]).map(value=>[value.token,value.text]));
+  let text='',offset=0;
+  const pending:{start:number;end:number}[]=[];
+  const append=(span:string):void=>{
+    const start=text.length;text+=span;
+    if (/[A-Za-z]/.test(span)) pending.push({start,end:text.length});
+  };
+  for (const marker of source.matchAll(markerPattern)) {
+    append(source.slice(offset,marker.index));
+    text+=replacements.get(marker[0])??marker[0];offset=marker.index!+marker[0].length;
+  }
+  append(source.slice(offset));
+  return {text,pending};
+}
+
 // Russian runs remain literal. Names, URLs, and dice use validated placeholders
 // inside complete English sentences, preserving spelling without losing context.
 export function translationPlan(text: string, names: string[] = []): TranslationPart[] {
   // Tool-call dumps are technical records rather than game prose.
-  if (/DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(text)) return [{text,translate:false}];
+  if (/\[\[\/?FF-SP:1\]\]|DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(text)) return [{text,translate:false}];
   const local = localTranslation(text,RUSSIAN_DICTIONARY);
   if (local !== undefined && (text.trim().toLowerCase()==='franz' || !names.some(name=>name.toLowerCase()===text.trim().toLowerCase()))) return [{text,translate:false,local}];
   const escape = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -251,10 +313,31 @@ export function translationPlan(text: string, names: string[] = []): Translation
   let masked = text.replace(protectedPattern, value => {
     const token = `ZXQ${replacements.size}ZXQ`; replacements.set(token, {original:value,rendered:value.toLowerCase()==='franz'?'Франц':value}); return token;
   });
+  // Keep the common resistance construction together so the type list can use
+  // the dative required by Russian "сопротивление чему?" grammar.
+  const damageTypePattern='acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder';
+  const resistanceList=new RegExp(`\\b(resistance)\\s+to\\s+((?:(?:${damageTypePattern})\\s*,\\s*(?:and\\s+)?){1,}(?:${damageTypePattern}))\\s+damage\\b`,'giu');
+  const dativeDamageTypes:Record<string,string>={acid:'кислотному',bludgeoning:'дробящему',cold:'холодовому',fire:'огненному',force:'силовому',lightning:'электрическому',necrotic:'некротическому',piercing:'колющему',poison:'ядовитому',psychic:'психическому',radiant:'лучистому',slashing:'рубящему',thunder:'звуковому'};
+  masked=masked.replace(resistanceList,(_match,resistance:string,list:string)=>{
+    const forms=list.replace(new RegExp(`\\b(${damageTypePattern})\\b`,'giu'),(value:string)=>{
+      const dative=dativeDamageTypes[value.toLowerCase()];return value[0]===value[0].toLowerCase()?dative:dative[0].toLocaleUpperCase('ru')+dative.slice(1);
+    }).replace(/\band\b/giu,'и').replace(/,\s*и(?=\s)/u,' и');
+    const phrase=`${resistance[0]===resistance[0].toLowerCase()?'с':'С'}опротивление ${forms} урону`;
+    const token=`ZXQ${replacements.size}ZXQ`;replacements.set(token,{original:_match,rendered:phrase});return token;
+  });
+  // In a comma-separated mechanics list, bare damage-type words are canonical
+  // terms even when only the final item carries the word "damage".
+  const damageTypes:Record<string,string>={acid:'кислотный',bludgeoning:'дробящий',cold:'холодовой',fire:'огненный',force:'силовой',lightning:'электрический',necrotic:'некротический',piercing:'колющий',poison:'ядовитый',psychic:'психический',radiant:'лучистый',slashing:'рубящий',thunder:'звуковой'};
+  const damageList = new RegExp(`\\b(?:(?:${damageTypePattern})\\s*,\\s*(?:and\\s+)?){1,}(?:${damageTypePattern})\\s+damage\\b`,'giu');
+  masked = masked.replace(damageList, list => list.replace(/\b(acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\b/giu, value => {
+    const lower=value.toLowerCase(), rendered=damageTypes[lower];
+    const cased=value[0]===value[0].toLowerCase()?rendered:rendered[0].toLocaleUpperCase('ru')+rendered.slice(1);
+    const token=`ZXQ${replacements.size}ZXQ`;replacements.set(token,{original:value,rendered:cased});return token;
+  }));
   const terms = Object.keys(PROSE_GLOSSARY).sort((a,b)=>b.length-a.length).map(value=>escape(value).replaceAll("'","['’‘]"));
-  masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'), (value,offset:number,source:string) => {
+  masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.join('|')})(?![\\p{L}\\p{N}_])`,'giu'), (value) => {
     let rendered=PROSE_GLOSSARY[value.toLowerCase().replace(/[’‘]/g,"'")];
-    if(/^(strength|dexterity|constitution|intelligence|wisdom|charisma|run turn|end turn)$/i.test(value)&&(!source.slice(0,offset).trim()||/[.!?]\s*$/.test(source.slice(0,offset))))rendered=rendered[0].toUpperCase()+rendered.slice(1);
+    rendered=rendered.replace(/^(\s*)(\p{L})/u,(_,space,letter)=>space+(value[0]===value[0].toLowerCase()?letter.toLocaleLowerCase('ru'):letter.toLocaleUpperCase('ru')));
     const token=`ZXQ${replacements.size}ZXQ`; replacements.set(token,{original:value,rendered}); return token;
   });
   masked = masked.replace(new RegExp(`(?<![\\p{L}\\p{N}_])(?:${Object.keys(PROSE_TITLE_GLOSSARY).map(escape).join('|')})(?![\\p{L}\\p{N}_])`,'gu'), value => {

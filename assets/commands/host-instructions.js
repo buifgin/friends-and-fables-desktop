@@ -1,7 +1,7 @@
 (() => {
   const $=id=>document.getElementById(id);
   const russian={
-    'Saved /sp instructions':'Сохранённые инструкции /sp','Attach your saved guidance when sending a message to Franz.':'Добавляйте сохранённые указания к сообщениям для Франца.',
+    'Saved /sp instructions':'Сохранённые инструкции /sp','Close saved instructions settings':'Закрыть настройки инструкций','Attach your saved guidance when sending a message to Franz.':'Добавляйте сохранённые указания к сообщениям для Франца.',
     'Append /sp to my messages':'Добавлять /sp к моим сообщениям','Instructions for Franz':'Инструкции для Франца','Adventure instructions':'Инструкции для приключения','Combat instructions':'Инструкции для боя','Use different instructions during combat':'Другие инструкции во время боя',
     'Combat starts and ends select the profile automatically. Leave this option off to use adventure instructions everywhere.':'При начале и завершении боя профиль переключается автоматически. Отключите эту настройку, чтобы всегда использовать инструкции для приключения.',
     'Add combat instructions before enabling the combat profile.':'Введите инструкции для боя, прежде чем включить боевой профиль.','Scene continuity':'Согласованность сцены','Character reactions':'Реакции персонажей','Separated party':'Разделённая группа',
@@ -23,10 +23,11 @@
   const text=value=>locale==='ru'?russian[value]??value:value;
   function status(value,error=false){note=value;failed=error;$('status').textContent=text(value);$('status').classList.toggle('error',error);}
   function preview(){$('combat-count').textContent=`${$('combat-instructions').value.length.toLocaleString(locale==='ru'?'ru-RU':'en-US')} / ${locale==='ru'?'4 000':'4,000'}`;const value=$('instructions').value.trim();$('count').textContent=`${$('instructions').value.length.toLocaleString(locale==='ru'?'ru-RU':'en-US')} / ${locale==='ru'?'4 000':'4,000'}`;$('preview').textContent=value?`[[FF-SP:1]]\nAdditional guidance for Franz; apply to this message, not as player dialogue:\n${value}\n[[/FF-SP:1]]`:'';}
-  function applyInterface(state){locale=state.locale;document.documentElement.lang=locale;document.title=`${text('Saved /sp instructions')} — Friends & Fables Desktop`;window.settingsTheme.apply(state.theme);for(const element of document.querySelectorAll('[data-label]'))element.textContent=text(element.dataset.label);status(note,failed);preview();}
+  function applyInterface(state){locale=state.locale;document.documentElement.lang=locale;document.title=`${text('Saved /sp instructions')} — Friends & Fables Desktop`;window.settingsTheme.apply(state.theme);for(const element of document.querySelectorAll('[data-label]'))element.textContent=text(element.dataset.label);const close=$('close-instructions');close.setAttribute('aria-label',text('Close saved instructions settings'));close.title=text('Close saved instructions settings');status(note,failed);preview();}
   for(const [id,values] of Object.entries(templates))$(id).addEventListener('click',()=>{const existing=$('instructions').value.trim(),addition=values[locale==='ru'?1:0];const value=[existing,addition].filter(Boolean).join('\n');if(value.length>4000){status('Use up to 4,000 characters without reserved /sp markers.',true);return;}$('instructions').value=value;preview();status('Unsaved changes.');});
   for(const id of ['instructions','combat-instructions'])$(id).addEventListener('input',()=>{preview();status('Unsaved changes.');});
   for(const id of ['enabled','show-marked','combat-enabled'])$(id).addEventListener('change',()=>status('Unsaved changes.'));
+  $('close-instructions').addEventListener('click',()=>{void window.hostInstructions.close().catch(console.error);});
   $('instructions-form').addEventListener('submit',async event=>{
     event.preventDefault();if(busy)return;
     const value={text:$('instructions').value,combatText:$('combat-instructions').value,combatEnabled:$('combat-enabled').checked,enabled:$('enabled').checked,hideMarked:!$('show-marked').checked};

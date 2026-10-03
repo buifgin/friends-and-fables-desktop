@@ -117,3 +117,9 @@
 - [ ] Private GM delivery and per-character secrecy still require a verified service channel. Marked `/sp` guidance remains ordinary shared message content.
 
 - [x] Add a searchable built-in catalog of 266 official CC BY music links, English/Russian mood and genre filters, playlist actions, source/license links, and attribution copying.
+
+
+## Future character progression improvements
+
+- Planned for a later version: format progression descriptions into separate paragraphs by topic, such as spell slots, spellcasting ability, prepared spells, and spellcasting focus. Keep each heading beside its explanation rather than running several topics together. Support custom class descriptions without assuming one fixed format.
+- Unplanned idea (scope to assess): curate consistent Russian translations for each standard class and its progression features. Determine the supported rules versions and class coverage first; retain local-model fallback for custom worlds, classes and abilities.

@@ -4,7 +4,7 @@ import type { IpcMainInvokeEvent, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { DEFAULT_TRANSLATION, RUSSIAN_DICTIONARY, localTranslation, renderTranslation, translationPlan, validateTranslation, validateTranslationMarkers } from './translation-core';
+import { DEFAULT_TRANSLATION, RUSSIAN_DICTIONARY, localTranslation, renderPendingTranslation, renderTranslation, translationPlan, validateTranslation, validateTranslationMarkers } from './translation-core';
 import type { TranslationSettings } from './translation-core';
 import { TranslationCache } from './translation-cache';
 import { installTranslationDom } from './translation-dom';
@@ -18,7 +18,7 @@ import type { AppearanceSettings } from '../appearance/themes';
 export const TRANSLATION_URL = 'fables-desktop://settings/translation.html';
 const DOM_KEY = '__friendsFablesDesktopTranslation';
 interface Website { contents: WebContents; token: string; pending: Promise<void>; presentation?:{setVisible(value:boolean):void}; detach?:()=>void }
-interface TextRequest { id: number; version: number; text: string }
+interface TextRequest { id: number; version: number; text: string; ordered?:boolean }
 interface TextResult { text: string | null; complete: boolean; retry?: boolean; pending?: {start:number;end:number}[] }
 export interface TranslationState extends TranslationSettings {
   cacheEntries: number;
@@ -52,6 +52,7 @@ export class TranslationManager {
     catch { /* Translation starts disabled when settings are absent or invalid. */ }
     this.resetEngine();
     await this.cache.initialize();
+    ipcMain.handle('translation:close', event => { this.assertTrusted(event); this.window?.close(); });
     ipcMain.handle('translation:get', event => { this.assertTrusted(event); return this.state(); });
     ipcMain.handle('translation:save', (event, value: unknown) => { this.assertTrusted(event); return this.save(value).then(() => this.state()); });
     ipcMain.handle('translation:check', async event => { this.assertTrusted(event); return this.check(); });
@@ -138,7 +139,7 @@ export class TranslationManager {
       if(settings.enabled&&!settings.showOriginal&&settings.hideUntranslated)website.presentation?.setVisible(false);
       await website.contents.executeJavaScript(`window.${DOM_KEY}?.dispose()`);
       if (token !== website.token || !settings.enabled || settings.showOriginal || this.stopped) return;
-      await website.contents.executeJavaScript(`(${installTranslationDom.toString()})(${JSON.stringify(token)},${JSON.stringify(RUSSIAN_DICTIONARY)},${settings.translateDescriptions},${JSON.stringify(settings.preservedNames)},(${localTranslation.toString()}),${settings.hideUntranslated})`);
+      await website.contents.executeJavaScript(`(${installTranslationDom.toString()})(${JSON.stringify(token)},${JSON.stringify(RUSSIAN_DICTIONARY)},${settings.translateDescriptions},${JSON.stringify(settings.preservedNames)},(${localTranslation.toString()}),${settings.hideUntranslated},${settings.dynamicTranslationLayout})`);
     }).catch(() => { /* Navigation can discard an in-flight renderer call. */ }).finally(()=>{
       if(token===website.token&&!website.contents.isDestroyed())website.presentation?.setVisible(true);
     });
@@ -148,9 +149,10 @@ export class TranslationManager {
     const plans = nodes.map(node => translationPlan(node.text, this.settings.preservedNames));
     const queues = plans.map(parts => parts.filter(part => part.translate && this.cache.get(part.request ?? part.text) === undefined).map(part => part.request ?? part.text));
     const requests = new Set<string>();
-    // Interleave paragraphs so one long description cannot hold up the others.
+    // Progression finishes the first document-order block; general prose remains interleaved.
+    for(let index=0;index<queues.length;index++)if(nodes[index].ordered)for(const request of queues[index])requests.add(request);
     for (let index = 0; queues.some(queue => index < queue.length); index++) {
-      for (const queue of queues) if (queue[index] !== undefined) requests.add(queue[index]);
+      for (let node=0;node<queues.length;node++) if (!nodes[node].ordered && queues[node][index] !== undefined) requests.add(queues[node][index]);
     }
     const missing = [...requests];
     const failed = new Set<string>();
@@ -160,9 +162,14 @@ export class TranslationManager {
       const ranges: {start:number;end:number}[]=[]; let text='';
       for (const part of parts) {
         const unresolved=part.translate && this.cache.get(part.request??part.text)===undefined;
-        if (unresolved) for (const range of part.untranslated??[]) ranges.push({start:text.length+range.start,end:text.length+range.end});
-        text+=unresolved ? part.text : renderTranslation(part,part.translate?this.cache.get(part.request??part.text):undefined);
+        if (unresolved) {
+          const preview=renderPendingTranslation(part);
+          for (const range of this.settings.hideUntranslated ? [{start:0,end:preview.text.length}] : preview.pending) ranges.push({start:text.length+range.start,end:text.length+range.end});
+          text+=preview.text;
+        } else text+=renderTranslation(part,part.translate?this.cache.get(part.request??part.text):undefined);
       }
+      // Blank mode exposes a readable prefix, even when later sentences are cached.
+      if (this.settings.hideUntranslated && ranges.length) ranges.splice(0, ranges.length, {start:ranges[0].start,end:text.length});
       return {complete, pending:ranges, text,
         retry: !complete && (this.retryAfter>Date.now() || pending.some(part=>failed.has(part.request??part.text)))};
     });
@@ -201,7 +208,7 @@ export class TranslationManager {
         const nodes = collected.nodes as TextRequest[];
         if (!nodes.length) continue;
         if (nodes.length > 32 || nodes.some(node => !node || !Number.isInteger(node.id) || !Number.isInteger(node.version)
-          || typeof node.text !== 'string' || node.text.length > 16000) || nodes.reduce((total, node) => total + node.text.length, 0) > 48000) continue;
+          || typeof node.text !== 'string' || node.text.length > 16000 || node.ordered!==undefined && typeof node.ordered!=='boolean') || nodes.reduce((total, node) => total + node.text.length, 0) > 48000) continue;
         const publish = async (translated: TextResult[]): Promise<void> => {
           if (token !== website.token || !this.allowed(website.contents)) return;
           const results=nodes.map((node,index)=>({id:node.id,version:node.version,...translated[index]}));
@@ -218,8 +225,8 @@ export class TranslationManager {
       || event.senderFrame.origin !== 'fables-desktop://settings' || event.senderFrame.url !== TRANSLATION_URL) throw new Error('Translation preferences are available only in the app translation window.');
   }
   async open(parent: BrowserWindow): Promise<BrowserWindow> {
-    if (this.window && !this.window.isDestroyed()) { this.window.show(); this.window.focus(); return this.window; }
-    const window = this.window = new BrowserWindow({ parent, title: 'Translation — Friends & Fables Desktop',
+    if (this.window && !this.window.isDestroyed()) { this.window.showInactive(); return this.window; }
+    const window = this.window = new BrowserWindow({ parent, show: false, title: 'Translation — Friends & Fables Desktop',
       width: 720, height: 750, minWidth: 580, minHeight: 600, backgroundColor: themeBackground(this.theme), autoHideMenuBar: true,
       ...(process.platform === 'linux' ? { type: 'dialog' } : {}),
       webPreferences: { partition: 'fables-appearance', preload: path.join(__dirname, 'translation-preload.js'),
@@ -231,6 +238,7 @@ export class TranslationManager {
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
     window.on('closed', () => { if (this.window === window) this.window = null; });
     await window.loadURL(TRANSLATION_URL);
+    window.showInactive();
     await floatSettingsWindow(window, 'Translation — Friends & Fables Desktop', true);
     return window;
   }
@@ -242,6 +250,6 @@ export class TranslationManager {
     await Promise.all([...this.websites].map(website => this.configure(website)));
     for(const website of this.websites)website.detach?.();this.websites.clear();
     await this.cache.flush().catch(() => {});
-    for (const method of ['get', 'save', 'check', 'clear-cache']) ipcMain.removeHandler(`translation:${method}`);
+    for (const method of ['get', 'save', 'check', 'clear-cache', 'close']) ipcMain.removeHandler(`translation:${method}`);
   }
 }

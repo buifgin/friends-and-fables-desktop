@@ -1,6 +1,8 @@
 import { app, BrowserWindow, dialog, Menu, nativeTheme, session, shell, webContents, WebContentsView } from 'electron';
 import type { WebContents, MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
+import type { WindowControls } from './shell/window-controls';
+import { mainWindowChrome } from './shell/window-chrome';
 import { configureZoomShortcuts } from './shell/zoom';
 import { configureFullscreenShortcuts } from './shell/window-shortcuts';
 import { AppearanceManager, registerAppearanceScheme } from './appearance/appearance';
@@ -18,6 +20,7 @@ app.setName(APP_NAME);
 registerAppearanceScheme();
 
 let mainWindow: BrowserWindow | null = null;
+let windowControls: WindowControls | undefined;
 let appearance: AppearanceManager;
 let translation: TranslationManager;
 let music: MusicManager;
@@ -104,8 +107,10 @@ async function loadWebsite(window: BrowserWindow, contents: WebContents): Promis
 
 function createWindow(): void {
   const linux = process.platform === 'linux';
+  const customMenu = linux || process.platform === 'win32';
   mainWindow = new BrowserWindow({
     title: APP_NAME,
+    ...mainWindowChrome(process.platform, appearance.getSettings().nativeWindowsFrame),
     width: 1280,
     height: 900,
     minWidth: 800,
@@ -113,7 +118,7 @@ function createWindow(): void {
     backgroundColor: '#000000',
     webPreferences: {
       partition: 'fables-appearance',
-      ...(linux ? { preload: path.join(__dirname, 'shell/menu-preload.js') } : {}),
+      ...(customMenu ? { preload: path.join(__dirname, 'shell/menu-preload.js') } : {}),
       sandbox: true,
       contextIsolation: true,
       nodeIntegration: false,
@@ -127,23 +132,25 @@ function createWindow(): void {
   mainWindow.contentView.addChildView(view);
   websiteContents = view.webContents;
   const dock = appearance.attachMain(mainWindow, view);
+  windowControls = dock.windowControls;
   music.attachMain(mainWindow,dock.getLauncherContents(),view.webContents);
-  if (linux) {
-    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => { dock.setInset(inset); music.setInset(inset); }, () => dock.raiseControls());
+  if (customMenu) {
+    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => { dock.setInset(inset); music.setInset(Math.max(32,inset)); }, () => dock.raiseControls());
     linuxMenu.setMenu(applicationMenu, appearance.getLocale());
-    linuxMenu.setBlack(appearance.getSettings().linuxBlackMenu);
+    linuxMenu.setBlack(!linux || appearance.getSettings().linuxBlackMenu);
   }
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
   mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   configureFullscreenShortcuts(mainWindow.webContents, mainWindow);
-  if (!linux) mainWindow.webContents.on('did-finish-load', () => { void mainWindow?.webContents.insertCSS('html,body{margin:0;background:#000;}'); });
-  void mainWindow.loadURL(linux ? MENU_URL : 'about:blank').catch(console.error);
+  if (!customMenu) mainWindow.webContents.on('did-finish-load', () => { void mainWindow?.webContents.insertCSS('html,body{margin:0;background:#000;}'); });
+  void mainWindow.loadURL(customMenu ? MENU_URL : 'about:blank').catch(console.error);
   const contents = websiteContents;
   configureWebsiteContents(contents, mainWindow,view);
   contents.once('did-finish-load', () => contents.focus());
   mainWindow.on('closed', () => {
     mainWindow = null;
+    windowControls = undefined;
     appearance.close();
     translation.closeWindow();
     linuxMenu = undefined;
@@ -234,7 +241,7 @@ function createMenu(): void {
           click: () => { if (mainWindow) mainWindow.setFullScreen(!mainWindow.isFullScreen()); } },
       ],
     },
-    { id: 'window', label: 'Window', submenu: [{ label: 'Minimize', role: 'minimize' }, { label: 'Close', role: 'close' }] },
+    { id: 'window', label: 'Window', submenu: [{ label: 'Minimize', click: () => windowControls?.minimizer.minimize() }, { label: 'Close', role: 'close' }] },
   ], appearance.getLocale()));
   Menu.setApplicationMenu(applicationMenu);
   linuxMenu?.setMenu(applicationMenu, appearance.getLocale());
@@ -263,7 +270,7 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'linux') nativeTheme.themeSource = 'dark';
     translation.setAppearance(appearance.getSettings());
     appearance.onChange = (settings) => {
-      linuxMenu?.setBlack(settings.linuxBlackMenu);
+      linuxMenu?.setBlack(process.platform === 'win32' || settings.linuxBlackMenu);
       translation.setAppearance(settings);
       music.setInterface(settings,appearance.getLocale());
       hostInstructions.setInterface(settings,appearance.getLocale());

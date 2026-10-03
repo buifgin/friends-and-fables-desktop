@@ -127,9 +127,9 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.querySelector('#raw img')"),null);assert.equal(await contents.executeJavaScript('window.injected'),undefined);
  await contents.executeJavaScript("document.getElementById('save').click()");assert.equal(await contents.executeJavaScript('window.saveClicks'),1);
 
- const shared={details:'Сведения',race:'Раса',class:'Класс',subclass:'Подкласс',pronouns:'Местоимения',voice:'Голос',faction:'Фракция',none:'Нет',currencies:'Валюты',gold:'Золотые монеты',silver:'Серебряные монеты',copper:'Медные монеты',backstory:'Предыстория',mannerisms:'Манеры',carrying:'Грузоподъёмность',weight:'10 / 150 фунт.',armor:'Доспехи',head:'Голова',neck:'Шея','equipment-back':'Спина',gloves:'Перчатки',belt:'Пояс',ring:'Кольцо',legs:'Ноги',feet:'Ступни',back:'Назад','campaign-settings':'Настройки кампании',pacing:'Темп кампании',adventure:'Приключение',downtime:'Спокойная игра','model-help':'Выберите модель повествования Франца.',model:'Gemini 3.1 Pro',credits:'2 кредита / ход',franz:'Франц',ac:'КБ','armor-class':'Класс брони',pb:'БУ',proficiency:'Умение',bonus:'Бонусы: +2 мудрость, +2 умение','bonus-fragment':'+2 умение',speed:'30 фт.','split-xp':'1,799 опыта до уровня 4','spellbook-open':'Открыть книгу заклинаний','full-inventory':'Открыть полный инвентарь','voice-franz':'Франц (британский, мужской голос)'};
+ const shared={details:'Сведения',race:'Раса',class:'Класс',subclass:'Подкласс',pronouns:'Местоимения',voice:'Голос',faction:'Фракция',none:'Нет',currencies:'Валюты',gold:'Золотые монеты',silver:'Серебряные монеты',copper:'Медные монеты',backstory:'Предыстория',mannerisms:'Манеры',carrying:'Грузоподъёмность',weight:'10 / 150 фунт.',armor:'Доспехи',head:'Голова',neck:'Шея','equipment-back':'Спина',gloves:'Перчатки',belt:'Пояс',ring:'Кольцо',legs:'Ноги',feet:'Ступни',back:'Назад','campaign-settings':'Настройки кампании',pacing:'Темп кампании',adventure:'Приключение',downtime:'Спокойная игра','model-help':'Выберите модель повествования Франца.',model:'Gemini 3.1 Pro',credits:'2 кредита / ход',franz:'Франц',ac:'КБ','armor-class':'Класс брони',pb:'БУ',proficiency:'Умение',bonus:'Бонусы: +2 Мудрости, +2 Умение','bonus-fragment':'+2 Умение',speed:'30 фт.','split-xp':'1,799 опыта до уровня 4','spellbook-open':'Открыть книгу заклинаний','full-inventory':'Открыть полный инвентарь','voice-franz':'Франц (британский, мужской голос)'};
  for(const [id,text] of Object.entries(shared))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id);
- const rolls={'roll-other':'Другое','roll-flee':'Отступление','roll-heal':'Лечение','roll-melee':'Атака в ближнем бою','roll-ranged':'Атака в дальнем бою','roll-bonus':'Бонусы: +4 сила. +2 умение','roll-bonus-combined':'Бонусы: +2 мудрость. +2 умение','roll-success':'Успех!','roll-failure':'Провал!','roll-critical-success':'Критический успех!','roll-critical-failure':'Критический провал!','spells-known':'Известные','custom-instructions':'Дополнительные инструкции (1/15)','slot-event':'Ячейка заклинания 1-го уровня использована','slot-restored':'Ячейка заклинания 2-го уровня восстановлена','roll-healed':'4 ОЗ восстановлено','roll-recovered':'8 ОЗ восстановлено','roll-damage':'18 Урон','roll-base':'Базовый бросок (Преимущество)','roll-modifier':'Модификатор мудрости','roll-proficiency':'Бонус умения'};
+ const rolls={'roll-other':'Другое','roll-flee':'Отступление','roll-heal':'Лечение','roll-melee':'Атака в ближнем бою','roll-ranged':'Атака в дальнем бою','roll-bonus':'Бонусы: +4 Силы. +2 Умение','roll-bonus-combined':'Бонусы: +2 Мудрости. +2 Умение','roll-success':'Успех!','roll-failure':'Провал!','roll-critical-success':'Критический успех!','roll-critical-failure':'Критический провал!','spells-known':'Известные','custom-instructions':'Дополнительные инструкции (1/15)','slot-event':'Ячейка заклинания 1-го уровня использована','slot-restored':'Ячейка заклинания 2-го уровня восстановлена','roll-healed':'4 ОЗ восстановлено','roll-recovered':'8 ОЗ восстановлено','roll-damage':'18 Урон','roll-base':'Базовый бросок (Преимущество)','roll-modifier':'Модификатор мудрости','roll-proficiency':'Бонус умения'};
  for(const [id,text] of Object.entries(rolls))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),text,id);
  const account={'first-race':'Создайте свою первую расу!','profile-followers':'0 подписчиков','profile-following':'0 подписок','profile-empty':'Пока ничего не опубликовано в разделе «Предметы»!','no-unread':'Нет непрочитанных уведомлений','monthly-credit-title':'Ежемесячные бонусные кредиты!','monthly-credit-body':'По вашей подписке начислено 100 бонусных кредитов!','your-likes':'Понравившееся','one-shots':'Короткие приключения','first-liked-world':'Найдите мир и отметьте «Нравится»!','browse-worlds':'Обзор миров'};
  for(const [id,target] of Object.entries(account))assert.equal(await contents.executeJavaScript(`document.getElementById(${JSON.stringify(id)}).textContent`),target,id);
@@ -219,12 +219,15 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal((await manager.check()).available,false);
  const offlineCalls=calls.length;await manager.save({...manager.getSettings(),translateDescriptions:false});
  // Fixed common UI works with the service offline and descriptions disabled.
- await contents.executeJavaScript(`const box=document.createElement('section');box.id='hotfix-ui';box.innerHTML='<form><label>Email Address</label><input type="email" value="player.test@example.com"><p>Changing your email requires confirmation via both your current and new email addresses.</p><span id="literal-email">player.test@example.com</span></form><p id="outside-email">player.test@example.com</p><span id="count"></span><span id="category"></span><span id="configure"></span><span id="context-count"></span><span id="health-typing"></span><button id="left-tooltip" title="Character Sheet" aria-label="Character Sheet"></button><div contenteditable="true" translate="no"><p id="composer-placeholder" data-placeholder="Могнус says or does..."></p></div>';document.getElementById('late').append(box);
+ await contents.executeJavaScript(`const box=document.createElement('section');box.id='hotfix-ui';box.innerHTML='<form><label>Email Address</label><input type="email" value="player.test@example.com"><p>Changing your email requires confirmation via both your current and new email addresses.</p><span id="literal-email">player.test@example.com</span></form><p id="outside-email">player.test@example.com</p><span id="combat-save"></span><span id="combat-dc"></span><span id="count"></span><span id="category"></span><span id="configure"></span><span id="context-count"></span><span id="health-typing"></span><span id="memory-saved"></span><span id="credit-plus-turn"></span><span id="topics-counter"></span><button id="left-tooltip" title="Character Sheet" aria-label="Character Sheet"></button><div contenteditable="true" translate="no"><p id="composer-placeholder" data-placeholder="Могнус says or does..."></p></div>';document.getElementById('late').append(box);
  const fragments=(id,parts)=>{const element=document.getElementById(id);for(const text of parts){element.append(document.createTextNode(text),document.createComment('react'))}return [...element.childNodes]};
- fragments('health-typing',['Franz',' is ','starting an encounter','...']);window.hotfixNodes={count:fragments('count',['(','284',' characters remaining)']),category:fragments('category',['General',' ','Feat']),configure:fragments('configure',['Configure',' ','Flat Adjustment']),context:fragments('context-count',['(','2',' active, ','0',' idle)'])};`);
+ fragments('combat-save',['Constitution',' Save']);fragments('combat-dc',['DC ','12']);window.combatSaveNodes=[...document.getElementById('combat-save').childNodes];fragments('health-typing',['Franz',' is ','starting an encounter','...']);window.hotfixNodes={count:fragments('count',['(','284',' characters remaining)']),category:fragments('category',['General',' ','Feat']),configure:fragments('configure',['Configure',' ','Flat Adjustment']),context:fragments('context-count',['(','2',' active, ','0',' idle)']),memory:fragments('memory-saved',['Memory',' + ','Saved']),credits:fragments('credit-plus-turn',['2',' credits + ',' /turn']),topics:fragments('topics-counter',['2',' Topics Researched'])};`);
+ await until(contents,"document.getElementById('combat-save').textContent==='Спасбросок телосложения' && document.getElementById('combat-dc').textContent==='Сл 12'");
+ assert.equal(await contents.executeJavaScript("[...document.getElementById('combat-save').childNodes].every((n,i)=>n===window.combatSaveNodes[i])"),true);
  await until(contents,"document.getElementById('count').textContent==='(осталось символов: 284)'");
  await until(contents,"document.getElementById('category').textContent==='Общая черта' && document.getElementById('configure').textContent==='Настроить фиксированное изменение'");
  await until(contents,"document.getElementById('context-count').textContent==='(2 активных, 0 неактивных)'");
+ await until(contents,"document.getElementById('memory-saved').textContent==='Воспоминание + Сохранено' && document.getElementById('credit-plus-turn').textContent==='2 кредита + / ход' && document.getElementById('topics-counter').textContent==='2 темы исследованы'");
  await until(contents,"getComputedStyle(document.getElementById('composer-placeholder'),'::before').content.includes('Могнус говорит или делает…')");
  assert.equal(await contents.executeJavaScript("document.getElementById('composer-placeholder').getAttribute('data-placeholder')"),'Могнус says or does...');
  assert.equal(await contents.executeJavaScript("document.querySelector('#hotfix-ui label').textContent"),'Адрес электронной почты');
@@ -232,9 +235,16 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.getElementById('left-tooltip').getAttribute('aria-label')"),'Лист персонажа');
  assert.equal(await contents.executeJavaScript("document.querySelector('#hotfix-ui input').value"),'player.test@example.com');
  assert.equal(await contents.executeJavaScript("document.getElementById('outside-email').textContent"),'player.test@example.com');
- assert.equal(await contents.executeJavaScript("Object.entries(hotfixNodes).every(([key,nodes])=>nodes.every((node,i)=>node===document.getElementById(key==='context'?'context-count':key).childNodes[i]))"),true);
+ assert.equal(await contents.executeJavaScript("Object.entries(hotfixNodes).every(([key,nodes])=>nodes.every((node,i)=>node===document.getElementById(({context:'context-count',memory:'memory-saved',credits:'credit-plus-turn',topics:'topics-counter'})[key]||key).childNodes[i]))"),true);
  assert.equal(await contents.executeJavaScript("document.getElementById('health-typing').textContent"),'Франц начинает бой…');
  assert.equal(calls.length,offlineCalls,'Common interface translations never call the model.');
+ website.show();website.focus();contents.focus();
+ await contents.executeJavaScript(`const turn=document.createElement('span');turn.id='your-turn';turn.append(document.createTextNode('Your turn, '),document.createTextNode('Могнус'));document.getElementById('late').append(turn);const button=document.createElement('button');button.id='research-spans';button.innerHTML='<span>2</span><span>Topics Researched</span><span>2</span><span>Blocks Created</span>';document.getElementById('late').append(button);window.researchSpans=[...button.children];window.researchText=researchSpans.map(span=>span.firstChild);window.counterFrame=new Promise(resolve=>requestAnimationFrame(()=>resolve(button.textContent)))`);
+ assert.equal(await contents.executeJavaScript("document.getElementById('your-turn').textContent"),'Ваш ход, Могнус');
+ assert.equal(await contents.executeJavaScript('counterFrame'),'2 темы исследованы, 2 блока создано','Split counters translate before the next paint.');
+ await contents.executeJavaScript(`researchText[0].data='5';researchText[2].data='1'`);
+ await until(contents, "document.getElementById('research-spans').textContent==='5 тем исследовано, 1 блок создан'");
+ assert.equal(await contents.executeJavaScript("researchSpans.every((span,i)=>span===document.getElementById('research-spans').children[i] && span.firstChild===researchText[i])"),true,'Native span and numeric text identities survive translation and updates.');
  // Keep React text/comment identities and update only the changed source nodes.
  await contents.executeJavaScript(`window.rollNodes={modifier:[...document.getElementById('roll-modifier').childNodes],slot:[...document.getElementById('slot-event').childNodes],instructions:[...document.getElementById('custom-instructions').childNodes]};
  rollNodes.modifier[0].data='Strength';rollNodes.slot[2].data='3';rollNodes.slot[8].data='restored';rollNodes.instructions[2].data='2'`);
@@ -256,7 +266,7 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await until(contents,"document.getElementById('roll-modifier').textContent==='Модификатор силы'");
  assert.equal(calls.length,offlineCalls,'All roll translations work with descriptions off and the translator unavailable.');
  await contents.executeJavaScript("document.getElementById('bonus').textContent='Bonuses: +3 Wisdom, +2 Proficiency';document.getElementById('portal').innerHTML='<div role=menu><span>Campaign Settings</span><span>Race</span><span>Class</span><span>AC</span></div>'");
- await until(contents,"document.getElementById('bonus').textContent==='Бонусы: +3 мудрость, +2 умение'");
+ await until(contents,"document.getElementById('bonus').textContent==='Бонусы: +3 Мудрости, +2 Умение'");
  assert.equal(await contents.executeJavaScript("document.getElementById('portal').textContent"),'Настройки кампанииРасаКлассКБ');assert.equal(calls.length,offlineCalls);
  await manager.save({...manager.getSettings(),translateDescriptions:true});
  await website.loadURL('https://play.fables.gg/campaign/play');
@@ -267,12 +277,19 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await until(contents,"document.getElementById('recovered').textContent.startsWith('Перевод')");
  await assert.rejects(settings.webContents.executeJavaScript(`window.translation.save(${JSON.stringify({...manager.getSettings(),port:'https://example.com'})})`),/local port/);
  const impostor=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',sandbox:true,contextIsolation:true,nodeIntegration:false,preload:path.join(appRoot,'dist/translation/translation-preload.js')}});
- await impostor.loadURL(TRANSLATION_URL);await assert.rejects(impostor.webContents.executeJavaScript('window.translation.get()'),/only in the app translation window/);impostor.destroy();
+ await impostor.loadURL(TRANSLATION_URL);await assert.rejects(impostor.webContents.executeJavaScript('window.translation.get()'),/only in the app translation window/);await assert.rejects(impostor.webContents.executeJavaScript('window.translation.close()'),/only in the app translation window/);impostor.destroy();
  await website.loadURL('https://accounts.example.com/login');await sleep(800);
  assert.equal(await contents.executeJavaScript('typeof window.__friendsFablesDesktopTranslation'),'undefined');
  assert.equal(await contents.executeJavaScript("document.querySelector('h1').textContent"),'Characters');
  // Preferences and cache survive an application restart.
- settings.destroy();await manager.shutdown();manager=new TranslationManager(undefined, null);await manager.initialize();manager.attach(contents,{setVisible(value){display=value;displayChanges.push(value)}});
+ assert.equal(await settings.webContents.executeJavaScript("(()=>{const b=document.getElementById('close-translation').getBoundingClientRect(),g=document.querySelector('#close-translation svg').getBoundingClientRect();return Math.abs(b.x+b.width/2-g.x-g.width/2)<=.5&&Math.abs(b.y+b.height/2-g.y-g.height/2)<=.5})()"),true);
+ assert.equal(await settings.webContents.executeJavaScript("document.querySelector('#close-translation svg')?.getAttribute('aria-hidden')"),'true');
+ assert.equal(await settings.webContents.executeJavaScript("document.getElementById('close-translation').getAttribute('aria-label')"),'Закрыть панель');
+ await settings.webContents.executeJavaScript("document.getElementById('close-translation').click()");
+ for(let attempts=0;!settings.isDestroyed()&&attempts<50;attempts++)await sleep(20);
+ assert.equal(settings.isDestroyed(),true,'Translation close button closes only its settings window.');
+ assert.equal(website.isDestroyed(),false);
+ await manager.shutdown();manager=new TranslationManager(undefined, null);await manager.initialize();manager.attach(contents,{setVisible(value){display=value;displayChanges.push(value)}});
  assert.equal(manager.getSettings().enabled,true);assert.equal(manager.getSettings().port,preferences.port);
  mode='offline';await website.loadURL('https://play.fables.gg/campaign/play');
  await until(contents,"document.querySelector('#story strong').textContent==='Лес тих.'");
@@ -281,20 +298,40 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.querySelector('#story strong').textContent"),'The forest is quiet.');
  assert.equal((await reopened.webContents.executeJavaScript('window.translation.clearCache()')).cacheEntries,0);
  if(process.env.FABLES_TEST_SCREENSHOT){reopened.show();await sleep(150);await writeFile(process.env.FABLES_TEST_SCREENSHOT,(await reopened.webContents.capturePage()).toPNG());}
+ // Blank manager output hides the entire unresolved sentence, including glossary tokens.
+ await manager.save({...manager.getSettings(),hideUntranslated:true});
+ const sentencePreviews=[];
+ await manager.translateBatch([{id:'glossary-sentence',text:'Strength grants strange ancient protection.'}],async values=>sentencePreviews.push(values[0]));
+ assert(sentencePreviews.length>0);
+ const unfinished=sentencePreviews[0];assert.equal(unfinished.complete,false);assert.match(unfinished.text,/Сила/);
+ assert.deepEqual(unfinished.pending,[{start:0,end:unfinished.text.length}],'Pending spans cover glossary words inside an unfinished sentence.');
+ // Cached later sentences wait behind the first unfinished sentence in blank mode.
+ manager.cache.set('The later guardian waits.', 'Поздний страж ждёт.');
+ const orderedPreviews=[];
+ await manager.translateBatch([{id:'ordered',text:'The earlier guardian waits. The later guardian waits.'}],async values=>orderedPreviews.push(values[0]));
+ const ordered=orderedPreviews[0];assert.equal(ordered.complete,false);assert(ordered.text.includes('Поздний страж ждёт.'));
+ assert.deepEqual(ordered.pending,[{start:0,end:ordered.text.length}],'Ready cached text cannot leap ahead of unresolved prose.');
  // Blank mode keeps native text nodes and never paints a newly inserted source label.
  await contents.executeJavaScript(`document.body.innerHTML='<style>#blank-story{color:red!important}</style><p id="blank-story" aria-busy="false">The untranslated river flows.</p><div contenteditable="true" id="blank-editor">Original English draft.</div><section id="blank-late"></section>';window.blankText=document.getElementById('blank-story').firstChild;(${installTranslationDom.toString()})('blank-test',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}),true)`);
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').hasAttribute('data-ff-translation-blank')"),true);
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').firstChild===blankText"),true);
  assert.equal(await contents.executeJavaScript("getComputedStyle(document.getElementById('blank-story')).webkitTextFillColor"),'rgba(0, 0, 0, 0)','Pending text remains concealed with themed important text colors.');
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-editor').textContent"),'Original English draft.');
- const firstFrame=await contents.executeJavaScript(`new Promise(resolve=>{document.getElementById('blank-late').innerHTML='<p id="new-source">The hidden stone shines.</p><span id="new-local">ABILITY CHECKS</span>';requestAnimationFrame(()=>resolve({hidden:document.getElementById('new-source').hasAttribute('data-ff-translation-blank'),local:document.getElementById('new-local').textContent,dots:getComputedStyle(document.querySelector('#new-source [data-ff-translation-placeholder]'),'::after').animationName}))})`);
+ const firstFrame=await contents.executeJavaScript(`new Promise(resolve=>{document.getElementById('blank-late').innerHTML='<p id="new-source">The hidden stone shines.</p><span id="new-local">ABILITY CHECKS</span>';requestAnimationFrame(()=>resolve({hidden:document.getElementById('new-source').hasAttribute('data-ff-translation-blank'),local:document.getElementById('new-local').textContent,dots:getComputedStyle(document.querySelector('#new-source [data-ff-translation-dot]'),'::after').animationName}))})`);
  assert.deepEqual(firstFrame,{hidden:true,local:'Проверки характеристик',dots:'ff-translation-dots'});
  await sleep(210);
  const pending=await contents.executeJavaScript("window.__friendsFablesDesktopTranslation.collect()");
  const river=pending.nodes.find(node=>node.text==='The untranslated river flows.');assert(river);
- await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('blank-test',${JSON.stringify([{...river,text:'Частично translated text.',complete:false}])})`);
- assert.equal(await contents.executeJavaScript('blankText.data'),'The untranslated river flows.','Partial results remain concealed.');
+ await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('blank-test',${JSON.stringify([{...river,text:'Частично translated text.',complete:false,pending:[{start:9,end:25}]}])})`);
+ assert.equal(await contents.executeJavaScript('blankText.data'),'The untranslated river flows.','Default layout preserves the native source geometry.');
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').hasAttribute('data-ff-translation-blank')"),true);
+ assert.equal(await contents.executeJavaScript("document.querySelector('#blank-story [data-ff-translation-placeholder]').textContent"),'Частично ');
+ assert.equal(await contents.executeJavaScript("document.querySelector('#blank-story [data-ff-translation-dot]').getAttribute('aria-label')"),'Переводится');
+ await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('blank-test',${JSON.stringify([{...river,text:'Начало. Pending. Поздний готовый текст.',complete:false,pending:[{start:8,end:17}]}])})`);
+ assert.equal(await contents.executeJavaScript("document.querySelector('#blank-story [data-ff-translation-placeholder]').textContent"),'Начало. ','Only the contiguous translated prefix is painted.');
+
+ await contents.executeJavaScript(`document.getElementById('blank-story').style.width='140px';window.__friendsFablesDesktopTranslation.finish('blank-test',${JSON.stringify([{...river,text:'Готовый русский текст. '.repeat(25)+'Pending.',complete:false,pending:[{start:550,end:558}]}])})`);
+ assert.equal(await contents.executeJavaScript("document.querySelector('#blank-story [data-ff-translation-placeholder]').getBoundingClientRect().bottom<=document.getElementById('blank-story').getBoundingClientRect().bottom+1"),true,'Growing partial translation remains inside its native paragraph/card.');
  await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('blank-test',${JSON.stringify([{...river,text:'Река течёт.',complete:true}])})`);
  assert.equal(await contents.executeJavaScript('blankText.data'),'Река течёт.');
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').hasAttribute('data-ff-translation-blank')"),false);
@@ -302,6 +339,94 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  await contents.executeJavaScript("window.__friendsFablesDesktopTranslation.dispose()");
  assert.equal(await contents.executeJavaScript('blankText.data'),'The untranslated river flows.');
  assert.equal(await contents.executeJavaScript("document.querySelector('[data-ff-translation-placeholder]')"),null);
+ // Instruction delimiters must survive translation attaching before the hiding controller.
+ await contents.executeJavaScript(`document.body.innerHTML='<article class="prose"><p id="guidance-start">[[FF-SP:1]]</p><p id="guidance-body">Never translate this instruction.</p><p id="guidance-end">[[/FF-SP:1]]</p><p id="guidance-normal">Spellcasting</p></article>';window.guidanceNodes=[...document.querySelectorAll('article p')].map(p=>p.firstChild);(${installTranslationDom.toString()})('guidance-test',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}),true,true);(${require('../../dist/commands/host-instructions-dom').configureInstructionHiding.toString()})(true)`);
+ await until(contents,"document.getElementById('guidance-body').hasAttribute('data-ff-desktop-hidden-instructions')");
+ assert.equal(await contents.executeJavaScript("document.getElementById('guidance-start').firstChild.data"),'[[FF-SP:1]]');
+ assert.equal(await contents.executeJavaScript("getComputedStyle(document.getElementById('guidance-body')).display"),'none');
+ assert.equal(await contents.executeJavaScript("document.getElementById('guidance-body').textContent"),'Never translate this instruction.');
+ assert.equal(await contents.executeJavaScript("document.querySelectorAll('[data-ff-translation-placeholder]').length"),0,'Hidden guidance creates no translation previews.');
+ assert.equal(await contents.executeJavaScript("[...document.querySelectorAll('article p')].every((p,i)=>p.firstChild===guidanceNodes[i])"),true);
+ await contents.executeJavaScript("window.__friendsFablesDesktopTranslation.dispose()");
+ // Measured native catalog-card shape: preserve names even when they match the glossary.
+ await contents.executeJavaScript(`document.body.innerHTML='<h2 id="world-section">Featured Worlds</h2><div class="rounded-lg border bg-card clickable"><div><h3 class="text-2xl font-semibold font-header" id="world-name">In the Shadow of Ruin</h3></div><p id="world-description">The forest is quiet.</p></div><div class="bg-card clickable"><h3 class="font-header" id="glossary-world">Strength</h3></div>';window.worldNameNode=document.getElementById('world-name').firstChild;(${installTranslationDom.toString()})('world-names',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}),true,true)`);
+ await sleep(210);const worldRequests=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');
+ assert.equal(await contents.executeJavaScript("document.getElementById('world-name').textContent"),'In the Shadow of Ruin');
+ assert.equal(await contents.executeJavaScript("document.getElementById('glossary-world').textContent"),'Strength');
+ assert.equal(await contents.executeJavaScript("document.getElementById('world-name').firstChild===worldNameNode"),true);
+ assert(worldRequests.nodes.some(n=>n.text==='The forest is quiet.'),'World descriptions still reach the model.');
+ assert(!worldRequests.nodes.some(n=>n.text==='In the Shadow of Ruin'||n.text==='Strength'),'World names never reach the model.');
+ await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.dispose()');
+ // One indicator gates later paragraphs within a description, preserving their native nodes.
+ await contents.executeJavaScript(`document.body.innerHTML='<section data-ff-desktop-detail-card><h4>Spellcasting</h4><p id="ordered-first">The first unfinished guardian waits.</p><p id="ordered-later">The later unfinished guardian waits.</p></section>';window.orderedNodes=[document.getElementById('ordered-first').firstChild,document.getElementById('ordered-later').firstChild];(${installTranslationDom.toString()})('ordered-dom',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}),true,true)`);
+ await sleep(210);const orderedNodes=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');
+ const firstOrdered=orderedNodes.nodes.find(n=>n.text==='The first unfinished guardian waits.'),laterOrdered=orderedNodes.nodes.find(n=>n.text==='The later unfinished guardian waits.');assert(firstOrdered&&laterOrdered);
+ await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('ordered-dom',${JSON.stringify([{...laterOrdered,text:'Поздний готовый текст.',complete:true}])})`);
+ assert.equal(await contents.executeJavaScript("document.querySelectorAll('[data-ff-translation-placeholder] [data-ff-translation-dot]').length"),1);
+ assert.equal(await contents.executeJavaScript("document.querySelector('[data-ff-translation-placeholder]').textContent.includes('Поздний готовый текст.')"),false);
+ await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('ordered-dom',${JSON.stringify([{...firstOrdered,text:'Первый готовый текст.',complete:true}])})`);
+ assert.equal(await contents.executeJavaScript("document.querySelector('[data-ff-translation-placeholder]')"),null);
+ assert.equal(await contents.executeJavaScript("document.getElementById('ordered-first').firstChild===orderedNodes[0] && document.getElementById('ordered-later').firstChild===orderedNodes[1]"),true);
+ await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.dispose()');
+ // Split mechanics preserve native React Text/comment/span identity and form values.
+ await contents.executeJavaScript(`document.body.innerHTML='<div role="dialog"><h2>Choose Action</h2><h3 id="split-damage">Bludgeoning<!--react--> Damage</h3><div id="dice-field"><input type="number" value="1"><span id="dice-operator">d</span><button role="combobox">6</button></div><p id="split-preview">Preview: <!--react-->1d6<!--react--> bludgeoning</p><p id="split-bonus"><span>Bonuses:</span><span>+5 Dexterity</span></p></div><p id="ordinary-d">d</p>';window.mechanicNodes=[...document.getElementById('split-damage').childNodes];window.mechanicInput=document.querySelector('#dice-field input');(${installTranslationDom.toString()})('split-mechanics',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}))`);
+ await until(contents,"document.getElementById('split-damage').textContent==='Дробящий урон'");
+ assert.equal(await contents.executeJavaScript("document.getElementById('split-preview').textContent"),'Предпросмотр: 1к6 дробящий');
+ assert.equal(await contents.executeJavaScript("document.getElementById('split-bonus').textContent"),'Бонусы: +5 Ловкости');
+ assert.equal(await contents.executeJavaScript("document.getElementById('dice-operator').textContent"),'к');
+ assert.equal(await contents.executeJavaScript("document.getElementById('ordinary-d').textContent"),'d');
+ assert.equal(await contents.executeJavaScript("document.querySelector('#dice-field input')===mechanicInput && mechanicInput.value==='1' && document.querySelector('#dice-field [role=combobox]').textContent==='6' && [...document.getElementById('split-damage').childNodes].every((n,i)=>n===mechanicNodes[i])"),true);
+ await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.dispose()');
+ assert.equal(await contents.executeJavaScript("document.getElementById('split-damage').textContent"),'Bludgeoning Damage');
+ assert.equal(await contents.executeJavaScript("document.getElementById('dice-operator').textContent"),'d');
+ // Drain Level 1 completely before the next card/level, even with later content in the viewport.
+ mode='ready';assert.equal((await manager.check()).available,true,'Recover the deliberately offline service before ordering checks.');
+ const firstProgress=Array.from({length:6},(_,i)=>'Ordered first sample '+(i+1)+'.').join(' ');
+ await contents.executeJavaScript(`document.body.innerHTML='<button id="order-tab" role="tab">Progression</button><section role="tabpanel" aria-labelledby="order-tab"><h3>Class Features</h3><h4>Level 1</h4><article data-ff-desktop-detail-card><p id="level-one">${firstProgress}</p><p id="level-one-tail">Ordered final paragraph of first feature.</p></article><h4>Level 2</h4><article data-ff-desktop-detail-card><p id="level-two">Ordered second level sample.</p></article></section><p id="outside-progression">Independent general paragraph sample.</p>';document.getElementById('level-two').scrollIntoView();(${installTranslationDom.toString()})('progression-order',${JSON.stringify(RUSSIAN_DICTIONARY)},true,[],(${localTranslation.toString()}),true,true)`);
+ await sleep(210);
+ const front=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');
+ assert.equal(front.nodes.filter(n=>n.ordered).length,1);assert.equal(front.nodes.find(n=>n.ordered).text,firstProgress);
+ assert(front.nodes.some(n=>n.text==='Independent general paragraph sample.'),'Other prose remains independently eligible.');
+ assert.equal((await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()')).nodes.length,0,'Waiting first node remains a barrier.');
+ const firstNode=front.nodes.find(n=>n.ordered),offset=calls.length;
+ const publishFront=async (node,results)=>contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('progression-order',${JSON.stringify(results.map(v=>({...node,...v})))})`);
+ const translatedFront=await manager.translateBatch([firstNode],results=>publishFront(firstNode,results));await publishFront(firstNode,translatedFront);
+ assert.equal(translatedFront[0].complete,false,'Only a small model batch finishes per poll.');
+ assert.deepEqual(calls.slice(offset),Array.from({length:4},(_,i)=>'Ordered first sample '+(i+1)+'.'));
+ const continuedFront=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');assert.deepEqual(continuedFront.nodes.map(n=>n.text),[firstProgress],'The first paragraph remains first after a partial batch.');
+ const finishedFront=await manager.translateBatch(continuedFront.nodes,results=>publishFront(continuedFront.nodes[0],results));await publishFront(continuedFront.nodes[0],finishedFront);
+ assert.equal(finishedFront[0].complete,true);
+ assert.deepEqual(calls.slice(offset),Array.from({length:6},(_,i)=>'Ordered first sample '+(i+1)+'.'),'All first-block sentences precede later features.');
+ const tail=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');
+ assert.deepEqual(tail.nodes.map(n=>n.text),['Ordered final paragraph of first feature.']);
+ await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('progression-order',${JSON.stringify([{...tail.nodes[0],text:null,complete:false,retry:true}])})`);
+ assert.equal((await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()')).nodes.length,0,'Backoff never allows the next level to leapfrog.');
+ await contents.executeJavaScript("window.__friendsFablesDesktopTranslation.retry()");
+ const retryTail=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');assert.equal(retryTail.nodes[0].text,tail.nodes[0].text);
+ await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('progression-order',${JSON.stringify([{...retryTail.nodes[0],text:'Первое умение завершено.',complete:true}])})`);
+ const secondLevel=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');assert.deepEqual(secondLevel.nodes.map(n=>n.text),['Ordered second level sample.']);
+ await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.dispose()');
+ // Dynamic blank mode uses the same native Text node, but reserves only ready text and dots.
+ await contents.executeJavaScript(`document.body.innerHTML='<p id="dynamic-story" style="width:140px">${'The long unfinished paragraph flows. '.repeat(12)}</p><div role="dialog"><h2 id="character-title">Aria of Dawn</h2><button role="tab" id="progression-tab" data-state="active">Progression</button><div role="tabpanel" data-state="active"><h3 id="class-heading">Class Features</h3><div class="rounded-lg border bg-card/50"><h4 class="font-semibold text-sm" id="custom-heading">Sorcerous Restoration</h4><h4 class="font-semibold text-sm" id="short-custom-heading">Stormheart</h4><h4 id="named-heading">Mira</h4></div></div></div><h1 id="model-name">Silver Phoenix</h1>';window.dynamicNode=document.getElementById('dynamic-story').firstChild;window.sourceHeight=document.getElementById('dynamic-story').getBoundingClientRect().height;(${installTranslationDom.toString()})('dynamic-test',${JSON.stringify(RUSSIAN_DICTIONARY)},true,['Mira'],(${localTranslation.toString()}),true,true)`);
+ assert.equal(await contents.executeJavaScript('dynamicNode.data'),'…');
+ assert.equal(await contents.executeJavaScript("document.getElementById('dynamic-story').firstChild===dynamicNode"),true);
+ assert.equal(await contents.executeJavaScript("document.getElementById('dynamic-story').getBoundingClientRect().height<sourceHeight"),true);
+ await sleep(210);
+ const dynamic=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');
+ assert.equal(await contents.executeJavaScript("document.getElementById('class-heading').textContent"),'Умения класса','Glossary translation happens before the custom heading scan.');
+ assert(dynamic.nodes.some(node=>node.text==='Sorcerous Restoration'),'A native progression card title reaches the local model after Class Features becomes Russian.');
+ assert(!dynamic.nodes.some(node=>node.text==='Stormheart'),'Later progression headings wait behind the earlier unfinished card title.');
+ assert.equal(await contents.executeJavaScript("document.getElementById('character-title').textContent"),'Aria of Dawn','The unlisted dialog character title remains unchanged.');
+ assert(!dynamic.nodes.some(node=>node.text==='Mira'||node.text==='Silver Phoenix'||node.text==='Aria of Dawn'),'Character and model names remain outside heading fallback.');
+ const storyNode=dynamic.nodes.find(node=>node.text.startsWith('The long unfinished'));assert(storyNode);
+ await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('dynamic-test',${JSON.stringify([{...storyNode,text:'Готовая часть. Pending source.',pending:[{start:15,end:30}],complete:false}])})`);
+ assert.equal(await contents.executeJavaScript('dynamicNode.data'),'Готовая часть. …');
+ const custom=dynamic.nodes.find(node=>node.text==='Sorcerous Restoration');
+ await contents.executeJavaScript(`window.__friendsFablesDesktopTranslation.finish('dynamic-test',${JSON.stringify([{...custom,text:'восстановление чародейства',complete:true}])})`);
+ assert.equal(await contents.executeJavaScript("document.getElementById('custom-heading').textContent"),'Восстановление чародейства');
+ const nextHeading=await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.collect()');assert(nextHeading.nodes.some(node=>node.text==='Stormheart'),'Single-word custom titles remain eligible when they reach the front.');
+ await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.dispose()');
+ assert.equal(await contents.executeJavaScript('dynamicNode.data'), 'The long unfinished paragraph flows. '.repeat(12));
  await manager.save({...manager.getSettings(),enabled:true,hideUntranslated:true,translateDescriptions:false});
  displayChanges=[];await website.loadURL('https://play.fables.gg/campaign/play');
  await until(contents,"document.getElementById('home').textContent==='Главная'");

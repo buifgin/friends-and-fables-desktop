@@ -3,7 +3,7 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
 <title>Translation — Friends &amp; Fables Desktop</title>
 <link rel="stylesheet" href="appearance.css"><link rel="stylesheet" href="translation.css"><script src="settings-theme.js" defer></script><script src="settings-locale.js" defer></script><script src="translation.js" defer></script>
-</head><body><main>
+</head><body><div class="translation-toolbar"><button type="button" id="close-translation" class="secondary settings-close-button" aria-label="Close panel" title="Close panel"><svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M4 4 14 14M14 4 4 14" /></svg></button></div><main>
 <p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p><h1>Read in Russian.</h1>
 <p class="intro">Translate displayed English text locally. Russian passages stay as written.</p>
 <form id="translation-form"><fieldset id="translation-options" disabled>
@@ -12,7 +12,9 @@
 <label class="switch-row"><input id="show-original" type="checkbox"> Show original text</label>
 <label class="switch-row"><input id="descriptions" type="checkbox" checked> Translate descriptions and story text</label>
 <label class="switch-row"><input id="hide-untranslated" type="checkbox"> Hide text until translated</label>
-<p class="help">Show animated dots while a translation is pending, then reveal the finished text.</p>
+<p class="help">Show finished portions immediately and animated dots for text still being translated.</p>
+<label class="switch-row"><input id="dynamic-layout" type="checkbox"> Resize pending translation blocks</label>
+<p class="help">Shrink pending text to dots and grow blocks as Russian text becomes ready.</p>
 <p id="model-help" class="help">Common interface labels and game terms use a built-in dictionary. Descriptions use your local translation service. Turn descriptions off for dictionary-only translation.</p>
 <label for="preserved-names">Keep these names unchanged</label>
 <textarea id="preserved-names" rows="4" maxlength="2430" spellcheck="false" placeholder="One name per line"></textarea>

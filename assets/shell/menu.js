@@ -34,6 +34,8 @@ for (const button of buttons) {
 }
 window.desktopMenu.onShow(menu => {
   active = menu.id;
+  dropdown.style.top = `${menu.top ?? 32}px`;
+  dropdown.style.maxHeight = `calc(100vh - ${(menu.top ?? 32) + 8}px)`;
   document.body.classList.add('menu-open');
   dropdown.replaceChildren();
   for (const item of menu.items) {

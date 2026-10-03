@@ -11,7 +11,7 @@
     <script src="appearance.js" defer></script>
   </head>
   <body>
-    <div class="panel-toolbar" id="panel-toolbar" hidden><strong>Appearance</strong><button type="button" id="close-panel" class="secondary">Close panel</button></div>
+    <div class="panel-toolbar" id="panel-toolbar" hidden><strong>Appearance</strong><button type="button" id="close-panel" class="secondary settings-close-button" aria-label="Close panel" title="Close panel"><svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M4 4 14 14M14 4 4 14" /></svg></button></div>
     <div id="panel-resizer" role="separator" aria-label="Resize appearance panel" aria-orientation="vertical" aria-valuemin="320" aria-valuemax="900" aria-valuenow="420" tabindex="0" hidden></div>
     <main>
       <p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p>
@@ -158,6 +158,11 @@
         <section id="app-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="message-commands"> Enable /me and /gm commands</label>
           <p class="help">Start a line with /me for italics or /gm for # marks. Enter formats and checks the whole draft before sending. Shift+Enter inserts a plain soft break without paragraph spacing. Format command prepares the draft for review. № becomes # outside code.</p>
+          <label class="switch-row"><input type="checkbox" id="expand-message-input"> Show extra expand-input button</label>
+          <p class="help">Add a separate button for expanding the message input. The game’s own controls stay available.</p>
+          <div id="windows-frame-setting" hidden><label class="switch-row"><input type="checkbox" id="native-windows-frame"> Show native Windows title bar and border</label>
+            <p class="help">Restart the app after changing this setting.</p>
+          </div>
           <label class="switch-row"><input type="checkbox" id="resizable-map"> Resizable campaign map</label>
           <p class="help">Drag the battle or world map's lower edge to change its height. Expand it to resize both dimensions, then drag Move map to reposition it. Sizes and positions are remembered separately for each map and campaign.</p>
           <label class="switch-row"><input type="checkbox" id="pin-appearance"> Pin Appearance to the main interface</label>

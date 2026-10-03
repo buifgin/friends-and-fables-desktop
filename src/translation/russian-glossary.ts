@@ -1,6 +1,6 @@
 // Term names only; Russian wording is curated for this app. See docs/GLOSSARY.md
 // for SRD attribution and the community terminology references used to check it.
-export const GLOSSARY_VERSION = 7;
+export const GLOSSARY_VERSION = 9;
 export const DND_GLOSSARY: Record<string, string> = {
   'cantrip':'Заговор', 'cantrips':'Заговоры', 'spellcasting':'Использование заклинаний',
   'spellcasting ability':'Базовая характеристика заклинаний', 'spellcasting focus':'Магическая фокусировка',
@@ -17,12 +17,27 @@ export const DND_GLOSSARY: Record<string, string> = {
   'grappled':'Схваченный', 'incapacitated':'Недееспособный', 'invisible':'Невидимый', 'paralyzed':'Парализованный',
   'petrified':'Окаменевший', 'poisoned':'Отравленный', 'prone':'Сбитый с ног', 'restrained':'Опутанный',
   'stunned':'Ошеломлённый', 'unconscious':'Бессознательный', 'exhaustion':'Истощение',
-  'acid':'Кислота', 'bludgeoning':'Дробящий', 'cold':'Холод', 'fire':'Огонь', 'force':'Силовое поле',
-  'lightning':'Электричество', 'necrotic':'Некротическая энергия', 'piercing':'Колющий', 'poison':'Яд',
-  'psychic':'Психическая энергия', 'radiant':'Излучение', 'slashing':'Рубящий', 'thunder':'Звук',
+  'acid':'Кислотный', 'bludgeoning':'Дробящий', 'cold':'Холодовой', 'fire':'Огненный', 'force':'Силовой',
+  'lightning':'Электрический', 'necrotic':'Некротический', 'piercing':'Колющий', 'poison':'Ядовитый',
+  'psychic':'Психический', 'radiant':'Лучистый', 'slashing':'Рубящий', 'thunder':'Звуковой',
+  'acid damage':'Кислотный урон', 'bludgeoning damage':'Дробящий урон', 'cold damage':'Холодовой урон',
+  'fire damage':'Огненный урон', 'force damage':'Силовой урон', 'lightning damage':'Электрический урон',
+  'necrotic damage':'Некротический урон', 'piercing damage':'Колющий урон', 'poison damage':'Ядовитый урон',
+  'psychic damage':'Психический урон', 'radiant damage':'Лучистый урон', 'slashing damage':'Рубящий урон',
+  'thunder damage':'Звуковой урон',
   'resistance':'Сопротивление', 'immunity':'Иммунитет', 'vulnerability':'Уязвимость',
   'damage resistance':'Сопротивление урону', 'damage immunity':'Иммунитет к урону',
   'damage vulnerability':'Уязвимость к урону', 'condition immunity':'Иммунитет к состоянию',
+  'd20 test':'Проверка к20', 'd20 tests':'Проверки к20', 'attack action':'Действие «Атака»',
+  'object interaction':'Взаимодействие с объектом', 'bloodied':'Ранен',
+  'temporary hit points':'Временные ОЗ', 'hit point maximum':'Максимум ОЗ',
+  'grapple':'Захват', 'help action':'Действие «Помощь»',
+  'hide action':'Действие «Скрыться»', 'ready action':'Подготовка действия',
+  'study action':'Действие «Изучение»', 'utilize':'Использование предмета',
+  'utilize action':'Действие «Использование предмета»', 'material component':'Материальный компонент',
+  'area of effect':'Область действия',
+  'death saving throws':'Спасброски от смерти', 'experience point':'Очко опыта',
+  'experience points':'Очки опыта', 'level up':'Повышение уровня', 'multiclassing':'Мультиклассирование',
   'second wind':'Второе дыхание', 'action surge':'Всплеск действий', 'extra attack':'Дополнительная атака',
   'fighting style':'Боевой стиль', 'weapon mastery':'Мастерство оружия', 'indomitable':'Упорный',
   'sneak attack':'Скрытая атака', 'cunning action':'Хитрое действие', 'uncanny dodge':'Невероятное уклонение',
@@ -234,6 +249,11 @@ export const INTERFACE_GLOSSARY: Record<string,string> = {
 // such as "light", "friends", and "charmed" retain their ordinary meanings.
 export const PROSE_GLOSSARY: Record<string, string> = { ...Object.fromEntries(Object.entries(DND_GLOSSARY)
   .filter(([english]) => english.includes(' ') || ['cantrip','cantrips','spellcasting','metamagic','prestidigitation','thaumaturgy','counterspell'].includes(english))),
+  'acid damage':'кислотный урон', 'bludgeoning damage':'дробящий урон', 'cold damage':'холодовой урон',
+  'fire damage':'огненный урон', 'force damage':'силовой урон', 'lightning damage':'электрический урон',
+  'necrotic damage':'некротический урон', 'piercing damage':'колющий урон', 'poison damage':'ядовитый урон',
+  'psychic damage':'психический урон', 'radiant damage':'лучистый урон', 'slashing damage':'рубящий урон',
+  'thunder damage':'звуковой урон',
   'armor class':'Класс брони', 'proficiency bonus':'Бонус умения',
   'sorcerer':'Чародей', 'strength':'сила', 'dexterity':'ловкость', 'constitution':'телосложение',
   'intelligence':'интеллект', 'wisdom':'мудрость', 'charisma':'харизма',

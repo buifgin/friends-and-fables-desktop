@@ -153,7 +153,11 @@ button.picture-choice { display: flex; flex-direction: column; align-items: stre
 
 .panel-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; position: sticky; top: 0; z-index: 3; padding: 12px 18px; background: var(--ui-bg,#010b0e); border-bottom: 1px solid var(--ui-border,#333); }
 .panel-toolbar strong { font-size: 13px; }
-.panel-toolbar button { padding: 6px 10px; }
+button.settings-close-button { display: grid; place-items: center; flex: 0 0 34px; width: 34px; height: 34px; padding: 0; border: 1px solid var(--ui-border,#424650); border-radius: 50%; background: transparent; color: var(--ui-fg,#d3d4d9); font-size: 0; line-height: 0; }
+button.settings-close-button > svg { display: block; width: 18px; height: 18px; overflow: visible; }
+button.settings-close-button > svg path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+button.settings-close-button:not(:disabled):hover { border-color: var(--ui-hover,#63656d); background: var(--ui-panel,#191c23); filter: none; }
+button.settings-close-button:focus-visible { outline: 2px solid var(--ui-focus,#f1d9a8); outline-offset: 2px; }
 body.docked main { padding: 20px 20px 24px; }
 body.docked h1 { font-size: 24px; }
 body.docked .eyebrow { display: none; }

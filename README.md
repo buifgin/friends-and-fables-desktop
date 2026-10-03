@@ -125,6 +125,8 @@ In **Sharing**, click **Export theme…** to save the current preview as a `.fab
 
 The Appearance editor follows the selected app theme, including light and custom colors. In **App**, enable **Pin Appearance to the main interface** and apply. A button opens the settings in a resizable panel on the left of the game, including in fullscreen. Drag its right edge to resize, or focus the separator and use the arrow keys. Closing the panel preserves its draft; disabling the pin restores the separate window. The panel width is saved locally and stays out of shared themes.
 
+The application menus, centered round Appearance/music controls and right window controls share one toolbar row. Windows starts without a native title bar or border; **App → Show native Windows title bar and border** restores it after restarting. **Show extra expand-input button** is off by default. Command hints stay below the native input border, and opening working context applies its palette to that input. Event styles apply to event cards, while character dialogs follow the app theme. These changes are in the current source hotfix.
+
 Appearance and Translation settings both follow the saved app theme. Changing the theme keeps unsaved translation choices intact.
 
 Enabling Russian translation also switches Appearance and Translation settings to their built-in Russian labels, help text, and dialogs. This works without the model service. **Show original text** restores English labels and keeps unsaved settings intact.

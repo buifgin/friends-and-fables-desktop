@@ -69,3 +69,43 @@ Full private results, selected campaign, worker branches/commits, logs and repro
 The user authorized committing the completed hotfix and publishing 0.5.2 before further work. The release includes the completed changes above and prior music/themes/instructions/layout changes since 0.5.1. A new two-campaign built-in translation sweep and requested centered toolbar/window controls are separate follow-up work, outside this release. Release verification and publication records are in docs/RELEASING.md. Local workflow artifacts remain excluded.
 
 0.5.2 is published at https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.5.2. Exact release source is c9ceb0e; native Linux/Windows workflow37036457745 passed source/packages and Windows model. Both CI binaries and combined checksums were uploaded unchanged; Arch recipe source verification passed. Future toolbar/translation requests remain separate follow-up work.
+
+
+## Local toolbar and translation follow-up — 2026-10-02
+
+The v0.5.2 release checkpoint above remains published. These newer changes are separate, currently uncommitted source changes:
+
+- Removed the composer music shortcut. Main-window playback and the library shortcut remain available.
+- Centered matching round Appearance/music controls in a dedicated toolbar row. Controls stay above open native menus; the volume dropdown remains usable.
+- Added restricted local fullscreen, minimize-to-taskbar/panel, and normal Exit controls. Minimizing preserves playback.
+- Corrected confirmed built-in labels, memory helper/time labels, model credit units, research/memory counts, movement/XP/HP summaries, and the combat turn notice. Split numeric labels retain native page nodes and translate before paint.
+
+Read-only checks covered two signed-in campaigns, combat and adventure, including dice menus, health/turn order, character details, party/quests/world, memories, and campaign settings. Proper names/model names remain literal. No campaign messages, rolls, turn advances, entity edits, or preference saves were made. Drafts were empty before each app restart; paused music and user appearance were preserved. This checks the sampled GUI surfaces, not every possible generated story.
+
+Verification: the combined source suite passed27 unit tests and all seven Electron suites; type check/build/diff check passed. Native live checks passed centered geometry, matching circles, all seven menus, volume, fullscreen, minimize/restore and normal Exit. Additional final focused translation/unit checks cover the combat notice found in the visual pass. The updated source app is left running in the original campaign; temporary windows and debugger connections are closed. No new Windows package or release was produced for this follow-up.
+
+
+## 2026-10-03 resumed hotfix
+
+Implemented: consistent thirteen damage labels, native ability-save/DC/dice sums, source-based glossary casing, whole-sentence pending placeholders, growing partial previews, and `/sp` ignore restoration when translation attaches first. Action-picker dialogs retain a thin neutral app border; only the selected tab gets a thin app-accent border. Music starts as two toolbar buttons, expands animated outlined controls, keeps a library shortcut, and removes the toolbar Stop button. Window controls are ordered minimize, fullscreen, exit. Separate settings windows open inactive. Future progression paragraph formatting and an unplanned curated-class translation idea are in ROADMAP.md.
+
+Verification: type check/build and 34 unit tests passed. Appearance, translation, map, commands, music, and instruction fixtures passed; the updated selected-tab appearance fixture passed separately. Live checks used a temporary profile on DP-1 in the combat campaign ХАЪХАХАХАХАХАХХА and adventure campaign The Chronicles of Odrun Fell. Combat saves, damage and dice labels were correct; all four picker tabs had the selected-tab accent and normal dialog border. Progression checks counted 24 and 34 paragraphs with no card overflow. The hidden `/sp` block had no translation overlays. Compact toolbar behavior and window-control order were checked. No campaign action, roll or message was sent.
+
+The full combined command stopped at the panel fixture's minimize assertion under the no-focus compositor rule. Other suites were completed separately with retained evidence; do not call this a fully passing npm test run. The user explicitly chose to leave native minimize verification unverified so testing remains silent. No release or commit was made for this batch. The user's running app was preserved; source changes take effect on its next normal restart. Temporary validation windows/profile and compositor rules were cleaned up.
+
+## 2026-10-03 tray and custom-attack follow-up
+
+Resolved the Hyprland minimize freeze: Electron previously paused painting while the compositor left the window visible. Toolbar and Window-menu Minimize now hide to a native tray icon; clicking it or choosing Show app restores the same renderer/draft, with music preserved. Other desktops retain native minimization. This supersedes the earlier minimize-test waiver.
+
+Corrected custom attack headings, roll-type wording and composed damage labels. Both toggle states retain a thin theme border. Blank translation shows only the ready prefix, with one indicator per description/card, and holds later cached fragments until earlier content is ready. Catalog world/campaign names remain literal. Added round icon-only close controls for Appearance/Translation settings, trusted close IPC, and centered window-control SVGs.
+
+Final npm run check and npm test passed on the stable combined source, including the new real Hyprland compositor hide/remap fixture and all other native suites. Native checks ran silently on DP-1. A live catalog sample preserved29 card titles with0 queued for the model; labels still translated. Existing app/draft/audio were preserved and no campaign action was sent. Local routing instructions record the user's estimates and prefer Luna for trivial work; those instruments remain ignored. No new release/primary commit; use a normal app restart to load source changes.
+
+
+## 2026-10-03 progression, glossary and settings close follow-up
+
+Progression now drains the earliest unfinished text/card/level before later model requests, preserving order across partial batches and retry backoff. Split damage headings, preview dice and bonus labels translate as complete mechanics while preserving native form values and nodes. Standalone Roll uses «Бросок»; bonus ability capitalization follows source. Resistance damage lists use canonical inflected Russian and glossary cache namespace9 isolates stale text. Researched core coverage and sources are in RPG-GLOSSARY.md.
+
+Battle summaries and their rows use simple app-theme borders; dice breakdowns use a plain translucent blurred surface. Chat and main dice cards retain selected decorative frames. Appearance, Translation and Saved Instructions have centered accessible SVG close buttons; /sp closes its own settings without saving edits.
+
+Verification:38 unit tests, typecheck/build and all8 native suites passed. The original npmtest command stopped on fixture assumptions; affected recovery completed coverage after test-only repairs, with exact logs in the local workflow. Native checks were silent on DP-1; original app drafts/audio untouched, no live campaign action. No new release/primary commit. Normal restart loads source changes. Progress saved after user reported8% remaining; no optional sweep. All owned windows closed; an inert uniquely matched anonymous validation rule remains until normal compositor config reload because current Hyprland cannot unset anonymous rules individually. Future probes must use named disableable rules.

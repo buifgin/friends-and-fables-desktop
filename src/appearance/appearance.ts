@@ -96,6 +96,8 @@ export class AppearanceManager {
       '/appearance-button.html': ['shell/appearance-button.html', 'text/html; charset=utf-8'],
       '/appearance-button.js': ['shell/appearance-button.js', 'text/javascript; charset=utf-8'],
       '/appearance-button.css': ['shell/appearance-button.css', 'text/css; charset=utf-8'],
+      '/window-controls.html': ['shell/window-controls.html', 'text/html; charset=utf-8'],
+      '/window-controls.js': ['shell/window-controls.js', 'text/javascript; charset=utf-8'],
       '/menu.html': ['shell/menu.html', 'text/html; charset=utf-8'],
       '/menu.css': ['shell/menu.css', 'text/css; charset=utf-8'],
       '/menu.js': ['shell/menu.js', 'text/javascript; charset=utf-8'],
@@ -292,13 +294,13 @@ export class AppearanceManager {
   async open(parent: BrowserWindow): Promise<BrowserWindow> {
     if (this.settings.appearancePinned && this.dock?.window === parent) { await this.dock.toggle(); return parent; }
     if (this.window) {
-      this.window.show();
-      this.window.focus();
+      this.window.showInactive();
       if (this.settings.linuxFloatingAppearance) await floatAppearance(this.window,true);
       return this.window;
     }
     const window = new BrowserWindow({
       title: APPEARANCE_TITLE,
+      show: false,
       parent,
       type: process.platform === 'linux' && this.settings.linuxFloatingAppearance ? 'dialog' : undefined,
       width: 740,
@@ -325,6 +327,7 @@ export class AppearanceManager {
     window.on('closed', () => { this.window = null; });
     window.on('show', () => { if (this.settings.linuxFloatingAppearance) void floatAppearance(window,true); });
     await window.loadURL(SETTINGS_URL);
+    window.showInactive();
     if (this.settings.linuxFloatingAppearance) await floatAppearance(window,true);
     return window;
   }

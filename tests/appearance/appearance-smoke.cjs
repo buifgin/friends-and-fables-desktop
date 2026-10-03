@@ -50,7 +50,7 @@ async function save(settings, window) {
   const testSession = session.fromPartition('appearance-smoke');
   testSession.protocol.handle('https', () => new Response(`<!doctype html>
     <html><head><meta charset="utf-8"><style>
-      :root { --background: 195 86% 3%; --foreground: 39 29% 93%; --card: 198 50% 5%; }
+      :root { --background: 195 86% 3%; --foreground: 39 29% 93%; --card: 198 50% 5%; --border: 0 0% 72%; }
       body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
       .panel { background: hsl(var(--card)); }
       .artwork { background-image: linear-gradient(45deg, #42315b, #172737); }
@@ -74,7 +74,7 @@ async function save(settings, window) {
     </style></head><body><button id="background-toggle" title="Hide background image">Background</button>
     <nav><div data-sidebar="footer"><button id="sidebar-account" class="bg-gray-800"><span class="text-gray-400">Player</span></button></div></nav>
     <div style="position:relative;width:300px"><svg id="search-icon" style="position:absolute;left:12px;top:12px;width:16px;height:16px"></svg><input id="hotfix-search" placeholder="Search relationships..." style="padding:8px 12px 8px 36px;width:300px"></div>
-    <div class="panel">Panel</div><div id="spell-detail-fixture" class="border rounded-lg"><h3>Spell details</h3><span style="background:green;color:white">Level 2</span></div><div class="artwork">Campaign artwork</div>
+    <div class="panel">Panel</div><div role="dialog" id="character-details-dialog"><div id="spell-detail-fixture" class="border rounded-lg"><h3>Spell details</h3><span style="background:green;color:white">Level 2</span></div></div><div class="artwork">Campaign artwork</div>
     <div class="flex-1 h-full w-full"><div id="events-list">
       <div id="event-container-1"><div id="event-message-card-1"><div class="prose"><p>Player text</p></div></div></div>
       <div id="event-container-2"><div id="event-message-card-2">
@@ -97,7 +97,7 @@ async function save(settings, window) {
         ${rollResults}
       </div></div></div>
     </div><input type="text" value="Русский текст and English"><textarea>Input text</textarea>
-      <div class="grid relative" id="fixture-composer">
+      <div class="grid relative grid-cols-[40px_1fr_30px] border rounded-lg" id="fixture-composer">
         <div class="absolute bottom-full left-0 right-0"><div class="bg-gray-800" id="context-bar">
           <span class="text-gray-400">9 Active / 0 Idle</span><button aria-label="Expand working context"><svg></svg></button>
         </div><div class="relative bg-gray-800 border-x border-b border-gray-700/50 overflow-hidden shadow-md flex flex-col max-h-[calc(90dvh-200px)]" id="context-panel-root">
@@ -108,6 +108,7 @@ async function save(settings, window) {
             <div class="bg-gray-900/50" id="context-footer"><button>Add Context Block</button></div>
           </div></div>
         </div></div>
+        <div id="working-context-bar-spacer"></div>
         <div class="composer bg-gray-800/80"><div class="tiptap prose" contenteditable="true"><p data-placeholder="Player says or does…">Editor text</p></div>
           <button id="dice-button" aria-label="Roll dice" class="text-muted-foreground"><svg></svg><span>Dice</span></button>
           <button id="spell-button" aria-label="Cast Spell"><svg></svg><span>Spell</span></button>
@@ -118,10 +119,16 @@ async function save(settings, window) {
     </div>
     <form id="character-form"><input name="name" type="text" value="Character"><input name="max_hp" type="text" value="24"><input name="strength" type="number" value="12"></form>
     <div data-radix-popper-content-wrapper><div role="menu" id="neutral-menu" class="bg-slate-700"><div id="neutral-menu-row" role="menuitem" data-highlighted class="bg-gray-800">Public Profile</div><span class="text-red-400" id="menu-warning">Danger</span></div></div>
+    <div role="dialog" id="action-picker"><form><h2>Choose Action</h2><button role="tab" data-state="active">Spells</button><button role="tab" data-state="inactive">Weapons</button><span><svg id="d6"></svg>Fire</span></form></div>
+    <button id="fixture-switch" role="switch" aria-checked="false" style="width:44px;height:24px;border-radius:9999px;background:#334155"><span style="display:block;width:16px;height:16px;background:white;border-radius:50%"></span></button>
+    <div role="dialog" id="dice-config"><h2>Roll Dice</h2><svg id="d12"></svg></div>
     <div role="dialog" id="roll-breakdown" class="w-80 bg-slate-900/95 border-amber-600/50 text-amber-100"><span class="text-amber-200">Base Roll</span><b>17</b><div class="border-amber-600/50">Total 21</div></div>
     <script>
       document.getElementById('event-message-card-1').__reactFiber$test = {memoizedProps:{event:{role:'player'}}};
       document.getElementById('event-message-card-2').__reactFiber$test = {memoizedProps:{event:{role:'dm'}}};
+      document.getElementById('fixture-switch').addEventListener('click', event => {
+        const control=event.currentTarget;control.setAttribute('aria-checked',String(control.getAttribute('aria-checked')!=='true'));
+      });
     </script></body></html>`, {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   }));
@@ -359,6 +366,8 @@ async function save(settings, window) {
   await save({...chatSettings,input:restoredTheme.input},settingsWindow);
   assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.querySelector(".composer")).backgroundColor'),'rgba(39, 58, 82, 0.94)');
   assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("event-message-card-1")).backgroundColor'),'rgba(18, 52, 86, 0.4)');
+  assert.equal(await website.webContents.executeJavaScript('document.querySelector("[data-ff-desktop-expand-input]")'),null,'Extra expand control defaults off.');
+  await save({...chatSettings,input:restoredTheme.input,expandMessageInput:true},settingsWindow);
   // Expanding preserves the original Tiptap node and uses context styling; outside click closes it.
   await website.webContents.executeJavaScript('window.fixtureEditor=document.querySelector(".tiptap");document.querySelector("[data-ff-desktop-expand-input]").click()');
   await until(website.webContents,'!!document.querySelector("[data-ff-desktop-message=input-expanded]")');
@@ -381,22 +390,48 @@ async function save(settings, window) {
     backgroundEffects:{blur:8,opacity:.7,overlayColor:'#000000',overlayOpacity:.6},
     messages:{enabled:true,
       player:{color:'#ffffff',opacity:0,textColor:'#aabbcc',border:{enabled:true,color:'#778899',width:2,radius:12}},
-      gm:{color:'#654321',opacity:.7,textColor:'#ffeeaa',gradient:{enabled:true,color:'#222222',angle:135,opacity:.5,balance:75},border:{enabled:true,color:'#abcdef',width:3,radius:10}}},
+      gm:{color:'#654321',opacity:.7,textColor:'#ffeeaa',gradient:{enabled:true,color:'#222222',angle:135,opacity:.5,balance:75},border:{enabled:true,color:'#abcdef',width:3,radius:10,variant:'ornate'}}},
     context:{enabled:true,style:{color:'#111111',opacity:1,textColor:'#eeeeee',border:{enabled:true,color:'#555555',width:2,radius:6}}},
     events:{enabled:true,style:{color:'#303040',opacity:.8,textColor:'#ddeeff',gradient:{enabled:true,color:'#010101',angle:90},border:{enabled:true,color:'#aa77ff',width:2,radius:4}}},
     dice:{enabled:true,style:{color:'#080808',opacity:1,textColor:'#dddddd',border:{enabled:true,color:'#777777',width:1,radius:16}},colorsEnabled:true,faceColor:'#7c3aed',edgeColor:'#aaaaaa',numberColor:'#ffffff',resultTextColor:'#23e2ab'} };
   await save(newSettings,settingsWindow);
+  await until(website.webContents,'document.documentElement.hasAttribute("data-ff-desktop-play")');
+  const switchAppearance=async border=>website.webContents.executeJavaScript(`(() => {
+    // The app theme sets --border with !important. Model a theme token update
+    // at the same priority so this fixture isolates the switch's token usage.
+    document.documentElement.style.setProperty('--border','${border}','important');
+    const control=document.getElementById('fixture-switch'),style=getComputedStyle(control);
+    return {width:style.borderTopWidth,color:style.borderTopColor,state:control.getAttribute('aria-checked')};
+  })()`);
+  let switchStyle=await switchAppearance('0 0% 72%');
+  assert.equal(switchStyle.width,'1px');assert.equal(switchStyle.color,'rgb(184, 184, 184)');assert.equal(switchStyle.state,'false','The off switch keeps its thin theme border.');
+  await website.webContents.executeJavaScript('document.getElementById("fixture-switch").click()');
+  switchStyle=await switchAppearance('0 0% 72%');
+  assert.equal(switchStyle.state,'true');assert.equal(switchStyle.width,'1px');assert.equal(switchStyle.color,'rgb(184, 184, 184)','The on switch keeps the same visible theme border.');
+  await website.webContents.executeJavaScript('document.getElementById("fixture-switch").click()');
+  switchStyle=await switchAppearance('0 0% 25%');
+  assert.equal(switchStyle.state,'false');assert.equal(switchStyle.width,'1px');assert.equal(switchStyle.color,'rgb(64, 64, 64)','Light themes use a dark, visible switch border.');
+  await website.webContents.executeJavaScript('document.getElementById("fixture-switch").click()');
+  switchStyle=await switchAppearance('0 0% 25%');
+  assert.equal(switchStyle.state,'true');assert.equal(switchStyle.width,'1px');assert.equal(switchStyle.color,'rgb(64, 64, 64)');
   assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("health-card")).backgroundImage.includes("linear-gradient")'),true);
   assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("health-bar")).backgroundColor'),'rgb(255, 0, 0)');
   assert.equal(await website.webContents.executeJavaScript('document.getElementById("spell-detail-fixture").hasAttribute("data-ff-desktop-detail-card")'),true);
-  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("spell-detail-fixture")).backgroundImage.includes("linear-gradient")'),true);
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("spell-detail-fixture")).backgroundImage'), 'none','Character details use the app theme independently of event gradients.');
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("spell-detail-fixture")).backgroundColor'),await website.webContents.executeJavaScript('getComputedStyle(document.querySelector(".panel")).backgroundColor'));
+  assert.equal(await website.webContents.executeJavaScript('document.getElementById("fixture-composer").hasAttribute("data-ff-desktop-message")'),false,'Only the native input receives a themed border.');
+  assert.equal(await website.webContents.executeJavaScript('document.querySelectorAll("[data-ff-desktop-composer]").length'),1,'The external context spacer resolves to the same inner native composer.');
+  await website.webContents.executeJavaScript("document.documentElement.style.setProperty('--border','0 0% 72%','important')");
   const newStyles = await website.webContents.executeJavaScript(`(() => {
     const style = id => { const c=getComputedStyle(document.getElementById(id));return {bg:c.backgroundColor,image:c.backgroundImage,fg:c.color,border:c.borderTopColor,width:c.borderTopWidth,radius:c.borderRadius}; };
+    const frame = element => { const c=getComputedStyle(element);return {bg:c.backgroundColor,image:c.backgroundImage,border:c.borderTopColor,width:c.borderTopWidth,radius:c.borderRadius,shadow:c.boxShadow,backdrop:c.backdropFilter,afterContent:getComputedStyle(element,'::after').content,afterImage:getComputedStyle(element,'::after').backgroundImage}; };
     const root=document.querySelector('[data-ff-desktop-chat]');
     return {context:['context-bar','context-panel-root','context-block','context-footer'].map(style),
       contextText:getComputedStyle(document.querySelector('#context-block p')).color,contextSearch:style('context-search'),
       category:getComputedStyle(document.getElementById('context-category')).backgroundColor,
       player:style('event-message-card-1'),gm:style('event-message-card-2'),event:style('movement-card'),roll:style('roll-card'),
+      battle:frame(document.getElementById('battle-row')),summary:frame(document.getElementById('battle-summary')),
+      diceDialog:frame(document.getElementById('roll-breakdown')),gmFrame:frame(document.getElementById('event-message-card-2')),
       face:getComputedStyle(document.querySelector('#d20 .cls-4')).fill,edge:getComputedStyle(document.querySelector('#d20 .cls-1')).stroke,
       number:getComputedStyle(document.querySelector('#d20 text')).fill,d8:getComputedStyle(document.querySelector('#d8 .d8-cls-4')).fill,
       numberValue:document.querySelector('#d20 text').textContent,transition:getComputedStyle(document.querySelector('#d20')).transitionDuration,
@@ -411,12 +446,45 @@ async function save(settings, window) {
   assert.equal(newStyles.player.bg,'rgba(255, 255, 255, 0)');
   assert.equal(newStyles.player.width,'2px'); assert.equal(newStyles.player.radius,'12px');
   assert.equal(newStyles.gm.width,'3px'); assert.equal(newStyles.gm.border,'rgb(171, 205, 239)');
+  for (const frame of [newStyles.battle,newStyles.summary]) {
+    assert.equal(frame.width,'1px','Battle summaries use a restrained app-theme outline.');
+    assert.equal(frame.border,'rgb(184, 184, 184)');
+    assert.equal(frame.radius,'4px');
+    assert.equal(frame.shadow,'none');
+    assert.equal(frame.afterContent,'none','Battle and native dice surfaces have no ornamental corner overlay.');
+  }
+  assert.equal(newStyles.diceDialog.width,'1px');
+  assert.equal(newStyles.diceDialog.border,'rgb(184, 184, 184)');
+  assert.equal(newStyles.diceDialog.radius,'4px');
+  assert.equal(newStyles.diceDialog.shadow,'none');
+  assert.equal(newStyles.diceDialog.afterContent,'none');
+  assert.equal(newStyles.diceDialog.backdrop,'blur(10px)','The breakdown popover blurs the scene beneath its translucent surface.');
+  const colorAlpha = color => Number(color.match(/[\/,]\s*(0(?:\.\d+)?|1(?:\.0+)?)\s*\)$/)?.[1] ?? 1);
+  const diceDialogAlpha = colorAlpha(newStyles.diceDialog.bg);
+  assert(diceDialogAlpha > 0 && diceDialogAlpha < 1,'The breakdown popover uses a translucent app-card fill.');
+  assert.equal(newStyles.diceDialog.image,'none');
+  assert.notEqual(newStyles.gmFrame.afterContent,'none','Ornate chat cards keep their selected decorative frame.');
+  assert.match(newStyles.gmFrame.afterImage,/data:image\/svg\+xml/);
   assert.match(newStyles.gm.image,/135deg/); assert.match(newStyles.event.image,/linear-gradient/);
   assert.match(newStyles.gm.image,/rgba\(101, 67, 33, 0.35\) 50%/);
   assert.equal((await settingsContents.executeJavaScript('window.appearance.get()')).messages.player.gradient.secondOpacity,0);
   const migratedGradient = await settingsContents.executeJavaScript('window.appearance.get().then(s => s.events.style.gradient)');
   assert.equal(migratedGradient.secondOpacity,.8); assert.equal(migratedGradient.balance,50);
   assert.equal(newStyles.event.width,'2px'); assert.equal(newStyles.event.radius,'4px');
+  assert.equal(await website.webContents.executeJavaScript('document.getElementById("action-picker").hasAttribute("data-ff-desktop-message")'),false,'An action picker with dice icons keeps the app theme.');
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("action-picker")).backgroundImage'),'none');
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("action-picker")).backgroundColor'),await website.webContents.executeJavaScript('getComputedStyle(document.querySelector(".panel")).backgroundColor'));
+  const activeTabBorder=await website.webContents.executeJavaScript('getComputedStyle(document.querySelector("#action-picker [data-state=active]")).borderColor');
+  const pickerBorder=await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("action-picker")).borderColor');
+  await website.webContents.executeJavaScript('document.querySelector("#action-picker span").replaceChildren();document.querySelectorAll("#action-picker button")[0].dataset.state="inactive";document.querySelectorAll("#action-picker button")[1].dataset.state="active"');
+  await new Promise(resolve=>setTimeout(resolve,150));
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("action-picker")).borderColor'),pickerBorder,'Switching action tabs retains the normal app dialog border.');
+  assert.equal(await website.webContents.executeJavaScript('document.getElementById("action-picker").getAttribute("data-ff-desktop-action-picker")'),'true');
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.getElementById("action-picker")).borderTopWidth'),'1px');
+  assert.notEqual(pickerBorder,activeTabBorder,'The accent belongs to the selected tab, not the dialog.');
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.querySelector("#action-picker [data-state=active]")).borderColor'),activeTabBorder);
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.querySelector("#action-picker [data-state=inactive]")).borderColor'),'rgba(0, 0, 0, 0)');
+  assert.equal(await website.webContents.executeJavaScript('document.getElementById("dice-config").getAttribute("data-ff-desktop-message")'),'roll-menu','Actual dice configuration retains its dice styling.');
   assert.equal(newStyles.roll.bg,'rgb(8, 8, 8)'); assert.equal(newStyles.ornament,'none');
   assert.equal(newStyles.face,'rgb(124, 58, 237)'); assert.equal(newStyles.d8,newStyles.face);
   assert.equal(newStyles.edge,'rgb(170, 170, 170)'); assert.equal(newStyles.number,'rgb(255, 255, 255)');
@@ -566,12 +634,16 @@ async function save(settings, window) {
   await save(decorated,settingsWindow);
   const surfaces=await website.webContents.executeJavaScript(`(()=>{
     const get=(id)=>{const e=document.getElementById(id),c=getComputedStyle(e);return {bg:c.backgroundColor,fg:c.color,ornament:getComputedStyle(e,'::after').backgroundImage,events:getComputedStyle(e,'::after').pointerEvents};};
-    return {panel:get('context-panel-root'),block:get('context-block'),bar:get('context-bar'),menu:get('roll-breakdown'),text:getComputedStyle(document.querySelector('#roll-breakdown span')).color};
+    return {panel:get('context-panel-root'),block:get('context-block'),bar:get('context-bar'),menu:get('roll-breakdown'),roll:get('roll-card'),text:getComputedStyle(document.querySelector('#roll-breakdown span')).color};
   })()`);
   assert.equal(surfaces.panel.bg,'rgb(34, 51, 68)');assert.equal(surfaces.block.bg,'rgba(85, 102, 119, 0.6)');assert.equal(surfaces.bar.bg,'rgba(17, 34, 51, 0.9)');
   assert.equal(surfaces.panel.fg,'rgb(171, 205, 239)');assert.equal(surfaces.block.fg,'rgb(255, 238, 170)');assert.equal(surfaces.bar.fg,'rgb(238, 221, 204)');
-  for(const surface of Object.values(surfaces).filter(v=>typeof v==='object')){assert.match(surface.ornament,/data:image\/svg\+xml/);assert.equal(surface.events,'none');}
-  assert.equal(surfaces.menu.bg,'rgb(8, 8, 8)');assert.equal(surfaces.text,'rgb(221, 221, 221)');
+  for(const surface of [surfaces.panel,surfaces.block,surfaces.bar]){assert.match(surface.ornament,/data:image\/svg\+xml/);assert.equal(surface.events,'none');}
+  assert.equal(colorAlpha(surfaces.menu.bg),.88,'The dice breakdown stays translucent over the app card.');
+  assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('roll-breakdown')).backdropFilter"),'blur(10px)');
+  assert.equal(surfaces.menu.ornament,'none','The dice breakdown uses a plain app-theme frame.');
+  assert.match(surfaces.roll.ornament,/data:image\/svg\+xml/,'The main roll card keeps its selected ornate frame.');
+  assert.equal(surfaces.text,'rgb(221, 221, 221)');
   if(process.env.FABLES_TEST_SCREENSHOT){
     await settingsContents.executeJavaScript("window.appearance.get().then(showSettings);document.querySelector('[data-panel=\"context-panel\"]').click()");
     website.show();settingsWindow.show();
@@ -586,8 +658,13 @@ async function save(settings, window) {
   await website.webContents.executeJavaScript("document.querySelector('[aria-label=\"Expand working context\"]').remove()");
   await until(website.webContents,"document.getElementById('context-bar').dataset.ffDesktopContext==='panel'");
   assert.equal(await website.webContents.executeJavaScript("getComputedStyle(document.getElementById('context-bar')).backgroundColor"),'rgb(34, 51, 68)');
+  await until(website.webContents,'document.querySelector(".composer").dataset.ffDesktopMessage==="input-expanded"');
+  assert.equal(await website.webContents.executeJavaScript('getComputedStyle(document.querySelector(".composer")).backgroundColor'),'rgb(34, 51, 68)','Native input uses the expanded context palette without the optional app expansion.');
+  assert.equal(await website.webContents.executeJavaScript('document.querySelector("[data-ff-desktop-input-expanded]")'),null);
+  assert.equal(await website.webContents.executeJavaScript('document.getElementById("fixture-composer").hasAttribute("data-ff-desktop-message")'),false);
   await website.webContents.executeJavaScript(`document.getElementById('context-bar').insertAdjacentHTML('beforeend','<button aria-label="Expand working context"></button>')`);
   await until(website.webContents,"document.getElementById('context-bar').dataset.ffDesktopContext==='bar'");
+  await until(website.webContents,'document.querySelector(".composer").dataset.ffDesktopMessage==="input"');
   // Export/import includes a portable picture without paths or machine preferences.
   const saveDialog=dialog.showSaveDialog;
   const themeFile=path.join(userData,'shared.fables-theme.json');

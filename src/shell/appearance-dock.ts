@@ -3,6 +3,7 @@ import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import type { AppearanceManager } from '../appearance/appearance';
 import { configureFullscreenShortcuts } from './window-shortcuts';
+import { WindowControls } from './window-controls';
 
 export const DOCK_URL = 'fables-desktop://settings/appearance-button.html';
 
@@ -10,6 +11,7 @@ export const DOCK_URL = 'fables-desktop://settings/appearance-button.html';
 // sandboxed browser with no access to settings or filesystem APIs.
 export class AppearanceDock {
   private launcher: WebContentsView;
+  readonly windowControls: WindowControls;
   private panel: WebContentsView | null = null;
   private ready: Promise<void>;
   private panelReady: Promise<void> | null = null;
@@ -21,6 +23,7 @@ export class AppearanceDock {
 
   constructor(readonly window: BrowserWindow, private website: WebContentsView, private manager: AppearanceManager) {
     this.width = manager.getSettings().appearancePanelWidth;
+    this.windowControls = new WindowControls(window, manager);
     this.launcher = new WebContentsView({ webPreferences: {
       partition: 'fables-appearance', preload: path.join(__dirname, 'appearance-button-preload.js'),
       sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
@@ -65,12 +68,12 @@ export class AppearanceDock {
   }
 
   getLauncherContents() { return this.launcher.webContents; }
-  raiseControls(): void { if (!this.window.isDestroyed()) this.window.contentView.addChildView(this.launcher); }
+  raiseControls(): void { this.windowControls.raise(); if (!this.window.isDestroyed()) this.window.contentView.addChildView(this.launcher); }
   setInset(inset: number): void { this.inset = inset; this.layout(); }
   sync(): void {
     if (!this.manager.getSettings().appearancePinned) this.hide();
     this.width = this.manager.getSettings().appearancePanelWidth;
-    this.layout(); this.update();
+    this.layout(); this.update(); this.windowControls.sync();
   }
   isOpen(): boolean { return this.opened; }
 
@@ -107,14 +110,15 @@ export class AppearanceDock {
   private layout(): void {
     if (this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
-    // Reserve an app-owned row when there is no Linux toolbar. The launcher
+    // Share the menu row, reserving one app-owned row with native menus. The launcher
     // must never cover the website's avatars, navigation, or map controls.
-    const inset = this.inset || 32;
+    const inset = Math.max(this.inset,32);
     const panelWidth = this.opened ? this.clamp(this.width) : 0;
     this.website.setBounds({ x: panelWidth, y: inset, width: Math.max(0, width - panelWidth), height: Math.max(0, height - inset) });
     this.panel?.setBounds({ x: 0, y: inset, width: panelWidth || this.clamp(this.width), height: Math.max(0, height - inset) });
     this.panel?.setVisible(this.opened);
-    this.launcher.setBounds({ x: Math.max(0, width - 238), y: 0, width: 232, height: this.popup ? 166 : 32 });
+    this.windowControls.layout(width, 0);
+    this.launcher.setBounds({ x: Math.max(0, Math.round((width - 232) / 2)), y: 0, width: 232, height: this.popup ? 166 : 32 });
     this.launcher.setVisible(true);
   }
 }
