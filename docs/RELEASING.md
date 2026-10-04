@@ -113,3 +113,11 @@ Release source: `c9ceb0e9f408a107c5ecb31ee0d0f36f17d229ee` (`v0.5.2`). [Native w
 | --- | ---: | --- |
 | friends-and-fables-desktop-0.5.2-linux-x86_64.AppImage | 117184672 | `2a9c7b52eb7835b8d31517eb51e9f485349adae0beaa23bf2ad47fc463eb070d` |
 | friends-and-fables-desktop-0.5.2-windows-x64.exe | 324133786 | `2cef2b44d6b8506873f4bbf8400211c993403b78daf74cffeacac8c488d68760` |
+
+## 0.6.0 verification
+
+Release source: `34cdedc8f1fc362c879b4a56117348da69ac9cdf`. [Native workflow 37239486728](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/37239486728) passed Linux and Windows source and packaged-resource suites; the Windows job also passed the bundled model check. The Linux AppImage was downloaded from that run and its SHA-256 verified. The Windows asset checksum will be recorded when its download completes.
+
+| File | SHA-256 |
+| --- | --- |
+| friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage | `b0e896abaed90e348195474083aa2a8ed963aa5e50efcaf7912fa9186b4c49a8` |
