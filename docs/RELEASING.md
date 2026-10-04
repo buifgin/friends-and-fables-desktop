@@ -116,7 +116,7 @@ Release source: `c9ceb0e9f408a107c5ecb31ee0d0f36f17d229ee` (`v0.5.2`). [Native w
 
 ## 0.6.0 verification
 
-Release source: `34cdedc8f1fc362c879b4a56117348da69ac9cdf`. [Native workflow 37239486728](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/37239486728) passed Linux and Windows source and packaged-resource suites; the Windows job also passed the bundled model check. The Linux AppImage was downloaded from that run and its SHA-256 verified. The Windows asset checksum will be recorded when its download completes.
+Release source: `34cdedc8f1fc362c879b4a56117348da69ac9cdf`. [Native workflow 37239486728](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/37239486728) passed Linux and Windows source and packaged-resource suites; the Windows job also passed the bundled model check. The Linux AppImage was downloaded from that run and its SHA-256 verified. Local `makepkg --verifysource` passed for the AppImage and both recipe sources against the same versioned recipe. Once the draft release is finalized, download the canonical [SHA256SUMS file](https://github.com/buifgin/friends-and-fables-desktop/releases/download/v0.6.0/SHA256SUMS) for the published asset hashes.
 
 | File | SHA-256 |
 | --- | --- |
