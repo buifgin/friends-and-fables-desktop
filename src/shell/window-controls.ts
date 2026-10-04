@@ -26,7 +26,12 @@ export class WindowControls {
     ipcMain.handle('window-controls:get', event => { this.assertTrusted(event); return this.state(); });
     ipcMain.handle('window-controls:action', (event, action: unknown) => {
       this.assertTrusted(event);
-      if (action === 'fullscreen') window.setFullScreen(!window.isFullScreen());
+      if (action === 'fullscreen') {
+        window.setFullScreen(!window.isFullScreen());
+        // Windows can commit the native state without delivering a fullscreen event.
+        // Publish the actual state now; native events still reconcile async transitions.
+        this.sync();
+      }
       else if (action === 'minimize') this.minimizer.minimize();
       else if (action === 'quit') app.quit();
       else throw new Error('Invalid window action.');

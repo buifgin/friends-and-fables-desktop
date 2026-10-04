@@ -1,4 +1,79 @@
 const assert = require('node:assert/strict');
+// Also runnable without Electron: node tests/appearance/appearance-panel-smoke.cjs --window-controls-unit
+function checkWindowControlsState() {
+  const { readFileSync, existsSync } = require('node:fs');
+  const { EventEmitter } = require('node:events');
+  const vm = require('node:vm');
+  const root = process.env.FABLES_TEST_APP_ROOT || require('node:path').join(__dirname, '..', '..');
+  const sourcePath = require('node:path').join(root, 'src/shell/window-controls.ts');
+  const code = process.argv.includes('--window-controls-unit') && existsSync(sourcePath)
+    ? require('esbuild').transformSync(readFileSync(sourcePath, 'utf8'), { loader: 'ts', format: 'cjs' }).code
+    : readFileSync(require('node:path').join(root, 'dist/shell/window-controls.js'), 'utf8');
+  const handlers = new Map(), updates = [];
+  class Contents extends EventEmitter {
+    mainFrame = { origin: 'fables-desktop://settings', url: 'fables-desktop://settings/window-controls.html' };
+    isDestroyed() { return false; }
+    setWindowOpenHandler() {}
+    send(channel, state) { updates.push({ channel, state }); }
+    loadURL() { return { then: () => ({ catch() {} }) }; }
+  }
+  class View {
+    webContents = new Contents();
+    setBackgroundColor() {}
+  }
+  const exported = { exports: {} };
+  vm.runInNewContext(code, { module: exported, exports: exported.exports, __dirname: root, console, require(id) {
+    if (id === 'electron') return { app: {}, WebContentsView: View, ipcMain: { handle: (name, callback) => handlers.set(name, callback) } };
+    if (id === './window-minimizer') return { WindowMinimizer: class { sync() {} } };
+    if (id === './window-shortcuts') return { configureFullscreenShortcuts() {} };
+    return require(id);
+  } });
+  const host = new EventEmitter();
+  let fullscreen = false, asynchronous = false;
+  Object.assign(host, { contentView: { addChildView() {} }, isDestroyed: () => false,
+    isFullScreen: () => fullscreen, setFullScreen(value) { if (!asynchronous) fullscreen = value; } });
+  const controls = new exported.exports.WindowControls(host, { getSettings: () => ({}), getLocale: () => 'en' });
+  const sender = controls.view.webContents, event = { sender, senderFrame: sender.mainFrame };
+  const action = handlers.get('window-controls:action');
+  for (const expected of [true, false]) {
+    updates.length = 0;
+    action(event, 'fullscreen');
+    assert.equal(fullscreen, expected);
+    assert.equal(updates.at(-1)?.state.fullscreen, expected, 'Toolbar publishes actual native state even without a fullscreen event.');
+  }
+  asynchronous = true;
+  action(event, 'fullscreen');
+  assert.equal(updates.at(-1).state.fullscreen, false, 'An asynchronous transition must not publish an optimistic fullscreen state.');
+  for (const [name, expected] of [['enter-full-screen', true], ['leave-full-screen', false]]) {
+    fullscreen = expected;
+    host.emit(name);
+    assert.equal(updates.at(-1).state.fullscreen, expected, 'Native events still reconcile asynchronous and system transitions.');
+  }
+  assert.throws(() => action({ ...event, senderFrame: {} }, 'fullscreen'), /only in the app toolbar/);
+  assert.throws(() => action(event, 'delete'), /Invalid window action/);
+
+  const renderer = readFileSync(require('node:path').join(root, 'assets/shell/window-controls.js'), 'utf8');
+  function rendererCase(pushFirst) {
+    let bootstrap, update;
+    const buttons = Object.fromEntries(['fullscreen', 'minimize', 'quit'].map(id => [id, { attributes: {},
+      setAttribute(name, value) { this.attributes[name] = value; }, addEventListener() {} }]));
+    vm.runInNewContext(renderer, { console, window: { settingsTheme: { apply() {} }, windowControls: {
+      action() {}, onChange(callback) { update = callback; }, get() { return { then(callback) { bootstrap = callback; return { catch() {} }; } }; },
+    } }, document: { documentElement: {}, querySelector: () => ({ setAttribute() {} }), getElementById: id => buttons[id] } });
+    const state = value => ({ settings: {}, locale: 'en', fullscreen: value });
+    if (pushFirst) update(state(true));
+    bootstrap(state(false));
+    assert.equal(buttons.fullscreen.attributes['aria-pressed'], String(pushFirst), 'A stale bootstrap response cannot replace a newer pushed native state.');
+    update(state(true)); update(state(false));
+    assert.equal(buttons.fullscreen.attributes['aria-pressed'], 'false');
+  }
+  rendererCase(false); rendererCase(true);
+}
+checkWindowControlsState();
+if (process.argv.includes('--window-controls-unit')) {
+  console.log('PASS: fullscreen action reconciliation, native event synchronization, trusted IPC and renderer bootstrap ordering.');
+  process.exit(0);
+}
 const { mkdtemp, readFile, rm, writeFile } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
@@ -233,6 +308,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const wasFull=host.isFullScreen();await windowControls.executeJavaScript("document.getElementById('fullscreen').click()");await until(()=>host.isFullScreen()!==wasFull);
   await until(()=>windowControls.executeJavaScript(`document.getElementById('fullscreen').getAttribute('aria-pressed')==='${!wasFull}'`));
   await windowControls.executeJavaScript("document.getElementById('fullscreen').click()");await until(()=>host.isFullScreen()===wasFull);
+  await until(()=>windowControls.executeJavaScript(`document.getElementById('fullscreen').getAttribute('aria-pressed')==='${wasFull}'`));
   // Test minimize independently after the fullscreen toggle contract above.
   host.setFullScreen(false);await until(()=>!host.isFullScreen());
   host.show();await windowControls.executeJavaScript("document.getElementById('minimize').click()");if(dock.windowControls.minimizer.trayMode){await until(()=>!host.isVisible());assert.equal(host.isMinimized(),false,'Hyprland hides without entering a frozen native minimized state.');dock.windowControls.minimizer.restore();await until(()=>host.isVisible());}else{await until(()=>host.isMinimized());host.restore();await until(()=>!host.isMinimized());}
