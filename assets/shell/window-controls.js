@@ -13,5 +13,7 @@
     document.getElementById('fullscreen').setAttribute('aria-pressed', String(state.fullscreen));
   }
   for (const action of ['fullscreen', 'minimize', 'quit']) document.getElementById(action).addEventListener('click', () => void bridge.action(action).catch(console.error));
-  bridge.onChange(render); bridge.get().then(render).catch(console.error);
+  let receivedUpdate = false;
+  bridge.onChange(state => { receivedUpdate = true; render(state); });
+  bridge.get().then(state => { if (!receivedUpdate) render(state); }).catch(console.error);
 })();
