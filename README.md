@@ -4,7 +4,7 @@ An unofficial desktop wrapper for [Friends & Fables](https://play.fables.gg/), t
 
 The app opens the existing website and adds local themes, campaign chat pictures, and message styling. Optional local English-to-Russian translation is available from the Translation menu.
 
-The current release is [0.5.2](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.5.2), with music playback, saved adventure/combat instructions, reusable appearance themes, and interface hotfixes. See [release notes](docs/releases/v0.5.2.md).
+The current release is [0.6.0](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.6.0), with animated music controls, improved translation and progression handling, and centered window controls. See [release notes](docs/releases/v0.6.0.md).
 
 ## Current features
 
@@ -41,11 +41,11 @@ Download the Linux AppImage or Windows portable EXE from [GitHub Releases](https
 On Arch/Linux, make the AppImage executable and run it:
 
 ```sh
-chmod +x friends-and-fables-desktop-0.5.2-linux-x86_64.AppImage
-./friends-and-fables-desktop-0.5.2-linux-x86_64.AppImage
+chmod +x friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage
+./friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage
 ```
 
-On Windows, run `friends-and-fables-desktop-0.5.2-windows-x64.exe`. The build is unsigned. This EXE includes the English–Russian translator and model. Native Linux and Windows CI checked the packaged app; the Windows model also passed its offline translation check.
+On Windows, run `friends-and-fables-desktop-0.6.0-windows-x64.exe`. The build is unsigned. The Windows package includes the English–Russian translator and model.
 
 The [AUR guide](docs/AUR.md) includes a prepared binary-package recipe and submission steps. AUR publication requires an AUR account and SSH key.
 
