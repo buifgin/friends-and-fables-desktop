@@ -201,7 +201,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   template[3].submenu=[{id:'translate-ru',label:'Translate into Russian',type:'checkbox',checked:false}];
   template[4].submenu=[{id:'music-player',label:'Music Player…',accelerator:'CmdOrCtrl+Shift+M',click(){chosen++;}}];
   translation.onChange = settings => {const locale=settings.enabled&&!settings.showOriginal?'ru':'en';manager.setLocale(locale);const translated=localizeMenu(template,locale);translated[3].submenu[0].checked=settings.enabled;bar?.setMenu(Menu.buildFromTemplate(translated),locale);};
-  const host = new BrowserWindow({ show: false, frame: process.platform !== 'win32', useContentSize: process.platform === 'win32', type: process.platform==='linux'?'dialog':undefined, width: 1100, height: 820, webPreferences: {
+  const host = new BrowserWindow({ show: false, frame: process.platform !== 'win32', useContentSize: process.platform === 'win32', type: process.platform==='linux'?'dialog':undefined, width: 960, height: 680, webPreferences: {
     partition: 'fables-appearance', preload: path.join(appRoot, 'dist/shell/menu-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
   } });
   const websiteSession = session.fromPartition('panel-test');
@@ -273,7 +273,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
       if (!wasExpanded) await launcherContents.executeJavaScript("document.getElementById('library').click()");
     }
   }
-  await assertToolbarHitMasks(host.webContents, 1100, 'Main menu');
+  await assertToolbarHitMasks(host.webContents, 960, 'Main menu');
   const windowControls=dock.windowControls.view.webContents;
   await until(()=>windowControls.executeJavaScript('!!window.windowControls'));
   const centeredWindowIcons=await windowControls.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).map(button=>{const b=button.getBoundingClientRect(),s=button.querySelector('svg').getBoundingClientRect();return {x:Math.abs(b.x+b.width/2-s.x-s.width/2),y:Math.abs(b.y+b.height/2-s.y-s.height/2)}})`);
@@ -303,7 +303,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await assertNativeToolbarHitTests('Resized frameless toolbar');
   assert.equal(panel.getBounds().width, 460); assert.equal(website.getBounds().width, 360);
   const narrow=dock.launcher.getBounds();assert(Math.abs(narrow.x+narrow.width/2-host.getContentSize()[0]/2)<=1);assert(narrow.y+narrow.height<=website.getBounds().y);assert.equal(dock.windowControls.view.getBounds().x+108,host.getContentSize()[0]);
-  host.setContentSize(1100, 820); await until(() => host.getContentSize()[0] === 1100); await assertToolbarHitMasks(host.webContents, 1100, 'Restored main menu'); assert.equal(panel.getBounds().width, 540);
+  host.setContentSize(960, 680); await until(() => host.getContentSize()[0] === 960); await assertToolbarHitMasks(host.webContents, 960, 'Restored main menu'); assert.equal(panel.getBounds().width, 540);
   await assertNativeToolbarHitTests('Restored frameless toolbar');
   // The shared layout also works without the Linux app bar (Windows/fullscreen).
   dock.setInset(0); assert.equal(panel.getBounds().y, 32); assert.equal(website.getBounds().y, 32);
@@ -313,7 +313,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   if (process.platform === 'win32') {
     await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
     await until(() => bar.overlay.webContents.executeJavaScript("!document.getElementById('dropdown').hidden"));
-    await assertToolbarHitMasks(bar.overlay.webContents, 1100, 'Frameless open menu overlay');
+    await assertToolbarHitMasks(bar.overlay.webContents, 960, 'Frameless open menu overlay');
     await assertNativeToolbarHitTests('Frameless open menu overlay');
     assert.equal(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').hidden"), false, 'Native hit-test sampling leaves the menu open.');
     await host.webContents.executeJavaScript('window.desktopMenu.close()');
