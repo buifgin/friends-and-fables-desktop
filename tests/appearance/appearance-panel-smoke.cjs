@@ -201,7 +201,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   template[3].submenu=[{id:'translate-ru',label:'Translate into Russian',type:'checkbox',checked:false}];
   template[4].submenu=[{id:'music-player',label:'Music Player…',accelerator:'CmdOrCtrl+Shift+M',click(){chosen++;}}];
   translation.onChange = settings => {const locale=settings.enabled&&!settings.showOriginal?'ru':'en';manager.setLocale(locale);const translated=localizeMenu(template,locale);translated[3].submenu[0].checked=settings.enabled;bar?.setMenu(Menu.buildFromTemplate(translated),locale);};
-  const host = new BrowserWindow({ show: false, frame: process.platform !== 'win32', type: process.platform==='linux'?'dialog':undefined, width: 1100, height: 820, webPreferences: {
+  const host = new BrowserWindow({ show: false, frame: process.platform !== 'win32', useContentSize: process.platform === 'win32', type: process.platform==='linux'?'dialog':undefined, width: 1100, height: 820, webPreferences: {
     partition: 'fables-appearance', preload: path.join(appRoot, 'dist/shell/menu-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
   } });
   const websiteSession = session.fromPartition('panel-test');
@@ -229,7 +229,12 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32, 'Menus and centered controls share one row above the game.');
   const centered=dock.launcher.getBounds();assert.equal(centered.y,0,'Toolbar shares menu baseline.');assert(Math.abs(centered.x+centered.width/2-host.getContentSize()[0]/2)<=1, 'Toolbar is centered in the main window.');
   async function assertToolbarHitMasks(contents, width, label) {
-    await until(() => contents.executeJavaScript(`innerWidth === ${width}`));
+    try { await until(() => contents.executeJavaScript(`innerWidth === ${width}`)); }
+    catch(error) {
+      const actualInnerWidth = await contents.executeJavaScript('innerWidth').catch(() => null);
+      console.error('Toolbar hit mask viewport diagnostic', JSON.stringify({label,expectedWidth:width,actualInnerWidth,hostContentSize:host.getContentSize(),visible:host.isVisible()}));
+      throw error;
+    }
     const masks = await contents.executeJavaScript(`(()=>{const read=id=>{const e=document.getElementById(id),r=e.getBoundingClientRect(),s=getComputedStyle(e);return {x:r.x,width:r.width,height:r.height,region:s.webkitAppRegion,pointerEvents:s.pointerEvents}};return {center:read('appearance-dock-hit-mask'),right:read('window-controls-hit-mask'),viewport:innerWidth}})()`);
     assert.equal(masks.viewport, width, `${label}: menu document tracks the resized window.`);
     assert.deepEqual(masks.center, {x:(width-232)/2,width:232,height:32,region:'no-drag',pointerEvents:'none'}, `${label}: centered launcher footprint stays in the native client region and passes pointer input through.`);
