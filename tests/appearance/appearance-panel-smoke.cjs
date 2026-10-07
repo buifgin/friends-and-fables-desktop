@@ -350,7 +350,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=translation]').textContent==='Перевод'"));
   assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Перевод','Вид','Окно']);
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
-  await assertToolbarHitMasks(bar.overlay.webContents, 1100, 'Open menu overlay');
+  await assertToolbarHitMasks(bar.overlay.webContents, host.getContentSize()[0], 'Open fullscreen menu overlay');
   await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Настроить оформление…'"));
   assert(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').scrollHeight<=document.getElementById('dropdown').clientHeight"),'The settings dropdown must fit without scrolling.');
   assert.equal(await bar.overlay.webContents.executeJavaScript("document.querySelectorAll('#dropdown .label')[1].textContent"),'Сохранённые инструкции /sp…');
