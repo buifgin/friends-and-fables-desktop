@@ -133,6 +133,13 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(await contents.executeJavaScript("document.body.classList.contains('docked')"), true);
   assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32, 'Menus and centered controls share one row above the game.');
   const centered=dock.launcher.getBounds();assert.equal(centered.y,0,'Toolbar shares menu baseline.');assert(Math.abs(centered.x+centered.width/2-host.getContentSize()[0]/2)<=1, 'Toolbar is centered in the main window.');
+  async function assertToolbarHitMasks(contents, width, label) {
+    const masks = await contents.executeJavaScript(`(()=>{const read=id=>{const e=document.getElementById(id),r=e.getBoundingClientRect(),s=getComputedStyle(e);return {x:r.x,width:r.width,height:r.height,region:s.webkitAppRegion,pointerEvents:s.pointerEvents}};return {center:read('appearance-dock-hit-mask'),right:read('window-controls-hit-mask'),viewport:innerWidth}})()`);
+    assert.equal(masks.viewport, width, `${label}: menu document tracks the resized window.`);
+    assert.deepEqual(masks.center, {x:(width-232)/2,width:232,height:32,region:'no-drag',pointerEvents:'none'}, `${label}: centered launcher footprint stays in the native client region and passes pointer input through.`);
+    assert.deepEqual(masks.right, {x:width-108,width:108,height:32,region:'no-drag',pointerEvents:'none'}, `${label}: right controls footprint stays in the native client region and passes pointer input through.`);
+  }
+  await assertToolbarHitMasks(host.webContents, 1100, 'Main menu');
   const windowControls=dock.windowControls.view.webContents;
   await until(()=>windowControls.executeJavaScript('!!window.windowControls'));
   const centeredWindowIcons=await windowControls.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).map(button=>{const b=button.getBoundingClientRect(),s=button.querySelector('svg').getBoundingClientRect();return {x:Math.abs(b.x+b.width/2-s.x-s.width/2),y:Math.abs(b.y+b.height/2-s.y-s.height/2)}})`);
@@ -157,9 +164,10 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await until(() => panel.getBounds().width === 540);
   // A small viewport clamps the panel while remembering the requested width.
   host.setContentSize(820, 680); await until(() => host.getContentSize()[0] === 820);
+  await assertToolbarHitMasks(host.webContents, 820, 'Resized main menu');
   assert.equal(panel.getBounds().width, 460); assert.equal(website.getBounds().width, 360);
   const narrow=dock.launcher.getBounds();assert(Math.abs(narrow.x+narrow.width/2-host.getContentSize()[0]/2)<=1);assert(narrow.y+narrow.height<=website.getBounds().y);assert.equal(dock.windowControls.view.getBounds().x+108,host.getContentSize()[0]);
-  host.setContentSize(1100, 820); await until(() => host.getContentSize()[0] === 1100); assert.equal(panel.getBounds().width, 540);
+  host.setContentSize(1100, 820); await until(() => host.getContentSize()[0] === 1100); await assertToolbarHitMasks(host.webContents, 1100, 'Restored main menu'); assert.equal(panel.getBounds().width, 540);
   // The shared layout also works without the Linux app bar (Windows/fullscreen).
   dock.setInset(0); assert.equal(panel.getBounds().y, 32); assert.equal(website.getBounds().y, 32);
   const launcher=dock.launcher.getBounds();assert(launcher.y+launcher.height<=website.getBounds().y,'The Windows launcher must not cover website controls.');
@@ -202,6 +210,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=translation]').textContent==='Перевод'"));
   assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Перевод','Вид','Окно']);
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
+  await assertToolbarHitMasks(bar.overlay.webContents, 1100, 'Open menu overlay');
   await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Настроить оформление…'"));
   assert(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').scrollHeight<=document.getElementById('dropdown').clientHeight"),'The settings dropdown must fit without scrolling.');
   assert.equal(await bar.overlay.webContents.executeJavaScript("document.querySelectorAll('#dropdown .label')[1].textContent"),'Сохранённые инструкции /sp…');
