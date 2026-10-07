@@ -89,7 +89,7 @@
 - [x] Expand fixed Russian UI copy, use КБ / Класс брони and Умение consistently, translate app menus and Франц, and preserve official model names.
 - [x] Reserve a toolbar row for the pinned Appearance button on Windows to prevent overlap with game controls.
 - [ ] Check these features in a signed-in campaign on Linux and Windows; selectors use the saved website component references.
-- Host helpers and shared music playback remain planned. Private visibility between players requires support from the Friends & Fables service.
+- Host helpers and shared music playback remain planned. Character-targeted narration remains shared; participating supported clients need a display filter for the selected character, while private GM delivery separately requires Friends & Fables service support.
 
 ## 7. Release 0.5.0
 
@@ -114,7 +114,8 @@
 - [x] Keep music through campaign reloads, start saved tracks paused, and support built-in Russian labels and app themes.
 - [ ] Synchronized GM-controlled music for campaign members requires a shared playback channel; the first player offers local playback and copying track links.
 - [x] Add persistent editable `/sp` narration guidance, first-use settings command, status badge, automatic marked attachment, safe retries, and reversible local hiding; skip Players Only messages.
-- [ ] Private GM delivery and per-character secrecy still require a verified service channel. Marked `/sp` guidance remains ordinary shared message content.
+- [ ] Add a display filter in participating supported clients so they show only narration visible to the selected character plus common narration; leave original shared messages unchanged and let users restore the unfiltered shared display. Candidate cues are explicit character addressing or recognizable section headings; this does not provide privacy, and unmodified clients do not filter it.
+- [ ] Private GM delivery still requires a verified service channel. Marked `/sp` guidance remains ordinary shared message content.
 
 - [x] Add a searchable built-in catalog of 266 official CC BY music links, English/Russian mood and genre filters, playlist actions, source/license links, and attribution copying.
 

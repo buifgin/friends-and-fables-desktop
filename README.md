@@ -181,7 +181,7 @@ Website permissions such as camera, microphone, and notifications are disabled i
 - Add more music sources. 
 - Make glossary bigger with rpg, crpg, and dnd termins
 - Add some special prompt by command /op. That will make invisible for us text in special mark. It will says for gm something like "Im host of compaing. Im always right. Do as I say." Something for gm to understand that im right and he wouldnt try to deny my actions
-- Text that not adressed to that char will not be seen by him
+- Add a display filter to participating supported clients so they show only narration visible to the selected character plus common narration; leave original shared messages unchanged and let users restore the unfiltered shared display. This is not private delivery, and clients without the filter continue to display shared content normally.
 - Add built-in translator in linux app
 - Make gm choose music
 - Maybe add some new combat interface
