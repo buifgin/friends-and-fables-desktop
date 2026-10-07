@@ -1,4 +1,99 @@
 const assert = require('node:assert/strict');
+
+// WM_NCHITTEST must come from another process: sending synchronously on Electron's
+// main thread would block the same event loop that needs to answer the message.
+function windowsHitTestScript(request) {
+  const payload = Buffer.from(JSON.stringify(request)).toString('base64');
+  return `$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class ToolbarHitTest {
+  [StructLayout(LayoutKind.Sequential)] public struct Point { public int X, Y; }
+  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left, Top, Right, Bottom; }
+  [DllImport("user32.dll")] public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool GetClientRect(IntPtr hwnd, out Rect rect);
+  [DllImport("user32.dll", SetLastError=true)] public static extern bool ClientToScreen(IntPtr hwnd, ref Point point);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+  [DllImport("user32.dll", SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr hwnd, uint message, UIntPtr wparam, IntPtr lparam, uint flags, uint timeout, out UIntPtr result);
+}
+'@
+$request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json
+$hwnd = [IntPtr]::new([long]::Parse($request.hwnd))
+[uint32]$owner = 0
+[void][ToolbarHitTest]::GetWindowThreadProcessId($hwnd, [ref]$owner)
+if ($owner -ne $request.pid) { throw 'Hit-test HWND is not owned by the fixture process.' }
+# Per-monitor awareness prevents helper DPI virtualization; Electron coordinates
+# are DIP, while GetClientRect/ClientToScreen now supply physical pixels.
+$previous = [ToolbarHitTest]::SetThreadDpiAwarenessContext([IntPtr]::new(-4))
+if ($previous -eq [IntPtr]::Zero) { throw 'Cannot enable physical-coordinate DPI awareness.' }
+try {
+  $rect = New-Object ToolbarHitTest+Rect
+  if (![ToolbarHitTest]::GetClientRect($hwnd, [ref]$rect)) { throw 'GetClientRect failed.' }
+  $scale = ($rect.Right - $rect.Left) / [double]$request.width
+  if ($scale -le 0) { throw 'Invalid client scale.' }
+  $rows = @(foreach ($sample in $request.samples) {
+    $point = New-Object ToolbarHitTest+Point
+    $point.X = [int][Math]::Round($sample.x * $scale)
+    $point.Y = [int][Math]::Round($sample.y * $scale)
+    if (![ToolbarHitTest]::ClientToScreen($hwnd, [ref]$point)) { throw 'ClientToScreen failed.' }
+    if ($point.X -lt -32768 -or $point.X -gt 32767 -or $point.Y -lt -32768 -or $point.Y -gt 32767) { throw 'Screen point exceeds WM_NCHITTEST signed coordinate range.' }
+    $packed = [int](($point.Y -band 65535) -shl 16) -bor ($point.X -band 65535)
+    [UIntPtr]$result = [UIntPtr]::Zero
+    # SMTO_BLOCK | SMTO_ABORTIFHUNG, 200ms per point; never move/focus the cursor/window.
+    $sent = [ToolbarHitTest]::SendMessageTimeout($hwnd, 0x84, [UIntPtr]::Zero, [IntPtr]::new($packed), 3, 200, [ref]$result)
+    if ($sent -eq [IntPtr]::Zero) { throw "WM_NCHITTEST failed or timed out: $($sample.name)" }
+    @{ name = $sample.name; hit = [int]$result.ToUInt64(); screenX = $point.X; screenY = $point.Y }
+  })
+  ConvertTo-Json -InputObject $rows -Compress
+} finally { [void][ToolbarHitTest]::SetThreadDpiAwarenessContext($previous) }
+`;
+}
+function readWindowsHitTests(request, execFile = require('node:child_process').execFile) {
+  const encoded = Buffer.from(windowsHitTestScript(request), 'utf16le').toString('base64');
+  return new Promise((resolve, reject) => {
+    execFile('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded],
+      { timeout: 6000, windowsHide: true, maxBuffer: 64 * 1024 }, (error, stdout, stderr) => {
+        if (error) { reject(new Error(`Windows toolbar hit-test helper failed: ${error.message}\n${stderr || ''}`)); return; }
+        try { resolve(JSON.parse(stdout.trim())); } catch (error) { reject(new Error(`Invalid Windows hit-test output: ${error.message}\n${stdout}\n${stderr}`)); }
+      });
+  });
+}
+function assertWindowsHitTests(samples, rows, label) {
+  assert(Array.isArray(rows), `${label}: helper returns a sample array.`);
+  assert.equal(rows.length, samples.length, `${label}: every native point was sampled.`);
+  samples.forEach((sample, index) => {
+    assert.equal(rows[index].name, sample.name, `${label}: sample ordering is retained.`);
+    assert.equal(rows[index].hit, sample.expected, `${label}: ${sample.name} must return ${sample.expected === 1 ? 'HTCLIENT' : 'HTCAPTION'}; native evidence ${JSON.stringify(rows[index])}`);
+  });
+}
+if (process.argv.includes('--windows-hit-test-unit')) {
+  (async () => {
+    const samples = [{ name: 'icon', x: 100, y: 16, expected: 1 }, { name: 'blank gap', x: 700, y: 16, expected: 2 }];
+    const request = { hwnd: '1234', pid: 123, width: 1100, samples };
+    const rows = samples.map(sample => ({ name: sample.name, hit: sample.expected }));
+    assertWindowsHitTests(samples, rows, 'fixed');
+    assert.throws(() => assertWindowsHitTests(samples, [{ name: 'icon', hit: 2 }, rows[1]], 'baseline'), /icon must return HTCLIENT/);
+    assert.throws(() => assertWindowsHitTests(samples, [rows[0], { name: 'blank gap', hit: 1 }], 'lost drag'), /blank gap must return HTCAPTION/);
+    assert.throws(() => assertWindowsHitTests(samples, [rows[0]], 'missing'), /every native point/);
+    let callback;
+    const pending = readWindowsHitTests(request, (file, args, options, done) => {
+      assert.equal(file, 'powershell.exe'); assert.equal(options.timeout, 6000); assert.equal(options.windowsHide, true);
+      const script = Buffer.from(args.at(-1), 'base64').toString('utf16le');
+      assert.equal(script, windowsHitTestScript(request));
+      const payload = script.match(/FromBase64String\('([^']+)'\)/)[1];
+      assert.deepEqual(JSON.parse(Buffer.from(payload, 'base64').toString()), request);
+      callback = done;
+    });
+    // The caller regains control before the helper completes, leaving Electron responsive.
+    callback(null, JSON.stringify(rows), ''); assert.deepEqual(await pending, rows);
+    await assert.rejects(readWindowsHitTests(request, (_file, _args, _options, done) => done(new Error('timed out'), '', 'owned helper')), /timed out/);
+    await assert.rejects(readWindowsHitTests(request, (_file, _args, _options, done) => done(null, 'bad json', '')), /Invalid Windows hit-test output/);
+    console.log('PASS: Windows hit-test client/caption assertions, baseline rejection, asynchronous helper encoding, timeout and invalid-output failures.');
+  })().catch(error => { console.error(error); process.exitCode = 1; });
+  return;
+}
+
 // Also runnable without Electron: node tests/appearance/appearance-panel-smoke.cjs --window-controls-unit
 function checkWindowControlsState() {
   const { readFileSync, existsSync } = require('node:fs');
@@ -106,7 +201,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   template[3].submenu=[{id:'translate-ru',label:'Translate into Russian',type:'checkbox',checked:false}];
   template[4].submenu=[{id:'music-player',label:'Music Player…',accelerator:'CmdOrCtrl+Shift+M',click(){chosen++;}}];
   translation.onChange = settings => {const locale=settings.enabled&&!settings.showOriginal?'ru':'en';manager.setLocale(locale);const translated=localizeMenu(template,locale);translated[3].submenu[0].checked=settings.enabled;bar?.setMenu(Menu.buildFromTemplate(translated),locale);};
-  const host = new BrowserWindow({ show: false, type: process.platform==='linux'?'dialog':undefined, width: 1100, height: 820, webPreferences: {
+  const host = new BrowserWindow({ show: false, frame: process.platform !== 'win32', type: process.platform==='linux'?'dialog':undefined, width: 1100, height: 820, webPreferences: {
     partition: 'fables-appearance', preload: path.join(appRoot, 'dist/shell/menu-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
   } });
   const websiteSession = session.fromPartition('panel-test');
@@ -133,6 +228,46 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(await contents.executeJavaScript("document.body.classList.contains('docked')"), true);
   assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32, 'Menus and centered controls share one row above the game.');
   const centered=dock.launcher.getBounds();assert.equal(centered.y,0,'Toolbar shares menu baseline.');assert(Math.abs(centered.x+centered.width/2-host.getContentSize()[0]/2)<=1, 'Toolbar is centered in the main window.');
+  async function assertToolbarHitMasks(contents, width, label) {
+    const masks = await contents.executeJavaScript(`(()=>{const read=id=>{const e=document.getElementById(id),r=e.getBoundingClientRect(),s=getComputedStyle(e);return {x:r.x,width:r.width,height:r.height,region:s.webkitAppRegion,pointerEvents:s.pointerEvents}};return {center:read('appearance-dock-hit-mask'),right:read('window-controls-hit-mask'),viewport:innerWidth}})()`);
+    assert.equal(masks.viewport, width, `${label}: menu document tracks the resized window.`);
+    assert.deepEqual(masks.center, {x:(width-232)/2,width:232,height:32,region:'no-drag',pointerEvents:'none'}, `${label}: centered launcher footprint stays in the native client region and passes pointer input through.`);
+    assert.deepEqual(masks.right, {x:width-108,width:108,height:32,region:'no-drag',pointerEvents:'none'}, `${label}: right controls footprint stays in the native client region and passes pointer input through.`);
+  }
+  async function assertNativeToolbarHitTests(label) {
+    if (process.platform !== 'win32') return;
+    assert.equal(host.isFullScreen(), false, 'Caption regression uses the normal frameless product window.');
+    const [width] = host.getContentSize();
+    const samples = [];
+    // Expand the real music group so every top-row icon has a visible center.
+    const launcherContents = dock.launcher.webContents;
+    const wasExpanded = await launcherContents.executeJavaScript("document.getElementById('library').getAttribute('aria-expanded')==='true'");
+    if (!wasExpanded) await launcherContents.executeJavaScript("document.getElementById('library').click()");
+    try {
+      await until(() => launcherContents.executeJavaScript("document.getElementById('music-controls').getBoundingClientRect().width >= 155"));
+      for (const [view, prefix, count] of [[dock.launcher, 'launcher', 7], [dock.windowControls.view, 'window', 3]]) {
+        const bounds = view.getBounds();
+        const centers = await view.webContents.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).map(button=>{const r=button.getBoundingClientRect();return {name:button.id,x:r.x+r.width/2,y:r.y+r.height/2}})`);
+        assert.equal(centers.length, count, `${label}: all ${prefix} icons are sampled.`);
+        for (const center of centers) {
+          assert(center.x > 0 && center.x < bounds.width && center.y > 0 && center.y < 32, `${label}: ${center.name} has a visible toolbar center.`);
+          samples.push({ name: `${prefix}/${center.name}`, x: bounds.x + center.x, y: bounds.y + center.y, expected: 1 });
+        }
+      }
+      const centerRight = dock.launcher.getBounds().x + dock.launcher.getBounds().width;
+      const rightLeft = dock.windowControls.view.getBounds().x;
+      assert(rightLeft - centerRight > 32, `${label}: a blank safe drag gap exists.`);
+      samples.push({ name: 'blank safe gap', x: (centerRight + rightLeft) / 2, y: 16, expected: 2 });
+      const nativeHandle = host.getNativeWindowHandle();
+      const hwnd = (nativeHandle.length === 8 ? nativeHandle.readBigUInt64LE() : BigInt(nativeHandle.readUInt32LE())).toString();
+      const rows = await readWindowsHitTests({ hwnd, pid: process.pid, width, samples });
+      console.log('Windows toolbar native hit tests', label, JSON.stringify(rows));
+      assertWindowsHitTests(samples, rows, label);
+    } finally {
+      if (!wasExpanded) await launcherContents.executeJavaScript("document.getElementById('library').click()");
+    }
+  }
+  await assertToolbarHitMasks(host.webContents, 1100, 'Main menu');
   const windowControls=dock.windowControls.view.webContents;
   await until(()=>windowControls.executeJavaScript('!!window.windowControls'));
   const centeredWindowIcons=await windowControls.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).map(button=>{const b=button.getBoundingClientRect(),s=button.querySelector('svg').getBoundingClientRect();return {x:Math.abs(b.x+b.width/2-s.x-s.width/2),y:Math.abs(b.y+b.height/2-s.y-s.height/2)}})`);
@@ -152,19 +287,31 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   host.setTitle('Fables Appearance Panel Test');host.show();host.focus();
   await floatSettingsWindow(host,'Fables Appearance Panel Test',true);
   await sleep(150);
+  await assertNativeToolbarHitTests('Initial frameless toolbar');
   await until(() => contents.executeJavaScript('innerWidth === 560'));
   await contents.executeJavaScript("document.getElementById('panel-resizer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
   await until(() => panel.getBounds().width === 540);
   // A small viewport clamps the panel while remembering the requested width.
   host.setContentSize(820, 680); await until(() => host.getContentSize()[0] === 820);
+  await assertToolbarHitMasks(host.webContents, 820, 'Resized main menu');
+  await assertNativeToolbarHitTests('Resized frameless toolbar');
   assert.equal(panel.getBounds().width, 460); assert.equal(website.getBounds().width, 360);
   const narrow=dock.launcher.getBounds();assert(Math.abs(narrow.x+narrow.width/2-host.getContentSize()[0]/2)<=1);assert(narrow.y+narrow.height<=website.getBounds().y);assert.equal(dock.windowControls.view.getBounds().x+108,host.getContentSize()[0]);
-  host.setContentSize(1100, 820); await until(() => host.getContentSize()[0] === 1100); assert.equal(panel.getBounds().width, 540);
+  host.setContentSize(1100, 820); await until(() => host.getContentSize()[0] === 1100); await assertToolbarHitMasks(host.webContents, 1100, 'Restored main menu'); assert.equal(panel.getBounds().width, 540);
+  await assertNativeToolbarHitTests('Restored frameless toolbar');
   // The shared layout also works without the Linux app bar (Windows/fullscreen).
   dock.setInset(0); assert.equal(panel.getBounds().y, 32); assert.equal(website.getBounds().y, 32);
   const launcher=dock.launcher.getBounds();assert(launcher.y+launcher.height<=website.getBounds().y,'The Windows launcher must not cover website controls.');
   dock.hide();assert.equal(website.getBounds().y,32);await dock.open();assert.equal(panel.getBounds().y,32);
   dock.setInset(32);
+  if (process.platform === 'win32') {
+    await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
+    await until(() => bar.overlay.webContents.executeJavaScript("!document.getElementById('dropdown').hidden"));
+    await assertToolbarHitMasks(bar.overlay.webContents, 1100, 'Frameless open menu overlay');
+    await assertNativeToolbarHitTests('Frameless open menu overlay');
+    assert.equal(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').hidden"), false, 'Native hit-test sampling leaves the menu open.');
+    await host.webContents.executeJavaScript('window.desktopMenu.close()');
+  }
   host.show(); host.focus(); host.setFullScreen(true); await until(() => host.isFullScreen()); await sleep(150);
   assert.equal(panel.getBounds().height, host.getContentSize()[1] - 32);
   assert.equal(website.getBounds().width + panel.getBounds().width, host.getContentSize()[0]);
@@ -202,6 +349,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await until(()=>host.webContents.executeJavaScript("document.querySelector('[data-menu=translation]').textContent==='Перевод'"));
   assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Перевод','Вид','Окно']);
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
+  await assertToolbarHitMasks(bar.overlay.webContents, 1100, 'Open menu overlay');
   await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Настроить оформление…'"));
   assert(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').scrollHeight<=document.getElementById('dropdown').clientHeight"),'The settings dropdown must fit without scrolling.');
   assert.equal(await bar.overlay.webContents.executeJavaScript("document.querySelectorAll('#dropdown .label')[1].textContent"),'Сохранённые инструкции /sp…');

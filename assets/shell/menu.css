@@ -7,6 +7,9 @@ button:hover, button:focus-visible { background: #252525; outline: none; }
 html, body { height: 100%; overflow: hidden; }
 html:has(body.menu-open), body.menu-open { background: transparent; }
 nav { -webkit-app-region:drag; box-sizing: border-box; position: relative; z-index: 1; }
+.toolbar-hit-mask { position: absolute; top: 0; height: 32px; -webkit-app-region: no-drag; pointer-events: none; z-index: 2; }
+#appearance-dock-hit-mask { left: calc(50% - 116px); width: 232px; }
+#window-controls-hit-mask { right: 0; width: 108px; }
 button[aria-expanded="true"] { background: #252525; }
 #dropdown { position: absolute; top: 32px; min-width: 230px; max-width: calc(100vw - 8px);
   max-height: calc(100vh - 40px); overflow: auto; box-sizing: border-box; padding: 5px;
