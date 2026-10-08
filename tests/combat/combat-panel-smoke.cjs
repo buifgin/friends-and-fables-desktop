@@ -25,7 +25,7 @@ window.openNative=(diceMode=false)=>{
  dialog.innerHTML='<h2>Choose Action</h2><div role="tablist"><button role="tab">Weapons</button><button role="tab">Spells</button><button role="tab">Custom</button></div><div class="md:min-w-[980px] md:min-h-[600px] md:max-h-[600px] overflow-y-auto py-4"><form><input name="description" value="custom draft"><button type="submit">Attack</button></form></div><button id="nested">Ability selector</button><button id="x"><svg class="lucide-x"></svg>Close</button>';
  if(diceMode){
  dialog.querySelector('h2').textContent='Title';const skills=document.createElement('section');dialog.append(skills);
- const detail=()=>{dialog.setAttribute('data-ff-desktop-message','roll-menu');skills.innerHTML='<button type="button"><svg class="lucide-chevron-left"></svg>List</button><div class="text-center absolute left-1/2">Roll Acrobatics Check</div><button type="button" role="combobox">Normal</button><svg id="d20" data-ff-desktop-die="d20"></svg>';dialog.querySelector('button[type=submit]').textContent='Roll'};
+ const detail=()=>{dialog.setAttribute('data-ff-desktop-message','roll-menu');skills.innerHTML='<button type="button"><svg class="lucide-chevron-left"></svg>List</button><div class="text-center absolute left-1/2">Roll Acrobatics Check</div><button type="button" role="combobox">Normal</button>';dialog.querySelector('button[type=submit]').innerHTML='<svg id="d20" data-ff-desktop-die="d20" width="20" height="20"><title>D20</title><defs><style>.native-die-art{fill:none;stroke:currentColor}</style></defs><path class="native-die-art" d="M2 2h16v16H2z"/></svg><span>Бросок</span>'};
  if(window.rememberedSkill)detail();
  else {skills.innerHTML='<h3>Ability checks</h3><h3>Skills</h3><button id="acrobatics">Acrobatics Check</button>';skills.querySelector('button').onclick=()=>{window.skillSelections++;window.rememberedSkill=true;detail()}}
  }
@@ -119,6 +119,8 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.querySelector('h3')===null && document.querySelector('#acrobatics')===null"),true,'Native remembered selection reopens detail directly without Skills list.');
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')===document.querySelector('[data-ff-desktop-message=roll-menu]')"),true,'Directly reopened native roll detail must dock.');
  assert.equal(await js("document.querySelector('[data-ff-combat-mode=skills]').getAttribute('aria-pressed')"),'true');
+ assert.equal(await js("document.querySelector('button[type=submit]').innerText.trim()"),'Бросок','Native visible Roll label excludes embedded die SVG metadata.');
+ assert.equal(await js("/^Бросок$/.test(document.querySelector('button[type=submit]').textContent.trim())"),false,'Regression must include SVG title/style text that broke exact textContent matching.');
  assert.equal(await js('skillSelections'),1,'Reopen preserves native selected skill without another selection.');
  assert.equal(await js('submits'),1,'Reopened native detail never rolls automatically.');
  await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true,'Chat remains usable with directly reopened skill detail.');
