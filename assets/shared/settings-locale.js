@@ -24,6 +24,8 @@
     'Custom color': 'Свой цвет', 'Pick your own background': 'Выберите цвет фона', 'Background color': 'Цвет фона',
     'Choose a custom background color': 'Выберите свой цвет фона', 'Custom background hex color': 'HEX-код своего цвета фона',
     'Combat panel': 'Панель боя', 'Customize combat panel': 'Настроить панель боя',
+    'Side panel': 'Боковая панель', 'Customize side panel': 'Настроить боковую панель',
+    'By default, the side panel inherits the current theme and chat background. Customize its background color, opacity, and blur for checks, actions, and selected roll details. Text and controls stay fully opaque.': 'По умолчанию боковая панель наследует текущую тему и фон чата. Настройте цвет, непрозрачность и размытие фона для проверок, действий и форм выбранных бросков. Текст и элементы управления остаются полностью непрозрачными.',
     'Set the docked combat panel background independently. Text and controls stay fully opaque.': 'Настройте фон закреплённой панели боя отдельно. Текст и элементы управления остаются полностью непрозрачными.',
     'Panel background blur': 'Размытие фона панели',
     'Behind the campaign chat': 'Фон чата кампании',
