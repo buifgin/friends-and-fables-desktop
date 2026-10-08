@@ -219,6 +219,50 @@ export const combatPanelCss = `
     overflow-wrap: anywhere;
   }
 
+  [data-ff-combat-docked][data-ff-desktop-message="roll-menu"] .relative:has(> [role="combobox"]) {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 8px;
+    row-gap: 8px;
+  }
+
+  [data-ff-combat-docked][data-ff-desktop-message="roll-menu"] .relative:has(> [role="combobox"]) > button:has(.lucide-chevron-left) {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+    min-width: 0;
+    max-width: 100%;
+    padding-inline: 8px;
+  }
+
+  [data-ff-combat-docked][data-ff-desktop-message="roll-menu"] .relative:has(> [role="combobox"]) > [role="combobox"] {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    min-width: 0 !important;
+    max-width: 100%;
+    width: auto;
+    padding-inline: 8px;
+  }
+
+  [data-ff-combat-docked][data-ff-desktop-message="roll-menu"] .relative:has(> [role="combobox"]) > div[class*="absolute"] {
+    position: static !important;
+    inset: auto !important;
+    left: auto !important;
+    top: auto !important;
+    transform: none !important;
+    translate: none !important;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
   [data-ff-combat-tools]:not([hidden]) [data-ff-combat-mode]:focus-visible {
     outline: 2px solid hsl(var(--ring, var(--primary, 0 0% 70%)));
     outline-offset: 2px;
