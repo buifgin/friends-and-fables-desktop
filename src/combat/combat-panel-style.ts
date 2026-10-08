@@ -2,6 +2,7 @@
 export const combatPanelCss = `
   :root {
     --ff-combat-rail-width: 64px;
+    --ff-combat-rail-top: 0px;
     --ff-combat-width: min(clamp(280px, 28vw, 390px), calc(100vw - var(--ff-combat-rail-width) - 8px));
   }
 
@@ -17,7 +18,7 @@ export const combatPanelCss = `
     position: fixed;
     z-index: 52;
     left: 0;
-    top: 50%;
+    top: calc(var(--ff-combat-rail-top) + (100dvh - var(--ff-combat-rail-top)) / 2);
     display: flex;
     width: var(--ff-combat-rail-width);
     flex-direction: column;
