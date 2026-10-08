@@ -427,7 +427,7 @@ export class AppearanceManager {
       // No IPC bridge or Node access is added to the remote website.
       await contents.executeJavaScript(`(${configureChatAppearance.toString()})(${JSON.stringify(settings)})`);
       if (contents.isDestroyed() || document !== website.document) return;
-      await contents.executeJavaScript(`(${configureCombatPanel.toString()})(true,${JSON.stringify(this.locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(this.settings.combatPanel))})`);
+      await contents.executeJavaScript(`(${configureCombatPanel.toString()})(true,${JSON.stringify(this.locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(settings.combatPanel, { image, fit: settings.backgroundFit, effects: settings.backgroundEffects }))})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureCampaignMap.toString()})(${settings.resizableMap},${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
