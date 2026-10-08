@@ -213,7 +213,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await js("openNative();document.querySelector('input').value='already open draft'");await configure();
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')"),null,'Do not adapt preexisting modal with unknown focus-listener ordering.');
  assert.equal(await js("document.querySelector('input').value"),'already open draft');await configure(false);await js('nativeClose()');
- await js('openNative(true)');await configure();
+ await js('window.rememberedSkill=true;openNative(true)');await configure();
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')"),null,'Even native-shaped remembered skill detail must stay modal when it predates the adapter.');
  assert.equal(await js("document.querySelector('#d20')!==null"),true);await configure(false);await js('nativeClose()');
  console.log('Combat modal fidelity fixture passed');window.destroy();clearTimeout(timer);app.exit(0);
