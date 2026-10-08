@@ -282,7 +282,7 @@ export const combatPanelCss = `
   }
 
   html[data-ff-combat-open="true"] [data-ff-combat-chat] {
-    padding-left: calc(var(--ff-combat-rail-width) + var(--ff-combat-width));
+    padding-left: var(--ff-combat-width);
     box-sizing: border-box;
   }
 
