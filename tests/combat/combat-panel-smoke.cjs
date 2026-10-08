@@ -12,7 +12,7 @@ const html = `<!doctype html><meta charset="utf-8"><style>
 body{margin:0}#campaign{display:flex;margin-left:76px;height:650px}#chat{width:750px}#map{margin-left:20px;width:240px;height:240px}canvas{width:240px;height:240px}.fixed{position:fixed}.inset-0{inset:0}.z-50{z-index:50}.overlay{background:#0008}.native{top:60px;left:200px;width:650px;min-height:300px;background:white;z-index:50;pointer-events:auto}[class~="md:min-w-[980px]"]{min-width:980px;min-height:600px;max-height:600px;overflow-y:auto;padding-block:1rem}
 </style><div id="campaign"><div id="chat" class="flex-1 h-full w-full"><div id="events-list"></div><div id="composer"><div class="tiptap" contenteditable="true">preserved draft</div><button aria-label="Roll dice"><svg class="lucide-dice-3"></svg></button><button id="actions"><svg class="lucide-swords"></svg></button></div></div><div id="map"><canvas class="touch-none" tabindex="0"></canvas></div></div>
 <script>
-window.backgroundWheels=0;window.opens=0;window.skillSelections=0;window.submits=0;window.mapClicks=0;window.reactFocus=0;window.encounter=true;
+window.backgroundWheels=0;window.opens=0;window.skillSelections=0;window.rememberedSkill=false;window.submits=0;window.mapClicks=0;window.reactFocus=0;window.encounter=true;
 const campaign=document.getElementById('campaign'),editor=document.querySelector('.tiptap'),canvas=document.querySelector('canvas');
 window.originalEditor=editor;window.originalCanvas=canvas;
 document.getElementById('composer').__reactFiberFixture={memoizedProps:{encounterActive:true}};
@@ -23,7 +23,12 @@ window.openNative=(diceMode=false)=>{
  window.opens++; const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50 overlay';overlay.dataset.state='open';
  const dialog=document.createElement('div');dialog.className='fixed native';dialog.setAttribute('role','dialog');dialog.dataset.state='open';dialog.tabIndex=-1;
  dialog.innerHTML='<h2>Choose Action</h2><div role="tablist"><button role="tab">Weapons</button><button role="tab">Spells</button><button role="tab">Custom</button></div><div class="md:min-w-[980px] md:min-h-[600px] md:max-h-[600px] overflow-y-auto py-4"><form><input name="description" value="custom draft"><button type="submit">Attack</button></form></div><button id="nested">Ability selector</button><button id="x"><svg class="lucide-x"></svg>Close</button>';
- if(diceMode){dialog.querySelector('h2').textContent='Title';const skills=document.createElement('section');skills.innerHTML='<h3>Ability checks</h3><h3>Skills</h3><button id=\"acrobatics\">Acrobatics Check</button>';dialog.append(skills);skills.querySelector('button').onclick=()=>{window.skillSelections++;skills.innerHTML='<h4>Roll Acrobatics Check</h4><button type=\"button\">List</button>';dialog.querySelector('button[type=submit]').textContent='Roll'}}
+ if(diceMode){
+ dialog.querySelector('h2').textContent='Title';const skills=document.createElement('section');dialog.append(skills);
+ const detail=()=>{dialog.setAttribute('data-ff-desktop-message','roll-menu');skills.innerHTML='<button type="button"><svg class="lucide-chevron-left"></svg>List</button><div class="text-center absolute left-1/2">Roll Acrobatics Check</div><button type="button" role="combobox">Normal</button><svg id="d20" data-ff-desktop-die="d20"></svg>';dialog.querySelector('button[type=submit]').textContent='Roll'};
+ if(window.rememberedSkill)detail();
+ else {skills.innerHTML='<h3>Ability checks</h3><h3>Skills</h3><button id="acrobatics">Acrobatics Check</button>';skills.querySelector('button').onclick=()=>{window.skillSelections++;window.rememberedSkill=true;detail()}}
+ }
  document.body.append(overlay,dialog);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');
  window.originalForm=dialog.querySelector('form');originalForm.onsubmit=e=>{e.preventDefault();window.submits++};
  let last=dialog.querySelector('input'),nested=null;
@@ -109,6 +114,15 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("!!document.querySelector('[data-ff-combat-docked]')"),true,'Native selected skill detail remains docked on reinjection.');
  await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true);
  await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('h2') && document.querySelector('h2').textContent==='Choose Action' && !!document.querySelector('[data-ff-combat-docked]')");
+ await js("document.querySelector('[data-ff-combat-mode=skills]').click()");
+ await until("!!document.querySelector('[data-ff-combat-docked]') && !!document.querySelector('#d20')");
+ assert.equal(await js("document.querySelector('h3')===null && document.querySelector('#acrobatics')===null"),true,'Native remembered selection reopens detail directly without Skills list.');
+ assert.equal(await js("document.querySelector('[data-ff-combat-docked]')===document.querySelector('[data-ff-desktop-message=roll-menu]')"),true,'Directly reopened native roll detail must dock.');
+ assert.equal(await js("document.querySelector('[data-ff-combat-mode=skills]').getAttribute('aria-pressed')"),'true');
+ assert.equal(await js('skillSelections'),1,'Reopen preserves native selected skill without another selection.');
+ assert.equal(await js('submits'),1,'Reopened native detail never rolls automatically.');
+ await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true,'Chat remains usable with directly reopened skill detail.');
+ await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('h2') && document.querySelector('h2').textContent==='Choose Action' && !!document.querySelector('[data-ff-combat-docked]')");
  const toolbarHit=await js("(()=>{const close=document.querySelector('[data-ff-combat-toolbar-close]'),b=close.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+b.height/2);window.combatCloseInputTrace=[];const describe=el=>el?.id||el?.getAttribute?.('data-ff-combat-toolbar-close')!==null&&el?.hasAttribute?.('data-ff-combat-toolbar-close')?'toolbar-close':el?.tagName?.toLowerCase()||null;for(const type of ['pointerdown','mousedown','pointerup','mouseup','click']){document.addEventListener(type,e=>window.combatCloseInputTrace.push({scope:'document',type:e.type,target:describe(e.target),trusted:e.isTrusted,x:e.clientX,y:e.clientY}),true);close.addEventListener(type,e=>window.combatCloseInputTrace.push({scope:'button',type:e.type,target:describe(e.target),trusted:e.isTrusted,x:e.clientX,y:e.clientY}),true)}return {x,y,hit:close.contains(document.elementFromPoint(x,y)),close:describe(close)}})()");
  assert.equal(toolbarHit.hit,true,'Owned toolbar close must be the real hit target.');
  window.webContents.focus();window.webContents.sendInputEvent({type:'mouseMove',x:toolbarHit.x,y:toolbarHit.y});
@@ -121,7 +135,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  if(mouseDownSeen)window.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,x:toolbarHit.x,y:toolbarHit.y});
  try{await until("!document.querySelector('[role=dialog]')");}
  catch(error){console.error('Combat toolbar close input failed',{mouseDownSeen,...await inputState()});throw error;}
- await new Promise(resolve=>setTimeout(resolve,600));assert.equal(await js('opens'),3,'Manual collapse lasts through encounter.');
+ await new Promise(resolve=>setTimeout(resolve,600));assert.equal(await js('opens'),5,'Manual collapse lasts through encounter.');
  assert.equal(await js("document.body.style.cssText"),'');
  assert.equal(await js("originalEditor.textContent"),'preserved draft typed');
  await js("document.querySelector('[data-ff-combat-launcher]').click()");await until("!!document.querySelector('[data-ff-combat-docked]')");
@@ -138,5 +152,8 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await js("openNative();document.querySelector('input').value='already open draft'");await configure();
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')"),null,'Do not adapt preexisting modal with unknown focus-listener ordering.');
  assert.equal(await js("document.querySelector('input').value"),'already open draft');await configure(false);await js('nativeClose()');
+ await js('openNative(true)');await configure();
+ assert.equal(await js("document.querySelector('[data-ff-combat-docked]')"),null,'Even native-shaped remembered skill detail must stay modal when it predates the adapter.');
+ assert.equal(await js("document.querySelector('#d20')!==null"),true);await configure(false);await js('nativeClose()');
  console.log('Combat modal fidelity fixture passed');window.destroy();clearTimeout(timer);app.exit(0);
 })().catch(error=>{console.error(error);window?.destroy();clearTimeout(timer);app.exit(1)});

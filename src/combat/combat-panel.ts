@@ -177,7 +177,21 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (!play) return;
     const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(visible);
     if (!dialogs.length && !picker) rememberBackground();
-    const skills = launched === 'skills' ? dialogs.find(dialog => !preexisting.has(dialog) && Array.from(dialog.querySelectorAll('h3')).some(heading => /^(Skills|Навыки)$/i.test(heading.textContent?.trim() ?? '')) && Array.from(dialog.querySelectorAll('button')).some(button => /Acrobatics|акробатик/i.test(button.textContent ?? ''))) : undefined;
+    const skills = launched === 'skills' ? dialogs.find(dialog => {
+      if (preexisting.has(dialog)) return false;
+      const buttons = Array.from(dialog.querySelectorAll('button'));
+      const list = Array.from(dialog.querySelectorAll('h3')).some(heading => /^(Skills|Навыки)$/i.test(heading.textContent?.trim() ?? ''))
+        && buttons.some(button => /Acrobatics|акробатик/i.test(button.textContent ?? ''));
+      // The native dice launcher remembers its last selected check. On reopen
+      // it can render this detail directly, without ever showing the list.
+      // Require the observed native controls/title together, and only after
+      // our own dice launch; generic Title dialogs are not sufficient.
+      const detail = buttons.some(button => button.querySelector('.lucide-chevron-left') && /^(List|Список)$/i.test(button.textContent?.trim() ?? ''))
+        && buttons.some(button => /^(Roll|Бросок)$/i.test(button.textContent?.trim() ?? ''))
+        && !!dialog.querySelector('[role="combobox"]') && !!dialog.querySelector('svg#d20')
+        && Array.from(dialog.querySelectorAll('div.text-center.absolute')).some(title => /^(Roll|Бросок)\s+\S/i.test(title.textContent?.trim() ?? ''));
+      return list || detail;
+    }) : undefined;
     const found = skills ?? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? '')));
     if (found && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
