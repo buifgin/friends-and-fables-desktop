@@ -77,16 +77,16 @@ export const combatPanelCss = `
   [data-ff-combat-docked] {
     position: fixed !important;
     z-index: 49 !important;
-    inset: 0 auto 0 var(--ff-combat-rail-width) !important;
-    top: 0 !important;
+    inset: var(--ff-combat-rail-top) auto 0 var(--ff-combat-rail-width) !important;
+    top: var(--ff-combat-rail-top) !important;
     left: var(--ff-combat-rail-width) !important;
     width: var(--ff-combat-width) !important;
     min-width: 0 !important;
     max-width: var(--ff-combat-width) !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    max-height: 100vh !important;
-    max-height: 100dvh !important;
+    height: calc(100vh - var(--ff-combat-rail-top)) !important;
+    height: calc(100dvh - var(--ff-combat-rail-top)) !important;
+    max-height: calc(100vh - var(--ff-combat-rail-top)) !important;
+    max-height: calc(100dvh - var(--ff-combat-rail-top)) !important;
     margin: 0 !important;
     padding: 0 !important;
     overflow: auto;
