@@ -46,7 +46,13 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  const js=source=>window.webContents.executeJavaScript(source);
  const until=async expression=>{for(let n=0;n<100;n++){if(await js(expression))return;await new Promise(resolve=>setTimeout(resolve,20));}throw Error('Timed out: '+expression)};
  const configure=(enabled=true,locale='en')=>js(`(${configureCombatPanel.toString()})(${enabled},${JSON.stringify(locale)},${JSON.stringify(combatPanelCss)})`);
- await window.loadURL('https://play.fables.gg/fixture/play');await configure();
+ await window.loadURL('https://play.fables.gg/fixture/play');
+ // Focus assertions require a visible renderer. showInactive keeps placement
+ // silent; the coordinator's scoped native guard owns desktop focus policy.
+ window.showInactive();window.webContents.focus();
+ console.log('Combat focus readiness', await js('({visibility:document.visibilityState,focused:document.hasFocus(),active:document.activeElement?.tagName,width:innerWidth,height:innerHeight})'));
+ await until("document.visibilityState==='visible' && document.hasFocus()");
+ await configure();
  await until("!!document.querySelector('[data-ff-combat-docked]')");
  assert.equal(await js('opens'),1,'Auto activation opens native picker once; never submits.');
  assert.equal(await js('submits'),0);
@@ -56,7 +62,9 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.querySelector('form')===originalForm && document.querySelector('canvas')===originalCanvas && document.querySelector('.tiptap')===originalEditor"),true);
  await js("originalEditor.focus();originalEditor.textContent+=' typed';originalCanvas.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));originalCanvas.click()");
  assert.equal(await js('document.activeElement===originalEditor'),true,'FocusScope permits actual background focus.');
- assert.equal(await js('reactFocus>0'),true,'Root React-style focus handler still runs.');
+ const focusState=await js('({focused:document.hasFocus(),visibility:document.visibilityState,active:document.activeElement?.className,rootFocusEvents:reactFocus})');
+ console.log('Combat outside focus state',focusState);
+ assert.equal(focusState.rootFocusEvents>0,true,'Root React-style focus handler still runs.');
  assert.equal(await js('mapClicks'),1);
  assert.equal(await js("!!document.querySelector('[data-ff-combat-docked]')"),true,'Outside pointer must not dismiss picker.');
  assert.equal(await js("originalEditor.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:50}))"),true,'Background wheel keeps its default behavior despite native document scroll lock.');
