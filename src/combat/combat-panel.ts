@@ -11,7 +11,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   const preexisting = new WeakSet(document.querySelectorAll('[role="dialog"]'));
   const style = document.createElement('style'); style.textContent = css; document.head.append(style);
   const launcher = document.createElement('button'); launcher.type = 'button'; launcher.setAttribute('data-ff-combat-launcher', '');
-  launcher.setAttribute('data-ff-translation-ignore', 'true'); launcher.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3 3 4l12 12m5-13 1 1L9 16M3 3l1 5 4-4m13-1-1 5-4-4M13 17l4-4M7 13l4 4M16 16l5 5M8 16l-5 5"/></svg>'; launcher.hidden = true; document.body.append(launcher);
+  launcher.setAttribute('data-ff-translation-ignore', 'true'); launcher.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6"/></svg>'; launcher.hidden = true; document.body.append(launcher);
   const tools = document.createElement('div'); tools.setAttribute('data-ff-combat-tools', ''); tools.setAttribute('data-ff-translation-ignore', 'true'); tools.hidden = true;
   const actionsTab = document.createElement('button'), skillsTab = document.createElement('button');
   for (const [button, name] of [[actionsTab, 'actions'], [skillsTab, 'skills']] as const) {
@@ -21,7 +21,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   const toolbarClose = document.createElement('button'); toolbarClose.type = 'button';
   toolbarClose.setAttribute('data-ff-combat-toolbar-close', ''); toolbarClose.setAttribute('data-ff-combat-close', '');
   toolbarClose.setAttribute('data-ff-translation-ignore', 'true');
-  toolbarClose.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  toolbarClose.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6"/></svg>';
   toolbarClose.addEventListener('click', () => { if (!otherLayer() && picker) close(); });
   tools.append(toolbarClose);
   document.body.append(tools);
@@ -69,7 +69,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     picker?.removeAttribute('data-ff-combat-panel'); picker?.removeAttribute('data-ff-combat-docked');
     picker?.querySelector('[data-ff-combat-heading]')?.removeAttribute('data-ff-combat-heading');
     picker?.querySelector('[data-ff-combat-close]')?.removeAttribute('data-ff-combat-close');
-    launcher.setAttribute('aria-expanded', 'false'); tools.hidden = true;
+    launcher.setAttribute('aria-expanded', 'false'); launcher.hidden = !action; tools.hidden = true;
   }
   const visible = (element: Element): boolean => element.getAttribute('data-state') !== 'closed' && !element.hasAttribute('hidden') && getComputedStyle(element).display !== 'none';
   function otherLayer(): boolean {
@@ -101,11 +101,11 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     picker = null; launched = null;
   }
   function labels(): void {
-    launcher.setAttribute('aria-label', language === 'ru' ? 'Действия в бою' : 'Combat actions');
+    launcher.setAttribute('aria-label', language === 'ru' ? 'Развернуть панель боя' : 'Expand combat panel');
     launcher.title = launcher.getAttribute('aria-label')!;
-    toolbarClose.setAttribute('aria-label', language === 'ru' ? 'Закрыть панель действий' : 'Close combat actions panel');
+    toolbarClose.setAttribute('aria-label', language === 'ru' ? 'Свернуть панель боя' : 'Collapse combat panel');
     toolbarClose.title = toolbarClose.getAttribute('aria-label')!;
-    actionsTab.textContent = language === 'ru' ? 'Действия' : 'Actions'; skillsTab.textContent = language === 'ru' ? 'Навыки / проверки' : 'Skills / checks';
+    actionsTab.textContent = language === 'ru' ? 'Действия' : 'Actions'; skillsTab.textContent = language === 'ru' ? 'Навыки' : 'Skills';
   }
   function active(root: HTMLElement): boolean {
     for (const node of [root, ...root.querySelectorAll('button')]) {
@@ -155,7 +155,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
         if (node.getAttribute('aria-hidden') === 'true' && hiddenBefore.has(node) && hiddenBefore.get(node) !== 'true') attribute(node, 'aria-hidden', null);
       }
     }
-    modalActive = true; launcher.setAttribute('aria-expanded', 'true'); tools.hidden = false;
+    modalActive = true; launcher.setAttribute('aria-expanded', 'true'); launcher.hidden = true; tools.hidden = false;
     actionsTab.setAttribute('aria-pressed', String(mode === 'actions')); skillsTab.setAttribute('aria-pressed', String(mode === 'skills')); skillsTab.disabled = !dice;
   }
   function scan(): void {
@@ -197,7 +197,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const found = skills ?? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? '')));
     if (found && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
-    launcher.hidden = !play || !action || otherLayer();
+    launcher.hidden = !play || !action || !!picker || otherLayer();
     if (requested && !picker && !otherLayer()) { const next = requested; requested = null; open(next); }
     else if (now && !attempted && !found && !otherLayer()) open();
   }
