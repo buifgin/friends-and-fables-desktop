@@ -104,11 +104,18 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("!!document.querySelector('[data-ff-combat-docked]')"),true,'Native selected skill detail remains docked on reinjection.');
  await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true);
  await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('h2') && document.querySelector('h2').textContent==='Choose Action' && !!document.querySelector('[data-ff-combat-docked]')");
- const toolbarHit=await js("(()=>{const close=document.querySelector('[data-ff-combat-toolbar-close]'),b=close.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+b.height/2);return {x,y,hit:close.contains(document.elementFromPoint(x,y))}})()");
+ const toolbarHit=await js("(()=>{const close=document.querySelector('[data-ff-combat-toolbar-close]'),b=close.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+b.height/2);window.combatCloseInputTrace=[];const describe=el=>el?.id||el?.getAttribute?.('data-ff-combat-toolbar-close')!==null&&el?.hasAttribute?.('data-ff-combat-toolbar-close')?'toolbar-close':el?.tagName?.toLowerCase()||null;for(const type of ['pointerdown','mousedown','pointerup','mouseup','click']){document.addEventListener(type,e=>window.combatCloseInputTrace.push({scope:'document',type:e.type,target:describe(e.target),trusted:e.isTrusted,x:e.clientX,y:e.clientY}),true);close.addEventListener(type,e=>window.combatCloseInputTrace.push({scope:'button',type:e.type,target:describe(e.target),trusted:e.isTrusted,x:e.clientX,y:e.clientY}),true)}return {x,y,hit:close.contains(document.elementFromPoint(x,y)),close:describe(close)}})()");
  assert.equal(toolbarHit.hit,true,'Owned toolbar close must be the real hit target.');
+ window.webContents.focus();window.webContents.sendInputEvent({type:'mouseMove',x:toolbarHit.x,y:toolbarHit.y});
+ const inputWait=async expression=>{for(let n=0;n<50;n++){if(await js(expression))return true;await new Promise(resolve=>setTimeout(resolve,20));}return false};
+ const hoverReady=await inputWait("document.querySelector('[data-ff-combat-toolbar-close]')?.matches(':hover')");
+ const inputState=()=>js("(()=>{const close=document.querySelector('[data-ff-combat-toolbar-close]'),tools=document.querySelector('[data-ff-combat-tools]'),b=close?.getBoundingClientRect(),x=Math.round((b?.x||0)+(b?.width||0)/2),y=Math.round((b?.y||0)+(b?.height||0)/2),hit=document.elementFromPoint(x,y),describe=el=>el?.hasAttribute?.('data-ff-combat-toolbar-close')?'toolbar-close':el?.id||el?.getAttribute?.('data-ff-combat-mode')||el?.tagName?.toLowerCase()||null;return {trace:window.combatCloseInputTrace,hover:!!close?.matches(':hover'),hit:describe(hit),hitClose:!!close?.contains(hit),active:describe(document.activeElement),hasFocus:document.hasFocus(),visibility:document.visibilityState,dialogs:document.querySelectorAll('[role=dialog]').length,toolsHidden:tools?.hidden}})()");
+ console.log('Combat toolbar close input readiness',{hoverReady,...await inputState()});
  window.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,x:toolbarHit.x,y:toolbarHit.y});
- window.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,x:toolbarHit.x,y:toolbarHit.y});
- await until("!document.querySelector('[role=dialog]')");
+ const mouseDownSeen=await inputWait("window.combatCloseInputTrace?.some(event=>event.scope==='button'&&event.type==='mousedown')");
+ if(mouseDownSeen)window.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,x:toolbarHit.x,y:toolbarHit.y});
+ try{await until("!document.querySelector('[role=dialog]')");}
+ catch(error){console.error('Combat toolbar close input failed',{mouseDownSeen,...await inputState()});throw error;}
  await new Promise(resolve=>setTimeout(resolve,600));assert.equal(await js('opens'),3,'Manual collapse lasts through encounter.');
  assert.equal(await js("document.body.style.cssText"),'');
  assert.equal(await js("originalEditor.textContent"),'preserved draft typed');
