@@ -278,6 +278,10 @@ export const combatPanelCss = `
     box-sizing: border-box;
   }
 
+  main:has([data-ff-combat-chat]) {
+    scrollbar-gutter: stable;
+  }
+
   [data-ff-combat-heading] {
     position: sticky;
     z-index: 1;
@@ -352,6 +356,9 @@ export function combatPanelAppearanceCss(settings: { enabled: boolean; color: st
       background: ${fill} !important;
       -webkit-backdrop-filter: blur(${blur}px) !important;
       backdrop-filter: blur(${blur}px) !important;
+    }
+    [data-ff-combat-docked] [data-ff-combat-heading] {
+      background: transparent !important;
     }
     [data-ff-combat-docked] :is(div, section)[class*="bg-card"],
     [data-ff-combat-docked] :is(div, section)[class*="bg-background"],
