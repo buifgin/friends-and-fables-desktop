@@ -114,9 +114,9 @@ export const combatPanelCss = `
     border: 0 !important;
     border-right: 1px solid hsl(var(--border, 0 0% 50%)) !important;
     border-radius: 0 !important;
-    background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 92%, transparent) !important;
+    background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 88%, transparent) !important;
     color: hsl(var(--foreground, 0 0% 96%)) !important;
-    box-shadow: 5px 0 24px #0003 !important;
+    box-shadow: none !important;
     transform: none !important;
     translate: none !important;
     transition: left 240ms cubic-bezier(.2, .75, .25, 1);
@@ -190,7 +190,7 @@ export const combatPanelCss = `
     overflow: visible !important;
   }
 
-  [data-ff-combat-docked][data-ff-desktop-action-picker] > div[class*="overflow-y-auto"] {
+  [data-ff-combat-docked] > div[class*="overflow-y-auto"] {
     box-sizing: border-box;
     width: 100%;
     height: auto !important;
@@ -198,6 +198,13 @@ export const combatPanelCss = `
     max-height: none;
     overflow: visible !important;
   }
+
+  [data-ff-combat-docked] div[class~="p-6"] {
+    padding: 12px !important;
+    height: auto !important;
+  }
+
+  [data-ff-combat-docked] div[class~="p-4"] { padding: 8px !important; }
 
   [data-ff-combat-docked] :is([class*="grid-cols"], [role="tabpanel"] > div) {
     min-width: 0;
@@ -230,10 +237,22 @@ export const combatPanelCss = `
     flex-direction: column !important;
     align-items: center !important;
     text-align: center;
+    height: auto !important;
+    min-height: 72px !important;
+    padding: 8px !important;
+    gap: 6px !important;
+    border: 1px solid hsl(var(--border, 0 0% 50%)) !important;
+    border-radius: 6px !important;
+    line-height: 1.25 !important;
   }
 
   [data-ff-combat-docked] button.group:has(> div > svg.lucide) > div:first-child {
     flex: none !important;
+  }
+
+  [data-ff-combat-docked] button.group:has(> div > svg.lucide) > div:first-child svg {
+    width: 24px !important;
+    height: 24px !important;
   }
 
   [data-ff-combat-docked] button.group:has(> div > svg.lucide) > span {
@@ -268,6 +287,8 @@ export const combatPanelCss = `
     align-items: center;
     column-gap: 8px;
     row-gap: 8px;
+    padding: 8px 12px;
+    box-sizing: border-box;
   }
 
   [data-ff-combat-docked][data-ff-desktop-message="roll-menu"] .relative:has(> [role="combobox"]) > button:has(.lucide-chevron-left) {
@@ -277,6 +298,7 @@ export const combatPanelCss = `
     min-width: 0;
     max-width: 100%;
     padding-inline: 8px;
+    min-height: 34px;
   }
 
   [data-ff-combat-docked][data-ff-desktop-message="roll-menu"] .relative:has(> [role="combobox"]) > [role="combobox"] {
@@ -286,6 +308,7 @@ export const combatPanelCss = `
     min-width: 0 !important;
     max-width: 100%;
     width: auto;
+    min-height: 34px;
     padding-inline: 8px;
   }
 
@@ -349,7 +372,8 @@ export const combatPanelCss = `
     scrollbar-gutter: stable;
   }
 
-  [data-ff-combat-heading] {
+  [data-ff-combat-heading],
+  [data-ff-combat-docked] > h2:not(.hidden):not([hidden]) {
     position: sticky;
     z-index: 1;
     top: 0;
@@ -360,9 +384,9 @@ export const combatPanelCss = `
     min-height: 48px;
     padding: 8px 48px 8px 12px;
     border-bottom: 1px solid hsl(var(--border, 0 0% 50%));
-    background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 94%, transparent);
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
+    background: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
     white-space: normal;
     overflow-wrap: break-word;
   }
@@ -420,38 +444,98 @@ export const combatPanelCss = `
   }
 `;
 
-/** Appearance overrides stay attached to the owned combat surfaces only. */
-export function combatPanelAppearanceCss(settings: { enabled: boolean; color: string; opacity: number; blur: number }): string {
-  if (!settings.enabled) return '';
-  const color = /^#[\da-f]{6}$/i.test(settings.color) ? settings.color : '#101010';
-  const opacity = Number.isFinite(settings.opacity) && settings.opacity >= 0 && settings.opacity <= 1 ? settings.opacity : 0.92;
-  const blur = Number.isFinite(settings.blur) && settings.blur >= 0 && settings.blur <= 30 ? settings.blur : 12;
-  const fill = `color-mix(in srgb, ${color} ${opacity * 100}%, transparent)`;
+/** Validated imported chat image and the existing global image effects. */
+export interface CombatPanelAmbient {
+  image: string | null;
+  fit: 'cover' | 'contain';
+  effects: { blur: number; opacity: number; overlayColor: string; overlayOpacity: number };
+}
+
+/** One appearance policy for lists and detail forms; only background layers fade. */
+export function combatPanelAppearanceCss(
+  settings: { enabled: boolean; color: string; opacity: number; blur: number },
+  ambient?: CombatPanelAmbient,
+): string {
+  const hex = (value: string, fallback: string) => /^#[\da-f]{6}$/i.test(value) ? value : fallback;
+  const range = (value: number | undefined, max: number, fallback: number) =>
+    typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : fallback;
+  const image = !settings.enabled && ambient?.image ? ambient.image : null;
+  const fill = settings.enabled
+    ? `color-mix(in srgb, ${hex(settings.color, '#101010')} ${range(settings.opacity, 1, .92) * 100}%, transparent)`
+    : 'color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 88%, transparent)';
+  const blur = settings.enabled ? range(settings.blur, 30, 12) : 12;
+  const imageBlur = range(ambient?.effects.blur, 30, 0);
+  const imageOpacity = range(ambient?.effects.opacity, 1, 1);
+  const overlay = hex(ambient?.effects.overlayColor ?? '', '#000000');
+  const overlayOpacity = range(ambient?.effects.overlayOpacity, 1, 0);
+  // Repeated ownership attributes beat theme/dialog and dice-card rules regardless
+  // of whether a selected detail contains the native die SVG.
+  const surface = ':is([data-ff-combat-docked][data-ff-combat-docked][data-ff-combat-docked], [data-ff-combat-panel][data-ff-combat-panel][data-ff-combat-panel])';
   return `
-    [data-ff-combat-docked], [data-ff-combat-panel] {
+    ${surface} {
       background: ${fill} !important;
+      color: hsl(var(--foreground, 0 0% 96%)) !important;
+      border: 0 !important;
+      border-right: 1px solid hsl(var(--border, 0 0% 50%)) !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      isolation: isolate;
+      transform: none !important;
+      translate: none !important;
+      filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      backdrop-filter: none !important;
     }
-    [data-ff-combat-panel]:not([data-ff-combat-docked]) {
+    ${surface}::before, ${surface}::after {
+      content: "" !important;
+      position: fixed !important;
+      inset: var(--ff-combat-rail-top) auto auto var(--ff-combat-rail-width) !important;
+      width: var(--ff-combat-width) !important;
+      height: calc(100dvh - var(--ff-combat-rail-top)) !important;
+      border: 0 !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      pointer-events: none !important;
+      clip-path: inset(0);
+    }
+    ${surface}::before {
+      z-index: -2;
+      background: ${image ? `url(${JSON.stringify(image)}) center / ${ambient?.fit === 'contain' ? 'contain' : 'cover'} no-repeat` : 'transparent'} !important;
+      filter: ${image ? `blur(${imageBlur}px)` : 'none'} !important;
       -webkit-backdrop-filter: blur(${blur}px) !important;
       backdrop-filter: blur(${blur}px) !important;
+      opacity: 0 !important;
     }
-    [data-ff-combat-docked]::before {
-      -webkit-backdrop-filter: blur(${blur}px) !important;
-      backdrop-filter: blur(${blur}px) !important;
+    ${surface}::after {
+      z-index: -1;
+      background: ${image ? `color-mix(in srgb, ${overlay} ${overlayOpacity * 100}%, transparent)` : 'transparent'} !important;
+      opacity: 0 !important;
     }
-    [data-ff-combat-docked] [data-ff-combat-heading] {
+    html[data-ff-combat-open="true"] ${surface}::before { opacity: ${image ? imageOpacity : 1} !important; }
+    html[data-ff-combat-open="true"] ${surface}::after { opacity: 1 !important; }
+    ${surface} :is([data-ff-combat-heading], h2) {
+      background: transparent !important;
+      -webkit-backdrop-filter: none !important;
+      backdrop-filter: none !important;
+    }
+    ${surface} :is(div, section, form, fieldset):not([role="alert"]):is(
+      [class*="bg-card"], [class*="bg-background"], [class*="bg-popover"],
+      [class*="bg-muted"], [class*="bg-gray-"], [class*="bg-slate-"],
+      [class*="bg-[#0a0d14]"], [class*="bg-[#1a1f2e]"]
+    ) {
       background: transparent !important;
     }
-    [data-ff-combat-docked] :is(div, section)[class*="bg-card"],
-    [data-ff-combat-docked] :is(div, section)[class*="bg-background"],
-    [data-ff-combat-docked] :is(div, section)[class*="bg-popover"],
-    [data-ff-combat-docked] :is(div, section)[class*="bg-muted"],
-    [data-ff-combat-panel] :is(div, section)[class*="bg-card"],
-    [data-ff-combat-panel] :is(div, section)[class*="bg-background"],
-    [data-ff-combat-panel] :is(div, section)[class*="bg-popover"],
-    [data-ff-combat-panel] :is(div, section)[class*="bg-muted"] {
-      background-color: transparent !important;
-      background-image: none !important;
+    ${surface} :is(button.group:has(> div > svg.lucide), [role="tab"], input, select, textarea, [role="combobox"]) {
+      background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 72%, transparent) !important;
+      color: hsl(var(--foreground, 0 0% 96%)) !important;
+      border-color: hsl(var(--border, 0 0% 50%)) !important;
+    }
+    ${surface} button.group:has(> div > svg.lucide) :is(span, div) { color: inherit !important; }
+    ${surface} :is(button.group:has(> div > svg.lucide), [role="tab"]):hover:not(:disabled) {
+      background: color-mix(in srgb, hsl(var(--muted, 0 0% 24%)) 88%, transparent) !important;
+    }
+    ${surface} :is(button.group:has(> div > svg.lucide), [role="tab"])[aria-selected="true"] {
+      border-color: hsl(var(--primary, 0 0% 70%)) !important;
     }
   `;
 }
