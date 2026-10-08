@@ -25,7 +25,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }); controls.append(button);
   }
   document.body.append(controls);
-  let reserved = false, pending = false;
+  let reserved = false, pending = false, pendingReopened = false, internalLaunch = false;
   const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
   const railWritten = new Map<string, string>();
   function measureRail(): void {
@@ -93,7 +93,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   function release(nativeRemoved = false): void {
     suspendModal(nativeRemoved); restoreFiltered();
-    reserved = false; pending = false;
+    reserved = false; pending = false; pendingReopened = false;
     for (const restore of layoutUndo.reverse()) restore();
     layoutUndo = [];
     document.documentElement.removeAttribute('data-ff-combat-open');
@@ -166,16 +166,18 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (!trigger || nextMode === 'actions' && !encounter || otherLayer() || picker) return;
     mode = nextMode; launched = nextMode; rememberBackground();
     bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
-    trigger.click(); schedule();
+    internalLaunch = true;
+    try { trigger.click(); } finally { internalLaunch = false; }
+    schedule();
   }
   function dock(): void {
     if (!picker || modalActive || otherLayer()) return;
     attribute(picker, 'data-ff-combat-docked', '', true); attribute(picker, 'data-ff-combat-panel', '', true);
+    const heading = Array.from(picker.querySelectorAll<HTMLElement>('h2')).find(node => /^(Choose Action|Выберите действие)$/i.test(node.textContent?.trim() ?? ''));
+    if (heading) attribute(heading, 'data-ff-combat-heading', '', true);
+    const closeButton = picker.querySelector<HTMLElement>('button:has(.lucide-x)'); if (closeButton) attribute(closeButton, 'data-ff-combat-close', '', true);
     if (!reserved) {
       reserved = true;
-      const heading = Array.from(picker.querySelectorAll<HTMLElement>('h2')).find(node => /^(Choose Action|Выберите действие)$/i.test(node.textContent?.trim() ?? ''));
-      if (heading) attribute(heading, 'data-ff-combat-heading', '', true);
-      const closeButton = picker.querySelector<HTMLElement>('button:has(.lucide-x)'); if (closeButton) attribute(closeButton, 'data-ff-combat-close', '', true);
       if (chat) attribute(chat, 'data-ff-combat-chat', '', true);
       attribute(document.documentElement, 'data-ff-combat-open', 'true', true);
     }
@@ -243,6 +245,12 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
     updateControls();
     if (requested && !picker && !otherLayer()) { const next = requested; requested = null; open(next); }
+    else if (pending && reserved && !picker && !pendingReopened && !otherLayer()) {
+      // Native checks append their result to chat after unmounting the input.
+      // Reopen once without giving back the reservation; never retry a missing
+      // or deferred native capability, and let result/nested layers finish first.
+      pendingReopened = true; open(mode);
+    }
     else if (now && !attempted && !reserved && !pending && !found && !otherLayer()) open();
   }
   function schedule(): void { if (!queued && !disposed) { queued = true; queueMicrotask(scan); } }
@@ -251,10 +259,10 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   function nativeIntent(event: MouseEvent): void {
     if (!(event.target instanceof Node)) return;
     const clicked = event.target instanceof Element ? event.target.closest('button') : null;
-    if (clicked && picker?.contains(clicked) && mode === 'skills' && clicked.querySelector('svg:is(#d4,#d6,#d8,#d10,#d12,#d20,#d100)') && /^(Roll|Бросок)$/i.test(clicked.innerText.trim())) { pending = true; attempted = true; }
+    if (clicked && picker?.contains(clicked) && mode === 'skills' && clicked.querySelector('svg:is(#d4,#d6,#d8,#d10,#d12,#d20,#d100)') && /^(Roll|Бросок)$/i.test(clicked.innerText.trim())) { pending = true; pendingReopened = false; attempted = true; }
     if (picker?.querySelector('button:has(.lucide-x)')?.contains(event.target) && !otherLayer()) pending = false;
     const next = dice?.contains(event.target) ? 'skills' : action?.contains(event.target) ? 'actions' : null;
-    if (!next || otherLayer()) return;
+    if (!next || internalLaunch || otherLayer()) return;
     // Observe before native handlers; do not cancel or replace their event.
     if (picker || reserved) close();
     mode = next; launched = next; attempted = true; rememberBackground();
@@ -263,7 +271,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   function submitting(event: Event): void {
     if (picker && event.target instanceof HTMLFormElement && picker.contains(event.target)) {
-      pending = true; attempted = true;
+      pending = true; pendingReopened = false; attempted = true;
     }
   }
   function nativeEscape(event: KeyboardEvent): void { if (event.key === 'Escape' && picker && !otherLayer()) pending = false; }

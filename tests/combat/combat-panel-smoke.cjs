@@ -37,7 +37,7 @@ window.openNative=(diceMode=false)=>{
  else {skills.innerHTML='<h3>Ability checks</h3><h3>Skills</h3><button id="acrobatics">Acrobatics Check</button><button id="native-save">Dexterity Save</button><button id="native-custom">Custom Dice</button><button id="native-attack">Атака в ближнем бою</button><button id="native-spell">Атака заклинанием</button>';skills.querySelector('#acrobatics').onclick=()=>{window.skillSelections++;window.rememberedSkill=true;detail()}}
  }
  document.body.append(overlay,dialog);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');
- window.originalForm=dialog.querySelector('form');originalForm.onsubmit=e=>{e.preventDefault();window.submits++;if(window.asyncSubmit){close();window.submitPhase='pending';setTimeout(()=>{window.submitPhase='result';const result=document.createElement('div');result.id='native-result';result.setAttribute('role','dialog');result.innerHTML='<h2>Native roll result</h2><button id="result-close">Continue</button>';result.style.cssText='position:fixed;inset:100px;z-index:100;pointer-events:auto;background:white';document.body.append(result);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');result.querySelector('button').onclick=()=>{result.remove();document.body.style.cssText='';campaign.removeAttribute('aria-hidden');window.submitPhase='complete'}},100)}};
+ window.originalForm=dialog.querySelector('form');originalForm.onsubmit=e=>{e.preventDefault();window.submits++;if(window.asyncSubmit){close();window.submitPhase='pending';setTimeout(()=>{if(window.resultAsChat){document.getElementById('events-list').append(document.createTextNode('Native roll result appended to story'));window.submitPhase='complete';return}window.submitPhase='result';const result=document.createElement('div');result.id='native-result';result.setAttribute('role','dialog');result.innerHTML='<h2>Native roll result</h2><button id="result-close">Continue</button>';result.style.cssText='position:fixed;inset:100px;z-index:100;pointer-events:auto;background:white';document.body.append(result);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');result.querySelector('button').onclick=()=>{result.remove();document.body.style.cssText='';campaign.removeAttribute('aria-hidden');window.submitPhase='complete'}},100)}};
  let last=dialog.querySelector('input'),nested=null;
  const trap=e=>{if(nested)return;let target=e.type==='focusout'?e.relatedTarget:e.target;if(!target)return;if(dialog.contains(target)){last=target}else last.focus()};
  const pointer=e=>{if(dialog.contains(e.target)||nested)return;const outside=new CustomEvent('dismissableLayer.pointerDownOutside',{bubbles:false,cancelable:true,detail:{originalEvent:e}});e.target.dispatchEvent(outside);if(!outside.defaultPrevented)close()};
@@ -166,17 +166,31 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await js("document.querySelector('[data-ff-combat-mode=skills]').click()");await until("!!document.querySelector('#d20') && !!document.querySelector('[data-ff-combat-docked]')");
  const beforeAsync=await js("({chat:document.getElementById('chat').getBoundingClientRect().width,map:originalCanvas.getBoundingClientRect().x,opens})");
  await js("window.layoutFlips=[];window.layoutObserver=new MutationObserver(records=>{for(const record of records)layoutFlips.push({old:record.oldValue,current:document.documentElement.getAttribute('data-ff-combat-open')})});layoutObserver.observe(document.documentElement,{attributes:true,attributeOldValue:true,attributeFilter:['data-ff-combat-open']});window.asyncSubmit=true;document.querySelector('button[type=submit]').click()");
- await until("submitPhase==='pending' && !document.querySelector('[data-ff-combat-docked]')");
+ await until("submitPhase==='pending' && !!document.querySelector('[data-ff-combat-docked]')");
  assert.equal(await js("document.documentElement.getAttribute('data-ff-combat-open')"),'true','Pending native unmount retains reservation.');
  await until("submitPhase==='result'");
  assert.equal(await js("document.body.style.pointerEvents"),'none','Native result remains modal.');
  assert.equal(await js("document.body.style.overflow"),'hidden');
  assert.equal(await js("document.querySelector('#native-result').hasAttribute('data-ff-combat-docked')"),false);
- assert.deepEqual(await js("({chat:document.getElementById('chat').getBoundingClientRect().width,map:originalCanvas.getBoundingClientRect().x,opens})"),beforeAsync,'Pending/result keep chat/map geometry and never auto launch.');
+ assert.deepEqual(await js("({chat:document.getElementById('chat').getBoundingClientRect().width,map:originalCanvas.getBoundingClientRect().x,opens})"),{...beforeAsync,opens:beforeAsync.opens+1},'Pending/result keep chat/map geometry with exactly one native reopen.');
  await js("document.querySelector('#result-close').click()");await until("submitPhase==='complete'");
  await new Promise(resolve=>setTimeout(resolve,600));
  assert.deepEqual(await js('layoutFlips'),[],'No layout reservation flip through native pending, result, and completion.');
- await js("document.querySelector('[data-ff-combat-mode=skills]').click();layoutObserver.disconnect();window.asyncSubmit=false;document.getElementById('composer').__reactFiberFixture.memoizedProps.encounterActive=false;window.rememberedSkill=false");
+ assert.equal(await js('opens'),beforeAsync.opens+1,'Result completion never retries the native reopen.');
+ const beforeChatResult=await js('opens');
+ await js("window.resultAsChat=true;document.querySelector('button[type=submit]').click()");
+ await until("submitPhase==='complete' && !!document.querySelector('[data-ff-combat-docked]')");
+ await new Promise(resolve=>setTimeout(resolve,600));
+ assert.equal(await js('opens'),beforeChatResult+1,'Append-only native result reopens exactly once.');
+ assert.equal(await js("document.getElementById('events-list').textContent"),'Native roll result appended to story');
+ assert.deepEqual(await js('layoutFlips'),[],'Chat-appended result never releases and re-reserves layout.');
+ assert.deepEqual(await js("({chat:document.getElementById('chat').getBoundingClientRect().width,map:originalCanvas.getBoundingClientRect().x})"),{chat:beforeAsync.chat,map:beforeAsync.map});
+ const beforeManualPending=await js('opens');
+ await js("document.querySelector('button[type=submit]').click();document.querySelector('[data-ff-combat-mode=skills]').click()");
+ await until("submitPhase==='complete' && !document.documentElement.hasAttribute('data-ff-combat-open')");
+ await new Promise(resolve=>setTimeout(resolve,600));
+ assert.equal(await js('opens'),beforeManualPending,'Manual close during native pending cancels the one-shot reopen.');
+ await js("layoutObserver.disconnect();window.asyncSubmit=false;document.getElementById('composer').__reactFiberFixture.memoizedProps.encounterActive=false;window.rememberedSkill=false");
  await until("document.querySelector('[data-ff-combat-mode=actions]').disabled && !document.documentElement.hasAttribute('data-ff-combat-open')");
  const adventureOpens=await js('opens');
  await js("document.querySelector('[data-ff-combat-mode=actions]').click()");assert.equal(await js('opens'),adventureOpens,'Disabled swords cannot launch adventure actions.');
