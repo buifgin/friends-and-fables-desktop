@@ -24,7 +24,7 @@
         <button type="button" role="tab" class="tab" data-panel="context-panel" aria-selected="false" tabindex="-1">Context</button>
         <button type="button" role="tab" class="tab" data-panel="events-panel" aria-selected="false" tabindex="-1">Events</button>
         <button type="button" role="tab" class="tab" data-panel="dice-panel" aria-selected="false" tabindex="-1">Dice</button>
-        <button type="button" role="tab" class="tab" data-panel="combat-panel" aria-selected="false" tabindex="-1">Combat panel</button>
+        <button type="button" role="tab" class="tab" data-panel="combat-panel" aria-selected="false" tabindex="-1">Side panel</button>
 <button type="button" role="tab" class="tab" data-panel="sharing-panel" aria-selected="false" tabindex="-1">Sharing</button>
         <button type="button" role="tab" class="tab" data-panel="app-panel" aria-selected="false" tabindex="-1">App</button>
       </nav>
@@ -150,8 +150,8 @@
         </section>
 
         <section id="combat-panel" role="tabpanel" hidden>
-          <label class="switch-row"><input type="checkbox" id="combat-panel-enabled"> Customize combat panel</label>
-          <p class="help">Set the docked combat panel background independently. Text and controls stay fully opaque.</p>
+          <label class="switch-row"><input type="checkbox" id="combat-panel-enabled"> Customize side panel</label>
+          <p class="help">By default, the side panel inherits the current theme and chat background. Customize its background color, opacity, and blur for checks, actions, and selected roll details. Text and controls stay fully opaque.</p>
           <div class="effect-controls">
             <label class="setting-row" for="combat-panel-color">Background color <input type="color" id="combat-panel-color" value="#101010"></label>
             <label for="combat-panel-opacity">Background opacity <output id="combat-panel-opacity-label">92%</output></label>
