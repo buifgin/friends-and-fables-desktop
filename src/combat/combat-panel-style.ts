@@ -213,6 +213,27 @@ export const combatPanelCss = `
     flex: none;
   }
 
+  [data-ff-combat-docked] button.group:has(> div > svg.lucide) {
+    flex-direction: column !important;
+    align-items: center !important;
+    text-align: center;
+  }
+
+  [data-ff-combat-docked] button.group:has(> div > svg.lucide) > div:first-child {
+    flex: none !important;
+  }
+
+  [data-ff-combat-docked] button.group:has(> div > svg.lucide) > span {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+    text-align: center;
+  }
+
   [data-ff-combat-docked] :is(table, pre) {
     display: block;
     max-width: 100%;
