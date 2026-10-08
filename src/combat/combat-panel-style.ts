@@ -41,6 +41,10 @@ export const combatPanelCss = `
     gap: 8px !important;
   }
 
+  [data-ff-combat-controls-group] {
+    padding-bottom: 48px !important;
+  }
+
   [data-ff-combat-controls-group] ~ .absolute:has(> button > svg:is(.lucide-chevron-right, .lucide-chevron-left)) {
     top: var(--ff-combat-controls-bottom, 50%) !important;
     transform: none !important;
