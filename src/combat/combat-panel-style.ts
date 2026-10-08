@@ -168,6 +168,12 @@ export const combatPanelCss = `
     min-width: 0;
   }
 
+  [data-ff-combat-docked] div[class*="min-w-"] {
+    box-sizing: border-box;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
   [data-ff-combat-docked] :is([role="tablist"], [role="list"]) {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
