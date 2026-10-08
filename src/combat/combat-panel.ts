@@ -11,7 +11,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   const preexisting = new WeakSet(document.querySelectorAll('[role="dialog"]'));
   const style = document.createElement('style'); style.textContent = css; document.head.append(style);
   const launcher = document.createElement('button'); launcher.type = 'button'; launcher.setAttribute('data-ff-combat-launcher', '');
-  launcher.setAttribute('data-ff-translation-ignore', 'true'); launcher.textContent = '⚔'; launcher.hidden = true; document.body.append(launcher);
+  launcher.setAttribute('data-ff-translation-ignore', 'true'); launcher.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M4 3 3 4l12 12m5-13 1 1L9 16M3 3l1 5 4-4m13-1-1 5-4-4M13 17l4-4M7 13l4 4M16 16l5 5M8 16l-5 5"/></svg>'; launcher.hidden = true; document.body.append(launcher);
   const tools = document.createElement('div'); tools.setAttribute('data-ff-combat-tools', ''); tools.setAttribute('data-ff-translation-ignore', 'true'); tools.hidden = true;
   const actionsTab = document.createElement('button'), skillsTab = document.createElement('button');
   for (const [button, name] of [[actionsTab, 'actions'], [skillsTab, 'skills']] as const) {
