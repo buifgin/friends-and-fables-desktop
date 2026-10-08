@@ -29,6 +29,10 @@ export const combatPanelCss = `
     pointer-events: none;
   }
 
+  [data-ff-combat-controls][hidden] {
+    display: none !important;
+  }
+
   [data-ff-combat-controls] [data-ff-combat-mode] {
     display: grid;
     box-sizing: border-box;
@@ -199,6 +203,10 @@ export const combatPanelCss = `
   [data-ff-combat-docked] button {
     white-space: normal;
     overflow-wrap: anywhere;
+  }
+
+  [data-ff-combat-docked] button[hidden] {
+    display: none !important;
   }
 
   [data-ff-combat-docked] button svg {
