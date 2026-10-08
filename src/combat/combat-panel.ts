@@ -10,21 +10,52 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   let mode: 'actions' | 'skills' = 'actions', launched: 'actions' | 'skills' | null = null, requested: 'actions' | 'skills' | null = null;
   const preexisting = new WeakSet(document.querySelectorAll('[role="dialog"]'));
   const style = document.createElement('style'); style.textContent = css; document.head.append(style);
-  const launcher = document.createElement('button'); launcher.type = 'button'; launcher.setAttribute('data-ff-combat-launcher', '');
-  launcher.setAttribute('data-ff-translation-ignore', 'true'); launcher.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m9 18 6-6-6-6"/></svg>'; launcher.hidden = true; document.body.append(launcher);
-  const tools = document.createElement('div'); tools.setAttribute('data-ff-combat-tools', ''); tools.setAttribute('data-ff-translation-ignore', 'true'); tools.hidden = true;
+  const controls = document.createElement('div'); controls.setAttribute('data-ff-combat-controls', '');
+  controls.setAttribute('data-ff-translation-ignore', 'true'); controls.hidden = true;
   const actionsTab = document.createElement('button'), skillsTab = document.createElement('button');
-  for (const [button, name] of [[actionsTab, 'actions'], [skillsTab, 'skills']] as const) {
+  for (const [button, name] of [[skillsTab, 'skills'], [actionsTab, 'actions']] as const) {
     button.type = 'button'; button.setAttribute('data-ff-combat-mode', name);
-    button.addEventListener('click', () => { if (otherLayer()) return; if (picker && mode === name) return; if (picker) close(); requested = name; schedule(); }); tools.append(button);
+    button.innerHTML = name === 'skills'
+      ? '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/><circle cx="12" cy="12" r="1"/></svg>'
+      : '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m3 3 6 2 12 12-4 4L5 9 3 3Zm18 0-6 2-4 4m-3 5-5 5m0-4 6 6m6-18 6 6"/></svg>';
+    button.addEventListener('click', () => {
+      if (button.disabled || otherLayer()) return;
+      if (reserved && mode === name) { close(); return; }
+      if (reserved || picker) close(); requested = name; schedule();
+    }); controls.append(button);
   }
-  const toolbarClose = document.createElement('button'); toolbarClose.type = 'button';
-  toolbarClose.setAttribute('data-ff-combat-toolbar-close', ''); toolbarClose.setAttribute('data-ff-combat-close', '');
-  toolbarClose.setAttribute('data-ff-translation-ignore', 'true');
-  toolbarClose.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6"/></svg>';
-  toolbarClose.addEventListener('click', () => { if (!otherLayer() && picker) close(); });
-  tools.append(toolbarClose);
-  document.body.append(tools);
+  document.body.append(controls);
+  let reserved = false, pending = false;
+  const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
+  const railWritten = new Map<string, string>();
+  function measureRail(): void {
+    const rail = Array.from(document.querySelectorAll('aside')).find(node => { const box = node.getBoundingClientRect(); return visible(node) && box.left === 0 && box.width > 0 && box.width <= 100 && box.height > 200; });
+    if (!rail) return;
+    const box = rail.getBoundingClientRect();
+    for (const [name, value] of [['--ff-combat-rail-width', `${box.width}px`], ['--ff-combat-rail-top', `${box.top}px`]]) {
+      if (document.documentElement.style.getPropertyValue(name) !== value) document.documentElement.style.setProperty(name, value);
+      railWritten.set(name, value);
+    }
+  }
+  const filtered = new Map<HTMLElement, string | null>();
+  function restoreFiltered(): void {
+    for (const [node, previous] of filtered) {
+      if (node.getAttribute('hidden') !== '') continue;
+      if (previous === null) node.removeAttribute('hidden'); else node.setAttribute('hidden', previous);
+    }
+    filtered.clear();
+  }
+  function filterAdventure(): void {
+    if (!picker || mode !== 'skills') return;
+    if (encounter) { restoreFiltered(); return; }
+    // Exact native list labels only; never filter detail forms or custom dice.
+    if (!Array.from(picker.querySelectorAll('h3')).some(node => /^(Skills|Навыки)$/i.test(node.textContent?.trim() ?? ''))) return;
+    for (const button of picker.querySelectorAll<HTMLElement>('button')) {
+      if (!/^(Attack|Attack Roll|Melee Attack|Ranged Attack|Spell Attack|Spell Attack Roll|Атака|Бросок атаки|Атака в ближнем бою|Атака в дальнем бою|Атака заклинанием|Бросок атаки заклинанием)$/i.test(button.innerText.trim())) continue;
+      if (!filtered.has(button)) filtered.set(button, button.getAttribute('hidden'));
+      if (!button.hasAttribute('hidden')) button.setAttribute('hidden', '');
+    }
+  }
   // Keep geometry until the picker closes. Suspend only modal overrides for
   // nested layers, restoring native locks without moving their anchor.
   let modalUndo: (() => void)[] = [], layoutUndo: (() => void)[] = [];
@@ -58,10 +89,11 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       if (document.body.style.getPropertyPriority(name) !== 'important' || document.body.style.getPropertyValue(name) !== 'auto') continue;
       if (value) document.body.style.setProperty(name, value, priority); else document.body.style.removeProperty(name);
     }
-    modalUndo = []; modalActive = false; tools.hidden = true;
+    modalUndo = []; modalActive = false;
   }
   function release(nativeRemoved = false): void {
-    suspendModal(nativeRemoved);
+    suspendModal(nativeRemoved); restoreFiltered();
+    reserved = false; pending = false;
     for (const restore of layoutUndo.reverse()) restore();
     layoutUndo = [];
     document.documentElement.removeAttribute('data-ff-combat-open');
@@ -69,7 +101,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     picker?.removeAttribute('data-ff-combat-panel'); picker?.removeAttribute('data-ff-combat-docked');
     picker?.querySelector('[data-ff-combat-heading]')?.removeAttribute('data-ff-combat-heading');
     picker?.querySelector('[data-ff-combat-close]')?.removeAttribute('data-ff-combat-close');
-    launcher.setAttribute('aria-expanded', 'false'); launcher.hidden = !action; tools.hidden = true;
+    updateControls();
   }
   const visible = (element: Element): boolean => element.getAttribute('data-state') !== 'closed' && !element.hasAttribute('hidden') && getComputedStyle(element).display !== 'none';
   function otherLayer(): boolean {
@@ -78,7 +110,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   function background(target: EventTarget | null): boolean {
     if (!(target instanceof Node) || picker?.contains(target)) return false;
-    return launcher.contains(target) || tools.contains(target) || !!chat?.contains(target) || Array.from(document.querySelectorAll('canvas.touch-none')).some(canvas => !canvas.closest('form,[role="dialog"]') && (canvas === target || canvas.parentElement?.contains(target)));
+    return controls.contains(target) || !!chat?.contains(target) || Array.from(document.querySelectorAll('canvas.touch-none')).some(canvas => !canvas.closest('form,[role="dialog"]') && (canvas === target || canvas.parentElement?.contains(target)));
   }
   function live(): boolean { return modalActive && !!picker?.isConnected && picker.hasAttribute('data-ff-combat-docked') && !otherLayer(); }
   function cancelOutside(event: Event): void {
@@ -98,21 +130,27 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   function close(): void {
     const current = picker; release(); attempted = true;
     current?.querySelector<HTMLButtonElement>('button:has(.lucide-x)')?.click();
-    picker = null; launched = null;
+    picker = null; launched = null; requested = null; updateControls();
   }
   function labels(): void {
-    launcher.setAttribute('aria-label', language === 'ru' ? 'Развернуть панель боя' : 'Expand combat panel');
-    launcher.title = launcher.getAttribute('aria-label')!;
-    toolbarClose.setAttribute('aria-label', language === 'ru' ? 'Свернуть панель боя' : 'Collapse combat panel');
-    toolbarClose.title = toolbarClose.getAttribute('aria-label')!;
-    actionsTab.textContent = language === 'ru' ? 'Действия' : 'Actions'; skillsTab.textContent = language === 'ru' ? 'Навыки' : 'Skills';
+    for (const [button, label] of [[skillsTab, language === 'ru' ? 'Кости' : 'Dice'], [actionsTab, language === 'ru' ? 'Действия боя' : 'Combat actions']] as const) {
+      button.setAttribute('aria-label', label); button.title = label;
+    }
+  }
+  function updateControls(): void {
+    actionsTab.disabled = !encounter || !action; skillsTab.disabled = !dice;
+    for (const [button, name] of [[actionsTab, 'actions'], [skillsTab, 'skills']] as const) {
+      const value = String(reserved && mode === name);
+      for (const name of ['aria-pressed', 'aria-expanded']) if (button.getAttribute(name) !== value) button.setAttribute(name, value);
+    }
   }
   function active(root: HTMLElement): boolean {
+    let observed: boolean | undefined;
     for (const node of [root, ...root.querySelectorAll('button')]) {
       let fiber = Object.entries(node).find(([name]) => name.startsWith('__reactFiber'))?.[1] as { memoizedProps?: Record<string, unknown>; return?: unknown } | undefined;
       for (let depth = 0; fiber && depth < 30; depth++, fiber = fiber.return as typeof fiber) {
         const props = fiber.memoizedProps;
-        if (typeof props?.encounterActive === 'boolean') return props.encounterActive;
+        if (typeof props?.encounterActive === 'boolean' && observed === undefined) observed = props.encounterActive;
         const value = props?.value as { campaign?: Record<string, unknown> } | undefined;
         const campaign = (props?.campaign ?? value?.campaign) as Record<string, unknown> | undefined;
         if (campaign && Object.hasOwn(campaign, 'active_encounter_id')) {
@@ -120,20 +158,21 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
         }
       }
     }
-    return !!action;
+    return observed ?? !!action;
   }
   function open(nextMode: 'actions' | 'skills' = 'actions'): void {
     attempted = true;
     const trigger = nextMode === 'skills' ? dice : action;
-    if (!trigger || otherLayer() || picker) return;
+    if (!trigger || nextMode === 'actions' && !encounter || otherLayer() || picker) return;
     mode = nextMode; launched = nextMode; rememberBackground();
     bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
     trigger.click(); schedule();
   }
   function dock(): void {
     if (!picker || modalActive || otherLayer()) return;
-    if (!layoutUndo.length) {
-      attribute(picker, 'data-ff-combat-docked', '', true); attribute(picker, 'data-ff-combat-panel', '', true);
+    attribute(picker, 'data-ff-combat-docked', '', true); attribute(picker, 'data-ff-combat-panel', '', true);
+    if (!reserved) {
+      reserved = true;
       const heading = Array.from(picker.querySelectorAll<HTMLElement>('h2')).find(node => /^(Choose Action|Выберите действие)$/i.test(node.textContent?.trim() ?? ''));
       if (heading) attribute(heading, 'data-ff-combat-heading', '', true);
       const closeButton = picker.querySelector<HTMLElement>('button:has(.lucide-x)'); if (closeButton) attribute(closeButton, 'data-ff-combat-close', '', true);
@@ -155,13 +194,12 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
         if (node.getAttribute('aria-hidden') === 'true' && hiddenBefore.has(node) && hiddenBefore.get(node) !== 'true') attribute(node, 'aria-hidden', null);
       }
     }
-    modalActive = true; launcher.setAttribute('aria-expanded', 'true'); launcher.hidden = true; tools.hidden = false;
-    actionsTab.setAttribute('aria-pressed', String(mode === 'actions')); skillsTab.setAttribute('aria-pressed', String(mode === 'skills')); skillsTab.disabled = !dice;
+    modalActive = true; updateControls();
   }
   function scan(): void {
     queued = false; if (disposed) return;
     const nextRoute = location.pathname + location.search;
-    if (route !== nextRoute) { if (picker) close(); route = nextRoute; encounter = false; attempted = false; requested = null; }
+    if (route !== nextRoute) { if (picker || reserved) close(); route = nextRoute; encounter = false; attempted = false; requested = null; }
     const play = /\/play\/?$/.test(location.pathname) && (!new URLSearchParams(location.search).has('view') || new URLSearchParams(location.search).get('view') === 'play');
     const editor = document.querySelector<HTMLElement>('.tiptap[contenteditable="true"]');
     let composer = editor?.parentElement ?? null;
@@ -170,14 +208,19 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     action = composer?.querySelector<HTMLButtonElement>('button:has(.lucide-swords)') ?? null;
     chat = editor?.closest<HTMLElement>('.flex-1.h-full.w-full') ?? composer;
     const now = !!(play && composer && active(composer));
-    launcher.hidden = !play || !action;
-    if (picker && !picker.isConnected) { release(true); picker = null; }
-    if (!now && encounter && picker) close();
+    controls.hidden = !play || !dice;
+    if (play) measureRail();
+    if (picker && !picker.isConnected) {
+      if (pending) { suspendModal(true); restoreFiltered(); } else release(true);
+      picker = null;
+    }
+    if (!now && encounter && (picker || reserved)) close();
     if (now !== encounter) { encounter = now; attempted = false; }
-    if (!play) return;
+    updateControls();
+    if (!play || !composer) { if (reserved || picker) close(); return; }
     const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(visible);
     if (!dialogs.length && !picker) rememberBackground();
-    const skills = launched === 'skills' ? dialogs.find(dialog => {
+    const skills = (launched === 'skills' || reserved && mode === 'skills') ? dialogs.find(dialog => {
       if (preexisting.has(dialog)) return false;
       const buttons = Array.from(dialog.querySelectorAll('button'));
       const list = Array.from(dialog.querySelectorAll('h3')).some(heading => /^(Skills|Навыки)$/i.test(heading.textContent?.trim() ?? ''))
@@ -196,24 +239,52 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }) : undefined;
     const found = skills ?? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? '')));
     if (found && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
+    filterAdventure();
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
-    launcher.hidden = !play || !action || !!picker || otherLayer();
+    updateControls();
     if (requested && !picker && !otherLayer()) { const next = requested; requested = null; open(next); }
-    else if (now && !attempted && !found && !otherLayer()) open();
+    else if (now && !attempted && !reserved && !pending && !found && !otherLayer()) open();
   }
   function schedule(): void { if (!queued && !disposed) { queued = true; queueMicrotask(scan); } }
   const observer = new MutationObserver(schedule); observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', 'aria-expanded'] });
   const timer = window.setInterval(schedule, 500);
-  launcher.addEventListener('click', () => { if (picker) close(); else open(); });
+  function nativeIntent(event: MouseEvent): void {
+    if (!(event.target instanceof Node)) return;
+    const clicked = event.target instanceof Element ? event.target.closest('button') : null;
+    if (clicked && picker?.contains(clicked) && mode === 'skills' && clicked.querySelector('svg#d20') && /^(Roll|Бросок)$/i.test(clicked.innerText.trim())) { pending = true; attempted = true; }
+    if (picker?.querySelector('button:has(.lucide-x)')?.contains(event.target) && !otherLayer()) pending = false;
+    const next = dice?.contains(event.target) ? 'skills' : action?.contains(event.target) ? 'actions' : null;
+    if (!next || otherLayer()) return;
+    // Observe before native handlers; do not cancel or replace their event.
+    if (picker || reserved) close();
+    mode = next; launched = next; attempted = true; rememberBackground();
+    bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
+    schedule();
+  }
+  function submitting(event: Event): void {
+    if (picker && event.target instanceof HTMLFormElement && picker.contains(event.target)) {
+      pending = true; attempted = true;
+    }
+  }
+  function nativeEscape(event: KeyboardEvent): void { if (event.key === 'Escape' && picker && !otherLayer()) pending = false; }
+  document.addEventListener('keydown', nativeEscape, true);
+  document.addEventListener('click', nativeIntent, true);
+  document.addEventListener('submit', submitting, true);
   // Native Escape handles picker dismissal, including its own nested layers.
   document.addEventListener('click', schedule, true); window.addEventListener('popstate', schedule);
   host[key] = {
     update(value, nextCss) { language = value; if (style.textContent !== nextCss) style.textContent = nextCss; labels(); schedule(); },
-    dispose() { disposed = true; observer.disconnect(); clearInterval(timer); if (picker) close();
+    dispose() { disposed = true; observer.disconnect(); clearInterval(timer); if (picker || reserved) close();
       document.removeEventListener('wheel', wheelGate);
       document.removeEventListener('focusin', focusGate); document.removeEventListener('focusout', focusGate);
       document.removeEventListener('dismissableLayer.pointerDownOutside', cancelOutside, true); document.removeEventListener('dismissableLayer.focusOutside', cancelOutside, true);
-      document.removeEventListener('click', schedule, true); window.removeEventListener('popstate', schedule); launcher.remove(); tools.remove(); style.remove(); delete host[key]; }
+      document.removeEventListener('keydown', nativeEscape, true); document.removeEventListener('click', nativeIntent, true); document.removeEventListener('submit', submitting, true);
+      document.removeEventListener('click', schedule, true); window.removeEventListener('popstate', schedule); controls.remove(); style.remove();
+      for (const [name, value, priority] of railBefore) {
+        if (document.documentElement.style.getPropertyValue(name) !== railWritten.get(name)) continue;
+        if (value) document.documentElement.style.setProperty(name, value, priority); else document.documentElement.style.removeProperty(name);
+      }
+      delete host[key]; }
   };
   labels(); scan();
 }
