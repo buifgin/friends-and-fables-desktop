@@ -98,6 +98,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.querySelector('[data-ff-combat-controls]').nextElementSibling===originalSettings"),true,'Sidebar remount reattaches owned controls before the same native Settings node.');
  await js("document.querySelector('#sidebar').style.width='240px';window.dispatchEvent(new Event('resize'))");
  await until("document.documentElement.style.getPropertyValue('--ff-combat-rail-width')==='240px'");
+ await until("document.querySelector('[data-ff-combat-docked]').getBoundingClientRect().left===240");
  const expandedRail=await js("(()=>{const panel=document.querySelector('[data-ff-combat-docked]').getBoundingClientRect(),controls=document.querySelector('[data-ff-combat-controls]');return {width:getComputedStyle(document.querySelector('#sidebar')).width,left:panel.left,controlsParent:controls.parentElement.id,beforeSettings:controls.nextElementSibling===originalSettings}})()");
  assert.equal(expandedRail.width,'240px',`Expanded native rail must be recognized: ${JSON.stringify(expandedRail)}`);
  assert.equal(expandedRail.left,240,`Dock follows the expanded rail width: ${JSON.stringify(expandedRail)}`);
@@ -105,6 +106,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(expandedRail.beforeSettings,true,'Expanded rail keeps controls above the original Settings button.');
  await js("document.querySelector('#sidebar').style.width='60px';window.dispatchEvent(new Event('resize'))");
  await until("document.documentElement.style.getPropertyValue('--ff-combat-rail-width')==='60px'");
+ await until("document.querySelector('[data-ff-combat-docked]').getBoundingClientRect().left===60");
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]').getBoundingClientRect().left"),60,'Collapsing the rail returns the dock to its measured position.');
  assert.equal(await js('opens'),1,'Auto activation opens native picker once; never submits.');
  assert.equal(await js('submits'),0);
