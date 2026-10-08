@@ -9,7 +9,7 @@ let window;
 const timer = setTimeout(() => { console.error('Combat fixture timed out'); app.exit(1); }, 30000);
 app.on('window-all-closed', () => {});
 const html = `<!doctype html><meta charset="utf-8"><style>
-body{margin:0}#campaign{display:flex;margin-left:76px;height:650px}#chat{width:750px}#map{margin-left:20px;width:240px;height:240px}canvas{width:240px;height:240px}.fixed{position:fixed}.inset-0{inset:0}.z-50{z-index:50}.overlay{background:#0008}.native{top:60px;left:200px;width:650px;min-height:300px;background:white;z-index:50;pointer-events:auto}
+body{margin:0}#campaign{display:flex;margin-left:76px;height:650px}#chat{width:750px}#map{margin-left:20px;width:240px;height:240px}canvas{width:240px;height:240px}.fixed{position:fixed}.inset-0{inset:0}.z-50{z-index:50}.overlay{background:#0008}.native{top:60px;left:200px;width:650px;min-height:300px;background:white;z-index:50;pointer-events:auto}[class~="md:min-w-[980px]"]{min-width:980px;min-height:600px;max-height:600px;overflow-y:auto;padding-block:1rem}
 </style><div id="campaign"><div id="chat" class="flex-1 h-full w-full"><div id="events-list"></div><div id="composer"><div class="tiptap" contenteditable="true">preserved draft</div><button aria-label="Roll dice"><svg class="lucide-dice-3"></svg></button><button id="actions"><svg class="lucide-swords"></svg></button></div></div><div id="map"><canvas class="touch-none" tabindex="0"></canvas></div></div>
 <script>
 window.backgroundWheels=0;window.opens=0;window.skillSelections=0;window.submits=0;window.mapClicks=0;window.reactFocus=0;window.encounter=true;
@@ -22,7 +22,7 @@ window.nativeClose=()=>{};
 window.openNative=(diceMode=false)=>{
  window.opens++; const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50 overlay';overlay.dataset.state='open';
  const dialog=document.createElement('div');dialog.className='fixed native';dialog.setAttribute('role','dialog');dialog.dataset.state='open';dialog.tabIndex=-1;
- dialog.innerHTML='<h2>Choose Action</h2><div role="tablist"><button role="tab">Weapons</button><button role="tab">Spells</button><button role="tab">Custom</button></div><form><input name="description" value="custom draft"><button type="submit">Attack</button></form><button id="nested">Ability selector</button><button id="x"><svg class="lucide-x"></svg>Close</button>';
+ dialog.innerHTML='<h2>Choose Action</h2><div role="tablist"><button role="tab">Weapons</button><button role="tab">Spells</button><button role="tab">Custom</button></div><div class="md:min-w-[980px] md:min-h-[600px] md:max-h-[600px] overflow-y-auto py-4"><form><input name="description" value="custom draft"><button type="submit">Attack</button></form></div><button id="nested">Ability selector</button><button id="x"><svg class="lucide-x"></svg>Close</button>';
  if(diceMode){dialog.querySelector('h2').textContent='Title';const skills=document.createElement('section');skills.innerHTML='<h3>Ability checks</h3><h3>Skills</h3><button id=\"acrobatics\">Acrobatics Check</button>';dialog.append(skills);skills.querySelector('button').onclick=()=>{window.skillSelections++;skills.innerHTML='<h4>Roll Acrobatics Check</h4><button type=\"button\">List</button>';dialog.querySelector('button[type=submit]').textContent='Roll'}}
  document.body.append(overlay,dialog);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');
  window.originalForm=dialog.querySelector('form');originalForm.onsubmit=e=>{e.preventDefault();window.submits++};
@@ -65,6 +65,11 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.getElementById('campaign').hasAttribute('aria-hidden')"),false);
  assert.equal(await js("getComputedStyle(document.querySelector('.overlay')).display"),'none');
  assert.equal(await js("document.querySelector('form')===originalForm && document.querySelector('canvas')===originalCanvas && document.querySelector('.tiptap')===originalEditor"),true);
+ const nativeFormGeometry=await js("(()=>{const panel=document.querySelector('[data-ff-combat-docked]').getBoundingClientRect(),wrapper=document.querySelector('[class~=\"md:min-w-[980px]\"]').getBoundingClientRect(),form=document.querySelector('form').getBoundingClientRect(),input=document.querySelector('input'),b=input.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+b.height/2);return {panel:{left:panel.left,right:panel.right,width:panel.width},wrapper:{left:wrapper.left,right:wrapper.right,width:wrapper.width},form:{left:form.left,right:form.right,width:form.width},input:{left:b.left,right:b.right,width:b.width},wrapperWithin:wrapper.left>=panel.left&&wrapper.right<=panel.right,formWithin:form.left>=panel.left&&form.right<=panel.right,inputWithin:b.left>=panel.left&&b.right<=panel.right,inputHit:document.elementFromPoint(x,y)===input}})()");
+ assert.equal(nativeFormGeometry.wrapperWithin,true,`Native 980px child must fit inside the dock: ${JSON.stringify(nativeFormGeometry)}`);
+ assert.equal(nativeFormGeometry.formWithin,true,`Native form must fit inside the dock: ${JSON.stringify(nativeFormGeometry)}`);
+ assert.equal(nativeFormGeometry.inputWithin,true,`Native input must fit inside the dock: ${JSON.stringify(nativeFormGeometry)}`);
+ assert.equal(nativeFormGeometry.inputHit,true,`Native input center must hit the input: ${JSON.stringify(nativeFormGeometry)}`);
  await js("originalEditor.focus();originalEditor.textContent+=' typed';originalCanvas.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}));originalCanvas.click()");
  assert.equal(await js('document.activeElement===originalEditor'),true,'FocusScope permits actual background focus.');
  const focusState=await js('({focused:document.hasFocus(),visibility:document.visibilityState,active:document.activeElement?.className,rootFocusEvents:reactFocus})');
