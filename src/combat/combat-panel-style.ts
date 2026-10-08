@@ -114,7 +114,7 @@ export const combatPanelCss = `
     border: 0 !important;
     border-right: 1px solid hsl(var(--border, 0 0% 50%)) !important;
     border-radius: 0 !important;
-    background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 92%, transparent) !important;
+    background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 88%, transparent) !important;
     color: hsl(var(--foreground, 0 0% 96%)) !important;
     box-shadow: none !important;
     transform: none !important;
@@ -462,7 +462,7 @@ export function combatPanelAppearanceCss(
   const image = !settings.enabled && ambient?.image ? ambient.image : null;
   const fill = settings.enabled
     ? `color-mix(in srgb, ${hex(settings.color, '#101010')} ${range(settings.opacity, 1, .92) * 100}%, transparent)`
-    : 'color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 92%, transparent)';
+    : 'color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 88%, transparent)';
   const blur = settings.enabled ? range(settings.blur, 30, 12) : 12;
   const imageBlur = range(ambient?.effects.blur, 30, 0);
   const imageOpacity = range(ambient?.effects.opacity, 1, 1);
