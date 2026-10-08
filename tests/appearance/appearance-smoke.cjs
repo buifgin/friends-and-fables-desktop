@@ -160,7 +160,7 @@ async function save(settings, window) {
   settingsWindow.hide();
   await until(settingsWindow.webContents, "!document.querySelector('#apply').disabled");
   const settingsContents = settingsWindow.webContents;
-  assert.equal(await settingsContents.executeJavaScript("document.querySelector('[data-panel=\"combat-panel\"]').textContent.trim()"), 'Combat panel / Панель боя');
+  assert.equal(await settingsContents.executeJavaScript("document.querySelector('[data-panel=\"combat-panel\"]').textContent.trim()"), 'Combat panel');
   assert.deepEqual(await settingsContents.executeJavaScript(`({
     enabled:document.querySelector('#combat-panel-enabled').checked,
     color:document.querySelector('#combat-panel-color').value,
