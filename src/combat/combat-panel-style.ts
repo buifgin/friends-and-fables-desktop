@@ -129,7 +129,7 @@ export const combatPanelCss = `
     font: inherit;
     line-height: 1.25;
     text-align: center;
-    overflow-wrap: anywhere;
+    white-space: nowrap;
     cursor: pointer;
   }
 
@@ -146,10 +146,10 @@ export const combatPanelCss = `
 
   [data-ff-combat-toolbar-close] {
     display: grid !important;
-    width: 36px !important;
-    min-width: 36px !important;
-    height: 36px !important;
-    flex: 0 0 36px !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    height: 44px !important;
+    flex: 0 0 44px !important;
     place-items: center !important;
     padding: 0 !important;
     border: 1px solid hsl(var(--border, 0 0% 50%)) !important;
@@ -345,3 +345,35 @@ export const combatPanelCss = `
     }
   }
 `;
+
+/** Appearance overrides stay attached to the owned combat surfaces only. */
+export function combatPanelAppearanceCss(settings: { enabled: boolean; color: string; opacity: number; blur: number }): string {
+  if (!settings.enabled) return '';
+  const color = /^#[\da-f]{6}$/i.test(settings.color) ? settings.color : '#101010';
+  const opacity = Number.isFinite(settings.opacity) && settings.opacity >= 0 && settings.opacity <= 100 ? settings.opacity / 100 : 0.92;
+  const blur = Number.isFinite(settings.blur) && settings.blur >= 0 && settings.blur <= 30 ? settings.blur : 12;
+  const fill = `color-mix(in srgb, ${color} ${opacity * 100}%, transparent)`;
+  return `
+    [data-ff-combat-docked], [data-ff-combat-panel] {
+      background: ${fill} !important;
+      -webkit-backdrop-filter: blur(${blur}px) !important;
+      backdrop-filter: blur(${blur}px) !important;
+    }
+    [data-ff-combat-tools]:not([hidden]) {
+      background: ${fill} !important;
+      -webkit-backdrop-filter: blur(${blur}px) !important;
+      backdrop-filter: blur(${blur}px) !important;
+    }
+    [data-ff-combat-docked] :is(div, section)[class*="bg-card"],
+    [data-ff-combat-docked] :is(div, section)[class*="bg-background"],
+    [data-ff-combat-docked] :is(div, section)[class*="bg-popover"],
+    [data-ff-combat-docked] :is(div, section)[class*="bg-muted"],
+    [data-ff-combat-panel] :is(div, section)[class*="bg-card"],
+    [data-ff-combat-panel] :is(div, section)[class*="bg-background"],
+    [data-ff-combat-panel] :is(div, section)[class*="bg-popover"],
+    [data-ff-combat-panel] :is(div, section)[class*="bg-muted"] {
+      background-color: transparent !important;
+      background-image: none !important;
+    }
+  `;
+}

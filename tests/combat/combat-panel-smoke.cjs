@@ -4,7 +4,14 @@ const path = require('node:path');
 const { app, BrowserWindow, session } = require('electron');
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { configureCombatPanel } = require(path.join(root, 'dist/combat/combat-panel'));
-const { combatPanelCss } = require(path.join(root, 'dist/combat/combat-panel-style'));
+const { combatPanelCss, combatPanelAppearanceCss } = require(path.join(root, 'dist/combat/combat-panel-style'));
+assert.equal(combatPanelAppearanceCss({ enabled: false, color: '#101010', opacity: 92, blur: 12 }), '', 'Disabled appearance preserves the existing theme fill.');
+const transparentAppearance = combatPanelAppearanceCss({ enabled: true, color: '#336699', opacity: 0, blur: 7 });
+assert.match(transparentAppearance, /#336699 0%/);
+assert.match(transparentAppearance, /blur\(7px\)/);
+assert.match(transparentAppearance, /\[data-ff-combat-docked\]/);
+assert.doesNotMatch(transparentAppearance, /(?:^|[;{\s])opacity\s*:/, 'Appearance must not fade text or controls.');
+assert.doesNotMatch(transparentAppearance, /body|\.overlay|#chat|canvas/i, 'Appearance must stay scoped to combat surfaces.');
 let window;
 const timer = setTimeout(() => { console.error('Combat fixture timed out'); app.exit(1); }, 30000);
 app.on('window-all-closed', () => {});
@@ -55,7 +62,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  window=new BrowserWindow({show:false,width:1280,height:850,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
  const js=source=>window.webContents.executeJavaScript(source);
  const until=async expression=>{for(let n=0;n<100;n++){if(await js(expression))return;await new Promise(resolve=>setTimeout(resolve,20));}throw Error('Timed out: '+expression)};
- const configure=(enabled=true,locale='en')=>js(`(${configureCombatPanel.toString()})(${enabled},${JSON.stringify(locale)},${JSON.stringify(combatPanelCss)})`);
+ const configure=(enabled=true,locale='en',appearance={enabled:false,color:'#101010',opacity:92,blur:12})=>js(`(${configureCombatPanel.toString()})(${enabled},${JSON.stringify(locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(appearance))})`);
  await window.loadURL('https://play.fables.gg/fixture/play');
  // Focus assertions require a visible renderer. showInactive keeps placement
  // silent; the coordinator's scoped native guard owns desktop focus policy.
@@ -64,6 +71,12 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await until("document.visibilityState==='visible' && document.hasFocus()");
  await configure();
  await until("!!document.querySelector('[data-ff-combat-docked]')");
+ assert.equal(await js("document.querySelector('[data-ff-combat-mode=skills]').textContent"),'Skills');
+ assert.equal(await js("document.querySelector('[data-ff-combat-toolbar-close]').getAttribute('aria-label')"),'Collapse combat panel');
+ assert.equal(await js("document.querySelector('[data-ff-combat-toolbar-close]').title"),'Collapse combat panel');
+ assert.match(await js("document.querySelector('[data-ff-combat-toolbar-close] svg path').getAttribute('d')"),/m15 18-6-6 6-6/);
+ assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-combat-mode=skills]')).whiteSpace"),'nowrap');
+ assert.equal(await js("document.querySelector('[data-ff-combat-launcher]').hidden"),true,'Expanded panel has no duplicate launcher.');
  assert.equal(await js('opens'),1,'Auto activation opens native picker once; never submits.');
  assert.equal(await js('submits'),0);
  assert.equal(await js("document.body.style.pointerEvents"),'auto');
@@ -86,6 +99,16 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js('backgroundWheels'),1,'Root wheel handlers still run.');
  await js('originalForm.requestSubmit()');assert.equal(await js('submits'),1,'Native submit handler remains the only submission path.');
  await configure(true,'ru');assert.equal(await js("document.querySelectorAll('[data-ff-combat-launcher]').length"),1);
+ assert.equal(await js("document.querySelector('[data-ff-combat-mode=skills]').textContent"),'Навыки');
+ assert.equal(await js("document.querySelector('[data-ff-combat-toolbar-close]').getAttribute('aria-label')"),'Свернуть панель боя');
+ assert.equal(await js("document.querySelector('[data-ff-combat-launcher]').getAttribute('aria-label')"),'Развернуть панель боя');
+ assert.match(await js("document.querySelector('[data-ff-combat-launcher] svg path').getAttribute('d')"),/m9 18 6-6-6-6/);
+ assert.equal(await js("document.querySelector('[data-ff-combat-launcher]').hidden"),true,'Expanded panel never displays its reopen launcher.');
+ const identityBeforeAppearance=await js('document.querySelector("form")===originalForm');
+ await configure(true,'ru',{enabled:true,color:'#336699',opacity:0,blur:7});
+ assert.equal(await js('document.querySelector("form")===originalForm'),identityBeforeAppearance,'Appearance reinjection preserves the native form identity.');
+ assert.match(await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]')).backgroundColor"),/(?:,\s*0\)|\/\s*0\))$/,'Opacity zero makes the panel fill transparent.');
+ assert.match(await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]')).backdropFilter"),/blur\(7px\)/);
  assert.equal(await js("document.querySelector('input').value"),'custom draft');
  const panelBounds=()=>js("(()=>{const b=document.querySelector('[data-ff-combat-docked]').getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}})()");
  const beforeNested=await panelBounds();
