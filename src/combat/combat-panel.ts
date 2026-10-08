@@ -24,18 +24,81 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       if (reserved || picker) close(); requested = name; schedule();
     }); controls.append(button);
   }
-  document.body.append(controls);
   let reserved = false, pending = false, pendingReopened = false, internalLaunch = false;
   const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
   const railWritten = new Map<string, string>();
-  function measureRail(): void {
-    const rail = Array.from(document.querySelectorAll('aside')).find(node => { const box = node.getBoundingClientRect(); return visible(node) && box.left === 0 && box.width > 0 && box.width <= 100 && box.height > 200; });
-    if (!rail) return;
-    const box = rail.getBoundingClientRect();
+  let mountedRail: HTMLElement | null = null, mountedRailAside: HTMLElement | null = null;
+  let railResizeObserver: ResizeObserver | null = null;
+  const railAttributes = new Map<string, { before: string | null; written: string }>();
+  function setRailAttribute(name: string, value: string | null): void {
+    if (!mountedRail) return;
+    const saved = railAttributes.get(name);
+    if (value === null) {
+      if (saved && mountedRail.getAttribute(name) === saved.written) {
+        if (saved.before === null) mountedRail.removeAttribute(name); else mountedRail.setAttribute(name, saved.before);
+      }
+      railAttributes.delete(name); return;
+    }
+    if (!saved) railAttributes.set(name, { before: mountedRail.getAttribute(name), written: value });
+    else saved.written = value;
+    if (mountedRail.getAttribute(name) !== value) mountedRail.setAttribute(name, value);
+  }
+  function restoreRailMount(): void {
+    controls.remove(); railResizeObserver?.disconnect();
+    if (mountedRail) for (const [name, saved] of railAttributes) {
+      if (mountedRail.getAttribute(name) !== saved.written) continue;
+      if (saved.before === null) mountedRail.removeAttribute(name); else mountedRail.setAttribute(name, saved.before);
+    }
+    railAttributes.clear(); mountedRail = null; mountedRailAside = null;
+  }
+  function resetRailGeometry(): void {
+    for (const [name, value, priority] of railBefore) {
+      if (document.documentElement.style.getPropertyValue(name) !== railWritten.get(name)) continue;
+      if (value) document.documentElement.style.setProperty(name, value, priority); else document.documentElement.style.removeProperty(name);
+    }
+    railWritten.clear();
+  }
+  function findNativeRail(): { aside: HTMLElement; group: HTMLElement; settings: HTMLButtonElement } | null {
+    for (const group of document.querySelectorAll<HTMLElement>('aside > div')) {
+      if (!['flex', 'flex-col', 'gap-4', 'items-center', 'relative', 'z-10'].every(token => group.classList.contains(token))) continue;
+      const settings = Array.from(group.children).find((node): node is HTMLButtonElement => node instanceof HTMLButtonElement && !!node.querySelector('svg.lucide-settings'));
+      const aside = group.parentElement;
+      if (!settings || !(aside instanceof HTMLElement)) continue;
+      const box = aside.getBoundingClientRect();
+      if (!visible(aside) || box.left !== 0 || box.width < 40 || box.width > 360 || box.height <= 200) continue;
+      return { aside, group, settings };
+    }
+    return null;
+  }
+  function syncRail(showControls: boolean): void {
+    if (!showControls) { restoreRailMount(); resetRailGeometry(); return; }
+    const found = findNativeRail();
+    if (!found) {
+      if (mountedRail) restoreRailMount(); else railResizeObserver?.disconnect();
+      resetRailGeometry(); controls.setAttribute('data-ff-combat-controls-fallback', '');
+      if (controls.parentElement !== document.body) document.body.append(controls);
+      return;
+    }
+    const railChanged = mountedRail !== found.group || mountedRailAside !== found.aside;
+    if (mountedRail !== found.group) {
+      restoreRailMount(); mountedRail = found.group; mountedRailAside = found.aside;
+      setRailAttribute('data-ff-combat-controls-group', '');
+    } else mountedRailAside = found.aside;
+    for (const button of controls.querySelectorAll<HTMLButtonElement>('[data-ff-combat-mode]')) {
+      if (button.className !== found.settings.className) button.className = found.settings.className;
+    }
+    controls.removeAttribute('data-ff-combat-controls-fallback');
+    if (controls.parentElement !== found.group || controls.nextElementSibling !== found.settings) found.group.insertBefore(controls, found.settings);
+    const bottomGroup = Array.from(found.aside.children).find(node => node !== found.group && node instanceof HTMLElement && node.classList.contains('relative') && node.classList.contains('z-10'));
+    const available = Math.max(0, found.aside.clientHeight - (bottomGroup?.getBoundingClientRect().height ?? 40) - 24);
+    const normalGapHeight = found.group.scrollHeight + (found.group.hasAttribute('data-ff-combat-controls-compact') ? found.group.children.length * 8 : 0);
+    setRailAttribute('data-ff-combat-controls-compact', normalGapHeight > available ? '' : null);
+    const box = found.aside.getBoundingClientRect();
     for (const [name, value] of [['--ff-combat-rail-width', `${box.width}px`], ['--ff-combat-rail-top', `${box.top}px`]]) {
       if (document.documentElement.style.getPropertyValue(name) !== value) document.documentElement.style.setProperty(name, value);
       railWritten.set(name, value);
     }
+    if (railChanged && railResizeObserver) { railResizeObserver.disconnect(); railResizeObserver.observe(found.aside); railResizeObserver.observe(found.group); }
   }
   const filtered = new Map<HTMLElement, string | null>();
   function restoreFiltered(): void {
@@ -211,7 +274,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     chat = editor?.closest<HTMLElement>('.flex-1.h-full.w-full') ?? composer;
     const now = !!(play && composer && active(composer));
     controls.hidden = !play || !dice;
-    if (play) measureRail();
+    syncRail(play && !!dice);
     if (picker && !picker.isConnected) {
       if (pending) { suspendModal(true); restoreFiltered(); } else release(true);
       picker = null;
@@ -255,6 +318,8 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   function schedule(): void { if (!queued && !disposed) { queued = true; queueMicrotask(scan); } }
   const observer = new MutationObserver(schedule); observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', 'aria-expanded'] });
+  railResizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
+  window.addEventListener('resize', schedule);
   const timer = window.setInterval(schedule, 500);
   function nativeIntent(event: MouseEvent): void {
     if (!(event.target instanceof Node)) return;
@@ -287,11 +352,8 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       document.removeEventListener('focusin', focusGate); document.removeEventListener('focusout', focusGate);
       document.removeEventListener('dismissableLayer.pointerDownOutside', cancelOutside, true); document.removeEventListener('dismissableLayer.focusOutside', cancelOutside, true);
       document.removeEventListener('keydown', nativeEscape, true); document.removeEventListener('click', nativeIntent, true); document.removeEventListener('submit', submitting, true);
-      document.removeEventListener('click', schedule, true); window.removeEventListener('popstate', schedule); controls.remove(); style.remove();
-      for (const [name, value, priority] of railBefore) {
-        if (document.documentElement.style.getPropertyValue(name) !== railWritten.get(name)) continue;
-        if (value) document.documentElement.style.setProperty(name, value, priority); else document.documentElement.style.removeProperty(name);
-      }
+      document.removeEventListener('click', schedule, true); window.removeEventListener('popstate', schedule); window.removeEventListener('resize', schedule);
+      restoreRailMount(); resetRailGeometry(); controls.remove(); style.remove();
       delete host[key]; }
   };
   labels(); scan();
