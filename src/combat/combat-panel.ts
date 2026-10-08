@@ -25,7 +25,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }); controls.append(button);
   }
   let reserved = false, pending = false, pendingReopened = false, internalLaunch = false;
-  const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
+  const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top', '--ff-combat-controls-bottom'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
   const railWritten = new Map<string, string>();
   let mountedRail: HTMLElement | null = null, mountedRailAside: HTMLElement | null = null;
   let railResizeObserver: ResizeObserver | null = null;
@@ -94,7 +94,9 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const normalGapHeight = found.group.scrollHeight + (found.group.hasAttribute('data-ff-combat-controls-compact') ? found.group.children.length * 8 : 0);
     setRailAttribute('data-ff-combat-controls-compact', normalGapHeight > available ? '' : null);
     const box = found.aside.getBoundingClientRect();
-    for (const [name, value] of [['--ff-combat-rail-width', `${box.width}px`], ['--ff-combat-rail-top', `${box.top}px`]]) {
+    const groupBox = found.group.getBoundingClientRect();
+    const controlsBottom = groupBox.bottom - box.top + found.aside.scrollTop - 48 + 8;
+    for (const [name, value] of [['--ff-combat-rail-width', `${box.width}px`], ['--ff-combat-rail-top', `${box.top}px`], ['--ff-combat-controls-bottom', `${controlsBottom}px`]]) {
       if (document.documentElement.style.getPropertyValue(name) !== value) document.documentElement.style.setProperty(name, value);
       railWritten.set(name, value);
     }
