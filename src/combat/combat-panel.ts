@@ -25,9 +25,10 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   toolbarClose.addEventListener('click', () => { if (!otherLayer() && picker) close(); });
   tools.append(toolbarClose);
   document.body.append(tools);
-  // Snapshots describe the native modal state, not the pre-modal state. Restore
-  // them before native closing so Radix can then perform its own cleanup.
-  let undo: (() => void)[] = [];
+  // Keep geometry until the picker closes. Suspend only modal overrides for
+  // nested layers, restoring native locks without moving their anchor.
+  let modalUndo: (() => void)[] = [], layoutUndo: (() => void)[] = [];
+  let modalActive = false;
   const hiddenBefore = new Map<HTMLElement, string | null>();
   function rememberBackground(): void {
     hiddenBefore.clear();
@@ -37,27 +38,32 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }
   }
   let bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
-  function attribute(node: HTMLElement, name: string, value: string | null): void {
+  function attribute(node: HTMLElement, name: string, value: string | null, layout = false): void {
     const old = node.getAttribute(name);
     if (old === value) return;
     if (value === null) node.removeAttribute(name); else node.setAttribute(name, value);
-    undo.push(() => { if (node.getAttribute(name) !== value) return; if (old === null) node.removeAttribute(name); else node.setAttribute(name, old); });
+    (layout ? layoutUndo : modalUndo).push(() => { if (node.getAttribute(name) !== value) return; if (old === null) node.removeAttribute(name); else node.setAttribute(name, old); });
   }
   function property(node: HTMLElement, name: string, value: string): void {
     const old = node.style.getPropertyValue(name), priority = node.style.getPropertyPriority(name);
     node.style.setProperty(name, value, 'important');
-    undo.push(() => { if (node.style.getPropertyValue(name) !== value || node.style.getPropertyPriority(name) !== 'important') return;
+    modalUndo.push(() => { if (node.style.getPropertyValue(name) !== value || node.style.getPropertyPriority(name) !== 'important') return;
       if (old) node.style.setProperty(name, old, priority); else node.style.removeProperty(name); });
   }
-  function release(nativeRemoved = false): void {
+  function suspendModal(nativeRemoved = false): void {
     // Native unmount has already restored aria/body; replaying modal snapshots
     // afterwards would hide the campaign and lock its pointer again.
-    if (!nativeRemoved) for (const restore of undo.reverse()) restore();
+    if (!nativeRemoved) for (const restore of modalUndo.reverse()) restore();
     else for (const [name, value, priority] of bodyBefore) {
       if (document.body.style.getPropertyPriority(name) !== 'important' || document.body.style.getPropertyValue(name) !== 'auto') continue;
       if (value) document.body.style.setProperty(name, value, priority); else document.body.style.removeProperty(name);
     }
-    undo = [];
+    modalUndo = []; modalActive = false; tools.hidden = true;
+  }
+  function release(nativeRemoved = false): void {
+    suspendModal(nativeRemoved);
+    for (const restore of layoutUndo.reverse()) restore();
+    layoutUndo = [];
     document.documentElement.removeAttribute('data-ff-combat-open');
     chat?.removeAttribute('data-ff-combat-chat');
     picker?.removeAttribute('data-ff-combat-panel'); picker?.removeAttribute('data-ff-combat-docked');
@@ -74,7 +80,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (!(target instanceof Node) || picker?.contains(target)) return false;
     return launcher.contains(target) || tools.contains(target) || !!chat?.contains(target) || Array.from(document.querySelectorAll('canvas.touch-none')).some(canvas => !canvas.closest('form,[role="dialog"]') && (canvas === target || canvas.parentElement?.contains(target)));
   }
-  function live(): boolean { return !!picker?.isConnected && picker.hasAttribute('data-ff-combat-docked') && !otherLayer(); }
+  function live(): boolean { return modalActive && !!picker?.isConnected && picker.hasAttribute('data-ff-combat-docked') && !otherLayer(); }
   function cancelOutside(event: Event): void {
     const original = (event as CustomEvent<{ originalEvent?: Event }>).detail?.originalEvent;
     if (live() && background(original?.target ?? null)) event.preventDefault();
@@ -125,13 +131,15 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     trigger.click(); schedule();
   }
   function dock(): void {
-    if (!picker || undo.length || otherLayer()) return;
-    attribute(picker, 'data-ff-combat-docked', ''); attribute(picker, 'data-ff-combat-panel', '');
-    const heading = Array.from(picker.querySelectorAll<HTMLElement>('h2')).find(node => /^(Choose Action|Выберите действие)$/i.test(node.textContent?.trim() ?? ''));
-    if (heading) attribute(heading, 'data-ff-combat-heading', '');
-    const closeButton = picker.querySelector<HTMLElement>('button:has(.lucide-x)'); if (closeButton) attribute(closeButton, 'data-ff-combat-close', '');
-    if (chat) attribute(chat, 'data-ff-combat-chat', '');
-    attribute(document.documentElement, 'data-ff-combat-open', 'true');
+    if (!picker || modalActive || otherLayer()) return;
+    if (!layoutUndo.length) {
+      attribute(picker, 'data-ff-combat-docked', '', true); attribute(picker, 'data-ff-combat-panel', '', true);
+      const heading = Array.from(picker.querySelectorAll<HTMLElement>('h2')).find(node => /^(Choose Action|Выберите действие)$/i.test(node.textContent?.trim() ?? ''));
+      if (heading) attribute(heading, 'data-ff-combat-heading', '', true);
+      const closeButton = picker.querySelector<HTMLElement>('button:has(.lucide-x)'); if (closeButton) attribute(closeButton, 'data-ff-combat-close', '', true);
+      if (chat) attribute(chat, 'data-ff-combat-chat', '', true);
+      attribute(document.documentElement, 'data-ff-combat-open', 'true', true);
+    }
     attribute(picker, 'aria-modal', 'false');
     const overlay = picker.previousElementSibling;
     if (overlay instanceof HTMLElement && !overlay.children.length && overlay.matches('[data-state="open"].fixed.inset-0.z-50')) {
@@ -147,7 +155,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
         if (node.getAttribute('aria-hidden') === 'true' && hiddenBefore.has(node) && hiddenBefore.get(node) !== 'true') attribute(node, 'aria-hidden', null);
       }
     }
-    launcher.setAttribute('aria-expanded', 'true'); tools.hidden = false;
+    modalActive = true; launcher.setAttribute('aria-expanded', 'true'); tools.hidden = false;
     actionsTab.setAttribute('aria-pressed', String(mode === 'actions')); skillsTab.setAttribute('aria-pressed', String(mode === 'skills')); skillsTab.disabled = !dice;
   }
   function scan(): void {
@@ -172,7 +180,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const skills = launched === 'skills' ? dialogs.find(dialog => !preexisting.has(dialog) && Array.from(dialog.querySelectorAll('h3')).some(heading => /^(Skills|Навыки)$/i.test(heading.textContent?.trim() ?? '')) && Array.from(dialog.querySelectorAll('button')).some(button => /Acrobatics|акробатик/i.test(button.textContent ?? ''))) : undefined;
     const found = skills ?? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? '')));
     if (found && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
-    if (picker) { if (otherLayer()) { if (undo.length) release(); } else dock(); }
+    if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
     launcher.hidden = !play || !action || otherLayer();
     if (requested && !picker && !otherLayer()) { const next = requested; requested = null; open(next); }
     else if (now && !attempted && !found && !otherLayer()) open();

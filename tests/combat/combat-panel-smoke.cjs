@@ -33,7 +33,12 @@ window.openNative=(diceMode=false)=>{
  const escape=e=>{if(e.key==='Escape'&&!nested)close()};
  const close=()=>{document.removeEventListener('wheel',scrollLock);document.removeEventListener('focusin',trap);document.removeEventListener('focusout',trap);document.removeEventListener('pointerdown',pointer);document.removeEventListener('keydown',escape);dialog.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow='';campaign.removeAttribute('aria-hidden')};
  window.nativeClose=close;document.getElementById('x').onclick=close;
- document.getElementById('nested').onclick=()=>{nested=document.createElement('div');nested.setAttribute('role','listbox');nested.tabIndex=0;nested.textContent='Native nested options';document.body.append(nested);window.nestedClose=()=>{nested.remove();nested=null};nested.focus()};
+ document.getElementById('nested').onclick=()=>{
+ nested=document.createElement('div');nested.setAttribute('role','listbox');nested.tabIndex=0;nested.style.cssText='position:fixed;left:180px;top:200px;z-index:50;pointer-events:auto;background:white';nested.textContent='Native nested options';document.body.append(nested);
+ const nestedTrap=e=>{const target=e.type==='focusout'?e.relatedTarget:e.target;if(target && nested && !nested.contains(target))nested.focus()};
+ document.addEventListener('focusin',nestedTrap);document.addEventListener('focusout',nestedTrap);
+ window.nestedClose=()=>{document.removeEventListener('focusin',nestedTrap);document.removeEventListener('focusout',nestedTrap);nested.remove();nested=null;last.focus()};nested.focus();
+ };
  // Matches native effect ordering: these listeners are installed after open.
  document.addEventListener('focusin',trap);document.addEventListener('focusout',trap);document.addEventListener('pointerdown',pointer);document.addEventListener('keydown',escape);last.focus();
 };
@@ -72,10 +77,26 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await js('originalForm.requestSubmit()');assert.equal(await js('submits'),1,'Native submit handler remains the only submission path.');
  await configure(true,'ru');assert.equal(await js("document.querySelectorAll('[data-ff-combat-launcher]').length"),1);
  assert.equal(await js("document.querySelector('input').value"),'custom draft');
- await js("document.getElementById('nested').click()");await until("!document.querySelector('[data-ff-combat-docked]')");
- assert.equal(await js("document.body.style.pointerEvents"),'none','Nested native layer restores modal pointer protection.');
+ const panelBounds=()=>js("(()=>{const b=document.querySelector('[data-ff-combat-docked]').getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}})()");
+ const beforeNested=await panelBounds();
+ const chatBeforeNested=await js("document.getElementById('chat').getBoundingClientRect().width");
+ await js("window.nestedParent=document.querySelector('[data-ff-combat-docked]');document.getElementById('nested').click()");
+ await until("document.body.style.pointerEvents==='none' && document.querySelector('[data-ff-combat-tools]').hidden");
+ assert.equal(await js("document.querySelector('[data-ff-combat-docked]')===nestedParent && document.querySelector('form')===originalForm"),true,'Nested native popup retains original dock and form.');
+ assert.deepEqual(await panelBounds(),beforeNested,'Opening a nested native popup must keep its parent bounds stable.');
+ assert.equal(await js("document.getElementById('chat').getBoundingClientRect().width"),chatBeforeNested,'Chat reservation stays stable under a nested modal.');
  assert.equal(await js("document.getElementById('campaign').getAttribute('aria-hidden')"),'true');
- await js('window.nestedClose()');await until("!!document.querySelector('[data-ff-combat-docked]')");
+ assert.equal(await js("document.body.style.overflow"),'hidden');
+ assert.notEqual(await js("getComputedStyle(document.querySelector('.overlay')).display"),'none','Native overlay protection resumes.');
+ await js('originalEditor.focus()');
+ assert.equal(await js("document.activeElement===document.querySelector('[role=listbox]')"),true,'Adapter focus gate yields to nested native focus trap.');
+ assert.equal(await js("originalEditor.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:50}))"),false,'Adapter wheel gate yields to native nested scroll lock.');
+ assert.equal(await js("(()=>{const event=new CustomEvent('dismissableLayer.pointerDownOutside',{bubbles:false,cancelable:true,detail:{originalEvent:{target:originalEditor}}});originalEditor.dispatchEvent(event);return event.defaultPrevented})()"),false,'Adapter must not cancel nested native outside dismissal.');
+ assert.equal(await js("document.querySelector('input').value"),'custom draft');
+ await js('window.nestedClose()');await until("document.body.style.pointerEvents==='auto' && !document.querySelector('[data-ff-combat-tools]').hidden");
+ assert.deepEqual(await panelBounds(),beforeNested,'Closing nested popup must retain parent bounds.');
+ await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true,'Background focus resumes without resetting native draft.');
+ assert.equal(await js("document.querySelector('input').value"),'custom draft');
  await js("document.querySelector('[data-ff-combat-mode=skills]').click()");await until("!!document.querySelector('#acrobatics') && !!document.querySelector('[data-ff-combat-docked]')");
  assert.equal(await js('submits'),1,'Switching to native skills never rolls.');
  await js("document.getElementById('acrobatics').click()");await until("!document.querySelector('#acrobatics')");
@@ -83,7 +104,11 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("!!document.querySelector('[data-ff-combat-docked]')"),true,'Native selected skill detail remains docked on reinjection.');
  await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true);
  await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('h2') && document.querySelector('h2').textContent==='Choose Action' && !!document.querySelector('[data-ff-combat-docked]')");
- await js("document.querySelector('[data-ff-combat-launcher]').click()");await until("!document.querySelector('[role=dialog]')");
+ const toolbarHit=await js("(()=>{const close=document.querySelector('[data-ff-combat-toolbar-close]'),b=close.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+b.height/2);return {x,y,hit:close.contains(document.elementFromPoint(x,y))}})()");
+ assert.equal(toolbarHit.hit,true,'Owned toolbar close must be the real hit target.');
+ window.webContents.sendInputEvent({type:'mouseDown',button:'left',clickCount:1,x:toolbarHit.x,y:toolbarHit.y});
+ window.webContents.sendInputEvent({type:'mouseUp',button:'left',clickCount:1,x:toolbarHit.x,y:toolbarHit.y});
+ await until("!document.querySelector('[role=dialog]')");
  await new Promise(resolve=>setTimeout(resolve,600));assert.equal(await js('opens'),3,'Manual collapse lasts through encounter.');
  assert.equal(await js("document.body.style.cssText"),'');
  assert.equal(await js("originalEditor.textContent"),'preserved draft typed');
