@@ -1,5 +1,10 @@
 /** Scoped styles for the native battle action slide panel. */
 export const combatPanelCss = `
+  :root {
+    --ff-combat-width: min(clamp(320px, 28vw, 390px), calc(100vw - 64px));
+    --ff-combat-tools-height: 76px;
+  }
+
   [data-ff-combat-launcher],
   [data-ff-combat-panel],
   [data-ff-combat-docked],
@@ -61,15 +66,15 @@ export const combatPanelCss = `
     inset: 0 auto 0 0 !important;
     top: 0 !important;
     left: 0 !important;
-    width: min(390px, calc(100vw - 64px)) !important;
+    width: var(--ff-combat-width) !important;
     min-width: 0 !important;
-    max-width: min(390px, calc(100vw - 64px)) !important;
+    max-width: var(--ff-combat-width) !important;
     height: 100vh !important;
     height: 100dvh !important;
     max-height: 100vh !important;
     max-height: 100dvh !important;
     margin: 0 !important;
-    padding: 56px 0 0 !important;
+    padding: var(--ff-combat-tools-height) 0 0 !important;
     overflow: auto;
     overscroll-behavior: contain;
     border: 0 !important;
@@ -97,12 +102,14 @@ export const combatPanelCss = `
     top: 0;
     left: 0;
     display: flex;
-    width: min(390px, calc(100vw - 64px));
-    min-height: 48px;
+    box-sizing: border-box;
+    width: var(--ff-combat-width);
+    height: var(--ff-combat-tools-height);
+    min-height: var(--ff-combat-tools-height);
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 7px 12px;
+    gap: 6px;
+    padding: 8px 10px;
     border-bottom: 1px solid hsl(var(--border, 0 0% 50%));
     background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 96%, transparent);
     color: hsl(var(--foreground, 0 0% 96%));
@@ -136,6 +143,23 @@ export const combatPanelCss = `
   }
 
   [data-ff-combat-mode]:disabled { cursor: not-allowed; opacity: .55; }
+
+  [data-ff-combat-toolbar-close] {
+    display: grid !important;
+    width: 36px !important;
+    min-width: 36px !important;
+    height: 36px !important;
+    flex: 0 0 36px !important;
+    place-items: center !important;
+    padding: 0 !important;
+    border: 1px solid hsl(var(--border, 0 0% 50%)) !important;
+    border-radius: 50% !important;
+    background: transparent !important;
+    color: inherit !important;
+    cursor: pointer;
+  }
+
+  [data-ff-combat-toolbar-close]:hover { background: hsl(var(--muted, 0 0% 24%)) !important; }
 
   [data-ff-combat-docked] :is(form, fieldset, [role="tabpanel"]) {
     box-sizing: border-box;
@@ -181,6 +205,14 @@ export const combatPanelCss = `
     overflow-x: auto;
   }
 
+  [data-ff-combat-docked] :is(p, [role="alert"]) {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+
   [data-ff-combat-tools]:not([hidden]) [data-ff-combat-mode]:focus-visible {
     outline: 2px solid hsl(var(--ring, var(--primary, 0 0% 70%)));
     outline-offset: 2px;
@@ -193,11 +225,10 @@ export const combatPanelCss = `
 
   html[data-ff-combat-open="true"] [data-ff-combat-launcher] {
     z-index: 51;
-    left: calc(min(clamp(320px, 28vw, 390px), calc(100vw - 64px)) + 12px);
+    left: calc(var(--ff-combat-width) + 12px);
   }
 
   html[data-ff-combat-open="true"] [data-ff-combat-chat] {
-    --ff-combat-width: min(clamp(320px, 28vw, 390px), calc(100vw - 64px));
     padding-left: var(--ff-combat-width);
     box-sizing: border-box;
   }
@@ -205,7 +236,7 @@ export const combatPanelCss = `
   [data-ff-combat-heading] {
     position: sticky;
     z-index: 1;
-    top: 56px;
+    top: var(--ff-combat-tools-height);
     display: flex;
     min-height: 48px;
     align-items: center;
@@ -251,10 +282,10 @@ export const combatPanelCss = `
 
   @media (max-width: 520px) {
     [data-ff-combat-panel], [data-ff-combat-docked], [data-ff-combat-tools]:not([hidden]) {
-      width: calc(100vw - 64px) !important;
-      max-width: calc(100vw - 64px) !important;
+      width: var(--ff-combat-width) !important;
+      max-width: var(--ff-combat-width) !important;
     }
-    html[data-ff-combat-open="true"] [data-ff-combat-launcher] { left: calc(100vw - 52px); }
+    html[data-ff-combat-open="true"] [data-ff-combat-launcher] { left: calc(var(--ff-combat-width) + 12px); }
   }
 
   @media (prefers-reduced-motion: reduce) {
