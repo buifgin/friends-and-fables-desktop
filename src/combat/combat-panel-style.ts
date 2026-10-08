@@ -88,9 +88,9 @@ export const combatPanelCss = `
   [data-ff-combat-docked] {
     position: fixed !important;
     z-index: 49 !important;
-    inset: var(--ff-combat-rail-top) auto 0 var(--ff-combat-rail-width) !important;
+    inset: var(--ff-combat-rail-top) auto 0 calc(var(--ff-combat-rail-width) - var(--ff-combat-width)) !important;
     top: var(--ff-combat-rail-top) !important;
-    left: var(--ff-combat-rail-width) !important;
+    left: calc(var(--ff-combat-rail-width) - var(--ff-combat-width)) !important;
     width: var(--ff-combat-width) !important;
     min-width: 0 !important;
     max-width: var(--ff-combat-width) !important;
@@ -108,17 +108,15 @@ export const combatPanelCss = `
     background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 92%, transparent) !important;
     color: hsl(var(--foreground, 0 0% 96%)) !important;
     box-shadow: 5px 0 24px #0003 !important;
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-    transform: translateX(-102%) !important;
+    transform: none !important;
     translate: none !important;
-    transition: transform 240ms cubic-bezier(.2, .75, .25, 1);
+    transition: left 240ms cubic-bezier(.2, .75, .25, 1);
     scrollbar-gutter: stable;
   }
 
   html[data-ff-combat-open="true"] [data-ff-combat-panel],
   html[data-ff-combat-open="true"] [data-ff-combat-docked] {
-    transform: translateX(0) !important;
+    left: var(--ff-combat-rail-width) !important;
   }
 
   [data-ff-combat-controls] [data-ff-combat-mode][aria-pressed="true"] {
@@ -308,6 +306,21 @@ export const combatPanelCss = `
     pointer-events: none;
   }
 
+  [data-ff-combat-docked] {
+    isolation: isolate;
+  }
+
+  [data-ff-combat-docked]::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 0;
+    background: transparent;
+    pointer-events: none;
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+  }
+
   html[data-ff-combat-open="true"] [data-ff-combat-chat] {
     padding-left: var(--ff-combat-width);
     box-sizing: border-box;
@@ -337,10 +350,10 @@ export const combatPanelCss = `
 
   [data-ff-combat-close] {
     position: fixed !important;
-    top: 8px !important;
-    right: 8px !important;
+    top: calc(var(--ff-combat-rail-top) + 8px) !important;
+    left: calc(var(--ff-combat-rail-width) + var(--ff-combat-width) - 42px) !important;
+    right: auto !important;
     bottom: auto !important;
-    left: auto !important;
     z-index: 2 !important;
     display: grid !important;
     width: 34px !important;
@@ -348,6 +361,7 @@ export const combatPanelCss = `
     height: 34px !important;
     flex: none !important;
     place-items: center !important;
+    margin: 0 !important;
     padding: 0 !important;
     border: 1px solid hsl(var(--border, 0 0% 50%)) !important;
     border-radius: 50% !important;
@@ -397,6 +411,12 @@ export function combatPanelAppearanceCss(settings: { enabled: boolean; color: st
   return `
     [data-ff-combat-docked], [data-ff-combat-panel] {
       background: ${fill} !important;
+    }
+    [data-ff-combat-panel] {
+      -webkit-backdrop-filter: blur(${blur}px) !important;
+      backdrop-filter: blur(${blur}px) !important;
+    }
+    [data-ff-combat-docked]::before {
       -webkit-backdrop-filter: blur(${blur}px) !important;
       backdrop-filter: blur(${blur}px) !important;
     }
