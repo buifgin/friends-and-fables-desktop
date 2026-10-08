@@ -5,6 +5,7 @@ const path = require('node:path');
 const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, WebContentsView } = require('electron');
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance/appearance'));
+const { DEFAULT_APPEARANCE, validateAppearance } = require(path.join(appRoot, 'dist/appearance/themes'));
 const { configureZoomShortcuts } = require(path.join(appRoot, 'dist/shell/zoom'));
 const { configureFullscreenShortcuts } = require(path.join(appRoot, 'dist/shell/window-shortcuts'));
 const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/shell/linux-menu'));
@@ -39,6 +40,19 @@ async function save(settings, window) {
 }
 
 (async () => {
+  assert.deepEqual(DEFAULT_APPEARANCE.combatPanel, { enabled: false, color: '#101010', opacity: .92, blur: 12 });
+  const legacyAppearance = structuredClone(DEFAULT_APPEARANCE);
+  delete legacyAppearance.combatPanel;
+  assert.deepEqual(validateAppearance(legacyAppearance).combatPanel, DEFAULT_APPEARANCE.combatPanel,
+    'Older saved appearances migrate to the unchanged combat-panel theme.');
+  for (const combatPanel of [
+    { enabled: 'true', color: '#101010', opacity: .92, blur: 12 },
+    { enabled: true, color: 'red', opacity: .92, blur: 12 },
+    { enabled: true, color: '#101010', opacity: 1.01, blur: 12 },
+    { enabled: true, color: '#101010', opacity: .92, blur: 31 },
+    { enabled: true, color: '#101010', opacity: .92 },
+  ]) assert.throws(() => validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel }), /combat panel|Colors|between/);
+
   userData = process.env.FABLES_TEST_PROFILE_DIR || await mkdtemp(path.join(os.tmpdir(), 'fables-appearance-test-'));
   app.setPath('userData', userData);
   await app.whenReady();
@@ -146,6 +160,28 @@ async function save(settings, window) {
   settingsWindow.hide();
   await until(settingsWindow.webContents, "!document.querySelector('#apply').disabled");
   const settingsContents = settingsWindow.webContents;
+  assert.equal(await settingsContents.executeJavaScript("document.querySelector('[data-panel=\"combat-panel\"]').textContent.trim()"), 'Combat panel / Панель боя');
+  assert.deepEqual(await settingsContents.executeJavaScript(`({
+    enabled:document.querySelector('#combat-panel-enabled').checked,
+    color:document.querySelector('#combat-panel-color').value,
+    opacity:document.querySelector('#combat-panel-opacity').value,
+    blur:document.querySelector('#combat-panel-blur').value,
+    controlsDisabled:document.querySelector('#combat-panel-color').disabled && document.querySelector('#combat-panel-opacity').disabled && document.querySelector('#combat-panel-blur').disabled
+  })`), { enabled: false, color: '#101010', opacity: '92', blur: '12', controlsDisabled: true });
+  await settingsContents.executeJavaScript(`document.querySelector('[data-panel="combat-panel"]').click();
+    document.querySelector('#combat-panel-enabled').checked=true;
+    document.querySelector('#combat-panel-enabled').dispatchEvent(new Event('change',{bubbles:true}));
+    document.querySelector('#combat-panel-color').value='#234567';
+    document.querySelector('#combat-panel-opacity').value='0';
+    document.querySelector('#combat-panel-blur').value='30';
+    document.querySelector('#appearance-form').requestSubmit()`);
+  await until(settingsContents, "!document.querySelector('#apply').disabled");
+  assert.deepEqual(await settingsContents.executeJavaScript('window.appearance.get().then(s=>s.combatPanel)'),
+    { enabled: true, color: '#234567', opacity: 0, blur: 30 }, 'The Appearance controls persist the independent combat-panel settings.');
+  assert.deepEqual(JSON.parse(await readFile(path.join(userData, 'appearance.json'), 'utf8')).combatPanel,
+    { enabled: true, color: '#234567', opacity: 0, blur: 30 }, 'The selected combat-panel settings reach disk.');
+  await save({ ...DEFAULT_APPEARANCE }, settingsWindow);
+  await until(settingsContents, "!document.querySelector('#apply').disabled");
   await save({ preset: 'amoled', customColor: '#161616' }, settingsWindow);
   const amoled = await colors(website.webContents);
   assert.equal(amoled.background, 'rgb(0, 0, 0)');
@@ -350,12 +386,13 @@ async function save(settings, window) {
   const selectedTheme = await settingsContents.executeJavaScript(`window.appearance.previewTheme('builtin-forest', ${JSON.stringify({...chatSettings,messageCommands:true})})`);
   assert.equal(selectedTheme.customColor, '#0b1712'); assert.equal(selectedTheme.messageCommands, true);
   assert.equal(selectedTheme.backgroundImage, imported.id);
-  const themed = {...selectedTheme,input:{...selectedTheme.input,style:{...selectedTheme.input.style,color:'#273a52'}}};
+  const themed = {...selectedTheme,combatPanel:{enabled:true,color:'#345678',opacity:.35,blur:7},input:{...selectedTheme.input,style:{...selectedTheme.input.style,color:'#273a52'}}};
   const savedThemes = await settingsContents.executeJavaScript(`window.appearance.saveTheme('My forest', ${JSON.stringify(themed)})`);
   const named = savedThemes.find(theme => theme.name === 'My forest'); assert(named?.saved);
   assert.equal(JSON.parse(await readFile(path.join(userData,'themes.json'),'utf8'))[0].appearance.input.style.color, '#273a52');
   const restoredTheme = await settingsContents.executeJavaScript(`window.appearance.previewTheme(${JSON.stringify(named.id)}, ${JSON.stringify(chatSettings)})`);
   assert.equal(restoredTheme.input.style.color,'#273a52');
+  assert.deepEqual(restoredTheme.combatPanel,{enabled:true,color:'#345678',opacity:.35,blur:7},'Saved themes carry combat-panel appearance settings.');
   assert.equal(restoredTheme.messages.player.color,'#183c2b');
   await assert.rejects(settingsContents.executeJavaScript(`window.appearance.saveTheme('', ${JSON.stringify(chatSettings)})`), /theme name/);
   await assert.rejects(settingsContents.executeJavaScript(`window.appearance.previewTheme('../../private', ${JSON.stringify(chatSettings)})`), /library/);
