@@ -16,7 +16,7 @@ import { AppearanceDock } from '../shell/appearance-dock';
 import { configureFullscreenShortcuts } from '../shell/window-shortcuts';
 import { configureCampaignMap } from '../map/campaign-map';
 import { configureCombatPanel } from '../combat/combat-panel';
-import { combatPanelCss } from '../combat/combat-panel-style';
+import { combatPanelCss, combatPanelAppearanceCss } from '../combat/combat-panel-style';
 import { configureMessageCommands, formatMessageCommand } from '../commands/message-commands';
 import { DEFAULT_HOST_INSTRUCTIONS, instructionDocument } from '../commands/host-instructions-core';
 import type { HostInstructions } from '../commands/host-instructions-core';
@@ -427,7 +427,7 @@ export class AppearanceManager {
       // No IPC bridge or Node access is added to the remote website.
       await contents.executeJavaScript(`(${configureChatAppearance.toString()})(${JSON.stringify(settings)})`);
       if (contents.isDestroyed() || document !== website.document) return;
-      await contents.executeJavaScript(`(${configureCombatPanel.toString()})(true,${JSON.stringify(this.locale)},${JSON.stringify(combatPanelCss)})`);
+      await contents.executeJavaScript(`(${configureCombatPanel.toString()})(true,${JSON.stringify(this.locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(this.settings.combatPanel))})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureCampaignMap.toString()})(${settings.resizableMap},${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
