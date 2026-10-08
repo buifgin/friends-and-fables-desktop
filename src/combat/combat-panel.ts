@@ -18,6 +18,12 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     button.type = 'button'; button.setAttribute('data-ff-combat-mode', name);
     button.addEventListener('click', () => { if (otherLayer()) return; if (picker && mode === name) return; if (picker) close(); requested = name; schedule(); }); tools.append(button);
   }
+  const toolbarClose = document.createElement('button'); toolbarClose.type = 'button';
+  toolbarClose.setAttribute('data-ff-combat-toolbar-close', ''); toolbarClose.setAttribute('data-ff-combat-close', '');
+  toolbarClose.setAttribute('data-ff-translation-ignore', 'true');
+  toolbarClose.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+  toolbarClose.addEventListener('click', () => { if (!otherLayer() && picker) close(); });
+  tools.append(toolbarClose);
   document.body.append(tools);
   // Snapshots describe the native modal state, not the pre-modal state. Restore
   // them before native closing so Radix can then perform its own cleanup.
@@ -91,6 +97,8 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   function labels(): void {
     launcher.setAttribute('aria-label', language === 'ru' ? 'Действия в бою' : 'Combat actions');
     launcher.title = launcher.getAttribute('aria-label')!;
+    toolbarClose.setAttribute('aria-label', language === 'ru' ? 'Закрыть панель действий' : 'Close combat actions panel');
+    toolbarClose.title = toolbarClose.getAttribute('aria-label')!;
     actionsTab.textContent = language === 'ru' ? 'Действия' : 'Actions'; skillsTab.textContent = language === 'ru' ? 'Навыки / проверки' : 'Skills / checks';
   }
   function active(root: HTMLElement): boolean {
