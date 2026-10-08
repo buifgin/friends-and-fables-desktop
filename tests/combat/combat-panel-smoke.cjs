@@ -147,8 +147,17 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await configure(true,'ru',{enabled:true,color:'#336699',opacity:0,blur:7});
  assert.equal(await js('document.querySelector("form")===originalForm'),identityBeforeAppearance,'Appearance reinjection preserves the native form identity.');
  assert.match(await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]')).backgroundColor"),/(?:,\s*0\)|\/\s*0\))$/,'Opacity zero makes the panel fill transparent.');
+ assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]')).backdropFilter"),'none','Docked panel must not create a fixed-descendant containing block.');
  assert.match(await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]'),'::before').backdropFilter"),/blur\(7px\)/);
  assert.equal(await js("document.querySelector('input').value"),'custom draft');
+ const transparentAppearanceClose=await closeHeadingGeometry('Выберите действие, чтобы выполнить проверку',308);
+ assert.equal(transparentAppearanceClose.scrolled.closeHit,true,`Transparent custom appearance must preserve close hit after scroll: ${JSON.stringify(transparentAppearanceClose)}`);
+ await configure(true,'ru',{enabled:true,color:'#336699',opacity:1,blur:7});
+ assert.match(await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]')).backgroundColor"),/rgb\(51, 102, 153\)/,'Opacity one fills the panel without changing its close geometry.');
+ assert.match(await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]'),'::before').backdropFilter"),/blur\(7px\)/);
+ const opaqueAppearanceClose=await closeHeadingGeometry('Выберите действие, чтобы выполнить проверку',390);
+ assert.equal(opaqueAppearanceClose.scrolled.closeHit,true,`Opaque custom appearance must preserve close hit after scroll: ${JSON.stringify(opaqueAppearanceClose)}`);
+ await js("document.documentElement.style.removeProperty('--ff-combat-width');document.querySelector('[data-ff-combat-docked] #close-scroll-spacer')?.remove();document.querySelector('[data-ff-combat-heading]').textContent='Choose Action';document.querySelector('[data-ff-combat-docked]').scrollTop=0");
  const panelBounds=()=>js("(()=>{const b=document.querySelector('[data-ff-combat-docked]').getBoundingClientRect();return {x:b.x,y:b.y,width:b.width,height:b.height}})()");
  const beforeNested=await panelBounds();
  const chatBeforeNested=await js("document.getElementById('chat').getBoundingClientRect().width");
