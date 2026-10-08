@@ -233,7 +233,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       // button. Match its rendered label, not that non-rendered metadata.
       const detail = buttons.some(button => button.querySelector('.lucide-chevron-left') && /^(List|Список)$/i.test(button.innerText.trim()))
         && buttons.some(button => /^(Roll|Бросок)$/i.test(button.innerText.trim()))
-        && !!dialog.querySelector('[role="combobox"]') && !!dialog.querySelector('svg#d20')
+        && !!dialog.querySelector('[role="combobox"]') && !!dialog.querySelector('svg:is(#d4,#d6,#d8,#d10,#d12,#d20,#d100)')
         && Array.from(dialog.querySelectorAll('div.text-center.absolute')).some(title => /^(Roll|Бросок)\s+\S/i.test(title.textContent?.trim() ?? ''));
       return list || detail;
     }) : undefined;
@@ -251,7 +251,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   function nativeIntent(event: MouseEvent): void {
     if (!(event.target instanceof Node)) return;
     const clicked = event.target instanceof Element ? event.target.closest('button') : null;
-    if (clicked && picker?.contains(clicked) && mode === 'skills' && clicked.querySelector('svg#d20') && /^(Roll|Бросок)$/i.test(clicked.innerText.trim())) { pending = true; attempted = true; }
+    if (clicked && picker?.contains(clicked) && mode === 'skills' && clicked.querySelector('svg:is(#d4,#d6,#d8,#d10,#d12,#d20,#d100)') && /^(Roll|Бросок)$/i.test(clicked.innerText.trim())) { pending = true; attempted = true; }
     if (picker?.querySelector('button:has(.lucide-x)')?.contains(event.target) && !otherLayer()) pending = false;
     const next = dice?.contains(event.target) ? 'skills' : action?.contains(event.target) ? 'actions' : null;
     if (!next || otherLayer()) return;
