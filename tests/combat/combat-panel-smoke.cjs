@@ -5,18 +5,23 @@ const { app, BrowserWindow, session } = require('electron');
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { configureCombatPanel } = require(path.join(root, 'dist/combat/combat-panel'));
 const { combatPanelCss, combatPanelAppearanceCss } = require(path.join(root, 'dist/combat/combat-panel-style'));
-assert.equal(combatPanelAppearanceCss({ enabled: false, color: '#101010', opacity: .92, blur: 12 }), '', 'Disabled appearance preserves the existing theme fill.');
+const { DEFAULT_APPEARANCE, themeCss } = require(path.join(root, 'dist/appearance/themes'));
+const { chatCss } = require(path.join(root, 'dist/appearance/chat-appearance'));
+const sharedAppearance=structuredClone(DEFAULT_APPEARANCE);
+sharedAppearance.preset='black';sharedAppearance.dice.enabled=true;
+sharedAppearance.dice.style.border={enabled:true,color:'#ff0000',width:4,radius:18,variant:'ornate'};
+assert.match(combatPanelAppearanceCss({ enabled: false, color: '#101010', opacity: .92, blur: 12 }), /var\(--card/, 'Default appearance inherits the theme even without an image.');
 const transparentAppearance = combatPanelAppearanceCss({ enabled: true, color: '#336699', opacity: 0, blur: 7 });
 assert.match(transparentAppearance, /#336699 0%/);
 assert.match(transparentAppearance, /blur\(7px\)/);
 assert.match(transparentAppearance, /\[data-ff-combat-docked\]/);
-assert.doesNotMatch(transparentAppearance, /(?:^|[;{\s])opacity\s*:/, 'Appearance must not fade text or controls.');
+assert.doesNotMatch(transparentAppearance.split('::before')[0], /(?:^|[;{\s])opacity\s*:/, 'Appearance must not fade text or controls.');
 assert.doesNotMatch(transparentAppearance, /body|\.overlay|#chat|canvas/i, 'Appearance must stay scoped to combat surfaces.');
 let window;
 const timer = setTimeout(() => { console.error('Combat fixture timed out'); app.exit(1); }, 30000);
 app.on('window-all-closed', () => {});
 const html = `<!doctype html><meta charset="utf-8"><style>
-body{margin:0}#sidebar{position:fixed;z-index:2;left:0;top:60px;width:60px;height:calc(100vh - 60px);box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column;justify-content:space-between;padding:16px 4px 8px}.flex.flex-col.gap-4.items-center.relative.z-10{display:flex;flex-direction:column;gap:16px;align-items:center;position:relative;z-index:10}.native-side-btn{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;border:0;border-radius:6px;background:transparent;color:#777}.native-side-btn svg{width:20px;height:20px}.sidebar-profile{display:flex;justify-content:center;height:40px;margin-top:24px}.absolute{position:absolute}.sidebar-expand{right:0;top:50%;width:40px;height:40px;z-index:20}.sidebar-background{position:absolute;inset:0;z-index:0}#campaign{display:flex;margin-left:76px;height:650px}#chat{width:750px}#map{margin-left:20px;width:240px;height:240px}canvas{width:240px;height:240px}.fixed{position:fixed}.inset-0{inset:0}.z-50{z-index:50}.overlay{background:#0008}.native{top:60px;left:200px;width:650px;min-height:300px;background:white;z-index:50;pointer-events:auto}.native-close{position:absolute;top:8px;right:8px;width:32px;height:32px}[class~="md:min-w-[980px]"]{min-width:980px;min-height:600px;max-height:600px;overflow-y:auto;padding-block:1rem}
+body{margin:0}.hidden{display:none}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}button.group{display:flex;flex-direction:row;align-items:center;padding:24px;gap:16px;height:120px;background:#334155}button.group svg{width:64px;height:64px}#sidebar{position:fixed;z-index:2;left:0;top:60px;width:60px;height:calc(100vh - 60px);box-sizing:border-box;overflow-y:auto;display:flex;flex-direction:column;justify-content:space-between;padding:16px 4px 8px}.flex.flex-col.gap-4.items-center.relative.z-10{display:flex;flex-direction:column;gap:16px;align-items:center;position:relative;z-index:10}.native-side-btn{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;padding:0;border:0;border-radius:6px;background:transparent;color:#777}.native-side-btn svg{width:20px;height:20px}.sidebar-profile{display:flex;justify-content:center;height:40px;margin-top:24px}.absolute{position:absolute}.sidebar-expand{right:0;top:50%;width:40px;height:40px;z-index:20}.sidebar-background{position:absolute;inset:0;z-index:0}#campaign{display:flex;margin-left:76px;height:650px}#chat{width:750px}#map{margin-left:20px;width:240px;height:240px}canvas{width:240px;height:240px}.fixed{position:fixed}.inset-0{inset:0}.z-50{z-index:50}.overlay{background:#0008}.native{top:60px;left:200px;width:650px;min-height:300px;background:white;z-index:50;pointer-events:auto}.native-close{position:absolute;top:8px;right:8px;width:32px;height:32px}[class~="md:min-w-[980px]"]{min-width:980px;min-height:600px;max-height:600px;overflow-y:auto;padding-block:1rem}
 </style><aside id="sidebar"><div class="sidebar-background"></div><div id="native-nav" class="flex flex-col gap-4 items-center relative z-10"><button id="native-play" class="native-side-btn"><svg class="lucide-messages-square"></svg></button><button id="native-sheet" class="native-side-btn"><svg class="lucide-user-pen"></svg></button><button id="native-group" class="native-side-btn"><svg class="lucide-users"></svg></button><button id="native-quests" class="native-side-btn"><svg class="lucide-book-open"></svg></button><button id="native-world" class="native-side-btn"><svg class="lucide-globe"></svg></button><button id="native-memory" class="native-side-btn"><svg class="lucide-brain"></svg></button><button id="native-settings" class="native-side-btn"><svg class="lucide-settings"></svg></button></div><div class="sidebar-profile">Profile</div><div class="absolute sidebar-expand"><button id="sidebar-expand-button" class="native-side-btn"><svg class="lucide-chevron-right"></svg>Expand</button></div></aside><div id="campaign"><div id="chat" class="flex-1 h-full w-full"><div id="events-list"></div><div id="composer"><div class="tiptap" contenteditable="true">preserved draft</div><button aria-label="Roll dice"><svg class="lucide-dice-3"></svg></button><button id="actions"><svg class="lucide-swords"></svg></button></div></div><div id="map"><canvas class="touch-none" tabindex="0"></canvas></div></div>
 <script>
 window.backgroundWheels=0;window.opens=0;window.skillSelections=0;window.rememberedSkill=false;window.submits=0;window.mapClicks=0;window.reactFocus=0;window.encounter=true;window.settingsClicks=0;window.sidebarExpandClicks=0;window.originalSettings=document.getElementById('native-settings');window.originalSettings.addEventListener('click',()=>window.settingsClicks++);window.originalSidebarExpand=document.getElementById('sidebar-expand-button');window.originalSidebarExpand.addEventListener('click',()=>window.sidebarExpandClicks++);
@@ -28,13 +33,12 @@ campaign.addEventListener('focusin',()=>window.reactFocus++);canvas.addEventList
 window.nativeClose=()=>{};
 window.openNative=(diceMode=false)=>{
  window.opens++; const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50 overlay';overlay.dataset.state='open';
- const dialog=document.createElement('div');dialog.className='fixed native';dialog.setAttribute('role','dialog');dialog.dataset.state='open';dialog.tabIndex=-1;
- dialog.innerHTML='<h2>Choose Action</h2><div role="tablist"><button role="tab">Weapons</button><button role="tab">Spells</button><button role="tab">Custom</button></div><div class="md:min-w-[980px] md:min-h-[600px] md:max-h-[600px] overflow-y-auto py-4"><form><input name="description" value="custom draft"><button type="submit">Attack</button></form></div><button id="nested">Ability selector</button><button id="x" class="native-close"><svg class="lucide-x"></svg>Close</button>';
+ const dialog=document.createElement('div');dialog.className='fixed native bg-card';dialog.setAttribute('role','dialog');dialog.dataset.state='open';dialog.tabIndex=-1;
+ dialog.innerHTML='<h2>Choose Action</h2><div role="tablist"><button role="tab">Weapons</button><button role="tab">Spells</button><button role="tab">Custom</button></div><div class="md:min-w-[980px] md:min-h-[600px] md:max-h-[600px] overflow-y-auto py-4 bg-slate-800"><form><input name="description" value="custom draft"><button type="submit">Attack</button></form></div><button id="nested">Ability selector</button><button id="x" class="native-close"><svg class="lucide-x"></svg>Close</button>';
  if(diceMode){
- dialog.querySelector('h2').textContent='Title';const skills=document.createElement('section');dialog.append(skills);
- const detail=()=>{dialog.setAttribute('data-ff-desktop-message','roll-menu');skills.innerHTML='<button type="button"><svg class="lucide-chevron-left"></svg>List</button><div class="text-center absolute left-1/2">Roll Acrobatics Check</div><button type="button" role="combobox">Normal</button>';dialog.querySelector('button[type=submit]').onclick=e=>{e.preventDefault();dialog.querySelector('form').requestSubmit()};dialog.querySelector('button[type=submit]').innerHTML='<svg id="d20" data-ff-desktop-die="d20" width="20" height="20"><title>D20</title><defs><style>.native-die-art{fill:none;stroke:currentColor}</style></defs><path class="native-die-art" d="M2 2h16v16H2z"/></svg><span>Бросок</span>'};
- if(window.rememberedSkill)detail();
- else {skills.innerHTML='<h3>Ability checks</h3><h3>Skills</h3><button id="acrobatics">Acrobatics Check</button><button id="native-save">Dexterity Save</button><button id="native-custom">Custom Dice</button><button id="native-attack">Атака в ближнем бою</button><button id="native-spell">Атака заклинанием</button>';skills.querySelector('#acrobatics').onclick=()=>{window.skillSelections++;window.rememberedSkill=true;detail()}}
+ dialog.querySelector('h2').textContent='Title';dialog.querySelector('h2').className='hidden';const skills=document.createElement('section');skills.className='relative bg-background';dialog.append(skills);
+ let list;const detail=()=>{dialog.setAttribute('data-ff-desktop-message','roll-menu');skills.innerHTML='<button id="native-back" type="button"><svg class="lucide-chevron-left"></svg>List</button><div class="text-center absolute left-1/2">Roll Acrobatics Check</div><button type="button" role="combobox">Normal</button>';skills.querySelector('#native-back').onclick=()=>{window.rememberedSkill=false;list()};dialog.querySelector('button[type=submit]').onclick=e=>{e.preventDefault();dialog.querySelector('form').requestSubmit()};dialog.querySelector('button[type=submit]').innerHTML='<svg id="d20" data-ff-desktop-die="d20" width="20" height="20"><title>D20</title><defs><style>.native-die-art{fill:none;stroke:currentColor}</style></defs><path class="native-die-art" d="M2 2h16v16H2z"/></svg><span>Бросок</span>'};
+ {list=()=>{dialog.removeAttribute('data-ff-desktop-message');skills.innerHTML='<h3>Ability checks</h3><h3>Skills</h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"><button id="acrobatics" class="group bg-[#2a2f34]"><div class="bg-[#1a1f2e]"><svg class="lucide lucide-person-standing"></svg></div><span>Acrobatics Check</span></button></div><button id="native-save">Dexterity Save</button><button id="native-custom">Custom Dice</button><button id="native-attack">Атака в ближнем бою</button><button id="native-spell">Атака заклинанием</button>';skills.querySelector('#acrobatics').onclick=()=>{window.skillSelections++;window.rememberedSkill=true;detail()}};if(window.rememberedSkill)detail();else list()}
  }
  document.body.append(overlay,dialog);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');
  window.originalForm=dialog.querySelector('form');originalForm.onsubmit=e=>{e.preventDefault();window.submits++;if(window.asyncSubmit){close();window.submitPhase='pending';setTimeout(()=>{if(window.resultAsChat){document.getElementById('events-list').append(document.createTextNode('Native roll result appended to story'));window.submitPhase='complete';return}window.submitPhase='result';const result=document.createElement('div');result.id='native-result';result.setAttribute('role','dialog');result.innerHTML='<h2>Native roll result</h2><button id="result-close">Continue</button>';result.style.cssText='position:fixed;inset:100px;z-index:100;pointer-events:auto;background:white';document.body.append(result);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');result.querySelector('button').onclick=()=>{result.remove();document.body.style.cssText='';campaign.removeAttribute('aria-hidden');window.submitPhase='complete'}},100)}};
@@ -62,15 +66,36 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  window=new BrowserWindow({show:false,width:1280,height:850,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
  const js=source=>window.webContents.executeJavaScript(source);
  const until=async expression=>{for(let n=0;n<100;n++){if(await js(expression))return;await new Promise(resolve=>setTimeout(resolve,20));}throw Error('Timed out: '+expression)};
- const configure=(enabled=true,locale='en',appearance={enabled:false,color:'#101010',opacity:92,blur:12})=>js(`(${configureCombatPanel.toString()})(${enabled},${JSON.stringify(locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(appearance))})`);
+ const configure=(enabled=true,locale='en',appearance={enabled:false,color:'#101010',opacity:.92,blur:12},ambient)=>js(`(${configureCombatPanel.toString()})(${enabled},${JSON.stringify(locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(appearance,ambient))})`);
  await window.loadURL('https://play.fables.gg/fixture/play');
  // Focus assertions require a visible renderer. showInactive keeps placement
  // silent; the coordinator's scoped native guard owns desktop focus policy.
  window.showInactive();window.webContents.focus();
  console.log('Combat focus readiness', await js('({visibility:document.visibilityState,focused:document.hasFocus(),active:document.activeElement?.tagName,width:innerWidth,height:innerHeight})'));
  await until("document.visibilityState==='visible' && document.hasFocus()");
+ await js(`(()=>{const style=document.createElement('style');style.textContent=${JSON.stringify(themeCss(sharedAppearance)+chatCss(sharedAppearance,null))};document.head.append(style)})()`);
  await configure();
  await until("!!document.querySelector('[data-ff-combat-docked]')");
+ const inheritedImage='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=';
+ const ambient={image:inheritedImage,fit:'contain',effects:{blur:3,opacity:.6,overlayColor:'#224466',overlayOpacity:.25}};
+ const verifySurface=async(state)=>{
+   const identity=await js('document.querySelector("form")===originalForm');
+   for(const [appearance,background] of [[{enabled:false,color:'#101010',opacity:.92,blur:12},ambient],[{enabled:false,color:'#101010',opacity:.92,blur:12},{...ambient,image:null}],[{enabled:true,color:'#336699',opacity:0,blur:7},ambient],[{enabled:true,color:'#336699',opacity:1,blur:7},ambient]]){
+     await configure(true,'en',appearance,background);
+     const styles=await js(`(()=>{const panel=document.querySelector('[data-ff-combat-docked]'),style=getComputedStyle(panel),before=getComputedStyle(panel,'::before'),after=getComputedStyle(panel,'::after'),wrapper=panel.querySelector('[class*="md:min-w-"]'),canvas=document.createElement('canvas');canvas.width=canvas.height=1;const ctx=canvas.getContext('2d');ctx.fillStyle=style.backgroundColor;ctx.fillRect(0,0,1,1);return {fill:Array.from(ctx.getImageData(0,0,1,1).data),opacity:style.opacity,transform:style.transform,filter:style.backdropFilter,border:style.borderRightWidth,radius:style.borderRadius,image:before.backgroundImage,fit:before.backgroundSize,imageBlur:before.filter,imageOpacity:before.opacity,blur:before.backdropFilter,overlay:after.backgroundColor,afterContent:after.content,wrapper:getComputedStyle(wrapper).backgroundColor,inputOpacity:getComputedStyle(panel.querySelector('input')).opacity}})()`);
+     assert.equal(styles.opacity,'1',state+' content remains opaque');
+     assert.equal(styles.inputOpacity,'1',state+' input remains opaque');
+     assert.equal(styles.transform,'none');assert.equal(styles.filter,'none');
+     assert.equal(styles.border,'1px');assert.equal(styles.radius,'0px');
+     assert.equal(styles.wrapper,'rgba(0, 0, 0, 0)',state+' native opaque wrapper no longer masks the surface');
+     assert.equal(await js('document.querySelector("form")===originalForm'),identity,state+' appearance preserves native form');
+     if(appearance.enabled){assert.equal(styles.fill[3],appearance.opacity===0?0:255);assert.equal(styles.image,'none');assert.match(styles.blur,/blur\(7px\)/)}
+     else if(background.image){assert.ok(styles.image.includes(inheritedImage));assert.equal(styles.fit,'contain');assert.equal(styles.imageBlur,'blur(3px)');assert.equal(styles.imageOpacity,'0.6');assert.notEqual(styles.afterContent,'none');assert.notEqual(styles.overlay,'rgba(0, 0, 0, 0)')}
+     else {assert.equal(styles.image,'none');assert.ok(styles.fill[3]>220);assert.equal(styles.blur,'blur(12px)')}
+   }
+   await configure();
+ };
+ await verifySurface('actions');
  assert.equal(await js("document.querySelectorAll('[data-ff-combat-controls] button').length"),2);
  assert.equal(await js("document.querySelector('[data-ff-combat-mode=skills]').getAttribute('aria-label')"),'Dice');
  assert.equal(await js("document.querySelector('[data-ff-combat-mode=actions]').disabled"),false);
@@ -129,6 +154,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("getComputedStyle(document.querySelector('.overlay')).display"),'none');
  assert.equal(await js("document.querySelector('form')===originalForm && document.querySelector('canvas')===originalCanvas && document.querySelector('.tiptap')===originalEditor"),true);
  const closeHeadingGeometry=async(title,width)=>js(`(()=>{const panel=document.querySelector('[data-ff-combat-docked]'),heading=panel.querySelector('[data-ff-combat-heading]'),close=panel.querySelector('[data-ff-combat-close]');document.documentElement.style.setProperty('--ff-combat-width','${width}px');heading.textContent=${JSON.stringify(title)};let spacer=panel.querySelector('#close-scroll-spacer');if(!spacer){spacer=document.createElement('div');spacer.id='close-scroll-spacer';spacer.style.height='1000px';close.before(spacer)}const measure=()=>{const p=panel.getBoundingClientRect(),c=close.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(heading);const text=Array.from(range.getClientRects()).map(r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom}));const x=Math.round(c.left+c.width/2),y=Math.round(c.top+c.height/2);return {panel:{left:p.left,right:p.right,top:p.top,bottom:p.bottom},heading:text,close:{left:c.left,right:c.right,top:c.top,bottom:c.bottom,width:c.width,height:c.height},closeHit:close.contains(document.elementFromPoint(x,y)),closeIdentity:close===originalNativeX,closeWithinPanel:c.left>=p.left&&c.right<=p.right&&c.top>=p.top&&c.bottom<=p.bottom,textOverlapsClose:text.some(r=>r.right>c.left&&r.left<c.right&&r.bottom>c.top&&r.top<c.bottom)}};panel.scrollTop=0;const initial=measure();panel.scrollTop=160;return {initial,scrolled:measure(),scrollTop:panel.scrollTop}})()`);
+ await js("document.querySelector('[data-ff-combat-docked]').style.setProperty('height','300px','important');document.querySelector('[data-ff-combat-docked]').style.setProperty('min-height','0','important')");
  for (const [title,width] of [['Choose Action',390],['Выберите действие, чтобы выполнить проверку',390],['Выберите действие, чтобы выполнить проверку',308]]) {
    const geometry=await closeHeadingGeometry(title,width);
    assert.ok(geometry.scrollTop>0,`Close-button scroll case must actually scroll: ${JSON.stringify(geometry)}`);
@@ -140,7 +166,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
      assert.equal(position.textOverlapsClose,false,`Native title text must not overlap the close target ${state} for ${width}px ${title}: ${JSON.stringify(geometry)}`);
    }
  }
- await js("document.documentElement.style.removeProperty('--ff-combat-width');document.querySelector('[data-ff-combat-docked]').querySelector('#close-scroll-spacer')?.remove();document.querySelector('[data-ff-combat-heading]').textContent='Choose Action';document.querySelector('[data-ff-combat-docked]').scrollTop=0");
+ await js("document.querySelector('[data-ff-combat-docked]').style.removeProperty('height');document.querySelector('[data-ff-combat-docked]').style.removeProperty('min-height');document.documentElement.style.removeProperty('--ff-combat-width');document.querySelector('[data-ff-combat-docked]').querySelector('#close-scroll-spacer')?.remove();document.querySelector('[data-ff-combat-heading]').textContent='Choose Action';document.querySelector('[data-ff-combat-docked]').scrollTop=0");
  const nativeFormGeometry=await js("(()=>{const panel=document.querySelector('[data-ff-combat-docked]').getBoundingClientRect(),wrapper=document.querySelector('[class~=\"md:min-w-[980px]\"]').getBoundingClientRect(),form=document.querySelector('form').getBoundingClientRect(),input=document.querySelector('input'),b=input.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+b.height/2);return {panel:{left:panel.left,right:panel.right,width:panel.width},wrapper:{left:wrapper.left,right:wrapper.right,width:wrapper.width},form:{left:form.left,right:form.right,width:form.width},input:{left:b.left,right:b.right,width:b.width},wrapperWithin:wrapper.left>=panel.left&&wrapper.right<=panel.right,formWithin:form.left>=panel.left&&form.right<=panel.right,inputWithin:b.left>=panel.left&&b.right<=panel.right,inputHit:document.elementFromPoint(x,y)===input}})()");
  assert.equal(nativeFormGeometry.wrapperWithin,true,`Native 980px child must fit inside the dock: ${JSON.stringify(nativeFormGeometry)}`);
  assert.equal(nativeFormGeometry.formWithin,true,`Native form must fit inside the dock: ${JSON.stringify(nativeFormGeometry)}`);
@@ -197,8 +223,28 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.querySelector('input').value"),'custom draft');
  await js("document.querySelector('[data-ff-combat-mode=skills]').click()");await until("!!document.querySelector('#acrobatics') && !!document.querySelector('[data-ff-combat-docked]')");
  assert.equal(await js('submits'),1,'Switching to native skills never rolls.');
+ await verifySurface('checks');
+ for(const width of [308,390]){
+   await js(`document.documentElement.style.setProperty('--ff-combat-width','${width}px');document.querySelector('#acrobatics span').textContent='Проверка ловкости: Акробатика и сохранение равновесия';document.querySelector('[data-ff-combat-docked]').style.setProperty('height','300px','important')`);
+   const tile=await js("(()=>{const panel=document.querySelector('[data-ff-combat-docked]'),button=document.querySelector('#acrobatics'),label=button.querySelector('span'),icon=button.querySelector('svg'),b=button.getBoundingClientRect(),r=document.createRange();r.selectNodeContents(label);return {overflow:panel.scrollWidth>panel.clientWidth,height:b.height,scrollHeight:button.scrollHeight,clientHeight:button.clientHeight,icon:getComputedStyle(icon).width,textWithin:Array.from(r.getClientRects()).every(rect=>rect.left>=b.left&&rect.right<=b.right&&rect.top>=b.top&&rect.bottom<=b.bottom),background:getComputedStyle(button).backgroundColor}})()");
+   assert.equal(tile.overflow,false,`${width}px checks must not overflow horizontally: ${JSON.stringify(tile)}`);
+   assert.equal(tile.textWithin,true,`${width}px Russian check label must wrap inside tile: ${JSON.stringify(tile)}`);
+   assert.equal(tile.scrollHeight,tile.clientHeight,'Tile must grow to fit wrapped label');assert.ok(tile.height>=72);assert.equal(tile.icon,'24px');assert.notEqual(tile.background,'rgb(255, 255, 255)');
+ }
+ await js("document.documentElement.style.removeProperty('--ff-combat-width');document.querySelector('[data-ff-combat-docked]').style.removeProperty('height')");
+
  await js("document.getElementById('acrobatics').click()");await until("!document.querySelector('#acrobatics')");
- assert.equal(await js('skillSelections'),1);await configure(true,'en');
+ assert.equal(await js('skillSelections'),1);
+ await verifySurface('detail with SVG');
+ const detailHeader=await js("(()=>{const back=document.querySelector('#native-back'),combo=document.querySelector('[role=combobox]'),b=back.getBoundingClientRect(),c=combo.getBoundingClientRect();return {backHit:back.contains(document.elementFromPoint(b.left+b.width/2,b.top+b.height/2)),sameRow:Math.abs(b.top+b.height/2-c.top-c.height/2)<1,backHeight:b.height}})()");
+ assert.equal(detailHeader.backHit,true,'Native back stays the real hit target');assert.equal(detailHeader.sameRow,true,'Back and roll mode align in the shared detail header');assert.ok(detailHeader.backHeight>=32);
+
+ await configure(true,'en',{enabled:false,color:'#101010',opacity:.92,blur:12},ambient);
+ await js("document.querySelector('#native-back').click()");await until("!!document.querySelector('#acrobatics')");
+ assert.ok((await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]'),'::before').backgroundImage")).includes(inheritedImage),'Back to checks preserves inherited background');
+ await js("document.querySelector('#acrobatics').click()");await until("!!document.querySelector('#d20')");
+ assert.equal(await js('skillSelections'),2,'Back uses the native selection handler');
+ await configure(true,'en');
  assert.equal(await js("!!document.querySelector('[data-ff-combat-docked]')"),true,'Native selected skill detail remains docked on reinjection.');
  await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true);
  await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('h2') && document.querySelector('h2').textContent==='Choose Action' && !!document.querySelector('[data-ff-combat-docked]')");
@@ -209,7 +255,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.querySelector('[data-ff-combat-mode=skills]').getAttribute('aria-pressed')"),'true');
  assert.equal(await js("document.querySelector('button[type=submit]').innerText.trim()"),'Бросок','Native visible Roll label excludes embedded die SVG metadata.');
  assert.equal(await js("/^Бросок$/.test(document.querySelector('button[type=submit]').textContent.trim())"),false,'Regression must include SVG title/style text that broke exact textContent matching.');
- assert.equal(await js('skillSelections'),1,'Reopen preserves native selected skill without another selection.');
+ assert.equal(await js('skillSelections'),2,'Reopen preserves native selected skill without another selection.');
  assert.equal(await js('submits'),1,'Reopened native detail never rolls automatically.');
  await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true,'Chat remains usable with directly reopened skill detail.');
  await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('h2') && document.querySelector('h2').textContent==='Choose Action' && !!document.querySelector('[data-ff-combat-docked]')");
