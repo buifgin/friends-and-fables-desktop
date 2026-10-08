@@ -54,6 +54,8 @@ function selection() {
     backgroundImage, backgroundName, backgroundFit: element('image-fit').value,
     backgroundEffects: { blur: Number(element('image-blur').value), opacity: Number(element('image-opacity').value) / 100,
       overlayColor: element('image-overlay-color').value, overlayOpacity: Number(element('image-overlay-opacity').value) / 100 },
+    combatPanel: { enabled: element('combat-panel-enabled').checked, color: element('combat-panel-color').value,
+      opacity: Number(element('combat-panel-opacity').value) / 100, blur: Number(element('combat-panel-blur').value) },
     input: { enabled: element('input-styles').checked, style: readStyle('input') },
     messages: { enabled: element('message-styles').checked, player: readStyle('player'), gm: readStyle('gm') },
     context: { enabled: element('context-styles').checked, style: readStyle('context'), blocks: readStyle('context-block'), bar: readStyle('context-bar') },
@@ -99,6 +101,11 @@ function showSettings(settings) {
   element('image-opacity').value = settings.backgroundEffects.opacity * 100;
   element('image-overlay-color').value = settings.backgroundEffects.overlayColor;
   element('image-overlay-opacity').value = settings.backgroundEffects.overlayOpacity * 100;
+  const combatPanel = settings.combatPanel ?? { enabled: false, color: '#101010', opacity: .92, blur: 12 };
+  element('combat-panel-enabled').checked = combatPanel.enabled;
+  element('combat-panel-color').value = combatPanel.color;
+  element('combat-panel-opacity').value = combatPanel.opacity * 100;
+  element('combat-panel-blur').value = combatPanel.blur;
   element('message-styles').checked = settings.messages.enabled;
   element('input-styles').checked = settings.input.enabled;
   element('context-styles').checked = settings.context.enabled;
@@ -201,6 +208,11 @@ function updatePreview() {
   colorInput.disabled = hexInput.disabled = busy || settings.preset !== 'custom';
   element('remove-image').disabled = element('image-fit').disabled = busy || !backgroundImage;
   for (const id of ['image-blur','image-opacity','image-overlay-color','image-overlay-opacity']) element(id).disabled = busy || !backgroundImage;
+  const combatPanel = settings.combatPanel;
+  for (const id of ['combat-panel-color','combat-panel-opacity','combat-panel-blur']) element(id).disabled = busy || !combatPanel.enabled;
+  element('combat-panel-enabled').disabled = busy;
+  element('combat-panel-opacity-label').value = `${Math.round(combatPanel.opacity * 100)}%`;
+  element('combat-panel-blur-label').value = `${combatPanel.blur} px`;
   element('image-blur-label').value = `${settings.backgroundEffects.blur} px`;
   element('image-opacity-label').value = `${Math.round(settings.backgroundEffects.opacity * 100)}%`;
   element('image-overlay-opacity-label').value = `${Math.round(settings.backgroundEffects.overlayOpacity * 100)}%`;

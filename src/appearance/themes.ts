@@ -21,7 +21,10 @@ export interface AppearanceSettings {
   nativeWindowsFrame: boolean;
   linuxBlackMenu: boolean;
   linuxFloatingAppearance: boolean;
+  combatPanel: CombatPanelSettings;
 }
+
+export interface CombatPanelSettings { enabled: boolean; color: string; opacity: number; blur: number }
 
 export interface DicePalette { enabled: boolean; faceColor: string; edgeColor: string; numberColor: string }
 
@@ -61,6 +64,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   nativeWindowsFrame: false,
   linuxBlackMenu: true,
   linuxFloatingAppearance: true,
+  combatPanel: { enabled: false, color: '#101010', opacity: .92, blur: 12 },
 };
 
 const PRESETS: ThemePreset[] = ['website', 'amoled', 'black', 'light', 'custom'];
@@ -135,6 +139,12 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   const events = record(input.events ?? DEFAULT_APPEARANCE.events);
   const dice = record(input.dice ?? DEFAULT_APPEARANCE.dice);
   const effects = record(input.backgroundEffects ?? DEFAULT_APPEARANCE.backgroundEffects);
+  // Files written before combat-panel appearance existed inherit the original
+  // native panel surface. A present object must be complete and valid.
+  const combatPanel = input.combatPanel === undefined
+    ? DEFAULT_APPEARANCE.combatPanel
+    : record(input.combatPanel);
+  if (typeof combatPanel.enabled !== 'boolean') throw new Error('Invalid combat panel switch.');
   const linuxBlackMenu = input.linuxBlackMenu ?? true;
   if (typeof linuxBlackMenu !== 'boolean') throw new Error('Invalid menu bar preference.');
   const contextStyle = messageStyle(context.style);
@@ -158,6 +168,8 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     backgroundImage, backgroundName, backgroundFit,
     backgroundEffects: { blur: range(effects.blur, 0, 30), opacity: range(effects.opacity, 0, 1),
       overlayColor: hex(effects.overlayColor), overlayOpacity: range(effects.overlayOpacity, 0, 1) },
+    combatPanel: { enabled: combatPanel.enabled, color: hex(combatPanel.color),
+      opacity: range(combatPanel.opacity, 0, 1), blur: range(combatPanel.blur, 0, 30) },
     input: { enabled: flag(composer.enabled), style: messageStyle(composer.style) },
     messages: { enabled: styles.enabled, player: messageStyle(styles.player), gm: messageStyle(styles.gm) },
     context: { enabled: flag(context.enabled), style: contextStyle,
