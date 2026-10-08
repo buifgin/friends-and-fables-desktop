@@ -1,11 +1,12 @@
 /** Scoped styles for the native battle action slide panel. */
 export const combatPanelCss = `
   :root {
-    --ff-combat-width: min(clamp(320px, 28vw, 390px), calc(100vw - 64px));
-    --ff-combat-tools-height: 76px;
+    --ff-combat-rail-width: 64px;
+    --ff-combat-rail-top: 0px;
+    --ff-combat-width: min(clamp(280px, 28vw, 390px), calc(100vw - var(--ff-combat-rail-width) - 8px));
   }
 
-  [data-ff-combat-launcher],
+  [data-ff-combat-controls],
   [data-ff-combat-panel],
   [data-ff-combat-docked],
   [data-ff-combat-chat] {
@@ -13,41 +14,58 @@ export const combatPanelCss = `
     font: inherit;
   }
 
-  [data-ff-combat-launcher] {
+  [data-ff-combat-controls] {
     position: fixed;
-    z-index: 49;
-    left: 12px;
-    top: 50%;
+    z-index: 52;
+    left: 0;
+    top: calc(var(--ff-combat-rail-top) + (100dvh - var(--ff-combat-rail-top)) / 2);
+    display: flex;
+    width: var(--ff-combat-rail-width);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    transform: translateY(-50%);
+    pointer-events: none;
+  }
+
+  [data-ff-combat-controls][hidden] {
+    display: none !important;
+  }
+
+  [data-ff-combat-controls] [data-ff-combat-mode] {
     display: grid;
+    box-sizing: border-box;
     width: 44px;
+    min-width: 44px;
     height: 44px;
+    min-height: 44px;
+    flex: none;
     place-items: center;
     padding: 0;
     border: 1px solid hsl(var(--border, 0 0% 50%));
     border-radius: 50%;
-    background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 90%, transparent);
+    background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 96%, transparent);
     color: hsl(var(--foreground, 0 0% 96%));
     box-shadow: 0 3px 14px #0005;
-    -webkit-backdrop-filter: blur(8px);
-    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
     cursor: pointer;
-    transform: translateY(-50%);
-    transition: left 220ms ease, background-color 160ms ease, box-shadow 160ms ease;
+    pointer-events: auto;
+    transition: background-color 160ms ease, box-shadow 160ms ease;
   }
 
-  [data-ff-combat-launcher]:hover {
+  [data-ff-combat-controls] [data-ff-combat-mode]:hover:not(:disabled) {
     background: hsl(var(--muted, 0 0% 24%));
     box-shadow: 0 4px 18px #0007;
   }
 
-  [data-ff-combat-launcher]:focus-visible,
-  [data-ff-combat-close]:focus-visible {
+  [data-ff-combat-controls] [data-ff-combat-mode]:focus-visible {
     outline: 2px solid hsl(var(--ring, var(--primary, 0 0% 70%)));
     outline-offset: 3px;
   }
 
-  [data-ff-combat-launcher] svg,
-  [data-ff-combat-close] svg {
+  [data-ff-combat-controls] [data-ff-combat-mode] svg {
     display: block;
     width: 21px;
     height: 21px;
@@ -63,18 +81,18 @@ export const combatPanelCss = `
   [data-ff-combat-docked] {
     position: fixed !important;
     z-index: 49 !important;
-    inset: 0 auto 0 0 !important;
-    top: 0 !important;
-    left: 0 !important;
+    inset: var(--ff-combat-rail-top) auto 0 var(--ff-combat-rail-width) !important;
+    top: var(--ff-combat-rail-top) !important;
+    left: var(--ff-combat-rail-width) !important;
     width: var(--ff-combat-width) !important;
     min-width: 0 !important;
     max-width: var(--ff-combat-width) !important;
-    height: 100vh !important;
-    height: 100dvh !important;
-    max-height: 100vh !important;
-    max-height: 100dvh !important;
+    height: calc(100vh - var(--ff-combat-rail-top)) !important;
+    height: calc(100dvh - var(--ff-combat-rail-top)) !important;
+    max-height: calc(100vh - var(--ff-combat-rail-top)) !important;
+    max-height: calc(100dvh - var(--ff-combat-rail-top)) !important;
     margin: 0 !important;
-    padding: var(--ff-combat-tools-height) 0 0 !important;
+    padding: 0 !important;
     overflow: auto;
     overscroll-behavior: contain;
     border: 0 !important;
@@ -96,70 +114,12 @@ export const combatPanelCss = `
     transform: translateX(0) !important;
   }
 
-  [data-ff-combat-tools]:not([hidden]) {
-    position: fixed;
-    z-index: 51;
-    top: 0;
-    left: 0;
-    display: flex;
-    box-sizing: border-box;
-    width: var(--ff-combat-width);
-    height: var(--ff-combat-tools-height);
-    min-height: var(--ff-combat-tools-height);
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px 10px;
-    border-bottom: 1px solid hsl(var(--border, 0 0% 50%));
-    background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 96%, transparent);
-    color: hsl(var(--foreground, 0 0% 96%));
-    -webkit-backdrop-filter: blur(12px);
-    backdrop-filter: blur(12px);
-  }
-
-  [data-ff-combat-mode] {
-    min-width: 0;
-    min-height: 34px;
-    flex: 1 1 0;
-    padding: 5px 10px;
-    border: 1px solid hsl(var(--border, 0 0% 50%));
-    border-radius: 6px;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    line-height: 1.25;
-    text-align: center;
-    white-space: nowrap;
-    cursor: pointer;
-  }
-
-  [data-ff-combat-mode]:hover:not(:disabled) {
-    background: hsl(var(--muted, 0 0% 24%));
-  }
-
-  [data-ff-combat-mode][aria-pressed="true"] {
+  [data-ff-combat-controls] [data-ff-combat-mode][aria-pressed="true"] {
     border-color: hsl(var(--primary, var(--border, 0 0% 50%)));
     background: hsl(var(--muted, 0 0% 24%));
   }
 
-  [data-ff-combat-mode]:disabled { cursor: not-allowed; opacity: .55; }
-
-  [data-ff-combat-toolbar-close] {
-    display: grid !important;
-    width: 44px !important;
-    min-width: 44px !important;
-    height: 44px !important;
-    flex: 0 0 44px !important;
-    place-items: center !important;
-    padding: 0 !important;
-    border: 1px solid hsl(var(--border, 0 0% 50%)) !important;
-    border-radius: 50% !important;
-    background: transparent !important;
-    color: inherit !important;
-    cursor: pointer;
-  }
-
-  [data-ff-combat-toolbar-close]:hover { background: hsl(var(--muted, 0 0% 24%)) !important; }
+  [data-ff-combat-controls] [data-ff-combat-mode]:disabled { cursor: not-allowed; opacity: .55; }
 
   [data-ff-combat-docked] :is(form, fieldset, [role="tabpanel"]) {
     box-sizing: border-box;
@@ -174,10 +134,12 @@ export const combatPanelCss = `
     max-width: 100% !important;
   }
 
-  [data-ff-combat-docked] :is([role="tablist"], [role="list"]) {
+  [data-ff-combat-docked] [role="tablist"] {
     display: grid !important;
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 6px !important;
+    height: auto !important;
+    min-height: 0 !important;
     width: 100%;
     max-width: 100%;
     min-width: 0;
@@ -186,9 +148,42 @@ export const combatPanelCss = `
   [data-ff-combat-docked] [role="tab"] {
     min-width: 0 !important;
     max-width: 100%;
+    min-height: 44px;
+    height: auto;
     white-space: normal;
     overflow-wrap: anywhere;
     text-align: center;
+  }
+
+  [data-ff-combat-docked] [role="tablist"] [role="tab"] {
+    padding-inline: 4px;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+  }
+
+  [data-ff-combat-docked] form {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  [data-ff-combat-docked] [role="tablist"] + div[class*="max-h-"] {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: 100%;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  [data-ff-combat-docked][data-ff-desktop-action-picker] > div[class*="overflow-y-auto"] {
+    box-sizing: border-box;
+    width: 100%;
+    height: auto !important;
+    min-height: 0;
+    max-height: none;
+    overflow: visible !important;
   }
 
   [data-ff-combat-docked] :is([class*="grid-cols"], [role="tabpanel"] > div) {
@@ -203,6 +198,19 @@ export const combatPanelCss = `
   [data-ff-combat-docked] :is(input, select, textarea, button, [role="combobox"]) {
     max-width: 100%;
     min-width: 0;
+  }
+
+  [data-ff-combat-docked] button {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  [data-ff-combat-docked] button[hidden] {
+    display: none !important;
+  }
+
+  [data-ff-combat-docked] button svg {
+    flex: none;
   }
 
   [data-ff-combat-docked] :is(table, pre) {
@@ -263,7 +271,7 @@ export const combatPanelCss = `
     text-align: center;
   }
 
-  [data-ff-combat-tools]:not([hidden]) [data-ff-combat-mode]:focus-visible {
+  [data-ff-combat-controls] [data-ff-combat-mode]:focus-visible {
     outline: 2px solid hsl(var(--ring, var(--primary, 0 0% 70%)));
     outline-offset: 2px;
   }
@@ -273,20 +281,19 @@ export const combatPanelCss = `
     pointer-events: none;
   }
 
-  html[data-ff-combat-open="true"] [data-ff-combat-launcher] {
-    z-index: 51;
-    left: calc(var(--ff-combat-width) + 12px);
+  html[data-ff-combat-open="true"] [data-ff-combat-chat] {
+    padding-left: calc(var(--ff-combat-rail-width) + var(--ff-combat-width));
+    box-sizing: border-box;
   }
 
-  html[data-ff-combat-open="true"] [data-ff-combat-chat] {
-    padding-left: var(--ff-combat-width);
-    box-sizing: border-box;
+  main:has([data-ff-combat-chat]) {
+    scrollbar-gutter: stable;
   }
 
   [data-ff-combat-heading] {
     position: sticky;
     z-index: 1;
-    top: var(--ff-combat-tools-height);
+    top: 0;
     display: flex;
     min-height: 48px;
     align-items: center;
@@ -331,15 +338,14 @@ export const combatPanelCss = `
   [data-ff-combat-docked] :is(img, svg) { max-width: 100%; }
 
   @media (max-width: 520px) {
-    [data-ff-combat-panel], [data-ff-combat-docked], [data-ff-combat-tools]:not([hidden]) {
+    [data-ff-combat-panel], [data-ff-combat-docked] {
       width: var(--ff-combat-width) !important;
       max-width: var(--ff-combat-width) !important;
     }
-    html[data-ff-combat-open="true"] [data-ff-combat-launcher] { left: calc(var(--ff-combat-width) + 12px); }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    [data-ff-combat-launcher], [data-ff-combat-panel], [data-ff-combat-docked], [data-ff-combat-tools] {
+    [data-ff-combat-controls], [data-ff-combat-mode], [data-ff-combat-panel], [data-ff-combat-docked] {
       scroll-behavior: auto;
       transition-duration: 0.01ms;
     }
@@ -350,7 +356,7 @@ export const combatPanelCss = `
 export function combatPanelAppearanceCss(settings: { enabled: boolean; color: string; opacity: number; blur: number }): string {
   if (!settings.enabled) return '';
   const color = /^#[\da-f]{6}$/i.test(settings.color) ? settings.color : '#101010';
-  const opacity = Number.isFinite(settings.opacity) && settings.opacity >= 0 && settings.opacity <= 100 ? settings.opacity / 100 : 0.92;
+  const opacity = Number.isFinite(settings.opacity) && settings.opacity >= 0 && settings.opacity <= 1 ? settings.opacity : 0.92;
   const blur = Number.isFinite(settings.blur) && settings.blur >= 0 && settings.blur <= 30 ? settings.blur : 12;
   const fill = `color-mix(in srgb, ${color} ${opacity * 100}%, transparent)`;
   return `
@@ -359,10 +365,8 @@ export function combatPanelAppearanceCss(settings: { enabled: boolean; color: st
       -webkit-backdrop-filter: blur(${blur}px) !important;
       backdrop-filter: blur(${blur}px) !important;
     }
-    [data-ff-combat-tools]:not([hidden]) {
-      background: ${fill} !important;
-      -webkit-backdrop-filter: blur(${blur}px) !important;
-      backdrop-filter: blur(${blur}px) !important;
+    [data-ff-combat-docked] [data-ff-combat-heading] {
+      background: transparent !important;
     }
     [data-ff-combat-docked] :is(div, section)[class*="bg-card"],
     [data-ff-combat-docked] :is(div, section)[class*="bg-background"],
