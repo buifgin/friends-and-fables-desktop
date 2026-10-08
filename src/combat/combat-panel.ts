@@ -186,8 +186,10 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       // it can render this detail directly, without ever showing the list.
       // Require the observed native controls/title together, and only after
       // our own dice launch; generic Title dialogs are not sufficient.
-      const detail = buttons.some(button => button.querySelector('.lucide-chevron-left') && /^(List|Список)$/i.test(button.textContent?.trim() ?? ''))
-        && buttons.some(button => /^(Roll|Бросок)$/i.test(button.textContent?.trim() ?? ''))
+      // Native die artwork embeds SVG title/style text inside the Roll
+      // button. Match its rendered label, not that non-rendered metadata.
+      const detail = buttons.some(button => button.querySelector('.lucide-chevron-left') && /^(List|Список)$/i.test(button.innerText.trim()))
+        && buttons.some(button => /^(Roll|Бросок)$/i.test(button.innerText.trim()))
         && !!dialog.querySelector('[role="combobox"]') && !!dialog.querySelector('svg#d20')
         && Array.from(dialog.querySelectorAll('div.text-center.absolute')).some(title => /^(Roll|Бросок)\s+\S/i.test(title.textContent?.trim() ?? ''));
       return list || detail;
