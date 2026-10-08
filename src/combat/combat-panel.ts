@@ -25,7 +25,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }); controls.append(button);
   }
   let reserved = false, pending = false, pendingReopened = false, internalLaunch = false;
-  const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
+  const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top', '--ff-combat-controls-bottom'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
   const railWritten = new Map<string, string>();
   let mountedRail: HTMLElement | null = null, mountedRailAside: HTMLElement | null = null;
   let railResizeObserver: ResizeObserver | null = null;
@@ -90,11 +90,13 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     controls.removeAttribute('data-ff-combat-controls-fallback');
     if (controls.parentElement !== found.group || controls.nextElementSibling !== found.settings) found.group.insertBefore(controls, found.settings);
     const bottomGroup = Array.from(found.aside.children).find(node => node !== found.group && node instanceof HTMLElement && node.classList.contains('relative') && node.classList.contains('z-10'));
-    const available = Math.max(0, found.aside.clientHeight - (bottomGroup?.getBoundingClientRect().height ?? 40) - 24);
+    const available = Math.max(0, found.aside.clientHeight - (bottomGroup?.getBoundingClientRect().height ?? 40) - 24 - 48);
     const normalGapHeight = found.group.scrollHeight + (found.group.hasAttribute('data-ff-combat-controls-compact') ? found.group.children.length * 8 : 0);
     setRailAttribute('data-ff-combat-controls-compact', normalGapHeight > available ? '' : null);
     const box = found.aside.getBoundingClientRect();
-    for (const [name, value] of [['--ff-combat-rail-width', `${box.width}px`], ['--ff-combat-rail-top', `${box.top}px`]]) {
+    const groupBox = found.group.getBoundingClientRect();
+    const controlsBottom = groupBox.bottom - box.top + found.aside.scrollTop + 8;
+    for (const [name, value] of [['--ff-combat-rail-width', `${box.width}px`], ['--ff-combat-rail-top', `${box.top}px`], ['--ff-combat-controls-bottom', `${controlsBottom}px`]]) {
       if (document.documentElement.style.getPropertyValue(name) !== value) document.documentElement.style.setProperty(name, value);
       railWritten.set(name, value);
     }

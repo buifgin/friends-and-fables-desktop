@@ -41,6 +41,11 @@ export const combatPanelCss = `
     gap: 8px !important;
   }
 
+  [data-ff-combat-controls-group] ~ .absolute:has(> button > svg:is(.lucide-chevron-right, .lucide-chevron-left)) {
+    top: var(--ff-combat-controls-bottom, 50%) !important;
+    transform: none !important;
+  }
+
   [data-ff-combat-controls] [data-ff-combat-mode] {
     display: inline-flex !important;
     box-sizing: border-box;
