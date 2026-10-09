@@ -153,7 +153,7 @@ app.on('window-all-closed', () => {});
   assert.equal(await js("document.documentElement.style.getPropertyValue('--ff-combat-tools-height')"), '');
   assert.equal(await identity(), true);
   assert.equal(await js('submits+selections'), 0, 'Layout controls never select or submit native controls.');
-  await js("Object.defineProperty(window,'localStorage',{configurable:true,get(){throw Error('blocked')}})");
+  await js("Object.defineProperty(window,'localStorage',{configurable:true,get(){throw Error('blocked')}});true");
   await configure(); await click('[data-ff-combat-density]');
   assert.equal(await js("document.querySelector('[data-ff-combat-density]').getAttribute('aria-pressed')"), 'true');
   await configure(false);
