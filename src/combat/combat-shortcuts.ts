@@ -67,6 +67,8 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     [data-ff-dice-navigation] button,[data-ff-dice-add],[data-ff-dice-selection-confirm]{font:inherit;color:inherit;background:hsl(var(--background,0 0% 15%));border:1px solid hsl(var(--border,0 0% 40%));border-radius:6px;padding:6px 10px;cursor:pointer;}
     [data-ff-dice-navigation] button{display:grid;place-items:center;min-width:0;min-height:40px;padding:0;}
     [data-ff-dice-navigation] svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+    [data-ff-dice-selection-confirm]{display:grid;place-items:center;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;margin:8px;}
+    [data-ff-dice-selection-confirm] svg{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
     [data-ff-dice-favorites]{padding:8px;min-width:0;box-sizing:border-box;}
     [data-ff-dice-favorite-tiles]{display:flex;flex-direction:column;gap:8px;}
     [data-ff-dice-favorite-tiles]>button{width:100%;font:inherit;color:inherit;}
@@ -149,7 +151,10 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     favoriteNav.title = text('Favorites', 'Избранное');
     standard.setAttribute('aria-pressed', String(view !== 'favorites')); favoriteNav.setAttribute('aria-pressed', String(view === 'favorites'));
     cancel.textContent = text('Cancel', 'Отмена'); cancel.hidden = view !== 'selection';
-    confirm.textContent = text('Confirm', 'Подтвердить'); confirm.hidden = view !== 'selection';
+    confirm.setAttribute('aria-label', text('Confirm', 'Подтвердить'));
+    confirm.title = text('Confirm', 'Подтвердить');
+    confirm.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="m7 12 3.2 3.2L17 8.5"/></svg>';
+    confirm.hidden = view !== 'selection';
     favorites.hidden = view !== 'favorites';
     empty.textContent = text('No favorite checks yet', 'Нет избранных проверок'); empty.hidden = pinned.length > 0;
     add.textContent = pinned.length ? text('Add more', 'Добавить ещё') : text('Add', 'Добавить');
