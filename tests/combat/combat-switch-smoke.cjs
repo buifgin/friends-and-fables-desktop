@@ -8,10 +8,12 @@ const controllers = ['Panel', 'Workspace', 'Shortcuts', 'Corrections'].map(name 
 const { combatPanelCss } = require(path.join(root, 'dist/combat/combat-panel-style'));
 const { TranslationManager } = require(path.join(root, 'dist/translation/translation'));
 const { DEFAULT_TRANSLATION, RUSSIAN_DICTIONARY } = require(path.join(root, 'dist/translation/translation-core'));
-const nativeEnglish=Object.fromEntries(Object.entries(RUSSIAN_DICTIONARY).map(([en,ru])=>[ru.trim().toLowerCase(),en.replace(/\b[a-z]/g,letter=>letter.toUpperCase())]));
+const nativeEnglish=Object.fromEntries(Object.entries(RUSSIAN_DICTIONARY).map(([en,ru])=>[ru.trim().toLowerCase(),en.replace(/\b[a-z]/g,letter=>letter.toUpperCase()).replace(/ Check$/, '  Check').replace('Sleight Of Hand', 'Sleight of  Hand')]));
 const { configureChatAppearance, chatCss } = require(path.join(root, 'dist/appearance/chat-appearance'));
 const { DEFAULT_APPEARANCE, themeCss } = require(path.join(root, 'dist/appearance/themes'));
 const appearance=structuredClone(DEFAULT_APPEARANCE);appearance.preset='black';appearance.dice.enabled=true;appearance.dice.colorsEnabled=true;
+// Native English capture uses doubled spaces before Check (and inside Sleight of Hand).
+// Keep them: normalizing fixture captions hid the translation/favorites feedback loop.
 // Retained native list capture was capped at30KB (21 ability/skill tiles).
 // Preserve those exact wrappers/captions/SVG children; supplement the missing
 // combat group below so adventure filtering remains part of the regression.
@@ -40,7 +42,7 @@ function launch(dice){
  function list(){
  form.hidden=true;content.innerHTML=window.nativeDiceMarkup;
  const textWalker=document.createTreeWalker(content,NodeFilter.SHOW_TEXT);while(textWalker.nextNode()){const node=textWalker.currentNode,label=window.nativeEnglish[node.data.trim().toLowerCase()];if(label)node.data=label}
- const canonical=label=>Array.from(content.querySelectorAll('button')).find(node=>label.test(node.textContent.trim()));
+ const canonical=label=>Array.from(content.querySelectorAll('button')).find(node=>label.test(node.textContent.replace(/\\s+/g,' ').trim()));
  const check=canonical(/^(Acrobatics Check|Проверка акробатики)$/i),strength=canonical(/^(Strength Check|Проверка силы)$/i);
  check.id='check';strength.id='strength';
  const nativeList=content.querySelector('.flex-1.w-full.overflow-y-auto.p-4.space-y-6');nativeList.id='native-list';
@@ -133,8 +135,7 @@ window.MutationObserver=class extends NativeObserver{constructor(callback){super
    await configure('en');
    await click('[data-ff-combat-mode=skills]',locale+' closed -> Dice');
    assert.equal(await js("document.querySelector('[data-ff-combat-docked]').dataset.ffCombatPanelMode"),'skills');
-   assert.equal(await js("document.querySelector('[data-ff-dice-favorites]').hidden"),false);
-   assert.equal(await js("document.querySelector('#check').textContent.trim()"),'Acrobatics Check','Native Dice opens with translation off and original English captions.');
+   assert.equal(await js("document.querySelector('#check').textContent.trim()"),'Acrobatics  Check','Native Dice opens with translation off and original English captions.');
    await configure(locale);
    if(locale==='ru'){
      await until("document.querySelector('#model-prose').textContent==='Эта строка переведена моделью.'");
@@ -142,15 +143,16 @@ window.MutationObserver=class extends NativeObserver{constructor(callback){super
      assert.equal(await js("document.querySelector('#model-prose').nextElementSibling.textContent"),'Русский текст истории сохранён.');
    }
    await settle(locale+' enable translation with Dice favorites already open');
+   assert.equal(await js("document.querySelector('[data-ff-dice-favorites]').hidden"),false,'Captured native whitespace remains recognizable before and after translation.');
    assert.equal(await js("document.querySelector('#melee').hidden && document.querySelector('#spell').hidden"),true,'Adventure filter hides native attack options.');
    await js('window.currentForm=document.querySelector("form");currentForm.querySelector("input").value="retained check draft"');
    await click('[data-ff-dice-standard]',locale+' full checks');
    await configure('en');await settle(locale+' translation off with all checks already open');
-   assert.equal(await js("document.querySelector('#check').textContent.trim()"),'Acrobatics Check');
+   assert.equal(await js("document.querySelector('#check').textContent.trim()"),'Acrobatics  Check');
    await configure(locale);
    if(locale==='ru')await until("document.querySelector('#model-prose').textContent==='Эта строка переведена моделью.'");
    await settle(locale+' translation on with all checks already open');
-   assert.equal(await js("document.querySelector('#check').textContent.trim()"),locale==='ru'?'Проверка акробатики':'Acrobatics Check','The real interface dictionary translates live native check captions.');
+   assert.equal(await js("document.querySelector('#check').textContent.trim()"),locale==='ru'?'Проверка акробатики':'Acrobatics  Check','The real interface dictionary translates live native check captions.');
    await click('[data-ff-dice-favorites-nav]',locale+' favorites');
    await click('[data-ff-dice-add]',locale+' favorites selection');
    await click('#strength',locale+' select native tile');
