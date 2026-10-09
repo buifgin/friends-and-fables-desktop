@@ -17,7 +17,7 @@ const wait = async (contents, expression) => {
   const testSession = session.fromPartition('combat-shortcuts-smoke');
   testSession.protocol.handle('https', () => new Response(`<!doctype html><body>
     <div data-ff-combat-docked data-ff-combat-panel-mode="skills"><h2>Dice</h2><div data-ff-combat-shortcuts-slot></div>
-      <div id="native-list"><button id="check" class="native-tile"><svg id="d20"><path id="icon-path"/></svg><span>Проверка силы</span></button>
+      <div id="native-list"><button id="check" class="native-tile"><div><svg id="d20"><path id="icon-path"/></svg><span>Проверка силы</span></div></button>
         <button id="save">Спасбросок силы</button><button id="skill">Проверка акробатики</button><button id="custom">Custom roll</button></div>
       <form id="detail" hidden><button type="button" id="back">Back</button><input id="draft" value="untouched"><button type="submit">Roll</button></form>
     </div>
@@ -62,6 +62,10 @@ const wait = async (contents, expression) => {
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile]').className`), 'native-tile');
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile] svg')!==null`), true, 'Favorite tile retains the native icon.');
   assert.equal(await run(`document.querySelectorAll('#d20').length`), 1, 'Cloned visuals never duplicate native IDs.');
+  assert.equal(await run(`!!document.querySelector('[data-ff-dice-favorite-tile] > div > svg')`), true, 'Cloned native icon wrappers retain normal tile CSS structure.');
+  await run(`window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.removeAttribute('data-ff-dice-native-hidden');old.replaceWith(replacement);for(const id of ['check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check')`);
+  await wait(contents, `document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`);
+  assert.equal(await run(`window.ownedFavorite===document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]')`), true, 'Identical native list remount preserves the owned favorite button.');
   await click('[data-ff-dice-favorite-tile="ability.strength"]');
   await wait(contents, `document.querySelector('[data-ff-dice-navigation]').hidden`);
   assert.equal(await run('window.selections'), 1, 'Favorite opens its original native check once.');

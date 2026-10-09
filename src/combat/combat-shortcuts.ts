@@ -110,6 +110,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     if (event.type !== 'pointerdown' && event.type !== 'mousedown' && !unavailable(target)) toggle(overlay.item);
   }
   let signature = '';
+  let previousOptions = new Map<Item, HTMLButtonElement>();
   function sync(): void {
     queued = false; if (disposed) return;
     const nextRoute = location.pathname + location.search;
@@ -123,13 +124,13 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     const active = !!slot && dock?.dataset.ffCombatPanelMode === 'skills' &&
       [...options.values()].some(node => !node.closest('[hidden],[aria-hidden="true"]'));
     const nextSignature = JSON.stringify([route, language, view, pinned, [...draft], active, [...options].map(([item, node]) => [item.id, node.textContent, node.className, node.innerHTML.replace(/<input[^>]*>/g, ''), unavailable(node)])]);
-    // Include native identity: a remounted list with identical labels still needs overlays.
-    const sameNodes = [...options.values()].every(node => view !== 'selection' || overlays.has(node));
+    // Identity matters in every view: identical replacement lists need fresh hiding and overlays.
+    const sameNodes = options.size === previousOptions.size && [...options].every(([item, node]) => previousOptions.get(item) === node);
     if (signature === nextSignature && sameNodes && (!active || owned.parentElement === slot)) return;
     const focused = document.activeElement;
     const focusedTile = focused instanceof Element ? focused.closest<HTMLButtonElement>('[data-ff-dice-selection-tile]') : null;
     const focusCheckbox = focused instanceof HTMLInputElement && focused.hasAttribute('data-ff-dice-selection-checkbox');
-    signature = nextSignature; restore();
+    signature = nextSignature; previousOptions = options; restore();
     owned.hidden = favorites.hidden = confirm.hidden = !active;
     if (!active) { if (view === 'selection') { view = 'favorites'; draft = new Set(pinned); signature = ''; } return; }
     if (owned.parentElement !== slot) slot!.append(owned);
@@ -159,8 +160,16 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
       tile.className = native?.className ?? '';
       tile.replaceChildren();
       if (native) {
-        for (const icon of native.querySelectorAll('svg')) tile.append(icon.cloneNode(true));
-        const caption = document.createElement('span'); caption.textContent = language === 'ru' ? item.ru : item.en; tile.append(caption);
+        // Keep native child wrappers so selectors such as button > div > svg still apply.
+        for (const child of native.childNodes) tile.append(child.cloneNode(true));
+        const walker = document.createTreeWalker(tile, NodeFilter.SHOW_TEXT);
+        let captionWritten = false;
+        while (walker.nextNode()) {
+          const node = walker.currentNode as Text;
+          if (node.parentElement?.closest('svg') || !node.data.trim()) continue;
+          node.data = captionWritten ? '' : language === 'ru' ? item.ru : item.en; captionWritten = true;
+        }
+        if (!captionWritten) tile.append(document.createTextNode(language === 'ru' ? item.ru : item.en));
       } else tile.textContent = language === 'ru' ? item.ru : item.en;
       // Clones have no React handlers; strip identity/form wiring and transient owned markers.
       for (const child of tile.querySelectorAll<HTMLElement>('*')) {
