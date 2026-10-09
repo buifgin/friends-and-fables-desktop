@@ -15,7 +15,7 @@ const wait = async (contents, expression) => {
   if (process.env.FABLES_TEST_PROFILE_DIR) app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
   await app.whenReady();
   const testSession = session.fromPartition('combat-shortcuts-smoke');
-  testSession.protocol.handle('https', () => new Response(`<!doctype html><body>
+  testSession.protocol.handle('https', () => new Response(`<!doctype html><html><head><meta charset="utf-8"></head><body>
     <div data-ff-combat-docked data-ff-combat-panel-mode="skills"><h2>Dice</h2><div data-ff-combat-shortcuts-slot></div>
       <div id="native-list"><button id="check" class="native-tile"><div><svg id="d20"><path id="icon-path"/></svg><span>Проверка силы</span></div></button>
         <button id="save">Спасбросок силы</button><button id="skill">Проверка акробатики</button><button id="custom">Custom roll</button></div>
@@ -29,7 +29,7 @@ const wait = async (contents, expression) => {
         document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};
       }
       document.querySelector('#back').onclick=()=>{document.querySelector('#native-list').hidden=false;document.querySelector('#detail').hidden=true};
-    </script></body>`, { headers: { 'content-type': 'text/html' } }));
+    </script></body></html>`, { headers: { 'content-type': 'text/html; charset=utf-8' } }));
   window = new BrowserWindow({ show: false, webPreferences: { partition: 'combat-shortcuts-smoke', contextIsolation: true, nodeIntegration: false } });
   await window.loadURL('https://combat.test/campaign/play');
   const contents = window.webContents;
@@ -109,4 +109,12 @@ const wait = async (contents, expression) => {
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-navigation]').length`), 1, 'Remount creates only one owned navigation.');
   await run(`window.__friendsFablesDesktopCombatShortcuts.dispose()`);
   console.log('Combat favorites fixture passed');
-})().catch(error => { console.error(error); app.exitCode = 1; }).finally(() => { clearTimeout(timeout); window?.close(); app.quit(); });
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+}).finally(() => {
+  clearTimeout(timeout);
+  window?.close();
+  if (process.exitCode) app.exit(process.exitCode);
+  else app.quit();
+});
