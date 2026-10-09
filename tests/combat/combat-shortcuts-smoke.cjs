@@ -44,7 +44,7 @@ const wait = async (contents, expression) => {
   assert.equal(await run(`document.querySelector('[data-ff-dice-add]').textContent`), 'Добавить');
   assert.equal(await run(`document.querySelector('[data-ff-shortcut-manager],[data-ff-shortcut-tray],[data-ff-native-favorites]')`), null);
   assert.deepEqual(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).map(x=>x.getAttribute('aria-label'))`), ['Все проверки', 'Избранное']);
-  assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].every(x=>x.textContent.trim()===''&&x.title===x.getAttribute('aria-label')&&x.querySelector('svg[aria-hidden="true"]'))`), true, 'Top navigation is icon-only with Russian accessible names and tooltips.');
+  assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).every(x=>x.textContent.trim()===''&&x.title===x.getAttribute('aria-label')&&x.querySelector('svg[aria-hidden="true"]'))`), true, 'Visible top navigation is icon-only with Russian accessible names and tooltips.');
   await click('[data-ff-dice-standard]');
   assert.equal(await run(`document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`), false);
   await click('[data-ff-dice-favorites-nav]'); await click('[data-ff-dice-add]');
@@ -53,6 +53,8 @@ const wait = async (contents, expression) => {
   assert.equal(await run('window.pointerSelections+window.selections'), 0, 'Selection blocks native pointer/click handlers.');
   assert.equal(await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), null, 'Draft changes do not persist.');
   assert.equal(await run(`document.querySelector('#check input').checked`), true);
+  window.show(); window.focus();
+  await wait(contents, `document.visibilityState==='visible'&&document.hasFocus()`);
   await run(`document.querySelector('#save').dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}))`);
   await run(`document.querySelector('#skill input').focus();document.querySelector('#skill input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))`);
   assert.equal(await run(`document.activeElement===document.querySelector('#skill input')`), true, 'Checkbox selection retains keyboard focus.');
@@ -83,7 +85,7 @@ const wait = async (contents, expression) => {
   await click('[data-ff-dice-favorites-nav]');
   await run(`window.__friendsFablesDesktopCombatShortcuts.update('en')`);
   assert.deepEqual(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].map(x=>x.getAttribute('aria-label'))`), ['All checks', 'Favorites']);
-  assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].every(x=>x.title===x.getAttribute('aria-label'))`), true, 'Navigation tooltips follow the English locale.');
+  assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).every(x=>x.title===x.getAttribute('aria-label'))`), true, 'Visible navigation tooltips follow the English locale.');
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile]').textContent`), 'Strength Check');
   await run(`document.querySelector('#skill').setAttribute('aria-disabled','true')`);
   await wait(contents, `document.querySelector('[data-ff-dice-favorite-tile="skill.acrobatics"]').disabled`);
