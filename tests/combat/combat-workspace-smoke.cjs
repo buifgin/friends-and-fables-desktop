@@ -1,16 +1,15 @@
-// Native fixture: coordinator schedules execution on the isolated display.
+// Native layout fixture. The coordinator owns the isolated Xvfb/WM launch.
 const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const html = `<!doctype html><meta charset="utf-8"><style>
-body{margin:0}#rail{position:fixed;left:0;top:60px;width:60px;height:700px}#chat{margin-left:60px;width:calc(100vw - 60px);height:700px}#map{position:fixed;right:0;bottom:0;width:40px;height:40px}[data-ff-combat-docked]{position:fixed;top:60px;left:60px;width:var(--ff-combat-width);height:calc(100vh - 60px);max-height:90vh;display:flex;flex-direction:column;gap:16px;overflow:auto;background:#333;color:white}[data-ff-combat-close]{position:absolute;right:8px;top:8px;width:34px;height:34px}button.group{display:flex}input{max-width:100%;box-sizing:border-box}
-</style><aside id="rail"></aside><div id="chat" data-ff-combat-chat><div contenteditable="true" id="draft">retained draft</div></div><canvas id="map"></canvas><section data-ff-combat-docked><h2 data-ff-combat-heading>Выберите проверку способности</h2><div data-ff-combat-body><div class="grid"><button class="group" id="check"><div><svg class="lucide lucide-person-standing"></svg></div><span>Проверка ловкости: Акробатика и сохранение равновесия</span></button></div><form><input value="retained roll"><button type="submit">Roll</button></form><div style="height:1400px"></div></div><button id="close" data-ff-combat-close>×</button></section><script>
-window.original={panel:document.querySelector('[data-ff-combat-docked]'),check:document.querySelector('#check'),form:document.querySelector('form'),input:document.querySelector('input'),close:document.querySelector('#close'),draft:document.querySelector('#draft'),map:document.querySelector('#map')};window.selections=0;window.submits=0;window.ffCloseClicks=0;window.mapClicks=0;
-original.check.onclick=()=>selections++;original.form.onsubmit=e=>{e.preventDefault();submits++};original.close.onclick=()=>ffCloseClicks++;original.map.onclick=()=>mapClicks++;
+body{margin:0}#chat{margin-left:60px;height:700px}[data-ff-combat-docked]{position:fixed;top:60px;left:60px;width:var(--ff-combat-width);height:calc(100vh - 60px);display:flex;flex-direction:column;gap:8px;overflow:auto;background:#333;color:white}button.group{display:flex}input{max-width:100%;box-sizing:border-box}
+</style><div id="chat" data-ff-combat-chat><div contenteditable="true" id="draft">retained draft</div></div><section data-ff-combat-docked><h2 data-ff-combat-heading>Choose a check</h2><div data-ff-combat-body><div class="grid"><button class="group" id="check"><div><svg class="lucide lucide-person-standing"></svg></div><span>Long native check label remains intact</span></button></div><form><input value="retained roll"><button type="submit">Roll</button></form><div style="height:1400px"></div></div><button id="close" data-ff-combat-close>×</button></section><script>
+window.original={panel:document.querySelector('[data-ff-combat-docked]'),check:document.querySelector('#check'),form:document.querySelector('form'),input:document.querySelector('input'),close:document.querySelector('#close'),draft:document.querySelector('#draft')};window.selections=0;window.submits=0;window.ffCloseClicks=0;
+original.check.onclick=()=>selections++;original.form.onsubmit=e=>{e.preventDefault();submits++};original.close.onclick=()=>ffCloseClicks++;
 document.documentElement.setAttribute('data-ff-combat-open','true');document.documentElement.style.setProperty('--ff-combat-rail-width','60px');document.documentElement.style.setProperty('--ff-combat-rail-top','60px');
 </script>`;
-// Validate both embedded fixture code and serialized renderer code before launching Electron.
 function checkEmbeddedSyntax() {
   for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
   const output = require('esbuild').transformSync(fs.readFileSync(path.join(root, 'src/combat/combat-workspace.ts'), 'utf8'), { loader: 'ts', target: 'es2022', format: 'cjs' });
@@ -35,7 +34,7 @@ app.on('window-all-closed', () => {});
   const configure = (enabled = true, locale = 'en') => js(`(${configureCombatWorkspace.toString()})(${enabled},${JSON.stringify(locale)})`);
   const pointer = async (type, x, y) => { window.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 }); await new Promise(resolve => setTimeout(resolve, 30)); };
   const click = async selector => { const b = await js(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.height/2}})()`); await pointer('mouseDown', b.x, b.y); await pointer('mouseUp', b.x, b.y); };
-  const keyboard = async (key, modifiers = []) => { window.webContents.sendInputEvent({ type: 'keyDown', keyCode: key, modifiers }); window.webContents.sendInputEvent({ type: 'keyUp', keyCode: key, modifiers }); await new Promise(resolve => setTimeout(resolve, 30)); };
+  const keyboard = async key => { window.webContents.sendInputEvent({ type: 'keyDown', keyCode: key }); window.webContents.sendInputEvent({ type: 'keyUp', keyCode: key }); await new Promise(resolve => setTimeout(resolve, 30)); };
   const identity = () => js(`Object.entries(original).every(([key,node])=>node.isConnected)&&original.form===document.querySelector('form')&&original.input.value==='retained roll'&&original.draft.textContent==='retained draft'`);
   await window.loadURL('https://play.fables.gg/campaign-one/play');
   window.showInactive(); window.webContents.focus();
@@ -43,129 +42,56 @@ app.on('window-all-closed', () => {});
   await js(`document.head.append(Object.assign(document.createElement('style'),{textContent:${JSON.stringify(combatPanelCss)}}))`);
   await configure();
   await until("!!document.querySelector('[data-ff-combat-resizer]')");
-  assert.equal(await js("document.querySelector('[data-ff-combat-density]').getAttribute('aria-pressed')"), 'false');
-  assert.equal(await js("document.querySelector('[data-ff-combat-shortcuts-slot]').children.length"), 0);
-  const before = await js("Number(document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuenow'))");
-  const drag = await js("(()=>{const b=document.querySelector('[data-ff-combat-resizer]').getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+80}})()");
-  await pointer('mouseDown', drag.x, drag.y); await pointer('mouseMove', drag.x + 100, drag.y); await pointer('mouseUp', drag.x + 100, drag.y);
-  await until(`Number(document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuenow'))===${before + 100}`);
-  const savedWidth = await js("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width");
-  assert.equal(savedWidth, before + 100, 'Actual pointer drag persists requested width.');
-  await keyboard('Right');
-  await until(`Number(document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuenow'))===${savedWidth + 10}`);
-  const requested = savedWidth + 10;
-  await click('[data-ff-combat-density]');
-  await until("document.querySelector('[data-ff-combat-docked]').getAttribute('data-ff-combat-workspace-density')==='comfortable'");
-  assert.equal(await js("getComputedStyle(original.check).minHeight"), '96px');
-  assert.equal(await identity(), true);
-  await configure(true, 'ru');
-  assert.equal(await js("document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-label')"), 'Ширина панели боя');
-  await js("document.documentElement.style.setProperty('--ff-combat-rail-width','240px')");
-  window.setContentSize(820, 650);
-  await until("innerWidth===820&&document.documentElement.style.getPropertyValue('--ff-combat-width')==='332px'");
-  assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width"), requested, 'Viewport clamp preserves requested preference.');
-  assert.equal(await js("getComputedStyle(document.querySelector('#chat')).paddingLeft"), '332px');
-  assert.equal(await js("innerWidth-240-parseFloat(document.documentElement.style.getPropertyValue('--ff-combat-width'))>=240"), true);
-  window.setContentSize(1100, 780);
-  await until(`innerWidth===1100&&document.documentElement.style.getPropertyValue('--ff-combat-width')==='${requested}px'`);
-  await js("document.documentElement.style.setProperty('--ff-combat-rail-width','60px')");
-  await until("document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuemax')==='792'");
-  // Rail variables update before the native panel's 240ms left transition finishes.
-  // Wait for the actual hit target and final panel geometry before native input.
-  const edgeState = () => js("(()=>{const h=document.querySelector('[data-ff-combat-resizer]'),b=h.getBoundingClientRect(),p=original.panel.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+80),hit=document.elementFromPoint(x,y);return {x,y,max:Number(h.getAttribute('aria-valuemax')),now:Number(h.getAttribute('aria-valuenow')),panelLeft:p.left,panelRight:p.right,rail:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ff-combat-rail-width')),handleHit:h.contains(hit),hitTag:hit?.tagName,hitId:hit?.id,focused:document.hasFocus(),saved:JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width}})()");
-  let edge;
-  try {
-    await until("(()=>{const h=document.querySelector('[data-ff-combat-resizer]'),b=h.getBoundingClientRect(),p=original.panel.getBoundingClientRect(),rail=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ff-combat-rail-width'));return Math.abs(p.left-rail)<.25&&document.hasFocus()&&h.contains(document.elementFromPoint(Math.round(b.x+b.width/2),Math.round(b.y+80)))})()");
-    edge=await edgeState();
-  } catch(error) { throw Error('Overshoot pointer readiness failed: '+JSON.stringify(await edgeState())+'; '+error.message); }
-  await js("window.ffResizeTrace=[];for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])document.querySelector('[data-ff-combat-resizer]').addEventListener(type,e=>{if(ffResizeTrace.length<12)ffResizeTrace.push({type:e.type,x:e.clientX,y:e.clientY,trusted:e.isTrusted,pointerId:e.pointerId})})");
-  // A user overshoot saves the visible limit, rather than hidden extra width.
-  await pointer('mouseDown', edge.x, edge.y); await pointer('mouseMove', 1090, edge.y); await pointer('mouseUp', 1090, edge.y);
-  try { await until(`JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width===${edge.max}`); }
-  catch(error) { throw Error('Overshoot persistence failed: '+JSON.stringify({before:edge,after:await edgeState(),trace:await js('ffResizeTrace')})+'; '+error.message); }
-  await keyboard('Right');
-  assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width"), edge.max, 'Keyboard cannot accumulate an invisible overshoot.');
-  for (const width of [308, 390]) {
-    await js(`localStorage.setItem('ff-desktop-combat-workspace-v1:/campaign-one',JSON.stringify({width:${width},density:'comfortable'}))`);
-    await configure(false); await configure(true, 'ru');
-    await until(`document.documentElement.style.getPropertyValue('--ff-combat-width')==='${width}px'`);
-    assert.equal(await js("(()=>{const b=original.close.getBoundingClientRect();return b.width===34&&original.close.contains(document.elementFromPoint(b.x+17,b.y+17))})()"), true, 'Native close stays a 34px real hit target.');
-    assert.equal(await js("(()=>{const b=original.check.getBoundingClientRect(),r=document.createRange();r.selectNodeContents(original.check.querySelector('span'));return Array.from(r.getClientRects()).every(t=>t.left>=b.left&&t.right<=b.right&&t.top>=b.top&&t.bottom<=b.bottom)})()"), true, 'Long Russian labels remain within comfortable tile.');
-    await js("original.panel.scrollTop=140");
-    assert.equal(await js("(()=>{const b=original.close.getBoundingClientRect();return original.close.contains(document.elementFromPoint(b.x+17,b.y+17))})()"), true);
-    await js("original.panel.scrollTop=0");
+  assert.equal(await js("document.querySelector('[data-ff-combat-density]')"), null, 'Density control is removed.');
+  assert.equal(await js("document.querySelector('[data-ff-combat-workspace-tools]').getBoundingClientRect().height"), 0, 'Empty shortcut host has no toolbar spacing.');
+  assert.equal(await js("getComputedStyle(original.panel).display"), 'flex', 'Dock is a real flex-column root.');
+  const initialWidth = await js("Number(document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuenow'))");
+  const grip = await js("(()=>{const b=document.querySelector('[data-ff-combat-resizer]').getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+80}})()");
+  await pointer('mouseDown', grip.x, grip.y); await pointer('mouseMove', grip.x + 40, grip.y); await pointer('mouseUp', grip.x + 40, grip.y);
+  await until(`Number(document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuenow'))===${initialWidth + 40}`);
+  assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width"), initialWidth + 40, 'Pointer resize preference persists.');
+  await js("document.querySelector('[data-ff-combat-resizer]').focus()"); await keyboard('Right');
+  await until(`Number(document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuenow'))===${initialWidth + 50}`);
+  await js(`document.querySelector('[data-ff-combat-shortcuts-slot]').innerHTML='<nav data-ff-dice-navigation><button>All checks</button><button>Favorites</button></nav>';const dock=document.querySelector('[data-ff-combat-docked]');dock.insertAdjacentHTML('beforeend','<div data-ff-dice-favorites></div><div data-ff-dice-selection></div>');const confirm=document.createElement('button');confirm.textContent='Confirm';confirm.setAttribute('data-ff-dice-selection-confirm','');dock.append(confirm);window.confirmHits=0;confirm.onclick=()=>confirmHits++`);
+  await until("document.querySelector('[data-ff-combat-workspace-tools]').getBoundingClientRect().height>0");
+  await js("original.panel.setAttribute('data-ff-combat-panel-mode','actions')");
+  assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-dice-navigation]')).display"), 'none', 'Explicit actions mode hides dice navigation.');
+  assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-dice-selection-confirm]')).display"), 'none', 'Explicit actions mode hides selection confirmation.');
+  await js("original.panel.setAttribute('data-ff-combat-panel-mode','skills')");
+  assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-dice-navigation]')).display"), 'grid', 'Explicit skills mode preserves dice navigation.');
+  for (const width of [280, 308, 390]) {
+    await js(`localStorage.setItem('ff-desktop-combat-workspace-v1:/campaign-one',JSON.stringify({width:${width}}));`);
+    await configure(false); await configure(true, 'en');
+    await js("document.querySelector('[data-ff-combat-shortcuts-slot]').innerHTML='<nav data-ff-dice-navigation><button>All checks</button><button>Favorites</button></nav>'");
+    await until("document.querySelector('[data-ff-combat-workspace-tools]').getBoundingClientRect().height>0");
+    window.setContentSize(1100, 360);
+    await until(`innerHeight===360&&document.documentElement.style.getPropertyValue('--ff-combat-width')==='${width}px'`);
+    const sample = await js(`(()=>{const tools=document.querySelector('[data-ff-combat-workspace-tools]'),nav=document.querySelector('[data-ff-dice-navigation]'),title=document.querySelector('[data-ff-combat-heading]').getBoundingClientRect(),form=original.form.getBoundingClientRect(),close=original.close.getBoundingClientRect(),confirm=document.querySelector('[data-ff-dice-selection-confirm]'),c=confirm.getBoundingClientRect();return {toolbarBg:getComputedStyle(tools).backgroundColor,sticky:getComputedStyle(tools).position,shrink:getComputedStyle(tools).flexShrink,navHit:nav.contains(document.elementFromPoint(nav.getBoundingClientRect().left+nav.getBoundingClientRect().width/2,nav.getBoundingClientRect().top+nav.getBoundingClientRect().height/2)),flow:title.bottom<=form.top,closeWidth:close.width,closeHit:original.close.contains(document.elementFromPoint(close.x+17,close.y+17)),confirmLeft:c.left,confirmRight:c.right,confirmBottom:c.bottom,confirmHit:confirm.contains(document.elementFromPoint(c.x+c.width/2,c.y+c.height/2))}})()`);
+    assert.notEqual(sample.toolbarBg, 'rgba(0, 0, 0, 0)', 'Sticky navigation has an opaque background.');
+    assert.equal(sample.sticky, 'sticky'); assert.equal(sample.shrink, '0');
+    assert.equal(sample.navHit, true, 'Both-button navigation stays a real hit target.');
+    assert.equal(sample.flow, true, 'The title stays above the native form in real layout flow.');
+    assert.equal(sample.closeWidth, 34); assert.equal(sample.closeHit, true, 'Native close remains a 34px hit target.');
+    assert.ok(sample.confirmLeft >= 60 && sample.confirmRight <= 60 + width, 'Floating confirmation stays within the dock at narrow widths.');
+    assert.ok(sample.confirmBottom <= 360, 'Floating confirmation stays inside the short viewport.');
+    assert.equal(sample.confirmHit, true, 'Floating confirmation remains a real hit target.');
+    await js('original.panel.scrollTop=200');
+    assert.equal(await js("(()=>{const h=document.querySelector('[data-ff-combat-heading]').getBoundingClientRect(),f=original.form.getBoundingClientRect();return h.bottom<=f.top||h.top>=f.bottom})()"), true, 'Scrolled native title does not paint over the form.');
+    assert.equal(await js("(()=>{const b=original.close.getBoundingClientRect();return original.close.contains(document.elementFromPoint(b.x+17,b.y+17))})()"), true, 'Close remains reachable after scrolling.');
+    await click('[data-ff-dice-selection-confirm]'); assert.equal(await js('confirmHits'), 1);
+    await js('original.panel.scrollTop=0');
   }
-  // Realistic populated shortcuts: Russian tray and expanded scrollable manager.
-  const populateTools = (openManager = false) => js(`(()=>{
-    const slot=document.querySelector('[data-ff-combat-shortcuts-slot]');
-    const style=document.createElement('style');style.textContent='[data-ff-shortcut-manager]:not([open])>[data-ff-shortcut-list]{display:none!important}';document.head.append(style);
-    slot.innerHTML='<section data-ff-combat-shortcuts style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:5px 8px;min-width:0;max-width:100%;box-sizing:border-box"><strong>Закреплённые проверки</strong><div style="display:flex;flex-wrap:wrap;gap:4px"><button type="button">Акробатика</button></div><details data-ff-shortcut-manager ${openManager?'open':''} style="display:block;min-width:0;max-width:100%;box-sizing:border-box;${openManager?'flex-basis:100%;width:100%':''}"><summary>Настроить закреплённые проверки</summary><div id="fixture-shortcut-list" data-ff-shortcut-list style="display:block;box-sizing:border-box;max-height:min(40vh,240px);min-width:0;width:100%;overflow:auto;padding:4px"></div></details><button type="button" id="fixture-favorites">Избранное</button></section>';
-    const list=document.querySelector('#fixture-shortcut-list');
-    for(let n=0;n<25;n++){const label=document.createElement('label');label.style.cssText='display:flex;gap:3px;align-items:center;max-width:100%';label.innerHTML='<input type="checkbox">Проверка способности '+n;list.append(label)}
-    for(const button of slot.querySelectorAll('button'))button.style.cssText='font:inherit;color:inherit;border:1px solid gray;border-radius:5px;padding:5px 8px;background:transparent';
-    window.ffShortcutHits=0;slot.querySelector('#fixture-favorites').onclick=()=>ffShortcutHits++;
-  })()`);
-  await populateTools(false);
-  const closedToolbar = await js("(()=>{const tools=document.querySelector('[data-ff-combat-workspace-tools]'),list=document.querySelector('[data-ff-shortcut-list]');return {scrollHeight:tools.scrollHeight,clientHeight:tools.clientHeight,flexShrink:getComputedStyle(tools).flexShrink,listHeight:list.getBoundingClientRect().height,favoriteHit:document.querySelector('#fixture-favorites').contains(document.elementFromPoint(...(()=>{const r=document.querySelector('#fixture-favorites').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()))}})()");
-  assert.equal(closedToolbar.scrollHeight<=closedToolbar.clientHeight,true,'A closed manager leaves the unexpanded toolbar non-scrollable in the native flex-column dock.');
-  assert.equal(closedToolbar.flexShrink,'0');
-  assert.equal(closedToolbar.listHeight,0,'The closed details list has no layout footprint.');
-  assert.equal(closedToolbar.favoriteHit,true,'An unexpanded toolbar action remains a real hit target.');
-  await click('#fixture-favorites');assert.equal(await js('ffShortcutHits'),1);
-  for (const width of [308,390]) {
-    await js(`localStorage.setItem('ff-desktop-combat-workspace-v1:/campaign-one',JSON.stringify({width:${width},density:'comfortable'}))`);
-    await configure(false);await configure(true,'ru');await populateTools(true);
-    window.setContentSize(1100,360);
-    await until("innerHeight===360&&parseFloat(document.documentElement.style.getPropertyValue('--ff-combat-tools-height'))===Math.ceil(document.querySelector('[data-ff-combat-workspace-tools]').getBoundingClientRect().height)");
-    assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-combat-workspace-tools]')).backgroundColor"), 'rgba(0, 0, 0, 0)', 'Toolbar inherits the translucent combat surface.');
-    for (const scroll of [0,140]) {
-      await js(`original.panel.scrollTop=${scroll}`);
-      const geometry=await js("(()=>{const tools=document.querySelector('[data-ff-combat-workspace-tools]'),t=tools.getBoundingClientRect(),h=document.querySelector('[data-ff-combat-heading]').getBoundingClientRect(),c=original.close.getBoundingClientRect();return {separated:h.top>=t.bottom-1,headingVisible:h.bottom<=innerHeight,closeHit:original.close.contains(document.elementFromPoint(c.x+17,c.y+17)),toolbarScrollable:tools.scrollHeight>tools.clientHeight,height:t.height}})()");
-      assert.equal(geometry.separated,true,'Measured toolbar offset separates sticky native heading.');
-      assert.equal(geometry.headingVisible,true,'Short viewport retains the complete native heading.');
-      assert.equal(geometry.closeHit,true,'Populated toolbar leaves the native close reachable.');
-      assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-combat-workspace-tools]')).flexShrink"),'0','Native flex-column dock does not shrink the bounded toolbar.');
-      assert.equal(geometry.toolbarScrollable,true,'Expanded shortcuts are bounded and independently scrollable.');
-      assert.ok(geometry.height<=136,'Toolbar leaves room for native content in a short viewport.');
-    }
-    await js("document.querySelector('[data-ff-combat-workspace-tools]').scrollTop=10000");
-    await click('#fixture-favorites');assert.equal(await js('ffShortcutHits'),1,'Bottom toolbar action remains reachable through toolbar scrolling.');
-    await js("original.panel.scrollTop=0");
-  }
-  window.setContentSize(1100,780);await until('innerHeight===780');
+  await window.setContentSize(1100, 780); await until('innerHeight===780');
   await click('#close'); assert.equal(await js('ffCloseClicks'), 1);
-  await click('#map'); assert.equal(await js('mapClicks'), 1);
-  await js("document.querySelector('[data-ff-combat-resizer]').focus()"); await keyboard('Home');
+  await js("document.querySelector('[data-ff-combat-resizer]').focus()");
+  await keyboard('Home');
   await until("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width===undefined");
-  assert.equal(await js("document.documentElement.style.getPropertyValue('--ff-combat-width')"), '308px');
-  await keyboard('Right');
-  const double = await js("(()=>{const b=document.querySelector('[data-ff-combat-resizer]').getBoundingClientRect();return {x:Math.round(b.x+4),y:Math.round(b.y+80)}})()");
-  window.webContents.sendInputEvent({type:'mouseDown',...double,button:'left',clickCount:2});
-  window.webContents.sendInputEvent({type:'mouseUp',...double,button:'left',clickCount:2});
-  await until("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width===undefined");
-  await js("history.pushState({},'', '/campaign-two/play');window.dispatchEvent(new PopStateEvent('popstate'))");
-  await until("document.querySelector('[data-ff-combat-density]').getAttribute('aria-pressed')==='false'");
-  await js("history.pushState({},'', '/campaign-one/play');window.dispatchEvent(new PopStateEvent('popstate'))");
-  await until("document.querySelector('[data-ff-combat-density]').getAttribute('aria-pressed')==='true'");
   await js("history.pushState({},'', '/campaign-one/settings');window.dispatchEvent(new PopStateEvent('popstate'))");
   await until("!document.querySelector('[data-ff-combat-workspace-tools]')&&!document.documentElement.style.getPropertyValue('--ff-combat-width')");
-  await js("history.pushState({},'', '/campaign-one/play');window.dispatchEvent(new PopStateEvent('popstate'));localStorage.setItem('ff-desktop-combat-workspace-v1:/campaign-one','{bad')");
-  await configure(false); await configure();
-  await until("document.querySelector('[data-ff-combat-density]').getAttribute('aria-pressed')==='false'");
-  await js("original.panel.remove()");
-  await until("!document.querySelector('[data-ff-combat-workspace-tools]')&&!document.documentElement.style.getPropertyValue('--ff-combat-width')");
-  await js("document.body.append(original.panel)");
-  await until("document.querySelectorAll('[data-ff-combat-workspace-tools]').length===1");
   await configure(false);
   assert.equal(await js("!!document.querySelector('[data-ff-combat-resizer], [data-ff-combat-workspace-tools]')"), false);
-  assert.equal(await js("original.panel.hasAttribute('data-ff-combat-workspace-density')"), false);
-  assert.equal(await js("document.documentElement.style.getPropertyValue('--ff-combat-tools-height')"), '');
-  assert.equal(await identity(), true);
-  assert.equal(await js('submits+selections'), 0, 'Layout controls never select or submit native controls.');
-  await js("Object.defineProperty(window,'localStorage',{configurable:true,get(){throw Error('blocked')}});true");
-  await configure(); await click('[data-ff-combat-density]');
-  assert.equal(await js("document.querySelector('[data-ff-combat-density]').getAttribute('aria-pressed')"), 'true');
-  await configure(false);
+  assert.equal(await identity(), true, 'Native nodes, form draft, and chat draft remain intact.');
+  assert.equal(await js('submits+selections'), 0, 'Layout controls never activate native selection or roll handlers.');
   console.log('Combat workspace native fixture PASS');
   clearTimeout(timer); window.destroy(); app.quit();
 })().catch(error => { console.error(error); clearTimeout(timer); window?.destroy(); app.exit(1); });

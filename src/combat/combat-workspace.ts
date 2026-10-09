@@ -1,6 +1,6 @@
 // Serialized into the sandboxed website; keep all dependencies inside this function.
 export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'): void {
-  type Preferences = { width?: number; density: 'compact' | 'comfortable' };
+  type Preferences = { width?: number };
   type Controller = { update(value: 'en' | 'ru'): void; dispose(): void };
   const key = '__friendsFablesDesktopCombatWorkspace';
   const host = window as unknown as Record<string, Controller | undefined>;
@@ -8,8 +8,8 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
   if (!enabled) return;
   const root = document.documentElement;
   let language = locale, disposed = false, frame = 0, campaign = '', route = '';
-  let panel: HTMLElement | null = null, densityBefore: string | null = null;
-  let preferences: Preferences = { density: 'compact' };
+  let panel: HTMLElement | null = null;
+  let preferences: Preferences = {};
   let drag: { id: number; x: number; width: number } | null = null;
   let minimum = 280, maximum = 720, applied = 308;
   const properties = new Map<string, { before: string; priority: string; written: string }>();
@@ -17,11 +17,10 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
   function read(): Preferences {
     try {
       const value = localStorage.getItem(storageKey());
-      if (!value || value.length > 256) return { density: 'compact' };
+      if (!value || value.length > 256) return {};
       const raw = JSON.parse(value);
-      return { density: raw?.density === 'comfortable' ? 'comfortable' : 'compact',
-        width: typeof raw?.width === 'number' && Number.isFinite(raw.width) && raw.width >= 280 && raw.width <= 1200 ? Math.round(raw.width) : undefined };
-    } catch { return { density: 'compact' }; }
+      return { width: typeof raw?.width === 'number' && Number.isFinite(raw.width) && raw.width >= 280 && raw.width <= 1200 ? Math.round(raw.width) : undefined };
+    } catch { return {}; }
   }
   function save(): void { try { localStorage.setItem(storageKey(), JSON.stringify(preferences)); } catch { /* Restricted storage still allows local controls. */ } }
   function set(name: string, value: string): void {
@@ -39,27 +38,17 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
   }
   const style = document.createElement('style');
   style.textContent = `
-    [data-ff-combat-workspace-tools]{position:sticky;top:0;z-index:2;display:flex;flex:none;flex-wrap:wrap;align-items:center;gap:6px;box-sizing:border-box;min-height:50px;padding:8px 48px 8px 12px;max-height:min(320px,calc((100dvh - var(--ff-combat-rail-top)) * .45));overflow-y:auto;overscroll-behavior:contain;background:transparent;color:inherit;border-bottom:1px solid hsl(var(--border,0 0% 50%))}
-    [data-ff-combat-shortcuts-slot]{display:contents}
-    [data-ff-combat-density]{font:inherit;font-size:12px;line-height:1.3;white-space:normal;overflow-wrap:anywhere;max-width:100%;min-height:30px;border:1px solid hsl(var(--border,0 0% 50%));border-radius:6px;padding:4px 8px;color:inherit;background:transparent;cursor:pointer}
-    [data-ff-combat-workspace-density] [data-ff-combat-heading], [data-ff-combat-workspace-density] > h2:not(.hidden):not([hidden]){top:var(--ff-combat-tools-height,50px)}
-    [data-ff-combat-workspace-density=comfortable] button.group:has(> div > svg.lucide){min-height:96px!important;padding:14px!important;gap:10px!important}
-    [data-ff-combat-workspace-density=comfortable] [data-ff-combat-body]{padding:16px}
-    [data-ff-combat-workspace-density=comfortable] .grid:has(> button.group){gap:12px!important}
-    [data-ff-combat-resizer]{position:fixed;left:calc(var(--ff-combat-rail-width) + var(--ff-combat-width) - 4px);top:calc(var(--ff-combat-rail-top) + 50px);bottom:0;width:8px;z-index:3;cursor:ew-resize;touch-action:none;user-select:none;background:transparent}
+    [data-ff-combat-workspace-tools]{position:sticky;top:0;z-index:2;display:flex;flex:0 0 auto;box-sizing:border-box;padding-right:50px;color:hsl(var(--foreground,0 0% 96%));background:hsl(var(--card,0 0% 12%));border-bottom:1px solid hsl(var(--border,0 0% 50%))}
+    [data-ff-combat-workspace-tools]:has(> [data-ff-combat-shortcuts-slot]:empty){display:none}
+    [data-ff-combat-shortcuts-slot]{display:block;flex:1 1 auto;min-width:0}
+    [data-ff-combat-resizer]{position:fixed;left:calc(var(--ff-combat-rail-width) + var(--ff-combat-width) - 4px);top:calc(var(--ff-combat-rail-top) + var(--ff-combat-tools-height,0px));bottom:0;width:8px;z-index:3;cursor:ew-resize;touch-action:none;user-select:none;background:transparent}
     [data-ff-combat-resizer]:hover,[data-ff-combat-resizer]:focus-visible{background:hsl(var(--ring,var(--primary,0 0% 70%)));outline:2px solid hsl(var(--ring,var(--primary,0 0% 70%)));outline-offset:-2px}
   `;
   document.head.append(style);
   const tools = document.createElement('div'); tools.setAttribute('data-ff-combat-workspace-tools', ''); tools.setAttribute('data-ff-translation-ignore', 'true');
-  const density = document.createElement('button'); density.type = 'button'; density.setAttribute('data-ff-combat-density', '');
-  const slot = document.createElement('div'); slot.setAttribute('data-ff-combat-shortcuts-slot', ''); tools.append(density, slot);
+  const slot = document.createElement('div'); slot.setAttribute('data-ff-combat-shortcuts-slot', ''); tools.append(slot);
   const handle = document.createElement('div'); handle.setAttribute('data-ff-combat-resizer', ''); handle.setAttribute('role', 'separator'); handle.setAttribute('aria-orientation', 'vertical'); handle.setAttribute('data-ff-translation-ignore', 'true'); handle.tabIndex = 0;
   function labels(): void {
-    const comfortable = preferences.density === 'comfortable';
-    const label = language === 'ru' ? 'Просторный вид' : 'Comfortable layout';
-    if (density.textContent !== label) density.textContent = label;
-    density.setAttribute('aria-pressed', String(comfortable));
-    density.title = language === 'ru' ? 'Переключить плотность: компактный / просторный' : 'Toggle density: compact / comfortable';
     handle.setAttribute('aria-label', language === 'ru' ? 'Ширина панели боя' : 'Combat panel width');
     handle.title = language === 'ru' ? 'Перетащите или используйте стрелки. Home или двойной щелчок — сброс.' : 'Drag or use arrow keys. Home or double-click resets width.';
     handle.setAttribute('aria-valuetext', `${applied} ${language === 'ru' ? 'пикселей' : 'pixels'}`);
@@ -76,7 +65,6 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
     set('--ff-combat-width', `${applied}px`);
     const height = Math.ceil(tools.getBoundingClientRect().height);
     set('--ff-combat-tools-height', `${height}px`);
-    if (panel.getAttribute('data-ff-combat-workspace-density') !== preferences.density) panel.setAttribute('data-ff-combat-workspace-density', preferences.density);
     for (const [name, value] of [['aria-valuemin', minimum], ['aria-valuemax', maximum], ['aria-valuenow', applied]] as const) {
       if (handle.getAttribute(name) !== String(value)) handle.setAttribute(name, String(value));
     }
@@ -88,9 +76,6 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
   }
   function unmount(): void {
     stopDrag(); resize.disconnect(); tools.remove(); handle.remove();
-    if (panel && panel.getAttribute('data-ff-combat-workspace-density') === preferences.density) {
-      if (densityBefore === null) panel.removeAttribute('data-ff-combat-workspace-density'); else panel.setAttribute('data-ff-combat-workspace-density', densityBefore);
-    }
     panel = null; restore();
   }
   function scan(): void {
@@ -101,13 +86,12 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
     const next = play && root.getAttribute('data-ff-combat-open') === 'true' ? document.querySelector<HTMLElement>('[data-ff-combat-docked]') : null;
     if (next !== panel) {
       unmount(); panel = next;
-      if (panel) { densityBefore = panel.getAttribute('data-ff-combat-workspace-density'); panel.prepend(tools); panel.append(handle); resize.observe(tools); resize.observe(panel); }
+      if (panel) { panel.prepend(tools); panel.append(handle); resize.observe(tools); resize.observe(panel); }
     }
     geometry();
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(scan); }
   function requestWidth(width?: number): void { preferences.width = width === undefined ? undefined : Math.round(Math.max(280, Math.min(maximum, width))); geometry(); save(); }
-  density.addEventListener('click', () => { preferences.density = preferences.density === 'compact' ? 'comfortable' : 'compact'; geometry(); save(); });
   handle.addEventListener('pointerdown', event => {
     if (event.button !== 0 || !panel) return;
     event.preventDefault(); handle.focus(); drag = { id: event.pointerId, x: event.clientX, width: applied }; handle.setPointerCapture(event.pointerId);
