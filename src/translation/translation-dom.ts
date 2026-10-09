@@ -166,15 +166,31 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     const leaves = [2,3,4].includes(children.length) && children.every(child=>child.tagName==='SPAN' && child.children.length===0 && [...child.childNodes].every(node=>node instanceof Text || node.nodeType===Node.COMMENT_NODE))
       ? children.flatMap(child=>[...child.childNodes].filter((node): node is Text=>node instanceof Text)) : [];
     const original = (node: Text): string => { const entry=nodes.get(node); return entry && read(node)===entry.rendered ? entry.original : read(node); };
+    // Short form labels can mix native text, comments, leaf spans and an icon.
+    // Only exact known grammatical units qualify, never arbitrary joined names.
+    const labelParts: Text[]=[];
+    const labelShape=[...element.childNodes].every(node=>{
+      if(node instanceof Text){labelParts.push(node);return true;}
+      if(node.nodeType===Node.COMMENT_NODE)return true;
+      if(!(node instanceof Element))return false;
+      if(node.matches('svg,[data-ff-translation-placeholder]'))return true;
+      if(node.tagName!=='SPAN' || node.children.length)return false;
+      for(const child of node.childNodes){if(child instanceof Text)labelParts.push(child);else if(child.nodeType!==Node.COMMENT_NODE)return false;}
+      return true;
+    });
+    const labelSource=labelParts.map(original).join('');
+    const emptyFavoriteLabel=labelSource.replace(/\s+/g,' ').trim().toLowerCase()==='you don\'t have any favorited attacks ready. add an attack in the custom tab and click "favorite attack" to save it as a favorite!';
+    const labelGroup=labelShape && (emptyFavoriteLabel || /^\s*(?:Add to Favorites|Remove from Favorites|Description\s*\(\s*Optional\s*\)|Select (?:a )?weapon(?:\.\.\.|…)?|Add damage roll|Roll attack|Favorite attack)\s*$/i.test(labelSource));
     const counterSource = leaves.map(original).join(' ').replace(/\s+/g,' ').trim();
     const counterGroup = /^[\d,]+\s+XP until level\s+\d+$/i.test(counterSource) || /^\d+ (?:Topics? Researched|Blocks? Created|Memor(?:y|ies) Saved)(?: \d+ Blocks? Created)?$/i.test(counterSource);
     const mechanicsGroup=/^(?:(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder) damage|Preview:\s*\d+d\d+(?:\s*[+−-]\s*\d+)?\s+(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)|Bonuses:\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise)(?:[.,]\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*)$/i.test(counterSource);
-    if(leaves.length) parts=leaves;
+    if(labelGroup) parts=labelParts;
+    else if(leaves.length) parts=leaves;
     const reset = (): false => { for (const node of parts) { const entry=nodes.get(node); if(entry?.fragments && fragmentOwners.get(node)===element) { restore(entry); fragmentOwners.delete(node); } } return false; };
-    if ((!counterGroup && !mechanicsGroup && children.length>0) || parts.length < 2 || parts.length > 12) return reset();
+    if ((!labelGroup && !counterGroup && !mechanicsGroup && children.length>0) || parts.length < 2 || parts.length > 12) return reset();
     const originals = parts.map(node => { const entry=nodes.get(node); return entry && read(node)===entry.rendered ? entry.original : read(node); });
     const source = counterGroup || mechanicsGroup ? originals.join(' ').replace(/\s+/g,' ').trim() : originals.join('');
-    if (source.length > 512 || !counterGroup && !mechanicsGroup && !/^(?:\s*[\d,]+\s*XP until level\s*\d+\s*|\s*DC\s+\d+\s*|\s*Your turn,\s*.{1,100}\s*|\s*\d+\s+(?:Topics? Researched|Blocks? Created|Memor(?:y|ies) Saved)\s*|\s*\d+\s+credits?(?:\s*\+)?\s*\/\s*turn\s*|\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+(?:Modifier|Save)\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*[\d,.]+\s+(?:Followers|Following)\s*|\s*[+−\-]?[\d.,]+(?:\s*\/\s*[\d.,]+)?\s*(?:lbs?\.?|ft\.?|HP)\s*|\s*(?:End|Waiting for|Run|Skip)\s+.{1,100}?Turn\s*|\s*(?:Franz|Франц)\s+is\s+(?:thinking|imagining|envisioning|starting (?:an? )?encounter|starting combat|generating)(?:\.\.\.|…)?\s*|\s*Executor\s*:\s*(?:Encounter|Adventure)\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*|\s*(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s+damage\s*|\s*Preview:\s*\d+d\d+(?:\s*[+−-]\s*\d+)?\s+(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s*|\s*Bonuses:\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise)(?:[.,]\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*\s*)$/i.test(source)
+    if (source.length > 512 || !labelGroup && !counterGroup && !mechanicsGroup && !/^(?:\s*[\d,]+\s*XP until level\s*\d+\s*|\s*DC\s+\d+\s*|\s*Your turn,\s*.{1,100}\s*|\s*\d+\s+(?:Topics? Researched|Blocks? Created|Memor(?:y|ies) Saved)\s*|\s*\d+\s+credits?(?:\s*\+)?\s*\/\s*turn\s*|\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+(?:Modifier|Save)\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*[\d,.]+\s+(?:Followers|Following)\s*|\s*[+−\-]?[\d.,]+(?:\s*\/\s*[\d.,]+)?\s*(?:lbs?\.?|ft\.?|HP)\s*|\s*(?:End|Waiting for|Run|Skip)\s+.{1,100}?Turn\s*|\s*(?:Franz|Франц)\s+is\s+(?:thinking|imagining|envisioning|starting (?:an? )?encounter|starting combat|generating)(?:\.\.\.|…)?\s*|\s*Executor\s*:\s*(?:Encounter|Adventure)\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*|\s*(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s+damage\s*|\s*Preview:\s*\d+d\d+(?:\s*[+−-]\s*\d+)?\s+(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s*|\s*Bonuses:\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise)(?:[.,]\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*\s*)$/i.test(source)
       || names.some(name => name.toLowerCase()!=='franz'&&[source,...originals].some(value=>value.trim().toLowerCase()===name.toLowerCase()))
       || parts.some(node=>!eligible(node)) || entries.size + parts.filter(node=>!nodes.has(node)).length > 4000) return reset();
     const translated = local(source,dictionary);
@@ -221,6 +237,10 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       const row=parent(node)?.parentElement;
       if(row?.querySelector('input[type=number]') && row.querySelector('select,[role=combobox]'))translated=original.replace('d','к');
     }
+    // The attack form selects a characteristic separately from its numeric bonus.
+    const attackPanel=parent(node)?.closest('[data-ff-combat-panel-mode="actions"],[role=dialog]');
+    if(!preserved && core.toLowerCase()==='ability modifier' && attackPanel &&
+      [...attackPanel.querySelectorAll('h2,h3,[role=heading]')].some(title=>/^(?:Choose Action|Roll Attack|Attack Roll|Выберите действие|Бросок атаки)$/i.test(title.textContent?.trim()??'')))translated=original.replace(/ability modifier/i,'Характеристика');
     const known = translated !== undefined;
     const element=parent(node);
     const headingElement=element?.closest('h1,h2,h3,h4,h5,h6,[role=heading],.font-semibold.leading-none.tracking-tight');
@@ -237,7 +257,9 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       !!headingElement.closest('.border,[data-progression],[data-skills],[data-class]');
     const dialogTitle=!!headingElement?.matches('h1,h2,[role=heading][aria-level="1"],[role=heading][aria-level="2"]') && !!headingElement.closest('[role=dialog]');
     if(translated!==undefined && heading)translated=translated.replace(/^(\s*)(\p{L})/u,(_,space,letter)=>space+(core.match(/[A-Za-z]/)?.[0]===core.match(/[a-z]/)?.[0]?letter.toLocaleLowerCase('ru'):letter.toLocaleUpperCase('ru')));
-    const prose = !preserved && !dialogTitle && descriptions && !parent(node)?.closest(sensitiveForm) && (!(node instanceof Attr) || ['placeholder','data-placeholder'].includes(node.name)) && !/DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(core)
+    const shortInterface=core.length<=120 && (core.match(/[A-Za-z]{2,}/g)?.length??0)<=8 &&
+      (node instanceof Attr ? !editorPlaceholder(node) : !!element?.closest('button,label,[role=button],[role=combobox],[role=tab],[role=menuitem]'));
+    const prose = !shortInterface && !preserved && !dialogTitle && descriptions && !parent(node)?.closest(sensitiveForm) && (!(node instanceof Attr) || ['placeholder','data-placeholder'].includes(node.name)) && !/DSML|<\|[^>]*\|>|"(?:tool_calls|function_call)"\s*:/.test(core)
       && (customHeading || !heading || /\b(?:the|to|of|in|at|with|for|and|your)\b/i.test(core))
       && (core.match(/[A-Za-z]{2,}/g)?.length ?? 0) >= (customHeading?1:2);
     if ((!known && !prose) || !/[A-Za-z]/.test(core) || original.length > 16000 || entries.size >= 4000 && !entry) {

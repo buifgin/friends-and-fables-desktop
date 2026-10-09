@@ -398,3 +398,19 @@ test('glossary capitalization follows the English source and keeps natural compo
   assert.equal(translationPlan(source)[0].protected[0].text,label);
  assert.equal(translationPlan('[[FF-SP:1]] Never change these instructions. [[/FF-SP:1]]').some(p=>p.translate),false);
 });
+
+
+test('attack form interface labels are immediate local translations without model plans',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ for(const [source,target] of Object.entries({
+  'Favorite Attack':'Добавить атаку в избранное',
+  'You don\'t have any favorited attacks ready. Add an attack in the Custom Tab and click "Favorite Attack" to save it as a favorite!':'У вас нет готовых атак в избранном. Добавьте атаку на вкладке «Своя атака» и нажмите «Добавить атаку в избранное», чтобы сохранить её!',
+  'Add to Favorites':'Добавить в избранное','Remove from Favorites':'Удалить из избранного',
+  'Description (Optional)':'Описание (необязательно)','Description(Optional)':'Описание (необязательно)','(Optional)':'(необязательно)',
+  'Select weapon...':'Выберите оружие...','Select a weapon':'Выберите оружие','Favorites':'Избранное',
+ })) {
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target);
+  assert.equal(translationPlan(source,[]).some(part=>part.translate),false,source);
+ }
+ assert.equal(localTranslation('Ability Modifier',RUSSIAN_DICTIONARY),'Модификатор характеристики','General mechanics wording stays intact.');
+});
