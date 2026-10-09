@@ -66,10 +66,6 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     }
     ui.append(row);
   });
-  const shortcut = button('shortcut', () => { if (!panel || !ui.isConnected) return; ui.open = true; shortcut.setAttribute('aria-expanded', 'true'); ui.scrollIntoView({ block: 'start', behavior: 'auto' }); summary.focus({ preventScroll: true }); });
-  shortcut.setAttribute('data-ff-translation-ignore', 'true');
-  shortcut.setAttribute('aria-expanded', 'false');
-  ui.addEventListener('toggle', () => shortcut.setAttribute('aria-expanded', String(ui.open)));
   const nameLabel = document.createElement('label'), nameText = document.createElement('span'), name = document.createElement('input');
   name.maxLength = 40; name.setAttribute('data-ff-correction-name', ''); nameLabel.append(nameText, name); ui.append(nameLabel);
   const select = document.createElement('select'); select.setAttribute('data-ff-correction-presets', ''); ui.append(select);
@@ -99,10 +95,9 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   ui.append(save, load, remove, status);
   // Owned text inputs must never trigger the native form's implicit Enter submit.
   ui.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
-  const style = document.createElement('style'); style.setAttribute('data-ff-combat-corrections-style', ''); style.textContent = `[data-ff-correction-shortcut]{font:inherit;font-size:12px;min-height:28px;color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;padding:3px 6px}[data-ff-combat-corrections]{margin:8px 0;padding:8px;border:1px solid currentColor;border-radius:6px;font-size:12px;overflow-wrap:anywhere}[data-ff-combat-corrections] p{margin:6px 0}[data-ff-combat-corrections] summary{cursor:pointer}[data-ff-combat-corrections] .ff-correction-row{display:flex;flex-wrap:wrap;align-items:end;gap:4px;margin:6px 0}[data-ff-combat-corrections] label{display:flex;flex-direction:column;gap:3px}[data-ff-combat-corrections] input{width:90px;max-width:100%;color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;padding:4px}[data-ff-combat-corrections] select{display:block;max-width:100%;color:inherit;background:hsl(var(--card,0 0% 12%));margin:6px 0}[data-ff-combat-corrections] button{color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;min-height:28px;padding:3px 6px;margin-right:3px}[data-ff-combat-corrections] button:disabled{opacity:.5}`;
+  const style = document.createElement('style'); style.setAttribute('data-ff-combat-corrections-style', ''); style.textContent = `[data-ff-combat-corrections]{margin:8px 0;padding:8px;border:1px solid currentColor;border-radius:6px;font-size:12px;overflow-wrap:anywhere}[data-ff-combat-corrections] p{margin:6px 0}[data-ff-combat-corrections] summary{cursor:pointer}[data-ff-combat-corrections] .ff-correction-row{display:flex;flex-wrap:wrap;align-items:end;gap:4px;margin:6px 0}[data-ff-combat-corrections] label{display:flex;flex-direction:column;gap:3px}[data-ff-combat-corrections] input{width:90px;max-width:100%;color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;padding:4px}[data-ff-combat-corrections] select{display:block;max-width:100%;color:inherit;background:hsl(var(--card,0 0% 12%));margin:6px 0}[data-ff-combat-corrections] button{color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;min-height:28px;padding:3px 6px;margin-right:3px}[data-ff-combat-corrections] button:disabled{opacity:.5}`;
   document.head.append(style);
   function translate(): void {
-    shortcut.textContent = language === 'ru' ? 'Поправки' : 'Corrections';
     summary.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections';
     note.textContent = language === 'ru' ? 'Только эта форма. Наборы хранятся локально в кампании и загружаются вручную. Значения: −100…100.' : 'This form only. Presets stay local to this campaign and load manually. Values: −100…100.';
     labels.forEach((label, i) => label.textContent = language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус умения') : (i === 0 ? 'Modifier' : 'Proficiency bonus'));
@@ -113,7 +108,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     save.textContent = language === 'ru' ? 'Сохранить' : 'Save'; load.textContent = language === 'ru' ? 'Загрузить' : 'Load'; remove.textContent = language === 'ru' ? 'Удалить' : 'Delete';
     status.textContent = ''; options();
   }
-  function unmount(): void { shortcut.remove(); ui.remove(); ui.open = false; shortcut.setAttribute('aria-expanded', 'false'); fields = []; form = null; panel = null; status.textContent = ''; }
+  function unmount(): void { ui.remove(); ui.open = false; fields = []; form = null; panel = null; status.textContent = ''; }
   function scan(): void {
     frame = 0; if (disposed) return;
     const nextRoute = location.pathname + location.search;
@@ -131,14 +126,11 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
       // Keep native fields, form and submit untouched, and mount adjacent to the form.
       form!.insertAdjacentElement('afterend', ui);
     }
-    const slot = panel?.querySelector('[data-ff-combat-shortcuts-slot]');
-    if (slot && shortcut.parentElement !== slot) slot.append(shortcut);
-    else if (!slot) shortcut.remove();
     fields.forEach((field, i) => { const disabled = !writable(field); edits[i].disabled = disabled; for (const b of ui.querySelectorAll<HTMLButtonElement>(`.ff-correction-row:nth-of-type(${i + 1}) button`)) b.disabled = disabled; });
     load.disabled = fields.some(f => !writable(f));
   }
   function schedule(): void { if (!frame && !disposed) frame = requestAnimationFrame(scan); }
-  const observer = new MutationObserver(records => { if (records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest('[data-ff-combat-corrections],[data-ff-correction-shortcut]'))) schedule(); });
+  const observer = new MutationObserver(records => { if (records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest('[data-ff-combat-corrections]'))) schedule(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'disabled', 'readonly', 'id', 'type', 'inputmode', 'aria-disabled', 'data-disabled', 'hidden', 'aria-hidden', 'style', 'class'] });
   const timer = window.setInterval(schedule, 500); window.addEventListener('popstate', schedule);
   host[key] = { update(value) { language = value; translate(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); unmount(); style.remove(); delete host[key]; } };
