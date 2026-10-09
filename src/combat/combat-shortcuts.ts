@@ -63,8 +63,10 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   style.textContent = `
     [data-ff-dice-native-hidden]{display:none!important;}
     [data-ff-combat-shortcuts][hidden],[data-ff-dice-favorites][hidden],[data-ff-dice-selection-confirm][hidden],[data-ff-combat-shortcuts] [hidden]{display:none!important;}
-    [data-ff-dice-navigation]{display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0;padding:8px;box-sizing:border-box;}
+    [data-ff-dice-navigation]{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;flex-shrink:0;padding:8px;box-sizing:border-box;}
     [data-ff-dice-navigation] button,[data-ff-dice-add],[data-ff-dice-selection-confirm]{font:inherit;color:inherit;background:hsl(var(--background,0 0% 15%));border:1px solid hsl(var(--border,0 0% 40%));border-radius:6px;padding:6px 10px;cursor:pointer;}
+    [data-ff-dice-navigation] button{display:grid;place-items:center;min-width:0;min-height:40px;padding:0;}
+    [data-ff-dice-navigation] svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
     [data-ff-dice-favorites]{padding:8px;min-width:0;box-sizing:border-box;}
     [data-ff-dice-favorite-tiles]{display:flex;flex-direction:column;gap:8px;}
     [data-ff-dice-favorite-tiles]>button{width:100%;font:inherit;color:inherit;}
@@ -136,7 +138,12 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     if (owned.parentElement !== slot) slot!.append(owned);
     if (favorites.parentElement !== dock) dock!.append(favorites);
     if (confirm.parentElement !== dock) dock!.append(confirm);
-    standard.textContent = text('All checks', 'Все проверки'); favoriteNav.textContent = text('Favorites', 'Избранное');
+    standard.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/><circle cx="12" cy="12" r="1"/></svg>';
+    favoriteNav.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/></svg>';
+    standard.setAttribute('aria-label', text('All checks', 'Все проверки'));
+    standard.title = text('All checks', 'Все проверки');
+    favoriteNav.setAttribute('aria-label', text('Favorites', 'Избранное'));
+    favoriteNav.title = text('Favorites', 'Избранное');
     standard.setAttribute('aria-pressed', String(view !== 'favorites')); favoriteNav.setAttribute('aria-pressed', String(view === 'favorites'));
     cancel.textContent = text('Cancel', 'Отмена'); cancel.hidden = view !== 'selection';
     confirm.textContent = text('Confirm', 'Подтвердить'); confirm.hidden = view !== 'selection';
