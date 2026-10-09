@@ -23,6 +23,10 @@ export const combatPanelCss = `
     overflow-y: auto !important;
   }
 
+  [data-ff-combat-docked] > :not([data-ff-combat-close]):not([data-ff-combat-resizer]) {
+    flex: 0 0 auto;
+  }
+
   [data-ff-combat-controls] {
     display: contents;
   }
