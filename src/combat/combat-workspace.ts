@@ -39,7 +39,7 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
   }
   const style = document.createElement('style');
   style.textContent = `
-    [data-ff-combat-workspace-tools]{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:6px;box-sizing:border-box;min-height:50px;padding:8px 48px 8px 12px;background:hsl(var(--card,0 0% 12%));color:inherit;border-bottom:1px solid hsl(var(--border,0 0% 50%))}
+    [data-ff-combat-workspace-tools]{position:sticky;top:0;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:6px;box-sizing:border-box;min-height:50px;padding:8px 48px 8px 12px;max-height:min(320px,calc((100dvh - var(--ff-combat-rail-top)) * .45));overflow-y:auto;overscroll-behavior:contain;background:transparent;color:inherit;border-bottom:1px solid hsl(var(--border,0 0% 50%))}
     [data-ff-combat-shortcuts-slot]{display:contents}
     [data-ff-combat-density]{font:inherit;font-size:12px;line-height:1.3;white-space:normal;overflow-wrap:anywhere;max-width:100%;min-height:30px;border:1px solid hsl(var(--border,0 0% 50%));border-radius:6px;padding:4px 8px;color:inherit;background:transparent;cursor:pointer}
     [data-ff-combat-workspace-density] [data-ff-combat-heading], [data-ff-combat-workspace-density] > h2:not(.hidden):not([hidden]){top:var(--ff-combat-tools-height,50px)}
@@ -106,13 +106,13 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
     geometry();
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(scan); }
-  function requestWidth(width?: number): void { preferences.width = width === undefined ? undefined : Math.round(Math.max(280, Math.min(1200, width))); geometry(); save(); }
+  function requestWidth(width?: number): void { preferences.width = width === undefined ? undefined : Math.round(Math.max(280, Math.min(maximum, width))); geometry(); save(); }
   density.addEventListener('click', () => { preferences.density = preferences.density === 'compact' ? 'comfortable' : 'compact'; geometry(); save(); });
   handle.addEventListener('pointerdown', event => {
     if (event.button !== 0 || !panel) return;
     event.preventDefault(); handle.focus(); drag = { id: event.pointerId, x: event.clientX, width: applied }; handle.setPointerCapture(event.pointerId);
   });
-  function move(event: PointerEvent): void { if (drag?.id === event.pointerId) { preferences.width = Math.round(Math.max(280, Math.min(1200, drag.width + event.clientX - drag.x))); geometry(); } }
+  function move(event: PointerEvent): void { if (drag?.id === event.pointerId) { preferences.width = Math.round(Math.max(280, Math.min(maximum, drag.width + event.clientX - drag.x))); geometry(); } }
   function end(event: PointerEvent): void { if (drag?.id === event.pointerId) { stopDrag(); save(); } }
   handle.addEventListener('dblclick', () => requestWidth());
   handle.addEventListener('keydown', event => {
