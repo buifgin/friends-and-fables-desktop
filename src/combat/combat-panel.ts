@@ -164,6 +164,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     document.documentElement.removeAttribute('data-ff-combat-open');
     chat?.removeAttribute('data-ff-combat-chat');
     picker?.removeAttribute('data-ff-combat-panel'); picker?.removeAttribute('data-ff-combat-docked');
+    picker?.removeAttribute('data-ff-combat-panel-mode');
     picker?.querySelector('[data-ff-combat-heading]')?.removeAttribute('data-ff-combat-heading');
     picker?.querySelector('[data-ff-combat-close]')?.removeAttribute('data-ff-combat-close');
     updateControls();
@@ -238,6 +239,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   function dock(): void {
     if (!picker || modalActive || otherLayer()) return;
     attribute(picker, 'data-ff-combat-docked', '', true); attribute(picker, 'data-ff-combat-panel', '', true);
+    attribute(picker, 'data-ff-combat-panel-mode', mode, true);
     const heading = Array.from(picker.querySelectorAll<HTMLElement>('h2')).find(node => /^(Choose Action|Выберите действие)$/i.test(node.textContent?.trim() ?? ''));
     if (heading) attribute(heading, 'data-ff-combat-heading', '', true);
     const closeButton = picker.querySelector<HTMLElement>('button:has(.lucide-x)'); if (closeButton) attribute(closeButton, 'data-ff-combat-close', '', true);

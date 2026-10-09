@@ -76,6 +76,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await js(`(()=>{const style=document.createElement('style');style.textContent=${JSON.stringify(themeCss(sharedAppearance)+chatCss(sharedAppearance,null))};document.head.append(style)})()`);
  await configure();
  await until("!!document.querySelector('[data-ff-combat-docked]')");
+ assert.equal(await js("document.querySelector('[data-ff-combat-docked]').getAttribute('data-ff-combat-panel-mode')"),'actions','Native action docking exposes explicit context to extension controllers.');
  const inheritedImage='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=';
  const ambient={image:inheritedImage,fit:'contain',effects:{blur:3,opacity:.6,overlayColor:'#224466',overlayOpacity:.25}};
  const expectedForeground=await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]')).color");
@@ -226,6 +227,7 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await js('originalEditor.focus()');assert.equal(await js('document.activeElement===originalEditor'),true,'Background focus resumes without resetting native draft.');
  assert.equal(await js("document.querySelector('input').value"),'custom draft');
  await js("document.querySelector('[data-ff-combat-mode=skills]').click()");await until("!!document.querySelector('#acrobatics') && !!document.querySelector('[data-ff-combat-docked]')");
+ assert.equal(await js("document.querySelector('[data-ff-combat-docked]').getAttribute('data-ff-combat-panel-mode')"),'skills','Dice context stays explicit through native panel switching.');
  assert.equal(await js('submits'),1,'Switching to native skills never rolls.');
  await verifySurface('checks');
  for(const width of [308,390]){
