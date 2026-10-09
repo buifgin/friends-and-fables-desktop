@@ -1,6 +1,6 @@
 // Term names only; Russian wording is curated for this app. See docs/GLOSSARY.md
 // for SRD attribution and the community terminology references used to check it.
-export const GLOSSARY_VERSION = 9;
+export const GLOSSARY_VERSION = 10;
 export const DND_GLOSSARY: Record<string, string> = {
   'cantrip':'Заговор', 'cantrips':'Заговоры', 'spellcasting':'Использование заклинаний',
   'spellcasting ability':'Базовая характеристика заклинаний', 'spellcasting focus':'Магическая фокусировка',
@@ -208,6 +208,10 @@ export const DND_GLOSSARY: Record<string, string> = {
 };
 
 export const INTERFACE_GLOSSARY: Record<string,string> = {
+  'add to favorites':'Добавить в избранное', 'remove from favorites':'Удалить из избранного',
+  'favorites':'Избранное', 'favorite attack':'Добавить атаку в избранное',
+  'you don\'t have any favorited attacks ready. add an attack in the custom tab and click "favorite attack" to save it as a favorite!':'У вас нет готовых атак в избранном. Добавьте атаку на вкладке «Своя атака» и нажмите «Добавить атаку в избранное», чтобы сохранить её!', 'description (optional)':'Описание (необязательно)', '(optional)':'(необязательно)',
+  'select weapon':'Выберите оружие', 'select a weapon':'Выберите оружие',
   'credits':'Кредиты', 'add credits':'Добавить кредиты', 'claim credits':'Получить кредиты',
   'upgrade now':'Улучшить тариф', 'account':'Аккаунт', 'public profile':'Открытый профиль',
   'notifications':'Уведомления', 'likes':'Понравившееся', 'logout':'Выйти', 'log out':'Выйти', 'free':'Бесплатный',
