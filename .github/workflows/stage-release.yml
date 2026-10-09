@@ -1,0 +1,42 @@
+name: Stage verified release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Check and build desktop run ID
+        required: true
+        type: string
+      tag:
+        description: Existing draft release tag
+        required: true
+        type: string
+      source:
+        description: Exact tested source commit SHA
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+concurrency:
+  group: release-staging-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  stage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Verify and stage exact CI artifacts in the existing draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_RUN_ID: ${{ inputs.run_id }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          RELEASE_SOURCE: ${{ inputs.source }}
+        run: python3 scripts/stage-release.py --run-id "$RELEASE_RUN_ID" --tag "$RELEASE_TAG" --source "$RELEASE_SOURCE" --directory "$RUNNER_TEMP/verified-release"
