@@ -36,7 +36,15 @@ app.on('window-all-closed', () => {});
   const until = async expression => { for (let n = 0; n < 100; n++) { if (await js(expression)) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw Error('Timed out: ' + expression); };
   const configure = (enabled = true, locale = 'en') => js(`(${configureCombatWorkspace.toString()})(${enabled},${JSON.stringify(locale)})`);
   const pointer = async (type, x, y) => { window.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 }); await new Promise(resolve => setTimeout(resolve, 30)); };
-  const click = async selector => { const b = await js(`(()=>{const b=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:b.x+b.width/2,y:b.y+b.height/2}})()`); await pointer('mouseMove', b.x, b.y); await pointer('mouseDown', b.x, b.y); await pointer('mouseUp', b.x, b.y); };
+  const click = async selector => {
+    const point = () => js(`(()=>{const target=document.querySelector(${JSON.stringify(selector)}),b=target.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+b.height/2),hit=document.elementFromPoint(x,y);return {x,y,left:b.left,right:b.right,top:b.top,bottom:b.bottom,hit:target.contains(hit),hitTag:hit?.tagName,hitId:hit?.id}})()`);
+    const initial = await point();
+    await pointer('mouseMove', initial.x, initial.y);
+    const ready = await point();
+    assert.equal(ready.hit, true, `Native click target moved or became obscured after hover: ${JSON.stringify({ initial, ready })}`);
+    await pointer('mouseDown', ready.x, ready.y);
+    await pointer('mouseUp', ready.x, ready.y);
+  };
   const keyboard = async key => { window.webContents.sendInputEvent({ type: 'keyDown', keyCode: key }); window.webContents.sendInputEvent({ type: 'keyUp', keyCode: key }); await new Promise(resolve => setTimeout(resolve, 30)); };
   const identity = () => js(`Object.entries(original).every(([key,node])=>node.isConnected)&&original.form===document.querySelector('form')&&original.input.value==='retained roll'&&original.draft.textContent==='retained draft'`);
   await window.loadURL('https://play.fables.gg/campaign-one/play');
@@ -55,7 +63,7 @@ app.on('window-all-closed', () => {});
   assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width"), initialWidth + 40, 'Pointer resize preference persists.');
   await js("document.querySelector('[data-ff-combat-resizer]').focus()"); await keyboard('Right');
   await until(`Number(document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuenow'))===${initialWidth + 50}`);
-  await js(`document.querySelector('[data-ff-combat-shortcuts-slot]').innerHTML='<nav data-ff-dice-navigation><button>All checks</button><button>Favorites</button></nav>';const dock=document.querySelector('[data-ff-combat-docked]');dock.insertAdjacentHTML('beforeend','<div data-ff-dice-favorites></div><div data-ff-dice-selection></div>');const confirm=document.createElement('button');confirm.textContent='Confirm';confirm.setAttribute('data-ff-dice-selection-confirm','');dock.append(confirm);window.confirmHits=0;confirm.onclick=()=>confirmHits++;true`);
+  await js(`document.querySelector('[data-ff-combat-shortcuts-slot]').innerHTML='<nav data-ff-dice-navigation><button>All checks</button><button>Favorites</button></nav>';const dock=document.querySelector('[data-ff-combat-docked]');dock.insertAdjacentHTML('beforeend','<div data-ff-dice-favorites></div><div data-ff-dice-selection></div>');const confirm=document.createElement('button');confirm.textContent='Confirm';confirm.setAttribute('data-ff-dice-selection-confirm','');dock.append(confirm);window.confirmHits=0;window.confirmInputTrace=[];for(const type of ['pointerdown','mousedown','pointerup','mouseup','click'])document.addEventListener(type,event=>{const b=confirm.getBoundingClientRect(),x=event.clientX,y=event.clientY,hit=document.elementFromPoint(x,y);if(confirmInputTrace.length<24&&(confirm.contains(event.target)||(x>=b.left&&x<=b.right&&y>=b.top&&y<=b.bottom)))confirmInputTrace.push({type:event.type,trusted:event.isTrusted,target:event.target?.tagName,targetId:event.target?.id,x,y,hitTag:hit?.tagName,hitId:hit?.id})},true);confirm.onclick=()=>confirmHits++;true`);
   await until("document.querySelector('[data-ff-combat-workspace-tools]').getBoundingClientRect().height>0");
   await js("original.panel.setAttribute('data-ff-combat-panel-mode','actions')");
   assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-dice-navigation]')).display"), 'none', 'Explicit actions mode hides dice navigation.');
@@ -84,7 +92,11 @@ app.on('window-all-closed', () => {});
     const confirmation = await js("(()=>{const button=document.querySelector('[data-ff-dice-selection-confirm]'),b=button.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+b.height/2);return {x,y,left:b.left,right:b.right,top:b.top,bottom:b.bottom,hit:button.contains(document.elementFromPoint(x,y)),hits:window.confirmHits}})()");
     assert.equal(confirmation.hit, true, `Floating confirmation is the native hit target after scroll: ${JSON.stringify(confirmation)}`);
     await click('[data-ff-dice-selection-confirm]');
-    await until(`confirmHits===${confirmation.hits + 1}`);
+    try { await until(`confirmHits===${confirmation.hits + 1}`); }
+    catch (error) {
+      const state = await js("(()=>{const button=document.querySelector('[data-ff-dice-selection-confirm]'),b=button.getBoundingClientRect();return {focus:document.hasFocus(),active:document.activeElement?.tagName,button:{left:b.left,right:b.right,top:b.top,bottom:b.bottom},hits:window.confirmHits,trace:window.confirmInputTrace.slice(-12)}})()");
+      throw new Error(`Native confirmation click did not fire once: ${JSON.stringify({ confirmation, state, cause: error.message })}`);
+    }
     assert.equal(await js('confirmHits'), confirmation.hits + 1, `Each real native confirmation click fires exactly once: ${JSON.stringify(confirmation)}`);
     await js('original.panel.scrollTop=0');
   }
