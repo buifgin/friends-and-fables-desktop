@@ -87,7 +87,10 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     if (!dock) return result;
     for (const node of dock.querySelectorAll<HTMLButtonElement>('button')) {
       if (owned.contains(node) || favorites.contains(node) || node === confirm) continue;
-      const item = byLabel.get(node.textContent?.trim() ?? '');
+      // Native captions contain repeated whitespace; translation collapses it.
+      // Recognize both presentations so hiding/restoring the native list cannot
+      // alternate between an empty and populated options map.
+      const item = byLabel.get(node.textContent?.replace(/\s+/g, ' ').trim() ?? '');
       if (item && !result.has(item)) result.set(item, node);
     }
     return result;
