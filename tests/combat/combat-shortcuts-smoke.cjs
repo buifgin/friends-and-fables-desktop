@@ -12,6 +12,7 @@ const wait = async (contents, expression) => {
   throw new Error(`Timed out waiting for ${expression}`);
 };
 (async () => {
+  if (process.env.FABLES_TEST_PROFILE_DIR) app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
   await app.whenReady();
   const testSession = session.fromPartition('combat-shortcuts-smoke');
   testSession.protocol.handle('https', () => new Response(`<!doctype html><body>
@@ -24,7 +25,7 @@ const wait = async (contents, expression) => {
       document.querySelector('#save').onclick=()=>window.selections++;document.querySelector('#skill').onclick=()=>window.selections++;
       document.querySelector('#favorites-tab').onclick=()=>window.favoritesSelected++;
       document.querySelector('#unrelated-tab').onclick=()=>window.unrelatedSelected++;</script></body>`, { headers: { 'content-type': 'text/html' } }));
-  window = new BrowserWindow({ show: false, webPreferences: { partition: 'combat-shortcuts-smoke', contextIsolation: false, nodeIntegration: false } });
+  window = new BrowserWindow({ show: false, webPreferences: { partition: 'combat-shortcuts-smoke', contextIsolation: true, nodeIntegration: false } });
   await window.loadURL('https://combat.test/campaign/play');
   const source = `(${configureCombatShortcuts.toString()})(true, 'ru')`;
   const contents = window.webContents;
@@ -59,11 +60,11 @@ const wait = async (contents, expression) => {
   await contents.executeJavaScript(`document.querySelector('[data-ff-shortcut-manager] summary').focus();document.body.append(document.createElement('aside'))`);
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(await contents.executeJavaScript(`document.activeElement === document.querySelector('[data-ff-shortcut-manager] summary')`), true, 'Unrelated page mutations preserve keyboard focus.');
-  await contents.executeJavaScript(`document.querySelector('#check').setAttribute('aria-disabled','true')`);
-  await wait(contents, `document.querySelector('[data-ff-shortcut-tray] button')?.disabled`);
+  await contents.executeJavaScript(`document.querySelector('#skill').setAttribute('aria-disabled','true')`);
+  await wait(contents, `[...document.querySelectorAll('[data-ff-shortcut-tray] button')].find(x=>x.textContent==='Acrobatics Check')?.disabled`);
   assert.equal(await contents.executeJavaScript(`document.querySelector('[data-ff-native-favorites]').disabled`), false);
   await contents.executeJavaScript(`window.__friendsFablesDesktopCombatShortcuts.dispose(); (${configureCombatShortcuts.toString()})(true, 'en')`);
-  await wait(contents, `[...document.querySelectorAll('[data-ff-shortcut-list] input')].some(x=>x.getAttribute('aria-label')==='Pin Strength Check' && x.checked)`);
+  assert.equal(await contents.executeJavaScript(`JSON.stringify([...document.querySelectorAll('[data-ff-shortcut-list] input')].filter(x=>x.checked).map(x=>x.getAttribute('aria-label')))`), '["Pin Acrobatics Check","Pin Strength Saving Throw"]', 'Disposal/reconfiguration restores the remaining campaign pins.');
   await contents.executeJavaScript(`[...document.querySelectorAll('[data-ff-shortcut-list] input')].find(x=>x.getAttribute('aria-label')==='Pin Acrobatics Check').click();[...document.querySelectorAll('[data-ff-shortcut-list] input')].find(x=>x.getAttribute('aria-label')==='Pin Strength Saving Throw').click()`);
   assert.equal(await contents.executeJavaScript(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '[]', 'Unpin removes the canonical ID.');
   assert.equal(await contents.executeJavaScript(`document.querySelector('[data-ff-shortcut-tray]').hidden`), true);
