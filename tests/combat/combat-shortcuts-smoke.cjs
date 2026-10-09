@@ -21,9 +21,11 @@ const wait = async (contents, expression) => {
       <button role="tab" id="favorites-tab" aria-controls="favorites-panel">Избранное</button>
     </div>
     <button role="tab" id="unrelated-tab">Favorites</button>
-    <script>window.rolls=0;window.selections=0;window.favoritesSelected=0;window.unrelatedSelected=0;document.querySelector('#check').onclick=()=>window.selections++;
+    <script>window.rolls=0;window.selections=0;window.favoritesSelected=0;window.favoriteMouseDowns=0;window.favoriteClicks=0;window.favoriteFocused=false;window.unrelatedSelected=0;document.querySelector('#check').onclick=()=>window.selections++;
       document.querySelector('#save').onclick=()=>window.selections++;document.querySelector('#skill').onclick=()=>window.selections++;
-      document.querySelector('#favorites-tab').onclick=()=>window.favoritesSelected++;
+      document.querySelector('#favorites-tab').addEventListener('focus',()=>window.favoriteFocused=true);
+      document.querySelector('#favorites-tab').addEventListener('mousedown',event=>{window.favoriteMouseDowns++;if(event.button===0&&event.buttons===1&&!event.ctrlKey){window.favoritesSelected++;event.currentTarget.setAttribute('aria-selected','true')}});
+      document.querySelector('#favorites-tab').addEventListener('click',()=>window.favoriteClicks++);
       document.querySelector('#unrelated-tab').onclick=()=>window.unrelatedSelected++;</script></body>`, { headers: { 'content-type': 'text/html' } }));
   window = new BrowserWindow({ show: false, webPreferences: { partition: 'combat-shortcuts-smoke', contextIsolation: true, nodeIntegration: false } });
   await window.loadURL('https://combat.test/campaign/play');
@@ -66,8 +68,22 @@ const wait = async (contents, expression) => {
   await contents.executeJavaScript(`window.__friendsFablesDesktopCombatShortcuts.dispose(); (${configureCombatShortcuts.toString()})(true, 'en')`);
   assert.equal(await contents.executeJavaScript(`JSON.stringify([...document.querySelectorAll('[data-ff-shortcut-list] input')].filter(x=>x.checked).map(x=>x.getAttribute('aria-label')))`), '["Pin Acrobatics Check","Pin Strength Saving Throw"]', 'Disposal/reconfiguration restores the remaining campaign pins.');
   await contents.executeJavaScript(`document.querySelector('[data-ff-native-favorites]').click()`);
-  assert.equal(await contents.executeJavaScript('window.favoritesSelected'), 1, 'Favorites activates the original tab.');
+  assert.equal(await contents.executeJavaScript('window.favoritesSelected'), 1, 'The native mouse-down handler selects Favorites exactly once.');
+  assert.equal(await contents.executeJavaScript(`document.querySelector('#favorites-tab').getAttribute('aria-selected')`), 'true', 'The original tab becomes selected.');
+  assert.equal(await contents.executeJavaScript('window.favoriteMouseDowns'), 1);
+  assert.equal(await contents.executeJavaScript('window.favoriteClicks'), 0, 'Activation does not add a synthetic click after the native mouse-down path.');
+  assert.equal(await contents.executeJavaScript('window.favoriteFocused'), true, 'The original tab receives focus before activation.');
   assert.equal(await contents.executeJavaScript('window.unrelatedSelected'), 0, 'An unrelated Favorites tab outside the dock is ignored.');
+  await contents.executeJavaScript(`document.querySelector('#favorites-tab').setAttribute('aria-disabled','true');document.querySelector('[data-ff-native-favorites]').click()`);
+  await wait(contents, `document.querySelector('[data-ff-native-favorites]').disabled`);
+  assert.equal(await contents.executeJavaScript('window.favoriteMouseDowns'), 1, 'Unavailable tabs are never activated.');
+  await contents.executeJavaScript(`document.querySelector('#favorites-tab').removeAttribute('aria-disabled')`);
+  await wait(contents, `!document.querySelector('[data-ff-native-favorites]').disabled`);
+  await contents.executeJavaScript(`document.querySelector('#favorites-tab').hidden=true;document.querySelector('[data-ff-native-favorites]').click()`);
+  await wait(contents, `document.querySelector('[data-ff-native-favorites]').disabled`);
+  assert.equal(await contents.executeJavaScript('window.favoriteMouseDowns'), 1, 'Hidden tabs are never activated.');
+  await contents.executeJavaScript(`document.querySelector('#favorites-tab').hidden=false`);
+  await wait(contents, `!document.querySelector('[data-ff-native-favorites]').disabled`);
   await contents.executeJavaScript(`document.querySelectorAll('#check,#save,#skill').forEach(node=>node.remove())`);
   await wait(contents, `document.querySelector('[data-ff-shortcut-manager]').hidden&&document.querySelector('[data-ff-shortcut-title]').hidden&&document.querySelector('[data-ff-shortcut-tray]').hidden`);
   assert.equal(await contents.executeJavaScript(`document.querySelector('[data-ff-native-favorites]').hidden`), false, 'Action-only mode keeps the native Favorites shortcut.');

@@ -145,7 +145,12 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   const observer = new MutationObserver(records => {
     if (records.some(record => !owned.contains(record.target) && record.target !== owned)) schedule();
   }); observer.observe(document.documentElement, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'data-disabled', 'hidden', 'aria-hidden', 'aria-selected', 'aria-controls', 'id'] });
-  favorites.addEventListener('click', () => { const dock = currentDock(), tab = dock && findFavoriteTab(dock); if (tab && !unavailable(tab)) tab.click(); });
+  favorites.addEventListener('click', () => {
+    const dock = currentDock(), tab = dock && findFavoriteTab(dock);
+    if (!tab || unavailable(tab)) return;
+    tab.focus({ preventScroll: true });
+    tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, ctrlKey: false }));
+  });
   function update(value: 'en' | 'ru'): void { language = value; render(); }
   function dispose(): void { if (disposed) return; disposed = true; observer.disconnect(); owned.remove(); style.remove(); delete host[key]; }
   host[key] = { update, dispose }; sync();
