@@ -79,13 +79,13 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   function findNative(item: Item, dock: HTMLElement): HTMLButtonElement | null {
     return Array.from(dock.querySelectorAll<HTMLButtonElement>('button')).find(button => !button.closest('[data-ff-combat-shortcuts]') && !button.disabled && byLabel.get(button.textContent?.trim() ?? '') === item) ?? null;
   }
-  function findFavoriteTab(): HTMLButtonElement | null {
-    return Array.from(document.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find(tab => {
+  function findFavoriteTab(): HTMLElement | null {
+    return Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]')).find(tab => {
       const idRefs = `${tab.id} ${tab.getAttribute('aria-controls') ?? ''}`.toLowerCase();
       const identified = /favorit|избран/.test(idRefs);
       const label = tab.textContent?.trim().toLowerCase() ?? '';
       const labelled = label === 'favorites' || label === 'favourites' || label === 'избранное';
-      return (identified || labelled) && !tab.disabled;
+      return (identified || labelled) && !tab.matches(':disabled') && tab.getAttribute('aria-disabled') !== 'true';
     }) ?? null;
   }
   function render(): void {
@@ -122,7 +122,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   const observer = new MutationObserver(records => {
     if (records.some(record => !owned.contains(record.target) && record.target !== owned)) schedule();
   }); observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'aria-selected', 'aria-controls', 'id'] });
-  favorites.addEventListener('click', () => { const tab = findFavoriteTab(); if (tab && !tab.disabled) tab.click(); });
+  favorites.addEventListener('click', () => { const tab = findFavoriteTab(); if (tab && !tab.matches(':disabled') && tab.getAttribute('aria-disabled') !== 'true') tab.click(); });
   function update(value: 'en' | 'ru'): void { language = value; render(); }
   function dispose(): void { if (disposed) return; disposed = true; observer.disconnect(); owned.remove(); style.remove(); delete host[key]; }
   host[key] = { update, dispose }; sync();
