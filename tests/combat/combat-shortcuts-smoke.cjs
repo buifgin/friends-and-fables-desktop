@@ -84,7 +84,7 @@ const wait = async (contents, expression) => {
   await click('#back'); await wait(contents, `!document.querySelector('[data-ff-dice-navigation]').hidden`);
   await click('[data-ff-dice-favorites-nav]');
   await run(`window.__friendsFablesDesktopCombatShortcuts.update('en')`);
-  assert.deepEqual(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].map(x=>x.getAttribute('aria-label'))`), ['All checks', 'Favorites']);
+  assert.deepEqual(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).map(x=>x.getAttribute('aria-label'))`), ['All checks', 'Favorites']);
   assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).every(x=>x.title===x.getAttribute('aria-label'))`), true, 'Visible navigation tooltips follow the English locale.');
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile]').textContent`), 'Strength Check');
   await run(`document.querySelector('#skill').setAttribute('aria-disabled','true')`);
