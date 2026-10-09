@@ -58,6 +58,9 @@ const wait = async (contents, expression) => {
   await run(`document.querySelector('#save').dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}))`);
   await run(`document.querySelector('#skill input').focus();document.querySelector('#skill input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))`);
   assert.equal(await run(`document.activeElement===document.querySelector('#skill input')`), true, 'Checkbox selection retains keyboard focus.');
+  assert.equal(await run(`(()=>{const b=document.querySelector('[data-ff-dice-selection-confirm]'),s=b.querySelector('svg');return b.getAttribute('aria-label')==='Подтвердить'&&b.title==='Подтвердить'&&b.textContent.trim()===''&&b.tabIndex===0&&s?.getAttribute('aria-hidden')==='true'&&s?.getAttribute('focusable')==='false'&&s?.getAttribute('viewBox')==='0 0 24 24'&&getComputedStyle(b).width==='40px'&&getComputedStyle(b).height==='40px'&&getComputedStyle(s).width==='20px'&&getComputedStyle(s).height==='20px'})()`), true, 'Russian confirm is icon-only, keyboard-focusable, accessible, decorative, and has a 40px target with a centered 20px icon.');
+  await run(`document.querySelector('[data-ff-dice-selection-confirm]').focus()`);
+  assert.equal(await run(`document.activeElement===document.querySelector('[data-ff-dice-selection-confirm]')&&!document.querySelector('[data-ff-dice-selection-confirm]').hidden`), true, 'Confirm remains focusable and visible during selection.');
   await click('[data-ff-dice-selection-cancel]');
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-favorite-tile]').length`), 0, 'Cancel discards the entire draft.');
   await click('[data-ff-dice-add]'); await click('#check'); await click('#skill input');
@@ -86,6 +89,9 @@ const wait = async (contents, expression) => {
   await run(`window.__friendsFablesDesktopCombatShortcuts.update('en')`);
   assert.deepEqual(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).map(x=>x.getAttribute('aria-label'))`), ['All checks', 'Favorites']);
   assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).every(x=>x.title===x.getAttribute('aria-label'))`), true, 'Visible navigation tooltips follow the English locale.');
+  await click('[data-ff-dice-add]');
+  assert.equal(await run(`(()=>{const b=document.querySelector('[data-ff-dice-selection-confirm]');return b.getAttribute('aria-label')==='Confirm'&&b.title==='Confirm'&&b.textContent.trim()===''&&!!b.querySelector('svg[aria-hidden="true"][focusable="false"]')})()`), true, 'English confirm keeps a localized accessible name and tooltip with decorative icon only.');
+  await click('[data-ff-dice-selection-cancel]');
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile]').textContent`), 'Strength Check');
   await run(`document.querySelector('#skill').setAttribute('aria-disabled','true')`);
   await wait(contents, `document.querySelector('[data-ff-dice-favorite-tile="skill.acrobatics"]').disabled`);
