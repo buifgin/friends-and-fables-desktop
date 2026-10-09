@@ -50,7 +50,7 @@ export const combatPanelCss = `
     gap: 8px !important;
   }
 
-  [data-ff-combat-controls-group]:not([data-ff-combat-controls-compact]) [data-ff-combat-mode] {
+  [data-ff-combat-controls-group][data-ff-combat-controls-expanded] [data-ff-combat-mode] {
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;

@@ -29,7 +29,10 @@ app.on('window-all-closed', () => {});
   const site = session.fromPartition(`combat-workspace-${process.pid}`);
   site.protocol.handle('https', () => new Response(html, { headers: { 'Content-Type': 'text/html' } }));
   window = new BrowserWindow({ show: false, width: 1100, height: 780, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
-  const js = source => window.webContents.executeJavaScript(source);
+  const js = async source => {
+    try { return await window.webContents.executeJavaScript(source); }
+    catch (error) { throw new Error(`Fixture evaluate failed for ${source.slice(0, 180)}: ${error.message}`); }
+  };
   const until = async expression => { for (let n = 0; n < 100; n++) { if (await js(expression)) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw Error('Timed out: ' + expression); };
   const configure = (enabled = true, locale = 'en') => js(`(${configureCombatWorkspace.toString()})(${enabled},${JSON.stringify(locale)})`);
   const pointer = async (type, x, y) => { window.webContents.sendInputEvent({ type, x: Math.round(x), y: Math.round(y), button: 'left', clickCount: 1 }); await new Promise(resolve => setTimeout(resolve, 30)); };
@@ -52,7 +55,7 @@ app.on('window-all-closed', () => {});
   assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width"), initialWidth + 40, 'Pointer resize preference persists.');
   await js("document.querySelector('[data-ff-combat-resizer]').focus()"); await keyboard('Right');
   await until(`Number(document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuenow'))===${initialWidth + 50}`);
-  await js(`document.querySelector('[data-ff-combat-shortcuts-slot]').innerHTML='<nav data-ff-dice-navigation><button>All checks</button><button>Favorites</button></nav>';const dock=document.querySelector('[data-ff-combat-docked]');dock.insertAdjacentHTML('beforeend','<div data-ff-dice-favorites></div><div data-ff-dice-selection></div>');const confirm=document.createElement('button');confirm.textContent='Confirm';confirm.setAttribute('data-ff-dice-selection-confirm','');dock.append(confirm);window.confirmHits=0;confirm.onclick=()=>confirmHits++`);
+  await js(`document.querySelector('[data-ff-combat-shortcuts-slot]').innerHTML='<nav data-ff-dice-navigation><button>All checks</button><button>Favorites</button></nav>';const dock=document.querySelector('[data-ff-combat-docked]');dock.insertAdjacentHTML('beforeend','<div data-ff-dice-favorites></div><div data-ff-dice-selection></div>');const confirm=document.createElement('button');confirm.textContent='Confirm';confirm.setAttribute('data-ff-dice-selection-confirm','');dock.append(confirm);window.confirmHits=0;confirm.onclick=()=>confirmHits++;true`);
   await until("document.querySelector('[data-ff-combat-workspace-tools]').getBoundingClientRect().height>0");
   await js("original.panel.setAttribute('data-ff-combat-panel-mode','actions')");
   assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-dice-navigation]')).display"), 'none', 'Explicit actions mode hides dice navigation.');
