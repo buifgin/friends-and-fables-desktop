@@ -94,6 +94,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const normalGapHeight = found.group.scrollHeight + (found.group.hasAttribute('data-ff-combat-controls-compact') ? found.group.children.length * 8 : 0);
     setRailAttribute('data-ff-combat-controls-compact', normalGapHeight > available ? '' : null);
     const box = found.aside.getBoundingClientRect();
+    setRailAttribute('data-ff-combat-controls-expanded', box.width > 120 ? '' : null);
     const groupBox = found.group.getBoundingClientRect();
     const controlsBottom = groupBox.bottom - box.top + found.aside.scrollTop - 48 + 8;
     for (const [name, value] of [['--ff-combat-rail-width', `${box.width}px`], ['--ff-combat-rail-top', `${box.top}px`], ['--ff-combat-controls-bottom', `${controlsBottom}px`]]) {
