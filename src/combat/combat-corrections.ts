@@ -105,7 +105,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     shortcut.textContent = language === 'ru' ? 'Поправки' : 'Corrections';
     summary.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections';
     note.textContent = language === 'ru' ? 'Только эта форма. Наборы хранятся локально в кампании и загружаются вручную. Значения: −100…100.' : 'This form only. Presets stay local to this campaign and load manually. Values: −100…100.';
-    labels.forEach((label, i) => label.textContent = language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус мастерства') : (i === 0 ? 'Modifier' : 'Proficiency bonus'));
+    labels.forEach((label, i) => label.textContent = language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус умения') : (i === 0 ? 'Modifier' : 'Proficiency bonus'));
     for (const [i, row] of Array.from(ui.querySelectorAll('.ff-correction-row')).entries()) { for (const quick of row.querySelectorAll<HTMLButtonElement>('[data-ff-correction-delta]')) { const delta = Number(quick.getAttribute('data-ff-correction-delta')); quick.setAttribute('aria-label', `${labels[i].textContent}: ${language === 'ru' ? (delta === 0 ? 'сбросить на 0' : delta > 0 ? 'увеличить на 1' : 'уменьшить на 1') : (delta === 0 ? 'reset to 0' : delta > 0 ? 'increase by 1' : 'decrease by 1')}`); } }
     applies.forEach(b => b.textContent = language === 'ru' ? 'Применить' : 'Apply');
     nameText.textContent = language === 'ru' ? 'Имя локального набора' : 'Local preset name';
