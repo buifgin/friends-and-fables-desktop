@@ -16,6 +16,7 @@ import { AppearanceDock } from '../shell/appearance-dock';
 import { configureFullscreenShortcuts } from '../shell/window-shortcuts';
 import { configureCampaignMap } from '../map/campaign-map';
 import { configureCombatPanel } from '../combat/combat-panel';
+import { configureCombatWorkspace } from '../combat/combat-workspace';
 import { combatPanelCss, combatPanelAppearanceCss } from '../combat/combat-panel-style';
 import { configureMessageCommands, formatMessageCommand } from '../commands/message-commands';
 import { DEFAULT_HOST_INSTRUCTIONS, instructionDocument } from '../commands/host-instructions-core';
@@ -428,6 +429,8 @@ export class AppearanceManager {
       await contents.executeJavaScript(`(${configureChatAppearance.toString()})(${JSON.stringify(settings)})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureCombatPanel.toString()})(true,${JSON.stringify(this.locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(settings.combatPanel, { image, fit: settings.backgroundFit, effects: settings.backgroundEffects }))})`);
+      if (contents.isDestroyed() || document !== website.document) return;
+      await contents.executeJavaScript(`(${configureCombatWorkspace.toString()})(true,${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureCampaignMap.toString()})(${settings.resizableMap},${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
