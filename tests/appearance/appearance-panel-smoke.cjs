@@ -172,7 +172,7 @@ if (process.argv.includes('--window-controls-unit')) {
 const { mkdtemp, readFile, rm, writeFile } = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { app, BrowserWindow, ipcMain, Menu, session, WebContentsView } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, screen, session, WebContentsView } = require('electron');
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance/appearance'));
 const { TranslationManager } = require(path.join(appRoot, 'dist/translation/translation'));
@@ -319,6 +319,8 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
     await host.webContents.executeJavaScript('window.desktopMenu.close()');
   }
   host.show(); host.focus(); host.setFullScreen(true); await until(() => host.isFullScreen()); await sleep(150);
+  const fullscreenGeometry={fullscreen:host.isFullScreen(),hostBounds:host.getBounds(),hostContentSize:host.getContentSize(),display:screen.getDisplayMatching(host.getBounds()),panelBounds:panel.getBounds(),websiteBounds:website.getBounds(),panelRenderer:await contents.executeJavaScript('({innerWidth,innerHeight,outerWidth,outerHeight})')};
+  console.log('Fullscreen geometry diagnostic',JSON.stringify(fullscreenGeometry));
   assert.equal(panel.getBounds().height, host.getContentSize()[1] - 32);
   assert.equal(website.getBounds().width + panel.getBounds().width, host.getContentSize()[0]);
   // Actual pointer events exercise the resize handle and persist the result.
