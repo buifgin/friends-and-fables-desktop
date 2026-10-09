@@ -117,6 +117,12 @@ In source version 0.4.0, **Critical dice colors** has independent **Customize na
 
 In source version 0.4.0, open **App**, enable **Resizable campaign map**, and apply. Drag the map's lower edge or focus it and press Up/Down to change height. **Expand map** opens the same interactive canvas above the sidebar; drag its lower-right corner, or use all four arrow keys. Hold Shift for larger keyboard steps. **Close map** or Escape returns it to the sidebar, and **Reset size** restores the site's dimensions. Sizes are saved locally for each campaign. This preference stays local when importing/exporting themes; editors and existing map dialogs receive no extra controls.
 
+### In-development combat workspace
+
+The combat workspace is under development and is not included in published release **0.6.0**. In a development build, enable **Unified side panel** in Appearance preferences to keep the dice/actions panel on the left while chat and the map remain visible. It opens automatically during combat and can be closed manually. Drag its right edge or focus it and use the arrow keys to resize; hold Shift for larger steps, and press Home or double-click the edge to reset. Choose compact or comfortable density. Width and density are stored per campaign.
+
+Use **Manage pins** to keep native checks and saving throws in a campaign-local shortcut tray; **Favorites** activates the website's native Favorites tab. **Corrections** recognizes the native custom-attack modifier and proficiency fields and offers decrement, increment, zero, and apply controls. Named local presets can be saved, loaded, and deleted manually. Presets never apply automatically, and shortcuts do not roll or write to character sheets. Workspace preferences stay local and are excluded from shared themes.
+
 In source version 0.4.0, **App → Enable /me and /gm commands** adds an opt-in draft formatter. `/me I look closer.` becomes italic rich text, while `/gm Keep the party together.` becomes `#Keep the party together.#`. Enter, **Format command**, or the first Send click prepares a command for review; then send normally. Shift+Enter keeps newline behavior. Mentions, links, literal text, and code remain structured. See [message-command behavior](docs/MESSAGE-COMMANDS.md).
 
 Color swatches open an in-app picker. Drag hue, saturation, or lightness, or enter a hex color; **Use color** keeps the draft and **Cancel** restores the previous color. Click **Apply changes** in Appearance to save it.
