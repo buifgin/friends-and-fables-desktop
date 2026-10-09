@@ -67,7 +67,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     [data-ff-dice-navigation] button,[data-ff-dice-add],[data-ff-dice-selection-confirm]{font:inherit;color:inherit;background:hsl(var(--background,0 0% 15%));border:1px solid hsl(var(--border,0 0% 40%));border-radius:6px;padding:6px 10px;cursor:pointer;}
     [data-ff-dice-navigation] button{display:grid;place-items:center;min-width:0;min-height:40px;padding:0;}
     [data-ff-dice-navigation] svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
-    [data-ff-dice-selection-confirm]{display:grid;place-items:center;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;margin:8px;}
+    [data-ff-dice-selection-confirm]{display:grid;place-items:center;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;}
     [data-ff-dice-selection-confirm] svg{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
     [data-ff-dice-favorites]{padding:8px;min-width:0;box-sizing:border-box;}
     [data-ff-dice-favorite-tiles]{display:flex;flex-direction:column;gap:8px;}
