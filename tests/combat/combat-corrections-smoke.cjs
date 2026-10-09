@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
+const fixtureRoot = path.join(__dirname, '..', '..');
 const html = `<!doctype html><meta charset="utf-8"><style>body{background:#222;color:white}section{width:308px}input{max-width:100%}</style>
 <div contenteditable id="draft">preserved draft</div><canvas id="canvas"></canvas><section data-ff-combat-docked></section><script>
 window.submits=[];window.changes=0;window.inputs=0;
@@ -19,7 +20,7 @@ window.mount=()=>{
 };mount();
 </script>`;
 for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
-const output = require('esbuild').transformSync(fs.readFileSync(path.join(root, 'src/combat/combat-corrections.ts'), 'utf8'), { loader: 'ts', target: 'es2022', format: 'cjs' });
+const output = require('esbuild').transformSync(fs.readFileSync(path.join(fixtureRoot, 'src/combat/combat-corrections.ts'), 'utf8'), { loader: 'ts', target: 'es2022', format: 'cjs' });
 new Function(output.code);
 if (process.argv.includes('--syntax')) { console.log('Combat corrections embedded/serialized syntax PASS'); process.exit(0); }
 const { app, BrowserWindow, session } = require('electron');

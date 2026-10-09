@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const fs = require('node:fs');
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
+const fixtureRoot = path.join(__dirname, '..', '..');
 const html = `<!doctype html><meta charset="utf-8"><style>
 body{margin:0}#chat{margin-left:60px;height:700px}[data-ff-combat-docked]{position:fixed;top:60px;left:60px;width:var(--ff-combat-width);height:calc(100vh - 60px);display:flex;flex-direction:column;gap:8px;overflow:auto;background:#333;color:white}button.group{display:flex}input{max-width:100%;box-sizing:border-box}
 </style><div id="chat" data-ff-combat-chat><div contenteditable="true" id="draft">retained draft</div></div><section data-ff-combat-docked><h2 data-ff-combat-heading>Choose a check</h2><div data-ff-combat-body><div class="grid"><button class="group" id="check"><div><svg class="lucide lucide-person-standing"></svg></div><span>Long native check label remains intact</span></button></div><form><input value="retained roll"><button type="submit">Roll</button></form><div style="height:1400px"></div></div><button id="close" data-ff-combat-close>×</button></section><script>
@@ -12,7 +13,7 @@ document.documentElement.setAttribute('data-ff-combat-open','true');document.doc
 </script>`;
 function checkEmbeddedSyntax() {
   for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
-  const output = require('esbuild').transformSync(fs.readFileSync(path.join(root, 'src/combat/combat-workspace.ts'), 'utf8'), { loader: 'ts', target: 'es2022', format: 'cjs' });
+  const output = require('esbuild').transformSync(fs.readFileSync(path.join(fixtureRoot, 'src/combat/combat-workspace.ts'), 'utf8'), { loader: 'ts', target: 'es2022', format: 'cjs' });
   new Function(output.code);
 }
 checkEmbeddedSyntax();
