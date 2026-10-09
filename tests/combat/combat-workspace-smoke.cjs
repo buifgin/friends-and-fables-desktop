@@ -62,6 +62,8 @@ app.on('window-all-closed', () => {});
   for (const width of [280, 308, 390]) {
     await js(`localStorage.setItem('ff-desktop-combat-workspace-v1:/campaign-one',JSON.stringify({width:${width}}));`);
     await configure(false); await configure(true, 'en');
+    await js("document.querySelector('[data-ff-combat-shortcuts-slot]').innerHTML='<nav data-ff-dice-navigation><button>All checks</button><button>Favorites</button></nav>'");
+    await until("document.querySelector('[data-ff-combat-workspace-tools]').getBoundingClientRect().height>0");
     window.setContentSize(1100, 360);
     await until(`innerHeight===360&&document.documentElement.style.getPropertyValue('--ff-combat-width')==='${width}px'`);
     const sample = await js(`(()=>{const tools=document.querySelector('[data-ff-combat-workspace-tools]'),nav=document.querySelector('[data-ff-dice-navigation]'),title=document.querySelector('[data-ff-combat-heading]').getBoundingClientRect(),form=original.form.getBoundingClientRect(),close=original.close.getBoundingClientRect(),confirm=document.querySelector('[data-ff-dice-selection-confirm]'),c=confirm.getBoundingClientRect();return {toolbarBg:getComputedStyle(tools).backgroundColor,sticky:getComputedStyle(tools).position,shrink:getComputedStyle(tools).flexShrink,navHit:nav.contains(document.elementFromPoint(nav.getBoundingClientRect().left+nav.getBoundingClientRect().width/2,nav.getBoundingClientRect().top+nav.getBoundingClientRect().height/2)),flow:title.bottom<=form.top,closeWidth:close.width,closeHit:original.close.contains(document.elementFromPoint(close.x+17,close.y+17)),confirmLeft:c.left,confirmRight:c.right,confirmBottom:c.bottom,confirmHit:confirm.contains(document.elementFromPoint(c.x+c.width/2,c.y+c.height/2))}})()`);
