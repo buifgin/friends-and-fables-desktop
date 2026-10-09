@@ -75,6 +75,39 @@ def validate_draft(release: dict[str, Any], tag: str, source: str) -> None:
         raise StageError("draft release returned an invalid asset list")
 
 
+def find_draft_release(repo: str, tag: str) -> dict[str, Any]:
+    endpoint = f"repos/{repo}/releases?per_page=100"
+    try:
+        pages = json.loads(gh(["api", "--paginate", "--slurp", endpoint]))
+    except json.JSONDecodeError as error:
+        raise StageError("gh release listing returned invalid JSON") from error
+    if not isinstance(pages, list):
+        raise StageError("gh release listing returned an unexpected response")
+    releases: list[dict[str, Any]] = []
+    for page in pages:
+        if isinstance(page, list):
+            if any(not isinstance(release, dict) for release in page):
+                raise StageError("gh release listing contained an invalid release entry")
+            releases.extend(page)
+        elif isinstance(page, dict):
+            releases.append(page)
+        else:
+            raise StageError("gh release listing contained an invalid page")
+    matches = [release for release in releases if release.get("tag_name") == tag]
+    if len(matches) != 1:
+        raise StageError(f"expected exactly one existing release for tag {tag}; found {len(matches)}")
+    return matches[0]
+
+
+def release_by_id(repo: str, release_id: Any) -> dict[str, Any]:
+    if not isinstance(release_id, int) or release_id <= 0:
+        raise StageError("draft release listing returned an invalid release ID")
+    release = gh_json(["api", f"repos/{repo}/releases/{release_id}"])
+    if release.get("id") != release_id:
+        raise StageError("GitHub returned a different draft release ID")
+    return release
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -133,6 +166,8 @@ def matching_existing_assets(assets: list[dict[str, Any]], files: list[Path]) ->
         if asset is None:
             missing.append(path)
             continue
+        if asset.get("state") != "uploaded":
+            raise StageError(f"existing draft asset {name} is not fully uploaded")
         digest = asset.get("digest")
         match = re.fullmatch(r"sha256:([0-9a-fA-F]{64})", digest or "")
         if not match:
@@ -195,7 +230,9 @@ def main() -> int:
 
         run = gh_json(["api", f"repos/{repo}/actions/runs/{args.run_id}"])
         validate_run(run, args.run_id, args.source, repo)
-        release = gh_json(["api", f"repos/{repo}/releases/tags/{args.tag}"])
+        listed_release = find_draft_release(repo, args.tag)
+        release_id = listed_release.get("id")
+        release = release_by_id(repo, release_id)
         validate_draft(release, args.tag, args.source)
 
         directory = args.directory.expanduser()
@@ -223,7 +260,7 @@ def main() -> int:
         elif missing:
             gh(["release", "upload", args.tag, *(str(path) for path in missing), "--repo", repo])
 
-        final_release = gh_json(["api", f"repos/{repo}/releases/tags/{args.tag}"])
+        final_release = release_by_id(repo, release_id)
         validate_draft(final_release, args.tag, args.source)
         missing = matching_existing_assets(final_release.get("assets", []), desired)
         if missing:
