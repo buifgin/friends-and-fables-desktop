@@ -7,7 +7,7 @@ const html = `<!doctype html><meta charset="utf-8"><style>body{background:#222;c
 <div contenteditable id="draft">preserved draft</div><canvas id="canvas"></canvas><section data-ff-combat-docked></section><script>
 window.submits=[];window.changes=0;window.inputs=0;
 window.mount=()=>{
- const dock=document.querySelector('section');dock.innerHTML='<div data-ff-combat-shortcuts-slot></div><form id="native-form"><input id="description" value="attack draft"><label>Modifier<input id="modifier_value" inputmode="decimal" value="0"></label><label>Proficiency<input id="proficiency_bonus" inputmode="decimal" value="2"></label><input id="unrecognised" value="keep"><button id="submit" type="submit">Attack</button></form>';
+ const dock=document.querySelector('section');dock.innerHTML='<form id="native-form"><input id="description" value="attack draft"><label>Modifier<input id="modifier_value" inputmode="decimal" value="0"></label><label>Proficiency<input id="proficiency_bonus" inputmode="decimal" value="2"></label><input id="unrecognised" value="keep"><button id="submit" type="submit">Attack</button></form>';
  window.state={modifier_value:'0',proficiency_bonus:'2'};window.native={form:document.querySelector('form'),submit:document.querySelector('#submit'),modifier:document.querySelector('#modifier_value'),proficiency:document.querySelector('#proficiency_bonus'),description:document.querySelector('#description'),draft:document.querySelector('#draft'),canvas:document.querySelector('#canvas')};
  for(const id of ['modifier_value','proficiency_bonus']){
   const input=document.getElementById(id),descriptor=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');let tracked=input.value;
@@ -52,14 +52,11 @@ app.on('window-all-closed', () => {});
  await mutate("Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(native.modifier,'0');native.modifier.dispatchEvent(new Event('input',{bubbles:true}))");
  await configure(); await until("!!document.querySelector('[data-ff-combat-corrections]')");
  assert.equal(await identity(),true);
- await mutate("window.scrollCalls=0;document.querySelector('[data-ff-combat-corrections]').scrollIntoView=()=>scrollCalls++");
- await click('[data-ff-correction-shortcut]');
+ assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null,'No top correction jump button is injected.');
+ await click('[data-ff-combat-corrections] summary');
  assert.equal(await js("document.querySelector('[data-ff-combat-corrections]').open"),true);
- assert.equal(await js('scrollCalls'),1,'Shortcut opens and scrolls to corrections.');
- assert.equal(await js('submits.length'),0,'Toolbar shortcut never submits the native form.');
- assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]').parentElement.hasAttribute('data-ff-combat-shortcuts-slot')"),true);
- await mutate("document.querySelector('[data-ff-combat-shortcuts-slot]').remove()"); await until("!document.querySelector('[data-ff-correction-shortcut]')");
- await mutate("const slot=document.createElement('div');slot.setAttribute('data-ff-combat-shortcuts-slot','');document.querySelector('section').prepend(slot)"); await until("document.querySelectorAll('[data-ff-correction-shortcut]').length===1");
+ assert.equal(await js('submits.length'),0,'Opening correction details never submits the native form.');
+ assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null);
  assert.equal(await js("document.querySelector('[data-ff-combat-corrections]').closest('form')"),null,'Owned controls cannot implicitly submit the native form.');
  await set('[data-ff-correction-value=modifier_value]','3'); await click('[data-ff-correction-apply-modifier_value]');
  assert.equal(await js('state.modifier_value'),'3','Native event state updates, not just DOM value.');
@@ -88,10 +85,10 @@ app.on('window-all-closed', () => {});
  }
  await click('[data-ff-correction-delete]'); assert.deepEqual(await js("JSON.parse(localStorage.getItem('ff-desktop-combat-corrections-v1:/campaign-one'))"),[]);
  assert.equal(await identity(),true); assert.equal(await js('submits.length'),1);
- await configure(true,'ru'); assert.equal(await js("document.querySelector('[data-ff-combat-corrections] summary').textContent"),'Поправки к броску'); assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]').textContent"),'Поправки');
+ await configure(true,'ru'); assert.equal(await js("document.querySelector('[data-ff-combat-corrections] summary').textContent"),'Поправки к броску'); assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null);
  assert.equal(await js("document.querySelector('[data-ff-combat-corrections]').getAttribute('data-ff-translation-ignore')"),'true');
  await configure(true,'en'); assert.equal(await js("document.querySelector('[data-ff-combat-corrections] summary').textContent"),'Roll corrections');
- await mutate('mount()'); await until("document.querySelectorAll('[data-ff-combat-corrections]').length===1&&document.querySelectorAll('[data-ff-correction-shortcut]').length===1"); assert.equal(await js('state.modifier_value'),'0'); assert.equal(await identity(),true);
+ await mutate('mount()'); await until("document.querySelectorAll('[data-ff-combat-corrections]').length===1"); assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null); assert.equal(await js('state.modifier_value'),'0'); assert.equal(await identity(),true);
  await configure(false); await mutate("localStorage.setItem('ff-desktop-combat-corrections-v1:/campaign-one','[{\"name\":\"bad\",\"values\":{\"modifier_value\":999,\"proficiency_bonus\":2}}]')");
  await configure(); assert.equal(await js("document.querySelector('[data-ff-correction-presets]').options.length"),1,'Malformed presets ignored.');
  await configure(false); await mutate("window.storageDescriptor=Object.getOwnPropertyDescriptor(Storage.prototype,'setItem');Storage.prototype.setItem=function(){throw new DOMException('blocked','SecurityError')}");
@@ -102,7 +99,7 @@ app.on('window-all-closed', () => {});
  await configure(false); await mutate("window.getDescriptor=Object.getOwnPropertyDescriptor(Storage.prototype,'getItem');Storage.prototype.getItem=function(){throw new DOMException('blocked','SecurityError')}"); await configure(); assert.equal(await js("document.querySelector('[data-ff-correction-presets]').options.length"),1); await mutate("Object.defineProperty(Storage.prototype,'getItem',getDescriptor)");
  await mutate("Object.defineProperty(Storage.prototype,'setItem',storageDescriptor);history.pushState({},'', '/campaign-two/play');dispatchEvent(new PopStateEvent('popstate'))");
  await until("document.querySelector('[data-ff-correction-presets]').options.length===1"); assert.equal(await js('state.modifier_value'),'1');
- await mutate("history.pushState({},'', '/campaign-two/details');dispatchEvent(new PopStateEvent('popstate'))"); await until("!document.querySelector('[data-ff-combat-corrections]')&&!document.querySelector('[data-ff-correction-shortcut]')");
+ await mutate("history.pushState({},'', '/campaign-two/details');dispatchEvent(new PopStateEvent('popstate'))"); await until("!document.querySelector('[data-ff-combat-corrections]')");
  await mutate("history.pushState({},'', '/campaign-two/play');dispatchEvent(new PopStateEvent('popstate'))"); await until("!!document.querySelector('[data-ff-combat-corrections]')");
  await configure(false); assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null); assert.equal(await js("document.querySelector('[data-ff-combat-corrections-style]')"),null); assert.equal(await js("document.querySelector('[data-ff-combat-corrections]')"),null); assert.equal(await identity(),true);
  assert.equal(await js('submits.length'),1); assert.ok(await js('changes>0&&inputs>0'));
