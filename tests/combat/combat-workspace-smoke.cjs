@@ -19,6 +19,7 @@ function checkEmbeddedSyntax() {
 checkEmbeddedSyntax();
 if (process.argv.includes('--syntax')) { console.log('Combat workspace embedded syntax PASS'); process.exit(0); }
 const { app, BrowserWindow, session } = require('electron');
+if (process.env.FABLES_TEST_PROFILE_DIR) app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
 const { configureCombatWorkspace } = require(path.join(root, 'dist/combat/combat-workspace'));
 const { combatPanelCss } = require(path.join(root, 'dist/combat/combat-panel-style'));
 let window;
@@ -69,10 +70,19 @@ app.on('window-all-closed', () => {});
   await until(`innerWidth===1100&&document.documentElement.style.getPropertyValue('--ff-combat-width')==='${requested}px'`);
   await js("document.documentElement.style.setProperty('--ff-combat-rail-width','60px')");
   await until("document.querySelector('[data-ff-combat-resizer]').getAttribute('aria-valuemax')==='792'");
+  // Rail variables update before the native panel's 240ms left transition finishes.
+  // Wait for the actual hit target and final panel geometry before native input.
+  const edgeState = () => js("(()=>{const h=document.querySelector('[data-ff-combat-resizer]'),b=h.getBoundingClientRect(),p=original.panel.getBoundingClientRect(),x=Math.round(b.x+b.width/2),y=Math.round(b.y+80),hit=document.elementFromPoint(x,y);return {x,y,max:Number(h.getAttribute('aria-valuemax')),now:Number(h.getAttribute('aria-valuenow')),panelLeft:p.left,panelRight:p.right,rail:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ff-combat-rail-width')),handleHit:h.contains(hit),hitTag:hit?.tagName,hitId:hit?.id,focused:document.hasFocus(),saved:JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width}})()");
+  let edge;
+  try {
+    await until("(()=>{const h=document.querySelector('[data-ff-combat-resizer]'),b=h.getBoundingClientRect(),p=original.panel.getBoundingClientRect(),rail=parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ff-combat-rail-width'));return Math.abs(p.left-rail)<.25&&document.hasFocus()&&h.contains(document.elementFromPoint(Math.round(b.x+b.width/2),Math.round(b.y+80)))})()");
+    edge=await edgeState();
+  } catch(error) { throw Error('Overshoot pointer readiness failed: '+JSON.stringify(await edgeState())+'; '+error.message); }
+  await js("window.ffResizeTrace=[];for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])document.querySelector('[data-ff-combat-resizer]').addEventListener(type,e=>{if(ffResizeTrace.length<12)ffResizeTrace.push({type:e.type,x:e.clientX,y:e.clientY,trusted:e.isTrusted,pointerId:e.pointerId})})");
   // A user overshoot saves the visible limit, rather than hidden extra width.
-  const edge = await js("(()=>{const h=document.querySelector('[data-ff-combat-resizer]'),b=h.getBoundingClientRect();return {x:b.x+4,y:b.y+80,max:Number(h.getAttribute('aria-valuemax'))}})()");
   await pointer('mouseDown', edge.x, edge.y); await pointer('mouseMove', 1090, edge.y); await pointer('mouseUp', 1090, edge.y);
-  await until(`JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width===${edge.max}`);
+  try { await until(`JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width===${edge.max}`); }
+  catch(error) { throw Error('Overshoot persistence failed: '+JSON.stringify({before:edge,after:await edgeState(),trace:await js('ffResizeTrace')})+'; '+error.message); }
   await keyboard('Right');
   assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-combat-workspace-v1:/campaign-one')).width"), edge.max, 'Keyboard cannot accumulate an invisible overshoot.');
   for (const width of [308, 390]) {
