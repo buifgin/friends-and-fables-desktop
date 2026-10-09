@@ -147,6 +147,7 @@ window.MutationObserver=class extends NativeObserver{constructor(callback){super
    assert.equal(await js("document.querySelector('#melee').hidden && document.querySelector('#spell').hidden"),true,'Adventure filter hides native attack options.');
    await js('window.currentForm=document.querySelector("form");currentForm.querySelector("input").value="retained check draft"');
    await click('[data-ff-dice-standard]',locale+' full checks');
+   assert.equal(await js("document.querySelector('#check').textContent.trim()"),locale==='ru'?'Проверка акробатики':'Acrobatics  Check','Opening All checks translates newly revealed native captions without a locale toggle.');
    await configure('en');await settle(locale+' translation off with all checks already open');
    assert.equal(await js("document.querySelector('#check').textContent.trim()"),'Acrobatics  Check');
    await configure(locale);

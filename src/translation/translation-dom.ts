@@ -306,7 +306,9 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     }
   });
   observer.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true,
-    attributeFilter: ['contenteditable', 'hidden', 'translate', 'class', 'style','placeholder','data-placeholder','title','aria-label','data-ff-translation-ignore','data-ff-desktop-instruction-block'] });
+    // Favorites hide the native list through this CSS marker rather than hidden.
+    // Rescan its subtree when All checks reveals the original native captions.
+    attributeFilter: ['contenteditable', 'hidden', 'data-ff-dice-native-hidden', 'translate', 'class', 'style','placeholder','data-placeholder','title','aria-label','data-ff-translation-ignore','data-ff-desktop-instruction-block'] });
   const onScroll = (): void => schedule(document.body);
   function progressionRegion(node:Text|Attr):Element|null {
     const panel=parent(node)?.closest('[role=tabpanel],[data-progression]');
