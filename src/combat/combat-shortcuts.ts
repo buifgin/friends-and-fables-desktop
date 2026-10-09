@@ -27,131 +27,185 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     str.save, dex.save, con.save, int.save, wis.save, cha.save,
   ];
   const byLabel = new Map(items.flatMap(item => [...item.aliases.map(label => [label, item] as const), [item.ru, item] as const]));
-  let language = locale, disposed = false, queued = false, route = '', root: HTMLElement | null = null, slot: HTMLElement | null = null;
-  const owned = document.createElement('section'); owned.dataset.ffCombatShortcuts = ''; owned.dataset.ffTranslationIgnore = 'true';
-  owned.setAttribute('aria-label', 'Combat shortcuts');
-  const style = document.createElement('style'); style.dataset.ffCombatShortcutsStyle = '';
-  style.textContent = `
-    [data-ff-combat-shortcuts]{font:inherit;color:inherit;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0;max-width:100%;box-sizing:border-box;padding:5px 8px;border-bottom:1px solid hsl(var(--border,0 0% 35%));}
-    [data-ff-combat-shortcuts] [hidden]{display:none!important;}
-    [data-ff-combat-shortcuts] button{font:inherit;color:inherit;background:hsl(var(--muted,0 0% 20%));border:1px solid hsl(var(--border,0 0% 40%));border-radius:5px;padding:5px 8px;cursor:pointer;}
-    [data-ff-combat-shortcuts] button:focus-visible,[data-ff-combat-shortcuts] input:focus-visible{outline:2px solid hsl(var(--ring,45 60% 55%));outline-offset:2px;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-tray]{display:flex;flex-wrap:wrap;gap:4px;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-manager]{display:block;min-width:0;max-width:100%;box-sizing:border-box;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-manager][open]{flex-basis:100%;width:100%;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-manager]:not([open])>[data-ff-shortcut-list]{display:none!important;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-list]{display:block;box-sizing:border-box;max-height:min(40vh,240px);min-width:0;width:100%;overflow:auto;overscroll-behavior:contain;padding:4px;}
-    [data-ff-combat-shortcuts] label{display:inline-flex;align-items:center;gap:3px;font-size:.85em;max-width:100%;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-title]{font-weight:600;margin-inline-end:3px;}
-  `;
-  document.head.append(style);
+  let language = locale, disposed = false, queued = false, route = '', dock: HTMLElement | null = null;
+  let view: 'favorites' | 'standard' | 'selection' = 'favorites';
   const text = (en: string, ru: string): string => language === 'ru' ? ru : en;
   const campaignId = (): string => /\/([^/]+)\/play\/?$/.exec(location.pathname)?.[1] ?? '';
-  const storageKey = (campaign: string): string => `ff-desktop-combat-pins-v1:${campaign}`;
-  function read(campaign: string): string[] {
+  const storageKey = (): string => `ff-desktop-combat-pins-v1:${campaignId()}`;
+  function read(): string[] {
     try {
-      const value = localStorage.getItem(storageKey(campaign));
+      const value = localStorage.getItem(storageKey());
       if (!value || value.length > 2048) return [];
       const parsed: unknown = JSON.parse(value);
       return Array.isArray(parsed) ? [...new Set(parsed.filter((id): id is string => typeof id === 'string' && items.some(item => item.id === id)))] : [];
     } catch { return []; }
   }
-  function save(): void { if (!campaignId()) return; try { localStorage.setItem(storageKey(campaignId()), JSON.stringify(pinned)); } catch { /* Storage may be blocked. */ } }
-  let pinned = read(campaignId());
-  const title = document.createElement('span'); title.dataset.ffShortcutTitle = ''; title.textContent = text('Pinned', 'Закреплённое');
-  const tray = document.createElement('div'); tray.dataset.ffShortcutTray = ''; tray.setAttribute('aria-label', text('Pinned checks', 'Закреплённые проверки'));
-  const manager = document.createElement('details'); manager.dataset.ffShortcutManager = '';
-  const summary = document.createElement('summary'); summary.textContent = text('Manage pins', 'Настроить'); manager.append(summary);
-  const list = document.createElement('div'); list.dataset.ffShortcutList = ''; manager.append(list);
-  const favorites = document.createElement('button'); favorites.type = 'button'; favorites.dataset.ffNativeFavorites = '';
-  owned.append(title, tray, manager, favorites);
-
-  function currentDock(): HTMLElement | null { return document.querySelector<HTMLElement>('[data-ff-combat-docked]'); }
+  let pinned = read(), draft = new Set(pinned);
+  const owned = document.createElement('section'); owned.dataset.ffCombatShortcuts = ''; owned.dataset.ffDiceNavigation = ''; owned.dataset.ffTranslationIgnore = 'true';
+  const favorites = document.createElement('section'); favorites.dataset.ffDiceFavorites = ''; favorites.dataset.ffTranslationIgnore = 'true';
+  const tiles = document.createElement('div'); tiles.dataset.ffDiceFavoriteTiles = '';
+  const empty = document.createElement('p');
+  const button = (marker: string, action: () => void): HTMLButtonElement => {
+    const node = document.createElement('button'); node.type = 'button'; node.setAttribute(marker, ''); node.addEventListener('click', action); return node;
+  };
+  function change(next: typeof view): void { view = next; if (next === 'selection') draft = new Set(pinned); sync(); }
+  const standard = button('data-ff-dice-standard', () => change('standard'));
+  const favoriteNav = button('data-ff-dice-favorites-nav', () => change('favorites'));
+  const cancel = button('data-ff-dice-selection-cancel', () => change('favorites'));
+  const add = button('data-ff-dice-add', () => change('selection'));
+  const confirm = button('data-ff-dice-selection-confirm', () => {
+    pinned = items.filter(item => draft.has(item.id)).map(item => item.id);
+    if (campaignId()) try { localStorage.setItem(storageKey(), JSON.stringify(pinned)); } catch { /* Storage may be blocked. */ }
+    change('favorites');
+  });
+  owned.append(standard, favoriteNav, cancel); favorites.append(tiles, empty, add);
+  const style = document.createElement('style'); style.dataset.ffCombatShortcutsStyle = '';
+  style.textContent = `
+    [data-ff-dice-native-hidden]{display:none!important;}
+    [data-ff-combat-shortcuts][hidden],[data-ff-dice-favorites][hidden],[data-ff-dice-selection-confirm][hidden],[data-ff-combat-shortcuts] [hidden]{display:none!important;}
+    [data-ff-dice-navigation]{display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0;padding:8px;box-sizing:border-box;}
+    [data-ff-dice-navigation] button,[data-ff-dice-add],[data-ff-dice-selection-confirm]{font:inherit;color:inherit;background:hsl(var(--background,0 0% 15%));border:1px solid hsl(var(--border,0 0% 40%));border-radius:6px;padding:6px 10px;cursor:pointer;}
+    [data-ff-dice-favorites]{padding:8px;min-width:0;box-sizing:border-box;}
+    [data-ff-dice-favorite-tiles]{display:flex;flex-direction:column;gap:8px;}
+    [data-ff-dice-favorite-tiles]>button{width:100%;font:inherit;color:inherit;}
+    [data-ff-dice-add]{display:block;margin:12px auto 0;}
+    [data-ff-dice-selection-tile]{position:relative!important;}
+    [data-ff-dice-selection-checkbox]{position:absolute!important;right:8px;top:8px;width:18px;height:18px;margin:0;z-index:1;accent-color:hsl(var(--primary,45 60% 55%));}
+    [data-ff-dice-navigation] button:focus-visible,[data-ff-dice-favorites] button:focus-visible,[data-ff-dice-selection-confirm]:focus-visible,[data-ff-dice-selection-checkbox]:focus-visible{outline:2px solid hsl(var(--ring,45 60% 55%));outline-offset:2px;}
+  `;
+  document.head.append(style);
+  const nativeHidden = new Set<HTMLElement>();
+  const overlays = new Map<HTMLButtonElement, { item: Item; checkbox: HTMLInputElement; pressed: string | null }>();
+  const favoriteButtons = new Map<string, HTMLButtonElement>();
   function unavailable(node: HTMLElement): boolean {
     return node.matches(':disabled,[hidden],[aria-hidden="true"],[aria-disabled="true"],[data-disabled]') || !!node.closest('[hidden],[aria-hidden="true"]');
   }
-  function findNative(item: Item, dock: HTMLElement): HTMLButtonElement | null {
-    return Array.from(dock.querySelectorAll<HTMLButtonElement>('button')).find(button => !button.closest('[data-ff-combat-shortcuts]') && !unavailable(button) && byLabel.get(button.textContent?.trim() ?? '') === item) ?? null;
-  }
-  function findFavoriteTab(dock: HTMLElement): HTMLElement | null {
-    return Array.from(dock.querySelectorAll<HTMLElement>('[role="tab"]')).find(tab => {
-      const idRefs = `${tab.id} ${tab.getAttribute('aria-controls') ?? ''}`.toLowerCase();
-      const identified = /favorit|избран/.test(idRefs);
-      const label = tab.textContent?.trim().toLowerCase() ?? '';
-      const labelled = label === 'favorites' || label === 'favourites' || label === 'избранное';
-      return (identified || labelled) && !unavailable(tab);
-    }) ?? null;
-  }
-  function hasNativeCheckOptions(dock: HTMLElement): boolean {
-    return Array.from(dock.querySelectorAll<HTMLButtonElement>('button')).some(button =>
-      !button.closest('[data-ff-combat-shortcuts]') && byLabel.has(button.textContent?.trim() ?? ''));
-  }
-  const trayButtons = new Map<string, HTMLButtonElement>();
-  const managerRows = new Map<string, { label: HTMLLabelElement; input: HTMLInputElement; caption: Text }>();
-  for (const item of items) {
-    const label = document.createElement('label'), input = document.createElement('input'); input.type = 'checkbox';
-    input.setAttribute('aria-label', text(`Pin ${item.en}`, `Закрепить: ${item.ru}`));
-    const caption = document.createTextNode(language === 'ru' ? item.ru : item.en); label.append(input, caption); list.append(label);
-    managerRows.set(item.id, { label, input, caption });
-    input.addEventListener('change', () => { pinned = input.checked ? [...new Set([...pinned, item.id])] : pinned.filter(id => id !== item.id); save(); render(); });
-  }
-  let renderSignature = '';
-  function render(): void {
-    if (!root || !root.isConnected) return;
-    const dock = currentDock();
-    const picks = items.filter(item => pinned.includes(item.id) && (item.group === 'check' || item.group === 'save' || item.group === 'skill'));
-    const states = items.map(item => [item.id, !!(dock && findNative(item, dock))] as const);
-    const tab = dock && findFavoriteTab(dock);
-    const nativeChecks = !!dock && hasNativeCheckOptions(dock);
-    const actionOnly = !!tab && !nativeChecks;
-    const signature = JSON.stringify([language, pinned, states, !!tab, nativeChecks]);
-    if (signature === renderSignature) return;
-    renderSignature = signature;
-    title.textContent = text('Pinned', 'Закреплённое'); summary.textContent = text('Manage pins', 'Настроить');
-    favorites.textContent = text('Favorites', 'Избранное'); favorites.setAttribute('aria-label', text('Open native Favorites tab', 'Открыть вкладку «Избранное»'));
-    title.hidden = actionOnly; manager.hidden = actionOnly; tray.hidden = actionOnly || picks.length === 0; favorites.hidden = !tab;
-    const selected = new Set(picks.map(item => item.id));
-    for (const [id, button] of trayButtons) if (!selected.has(id)) button.remove();
-    let next: Element | null = tray.firstElementChild;
-    for (const item of picks) {
-      let button = trayButtons.get(item.id);
-      if (!button) {
-        button = document.createElement('button'); button.type = 'button';
-        button.addEventListener('click', () => { const current = currentDock(), target = current && findNative(item, current); if (target && !unavailable(target)) target.click(); });
-        trayButtons.set(item.id, button);
-      }
-      button.textContent = language === 'ru' ? item.ru : item.en; button.disabled = !states.find(([id]) => id === item.id)?.[1];
-      button.setAttribute('aria-disabled', String(button.disabled));
-      if (button !== next) tray.insertBefore(button, next);
-      next = button.nextElementSibling;
+  function nativeOptions(): Map<Item, HTMLButtonElement> {
+    const result = new Map<Item, HTMLButtonElement>();
+    if (!dock) return result;
+    for (const node of dock.querySelectorAll<HTMLButtonElement>('button')) {
+      if (owned.contains(node) || favorites.contains(node) || node === confirm) continue;
+      const item = byLabel.get(node.textContent?.trim() ?? '');
+      if (item && !result.has(item)) result.set(item, node);
     }
-    for (const item of items) {
-      const row = managerRows.get(item.id)!; row.input.checked = pinned.includes(item.id);
-      row.input.setAttribute('aria-label', text(`Pin ${item.en}`, `Закрепить: ${item.ru}`)); row.caption.data = language === 'ru' ? item.ru : item.en;
-      if (row.label.parentElement !== list) list.append(row.label);
-    }
-    favorites.disabled = !tab; favorites.setAttribute('aria-disabled', String(!tab));
+    return result;
   }
+  function restore(): void {
+    for (const node of nativeHidden) node.removeAttribute('data-ff-dice-native-hidden'); nativeHidden.clear();
+    for (const [node, overlay] of overlays) {
+      overlay.checkbox.remove(); node.removeAttribute('data-ff-dice-selection-tile');
+      if (overlay.pressed === null) node.removeAttribute('aria-pressed'); else node.setAttribute('aria-pressed', overlay.pressed);
+    }
+    overlays.clear(); dock?.removeAttribute('data-ff-dice-selection');
+  }
+  function detach(): void { restore(); owned.remove(); favorites.remove(); confirm.remove(); dock?.removeEventListener('click', capture, true); dock?.removeEventListener('keydown', capture, true); dock?.removeEventListener('pointerdown', capture, true); dock?.removeEventListener('mousedown', capture, true); }
+  function toggle(item: Item): void { if (draft.has(item.id)) draft.delete(item.id); else draft.add(item.id); sync(); }
+  function capture(event: Event): void {
+    if (view !== 'selection' || dock?.dataset.ffCombatPanelMode !== 'skills' || !(event.target instanceof Element)) return;
+    const target = event.target.closest<HTMLButtonElement>('[data-ff-dice-selection-tile]');
+    const overlay = target && overlays.get(target);
+    if (!target || !overlay) return;
+    if (event instanceof KeyboardEvent && event.key !== 'Enter' && event.key !== ' ') return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    if (event.type !== 'pointerdown' && event.type !== 'mousedown' && !unavailable(target)) toggle(overlay.item);
+  }
+  let signature = '';
+  let previousOptions = new Map<Item, HTMLButtonElement>();
   function sync(): void {
     queued = false; if (disposed) return;
     const nextRoute = location.pathname + location.search;
-    if (route !== nextRoute) { route = nextRoute; pinned = read(campaignId()); root = null; slot = null; renderSignature = ''; }
-    const dock = currentDock(), nextSlot = dock?.querySelector<HTMLElement>('[data-ff-combat-shortcuts-slot]') ?? null;
-    if (nextSlot !== slot || !dock || !nextSlot) { if (owned.parentElement && owned.parentElement !== nextSlot) owned.remove(); slot = nextSlot; root = dock; }
-    if (slot && owned.parentElement !== slot) slot.append(owned);
-    render();
+    const nextDock = document.querySelector<HTMLElement>('[data-ff-combat-docked]');
+    if (nextRoute !== route || nextDock !== dock) {
+      detach(); dock = nextDock; route = nextRoute; pinned = read(); draft = new Set(pinned); view = 'favorites'; signature = '';
+      dock?.addEventListener('click', capture, true); dock?.addEventListener('keydown', capture, true); dock?.addEventListener('pointerdown', capture, true); dock?.addEventListener('mousedown', capture, true);
+    }
+    const options = nativeOptions();
+    const slot = dock?.querySelector<HTMLElement>('[data-ff-combat-shortcuts-slot]');
+    const active = !!slot && dock?.dataset.ffCombatPanelMode === 'skills' &&
+      [...options.values()].some(node => !node.closest('[hidden],[aria-hidden="true"]'));
+    const nextSignature = JSON.stringify([route, language, view, pinned, [...draft], active, [...options].map(([item, node]) => [item.id, node.textContent, node.className, node.innerHTML.replace(/<input[^>]*>/g, ''), unavailable(node)])]);
+    // Identity matters in every view: identical replacement lists need fresh hiding and overlays.
+    const sameNodes = options.size === previousOptions.size && [...options].every(([item, node]) => previousOptions.get(item) === node);
+    if (signature === nextSignature && sameNodes && (!active || owned.parentElement === slot)) return;
+    const focused = document.activeElement;
+    const focusedTile = focused instanceof Element ? focused.closest<HTMLButtonElement>('[data-ff-dice-selection-tile]') : null;
+    const focusCheckbox = focused instanceof HTMLInputElement && focused.hasAttribute('data-ff-dice-selection-checkbox');
+    signature = nextSignature; previousOptions = options; restore();
+    owned.hidden = favorites.hidden = confirm.hidden = !active;
+    if (!active) { if (view === 'selection') { view = 'favorites'; draft = new Set(pinned); signature = ''; } return; }
+    if (owned.parentElement !== slot) slot!.append(owned);
+    if (favorites.parentElement !== dock) dock!.append(favorites);
+    if (confirm.parentElement !== dock) dock!.append(confirm);
+    standard.textContent = text('All checks', 'Все проверки'); favoriteNav.textContent = text('Favorites', 'Избранное');
+    standard.setAttribute('aria-pressed', String(view !== 'favorites')); favoriteNav.setAttribute('aria-pressed', String(view === 'favorites'));
+    cancel.textContent = text('Cancel', 'Отмена'); cancel.hidden = view !== 'selection';
+    confirm.textContent = text('Confirm', 'Подтвердить'); confirm.hidden = view !== 'selection';
+    favorites.hidden = view !== 'favorites';
+    empty.textContent = text('No favorite checks yet', 'Нет избранных проверок'); empty.hidden = pinned.length > 0;
+    add.textContent = pinned.length ? text('Add more', 'Добавить ещё') : text('Add', 'Добавить');
+    const selected = new Set(pinned);
+    for (const [id, node] of favoriteButtons) if (!selected.has(id)) { node.remove(); favoriteButtons.delete(id); }
+    for (const item of items.filter(item => selected.has(item.id))) {
+      const native = options.get(item);
+      let tile = favoriteButtons.get(item.id);
+      if (!tile) {
+        tile = button('data-ff-dice-favorite-tile', () => {
+          const target = nativeOptions().get(item);
+          if (!target || unavailable(target)) return;
+          // Restore the native list before activation; the native handler owns the detail and Back path.
+          restore(); target.click(); schedule();
+        });
+        tile.dataset.ffDiceFavoriteTile = item.id; favoriteButtons.set(item.id, tile);
+      }
+      tile.className = native?.className ?? '';
+      tile.replaceChildren();
+      if (native) {
+        // Keep native child wrappers so selectors such as button > div > svg still apply.
+        for (const child of native.childNodes) tile.append(child.cloneNode(true));
+        const walker = document.createTreeWalker(tile, NodeFilter.SHOW_TEXT);
+        let captionWritten = false;
+        while (walker.nextNode()) {
+          const node = walker.currentNode as Text;
+          if (node.parentElement?.closest('svg') || !node.data.trim()) continue;
+          node.data = captionWritten ? '' : language === 'ru' ? item.ru : item.en; captionWritten = true;
+        }
+        if (!captionWritten) tile.append(document.createTextNode(language === 'ru' ? item.ru : item.en));
+      } else tile.textContent = language === 'ru' ? item.ru : item.en;
+      // Clones have no React handlers; strip identity/form wiring and transient owned markers.
+      for (const child of tile.querySelectorAll<HTMLElement>('*')) {
+        if (child.hasAttribute('data-ff-dice-selection-checkbox')) child.remove(); else { child.removeAttribute('id'); child.removeAttribute('name');
+          for (const attribute of [...child.attributes]) if (attribute.name.startsWith('data-ff-')) child.removeAttribute(attribute.name); }
+      }
+      tile.disabled = !native || unavailable(native); tile.setAttribute('aria-disabled', String(tile.disabled));
+      if (tile.parentElement !== tiles) tiles.append(tile);
+    }
+    if (view === 'favorites') {
+      // Hide the smallest common native list branch; never hide the dock/header/owned slot.
+      let common: HTMLElement | null = options.values().next().value?.parentElement ?? null;
+      while (common && ![...options.values()].every(node => common!.contains(node))) common = common.parentElement;
+      if (common && common !== dock && !common.contains(slot!)) {
+        common.setAttribute('data-ff-dice-native-hidden', ''); nativeHidden.add(common);
+      } else for (const node of options.values()) { node.setAttribute('data-ff-dice-native-hidden', ''); nativeHidden.add(node); }
+    } else if (view === 'selection') {
+      dock!.dataset.ffDiceSelection = '';
+      for (const [item, node] of options) {
+        const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.dataset.ffDiceSelectionCheckbox = '';
+        checkbox.checked = draft.has(item.id); checkbox.disabled = unavailable(node);
+        checkbox.setAttribute('aria-label', text(`Favorite: ${item.en}`, `В избранное: ${item.ru}`));
+        const pressed = node.getAttribute('aria-pressed'); node.setAttribute('aria-pressed', String(checkbox.checked)); node.dataset.ffDiceSelectionTile = item.id;
+        node.append(checkbox); overlays.set(node, { item, checkbox, pressed });
+        if (node === focusedTile) (focusCheckbox ? checkbox : node).focus({ preventScroll: true });
+      }
+    }
   }
   function schedule(): void { if (queued || disposed) return; queued = true; queueMicrotask(sync); }
   const observer = new MutationObserver(records => {
-    if (records.some(record => !owned.contains(record.target) && record.target !== owned)) schedule();
-  }); observer.observe(document.documentElement, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['disabled', 'aria-disabled', 'data-disabled', 'hidden', 'aria-hidden', 'aria-selected', 'aria-controls', 'id'] });
-  favorites.addEventListener('click', () => {
-    const dock = currentDock(), tab = dock && findFavoriteTab(dock);
-    if (!tab || unavailable(tab)) return;
-    tab.focus({ preventScroll: true });
-    tab.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, ctrlKey: false }));
+    if (records.some(record => !owned.contains(record.target) && !favorites.contains(record.target) && record.target !== confirm &&
+      !(record.type === 'childList' && [...record.addedNodes, ...record.removedNodes].every(node => node instanceof Element && node.hasAttribute('data-ff-dice-selection-checkbox'))))) schedule();
   });
-  function update(value: 'en' | 'ru'): void { language = value; render(); }
-  function dispose(): void { if (disposed) return; disposed = true; observer.disconnect(); owned.remove(); style.remove(); delete host[key]; }
+  observer.observe(document.documentElement, { childList: true, characterData: true, subtree: true, attributes: true,
+    attributeFilter: ['disabled', 'aria-disabled', 'data-disabled', 'hidden', 'aria-hidden', 'data-ff-combat-panel-mode'] });
+  function update(value: 'en' | 'ru'): void { language = value; sync(); }
+  function dispose(): void { if (disposed) return; disposed = true; observer.disconnect(); detach(); style.remove(); delete host[key]; }
   host[key] = { update, dispose }; sync();
 }
