@@ -4,7 +4,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const html = `<!doctype html><meta charset="utf-8"><style>
-body{margin:0}#rail{position:fixed;left:0;top:60px;width:60px;height:700px}#chat{margin-left:60px;width:calc(100vw - 60px);height:700px}#map{position:fixed;right:0;bottom:0;width:40px;height:40px}[data-ff-combat-docked]{position:fixed;top:60px;left:60px;width:var(--ff-combat-width);height:calc(100vh - 60px);overflow:auto;background:#333;color:white}button.group{display:flex}input{max-width:100%;box-sizing:border-box}
+body{margin:0}#rail{position:fixed;left:0;top:60px;width:60px;height:700px}#chat{margin-left:60px;width:calc(100vw - 60px);height:700px}#map{position:fixed;right:0;bottom:0;width:40px;height:40px}[data-ff-combat-docked]{position:fixed;top:60px;left:60px;width:var(--ff-combat-width);height:calc(100vh - 60px);max-height:90vh;display:flex;flex-direction:column;gap:16px;overflow:auto;background:#333;color:white}[data-ff-combat-close]{position:absolute;right:8px;top:8px;width:34px;height:34px}button.group{display:flex}input{max-width:100%;box-sizing:border-box}
 </style><aside id="rail"></aside><div id="chat" data-ff-combat-chat><div contenteditable="true" id="draft">retained draft</div></div><canvas id="map"></canvas><section data-ff-combat-docked><h2 data-ff-combat-heading>Выберите проверку способности</h2><div data-ff-combat-body><div class="grid"><button class="group" id="check"><div><svg class="lucide lucide-person-standing"></svg></div><span>Проверка ловкости: Акробатика и сохранение равновесия</span></button></div><form><input value="retained roll"><button type="submit">Roll</button></form><div style="height:1400px"></div></div><button id="close" data-ff-combat-close>×</button></section><script>
 window.original={panel:document.querySelector('[data-ff-combat-docked]'),check:document.querySelector('#check'),form:document.querySelector('form'),input:document.querySelector('input'),close:document.querySelector('#close'),draft:document.querySelector('#draft'),map:document.querySelector('#map')};window.selections=0;window.submits=0;window.ffCloseClicks=0;window.mapClicks=0;
 original.check.onclick=()=>selections++;original.form.onsubmit=e=>{e.preventDefault();submits++};original.close.onclick=()=>ffCloseClicks++;original.map.onclick=()=>mapClicks++;
@@ -96,17 +96,25 @@ app.on('window-all-closed', () => {});
     await js("original.panel.scrollTop=0");
   }
   // Realistic populated shortcuts: Russian tray and expanded scrollable manager.
-  const populateTools = () => js(`(()=>{
+  const populateTools = (openManager = false) => js(`(()=>{
     const slot=document.querySelector('[data-ff-combat-shortcuts-slot]');
-    slot.innerHTML='<section data-ff-combat-shortcuts style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:5px 8px;min-width:0;max-width:100%;box-sizing:border-box"><strong>Закреплённые проверки</strong><div style="display:flex;flex-wrap:wrap;gap:4px"><button type="button">Акробатика</button><button type="button">Внимательность</button></div><details open style="flex-basis:100%;min-width:0"><summary>Настроить закреплённые проверки</summary><div id="fixture-shortcut-list" style="display:flex;flex-wrap:wrap;gap:4px;max-height:min(40vh,240px);overflow:auto;padding:4px;box-sizing:border-box"></div></details><button type="button" id="fixture-favorites">Избранные атаки</button></section>';
+    const style=document.createElement('style');style.textContent='[data-ff-shortcut-manager]:not([open])>[data-ff-shortcut-list]{display:none!important}';document.head.append(style);
+    slot.innerHTML='<section data-ff-combat-shortcuts style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:5px 8px;min-width:0;max-width:100%;box-sizing:border-box"><strong>Закреплённые проверки</strong><div style="display:flex;flex-wrap:wrap;gap:4px"><button type="button">Акробатика</button></div><details data-ff-shortcut-manager ${openManager?'open':''} style="display:block;min-width:0;max-width:100%;box-sizing:border-box;${openManager?'flex-basis:100%;width:100%':''}"><summary>Настроить закреплённые проверки</summary><div id="fixture-shortcut-list" data-ff-shortcut-list style="display:block;box-sizing:border-box;max-height:min(40vh,240px);min-width:0;width:100%;overflow:auto;padding:4px"></div></details><button type="button" id="fixture-favorites">Избранное</button></section>';
     const list=document.querySelector('#fixture-shortcut-list');
     for(let n=0;n<25;n++){const label=document.createElement('label');label.style.cssText='display:flex;gap:3px;align-items:center;max-width:100%';label.innerHTML='<input type="checkbox">Проверка способности '+n;list.append(label)}
     for(const button of slot.querySelectorAll('button'))button.style.cssText='font:inherit;color:inherit;border:1px solid gray;border-radius:5px;padding:5px 8px;background:transparent';
     window.ffShortcutHits=0;slot.querySelector('#fixture-favorites').onclick=()=>ffShortcutHits++;
   })()`);
+  await populateTools(false);
+  const closedToolbar = await js("(()=>{const tools=document.querySelector('[data-ff-combat-workspace-tools]'),list=document.querySelector('[data-ff-shortcut-list]');return {scrollHeight:tools.scrollHeight,clientHeight:tools.clientHeight,flexShrink:getComputedStyle(tools).flexShrink,listHeight:list.getBoundingClientRect().height,favoriteHit:document.querySelector('#fixture-favorites').contains(document.elementFromPoint(...(()=>{const r=document.querySelector('#fixture-favorites').getBoundingClientRect();return [r.x+r.width/2,r.y+r.height/2]})()))}})()");
+  assert.equal(closedToolbar.scrollHeight<=closedToolbar.clientHeight,true,'A closed manager leaves the unexpanded toolbar non-scrollable in the native flex-column dock.');
+  assert.equal(closedToolbar.flexShrink,'0');
+  assert.equal(closedToolbar.listHeight,0,'The closed details list has no layout footprint.');
+  assert.equal(closedToolbar.favoriteHit,true,'An unexpanded toolbar action remains a real hit target.');
+  await click('#fixture-favorites');assert.equal(await js('ffShortcutHits'),1);
   for (const width of [308,390]) {
     await js(`localStorage.setItem('ff-desktop-combat-workspace-v1:/campaign-one',JSON.stringify({width:${width},density:'comfortable'}))`);
-    await configure(false);await configure(true,'ru');await populateTools();
+    await configure(false);await configure(true,'ru');await populateTools(true);
     window.setContentSize(1100,360);
     await until("innerHeight===360&&parseFloat(document.documentElement.style.getPropertyValue('--ff-combat-tools-height'))===Math.ceil(document.querySelector('[data-ff-combat-workspace-tools]').getBoundingClientRect().height)");
     assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-combat-workspace-tools]')).backgroundColor"), 'rgba(0, 0, 0, 0)', 'Toolbar inherits the translucent combat surface.');
@@ -116,6 +124,7 @@ app.on('window-all-closed', () => {});
       assert.equal(geometry.separated,true,'Measured toolbar offset separates sticky native heading.');
       assert.equal(geometry.headingVisible,true,'Short viewport retains the complete native heading.');
       assert.equal(geometry.closeHit,true,'Populated toolbar leaves the native close reachable.');
+      assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-combat-workspace-tools]')).flexShrink"),'0','Native flex-column dock does not shrink the bounded toolbar.');
       assert.equal(geometry.toolbarScrollable,true,'Expanded shortcuts are bounded and independently scrollable.');
       assert.ok(geometry.height<=136,'Toolbar leaves room for native content in a short viewport.');
     }

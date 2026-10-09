@@ -32,13 +32,15 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   owned.setAttribute('aria-label', 'Combat shortcuts');
   const style = document.createElement('style'); style.dataset.ffCombatShortcutsStyle = '';
   style.textContent = `
-    [data-ff-combat-shortcuts]{font:inherit;color:inherit;display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding:5px 8px;border-bottom:1px solid hsl(var(--border,0 0% 35%));}
+    [data-ff-combat-shortcuts]{font:inherit;color:inherit;display:flex;flex-wrap:wrap;gap:6px;align-items:center;min-width:0;max-width:100%;box-sizing:border-box;padding:5px 8px;border-bottom:1px solid hsl(var(--border,0 0% 35%));}
+    [data-ff-combat-shortcuts] [hidden]{display:none!important;}
     [data-ff-combat-shortcuts] button{font:inherit;color:inherit;background:hsl(var(--muted,0 0% 20%));border:1px solid hsl(var(--border,0 0% 40%));border-radius:5px;padding:5px 8px;cursor:pointer;}
     [data-ff-combat-shortcuts] button:focus-visible,[data-ff-combat-shortcuts] input:focus-visible{outline:2px solid hsl(var(--ring,45 60% 55%));outline-offset:2px;}
     [data-ff-combat-shortcuts] [data-ff-shortcut-tray]{display:flex;flex-wrap:wrap;gap:4px;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-manager]{display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-manager][open]{flex-basis:100%;}
-    [data-ff-combat-shortcuts] [data-ff-shortcut-list]{display:flex;flex-wrap:wrap;gap:4px;max-height:min(40vh,240px);width:100%;overflow:auto;overscroll-behavior:contain;padding:4px;}
+    [data-ff-combat-shortcuts] [data-ff-shortcut-manager]{display:block;min-width:0;max-width:100%;box-sizing:border-box;}
+    [data-ff-combat-shortcuts] [data-ff-shortcut-manager][open]{flex-basis:100%;width:100%;}
+    [data-ff-combat-shortcuts] [data-ff-shortcut-manager]:not([open])>[data-ff-shortcut-list]{display:none!important;}
+    [data-ff-combat-shortcuts] [data-ff-shortcut-list]{display:block;box-sizing:border-box;max-height:min(40vh,240px);min-width:0;width:100%;overflow:auto;overscroll-behavior:contain;padding:4px;}
     [data-ff-combat-shortcuts] label{display:inline-flex;align-items:center;gap:3px;font-size:.85em;max-width:100%;}
     [data-ff-combat-shortcuts] [data-ff-shortcut-title]{font-weight:600;margin-inline-end:3px;}
   `;
@@ -80,6 +82,10 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
       return (identified || labelled) && !unavailable(tab);
     }) ?? null;
   }
+  function hasNativeCheckOptions(dock: HTMLElement): boolean {
+    return Array.from(dock.querySelectorAll<HTMLButtonElement>('button')).some(button =>
+      !button.closest('[data-ff-combat-shortcuts]') && byLabel.has(button.textContent?.trim() ?? ''));
+  }
   const trayButtons = new Map<string, HTMLButtonElement>();
   const managerRows = new Map<string, { label: HTMLLabelElement; input: HTMLInputElement; caption: Text }>();
   for (const item of items) {
@@ -96,12 +102,14 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     const picks = items.filter(item => pinned.includes(item.id) && (item.group === 'check' || item.group === 'save' || item.group === 'skill'));
     const states = items.map(item => [item.id, !!(dock && findNative(item, dock))] as const);
     const tab = dock && findFavoriteTab(dock);
-    const signature = JSON.stringify([language, pinned, states, !!tab]);
+    const nativeChecks = !!dock && hasNativeCheckOptions(dock);
+    const actionOnly = !!tab && !nativeChecks;
+    const signature = JSON.stringify([language, pinned, states, !!tab, nativeChecks]);
     if (signature === renderSignature) return;
     renderSignature = signature;
     title.textContent = text('Pinned', 'Закреплённое'); summary.textContent = text('Manage pins', 'Настроить');
     favorites.textContent = text('Favorites', 'Избранное'); favorites.setAttribute('aria-label', text('Open native Favorites tab', 'Открыть вкладку «Избранное»'));
-    tray.hidden = picks.length === 0;
+    title.hidden = actionOnly; manager.hidden = actionOnly; tray.hidden = actionOnly || picks.length === 0; favorites.hidden = !tab;
     const selected = new Set(picks.map(item => item.id));
     for (const [id, button] of trayButtons) if (!selected.has(id)) button.remove();
     let next: Element | null = tray.firstElementChild;
