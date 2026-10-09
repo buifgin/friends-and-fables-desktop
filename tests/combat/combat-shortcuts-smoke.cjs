@@ -37,6 +37,12 @@ const wait = async (contents, expression) => {
   assert.equal(await contents.executeJavaScript('window.selections'), 1, 'The shortcut selects the existing native control once.');
   assert.equal(await contents.executeJavaScript('window.rolls'), 0, 'The shortcut never submits or rolls.');
   assert.equal(await contents.executeJavaScript(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '["ability.strength"]', 'Only the canonical ID is persisted for this campaign.');
+  await contents.executeJavaScript(`history.pushState({},'', '/other/play');document.body.append(document.createElement('aside'))`);
+  await wait(contents, `document.querySelector('[data-ff-shortcut-tray]').hidden`);
+  assert.equal(await contents.executeJavaScript(`document.querySelectorAll('[data-ff-shortcut-tray] button').length`), 0, 'A campaign with no pins has no stale shortcuts.');
+  await contents.executeJavaScript(`history.pushState({},'', '/campaign/play');document.body.append(document.createElement('aside'))`);
+  await wait(contents, `document.querySelectorAll('[data-ff-shortcut-tray] button').length===1`);
+  assert.equal(await contents.executeJavaScript(`document.querySelector('[data-ff-shortcut-tray] button').textContent`), 'Проверка силы', 'Returning to the campaign restores its canonical pins.');
   await contents.executeJavaScript(`window.__friendsFablesDesktopCombatShortcuts.update('en')`);
   assert.equal(await contents.executeJavaScript(`document.querySelector('[data-ff-shortcut-tray] button').textContent`), 'Strength Check');
   await contents.executeJavaScript(`document.querySelector('[data-ff-shortcut-list] input[aria-label="Pin Acrobatics Check"]').click();document.querySelector('#skill').textContent='Acrobatics Check'`);
@@ -47,6 +53,9 @@ const wait = async (contents, expression) => {
   await wait(contents, `document.querySelectorAll('[data-ff-shortcut-tray] button').length===3`);
   await contents.executeJavaScript(`document.querySelector('[data-ff-shortcut-tray] button:last-child').click()`);
   assert.equal(await contents.executeJavaScript('window.selections'), 3, 'The exact abbreviated saving throw label selects its native button.');
+  await contents.executeJavaScript(`[...document.querySelectorAll('[data-ff-shortcut-list] input')].find(x=>x.getAttribute('aria-label')==='Pin Strength Check').click()`);
+  assert.equal(await contents.executeJavaScript(`document.querySelectorAll('[data-ff-shortcut-tray] button').length`), 2, 'Partial unpin removes only the corresponding tray shortcut.');
+  assert.equal(await contents.executeJavaScript(`[...document.querySelectorAll('[data-ff-shortcut-tray] button')].some(x=>x.textContent==='Strength Check')`), false);
   await contents.executeJavaScript(`document.querySelector('[data-ff-shortcut-manager] summary').focus();document.body.append(document.createElement('aside'))`);
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(await contents.executeJavaScript(`document.activeElement === document.querySelector('[data-ff-shortcut-manager] summary')`), true, 'Unrelated page mutations preserve keyboard focus.');
@@ -55,7 +64,6 @@ const wait = async (contents, expression) => {
   assert.equal(await contents.executeJavaScript(`document.querySelector('[data-ff-native-favorites]').disabled`), false);
   await contents.executeJavaScript(`window.__friendsFablesDesktopCombatShortcuts.dispose(); (${configureCombatShortcuts.toString()})(true, 'en')`);
   await wait(contents, `[...document.querySelectorAll('[data-ff-shortcut-list] input')].some(x=>x.getAttribute('aria-label')==='Pin Strength Check' && x.checked)`);
-  await contents.executeJavaScript(`[...document.querySelectorAll('[data-ff-shortcut-list] input')].find(x=>x.getAttribute('aria-label')==='Pin Strength Check').click()`);
   await contents.executeJavaScript(`[...document.querySelectorAll('[data-ff-shortcut-list] input')].find(x=>x.getAttribute('aria-label')==='Pin Acrobatics Check').click();[...document.querySelectorAll('[data-ff-shortcut-list] input')].find(x=>x.getAttribute('aria-label')==='Pin Strength Saving Throw').click()`);
   assert.equal(await contents.executeJavaScript(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '[]', 'Unpin removes the canonical ID.');
   assert.equal(await contents.executeJavaScript(`document.querySelector('[data-ff-shortcut-tray]').hidden`), true);

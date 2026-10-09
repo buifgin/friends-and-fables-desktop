@@ -92,8 +92,6 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   let renderSignature = '';
   function render(): void {
     if (!root || !root.isConnected) return;
-    title.textContent = text('Pinned', 'Закреплённое'); summary.textContent = text('Manage pins', 'Настроить');
-    favorites.textContent = text('Favorites', 'Избранное'); favorites.setAttribute('aria-label', text('Open native Favorites tab', 'Открыть вкладку «Избранное»'));
     const dock = currentDock();
     const picks = items.filter(item => pinned.includes(item.id) && (item.group === 'check' || item.group === 'save' || item.group === 'skill'));
     const states = items.map(item => [item.id, !!(dock && findNative(item, dock))] as const);
@@ -101,7 +99,12 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     const signature = JSON.stringify([language, pinned, states, !!tab]);
     if (signature === renderSignature) return;
     renderSignature = signature;
+    title.textContent = text('Pinned', 'Закреплённое'); summary.textContent = text('Manage pins', 'Настроить');
+    favorites.textContent = text('Favorites', 'Избранное'); favorites.setAttribute('aria-label', text('Open native Favorites tab', 'Открыть вкладку «Избранное»'));
     tray.hidden = picks.length === 0;
+    const selected = new Set(picks.map(item => item.id));
+    for (const [id, button] of trayButtons) if (!selected.has(id)) button.remove();
+    let next: Element | null = tray.firstElementChild;
     for (const item of picks) {
       let button = trayButtons.get(item.id);
       if (!button) {
@@ -110,7 +113,9 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
         trayButtons.set(item.id, button);
       }
       button.textContent = language === 'ru' ? item.ru : item.en; button.disabled = !states.find(([id]) => id === item.id)?.[1];
-      button.setAttribute('aria-disabled', String(button.disabled)); if (button.parentElement !== tray) tray.append(button);
+      button.setAttribute('aria-disabled', String(button.disabled));
+      if (button !== next) tray.insertBefore(button, next);
+      next = button.nextElementSibling;
     }
     for (const item of items) {
       const row = managerRows.get(item.id)!; row.input.checked = pinned.includes(item.id);
@@ -122,7 +127,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   function sync(): void {
     queued = false; if (disposed) return;
     const nextRoute = location.pathname + location.search;
-    if (route !== nextRoute) { route = nextRoute; pinned = read(campaignId()); root = null; slot = null; }
+    if (route !== nextRoute) { route = nextRoute; pinned = read(campaignId()); root = null; slot = null; renderSignature = ''; }
     const dock = currentDock(), nextSlot = dock?.querySelector<HTMLElement>('[data-ff-combat-shortcuts-slot]') ?? null;
     if (nextSlot !== slot || !dock || !nextSlot) { if (owned.parentElement && owned.parentElement !== nextSlot) owned.remove(); slot = nextSlot; root = dock; }
     if (slot && owned.parentElement !== slot) slot.append(owned);
