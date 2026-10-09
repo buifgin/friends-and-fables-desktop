@@ -1,7 +1,7 @@
 // Coordinator-scheduled Electron fixture; syntax-check before launch.
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const { app, BrowserWindow, protocol } = require('electron');
+const { app, BrowserWindow, session } = require('electron');
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { configureCombatShortcuts } = require(path.join(root, 'dist/combat/combat-shortcuts'));
 app.on('window-all-closed', () => {});
@@ -13,7 +13,8 @@ const wait = async (contents, expression) => {
 };
 (async () => {
   await app.whenReady();
-  protocol.handle('https', () => new Response(`<!doctype html><body>
+  const testSession = session.fromPartition('combat-shortcuts-smoke');
+  testSession.protocol.handle('https', () => new Response(`<!doctype html><body>
     <div data-ff-combat-docked><div data-ff-combat-shortcuts-slot></div>
       <button id="check">Проверка силы</button><button id="save">Спасбросок силы</button><button id="skill">Проверка акробатики</button>
       <button role="tab" id="favorites-tab" aria-controls="favorites-panel">Избранное</button>
@@ -23,7 +24,7 @@ const wait = async (contents, expression) => {
       document.querySelector('#save').onclick=()=>window.selections++;document.querySelector('#skill').onclick=()=>window.selections++;
       document.querySelector('#favorites-tab').onclick=()=>window.favoritesSelected++;
       document.querySelector('#unrelated-tab').onclick=()=>window.unrelatedSelected++;</script></body>`, { headers: { 'content-type': 'text/html' } }));
-  window = new BrowserWindow({ show: false, webPreferences: { contextIsolation: false, nodeIntegration: false } });
+  window = new BrowserWindow({ show: false, webPreferences: { partition: 'combat-shortcuts-smoke', contextIsolation: false, nodeIntegration: false } });
   await window.loadURL('https://combat.test/campaign/play');
   const source = `(${configureCombatShortcuts.toString()})(true, 'ru')`;
   const contents = window.webContents;
