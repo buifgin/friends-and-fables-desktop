@@ -34,7 +34,7 @@
     "benchmark:translation": "npm run build && node scripts/translation-benchmark.cjs",
     "test:panel": "node scripts/run-electron-test.cjs tests/appearance/appearance-panel-smoke.cjs",
     "test:map": "node scripts/run-electron-test.cjs tests/map/campaign-map-smoke.cjs",
-    "test:combat": "node scripts/run-electron-test.cjs tests/combat/combat-panel-smoke.cjs",
+    "test:combat": "node scripts/run-electron-test.cjs tests/combat/combat-panel-smoke.cjs && node scripts/run-electron-test.cjs tests/combat/combat-workspace-smoke.cjs && node scripts/run-electron-test.cjs tests/combat/combat-shortcuts-smoke.cjs && node scripts/run-electron-test.cjs tests/combat/combat-corrections-smoke.cjs",
     "test:commands": "node scripts/run-electron-test.cjs tests/commands/message-commands-smoke.cjs",
     "test:music": "node scripts/run-electron-test.cjs tests/music/music-smoke.cjs",
     "test:window": "node scripts/run-electron-test.cjs tests/shell/window-minimizer-smoke.cjs",
