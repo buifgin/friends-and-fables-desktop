@@ -4,7 +4,7 @@ An unofficial desktop wrapper for [Friends & Fables](https://play.fables.gg/), t
 
 The app opens the existing website and adds local themes, campaign chat pictures, and message styling. Optional local English-to-Russian translation is available from the Translation menu.
 
-The current release is [0.6.0](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.6.0), with animated music controls, improved translation and progression handling, and centered window controls. See [release notes](docs/releases/v0.6.0.md).
+The current release is [0.7.0](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.7.0), with a native combat workspace, campaign-local favorite checks, and fixes for translation and Windows window controls. See [release notes](docs/releases/v0.7.0.md).
 
 ## Current features
 
@@ -41,11 +41,11 @@ Download the Linux AppImage or Windows portable EXE from [GitHub Releases](https
 On Arch/Linux, make the AppImage executable and run it:
 
 ```sh
-chmod +x friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage
-./friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage
+chmod +x friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage
+./friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage
 ```
 
-On Windows, run `friends-and-fables-desktop-0.6.0-windows-x64.exe`. The build is unsigned. The Windows package includes the English–Russian translator and model.
+On Windows, run `friends-and-fables-desktop-0.7.0-windows-x64.exe`. The build is unsigned. The Windows package includes the English–Russian translator and model.
 
 The [AUR guide](docs/AUR.md) includes a prepared binary-package recipe and submission steps. AUR publication requires an AUR account and SSH key.
 
@@ -117,11 +117,11 @@ In source version 0.4.0, **Critical dice colors** has independent **Customize na
 
 In source version 0.4.0, open **App**, enable **Resizable campaign map**, and apply. Drag the map's lower edge or focus it and press Up/Down to change height. **Expand map** opens the same interactive canvas above the sidebar; drag its lower-right corner, or use all four arrow keys. Hold Shift for larger keyboard steps. **Close map** or Escape returns it to the sidebar, and **Reset size** restores the site's dimensions. Sizes are saved locally for each campaign. This preference stays local when importing/exporting themes; editors and existing map dialogs receive no extra controls.
 
-### In-development combat workspace
+### Combat workspace
 
-The combat workspace is under development and is not included in published release **0.6.0**. In a development build, open the dice panel with the dice button; the actions panel opens automatically during combat, and its button can close it or reopen it. Both panels sit on the left while chat and the map remain visible. Drag a panel's right edge or focus it and use the arrow keys to resize; hold Shift for larger steps, and press Home or double-click the edge to reset. Panel width is stored per campaign. Appearance → **Side panel** → **Customize side panel appearance** changes panel styling only.
+Release **0.7.0** includes the combat workspace. Open the dice panel with the dice button; the actions panel opens automatically during combat, and its button can close it or reopen it. Both panels sit on the left while chat and the map remain visible. Drag a panel's right edge or focus it and use the arrow keys to resize; hold Shift for larger steps, and press Home or double-click the edge to reset. Panel width is stored per campaign. Appearance → **Side panel** → **Customize side panel appearance** changes panel styling only.
 
-The dice panel opens **Favorites** first. Use the top **All checks** and **Favorites** buttons to switch views. **Add** or **Add more** opens the original check tiles with selection checkboxes; **Confirm** saves campaign-local favorites, while **Cancel** discards changes. Favorite tiles open the native check form without rolling. **Corrections** recognizes the native custom-attack modifier and proficiency fields and offers decrement, increment, zero, and apply controls. Named local presets can be saved, loaded, and deleted manually. Presets never apply automatically, and shortcuts do not roll or write to character sheets. Workspace preferences stay local and are excluded from shared themes.
+The dice panel opens **Favorites** first. Use the top **All checks** and **Favorites** buttons to switch views. **Add** or **Add more** opens the original check tiles with selection checkboxes; the checkbox-style **Confirm** icon saves campaign-local favorites, while **Cancel** discards changes. Favorite tiles open the native check form without rolling. **Corrections** recognizes the native custom-attack modifier and proficiency fields and offers decrement, increment, zero, and apply controls. Named local presets can be saved, loaded, and deleted manually. Presets never apply automatically, and shortcuts do not roll or write to character sheets. Workspace preferences stay local and are excluded from shared themes.
 
 In source version 0.4.0, **App → Enable /me and /gm commands** adds an opt-in draft formatter. `/me I look closer.` becomes italic rich text, while `/gm Keep the party together.` becomes `#Keep the party together.#`. Enter, **Format command**, or the first Send click prepares a command for review; then send normally. Shift+Enter keeps newline behavior. Mentions, links, literal text, and code remain structured. See [message-command behavior](docs/MESSAGE-COMMANDS.md).
 
@@ -131,7 +131,7 @@ In **Sharing**, click **Export theme…** to save the current preview as a `.fab
 
 The Appearance editor follows the selected app theme, including light and custom colors. In **App**, enable **Pin Appearance to the main interface** and apply. A button opens the settings in a resizable panel on the left of the game, including in fullscreen. Drag its right edge to resize, or focus the separator and use the arrow keys. Closing the panel preserves its draft; disabling the pin restores the separate window. The panel width is saved locally and stays out of shared themes.
 
-The application menus, centered round Appearance/music controls and right window controls share one toolbar row. Windows starts without a native title bar or border; **App → Show native Windows title bar and border** restores it after restarting. **Show extra expand-input button** is off by default. Command hints stay below the native input border, and opening working context applies its palette to that input. Event styles apply to event cards, while character dialogs follow the app theme. These changes are in the current source hotfix.
+The application menus, centered round Appearance/music controls and right window controls share one toolbar row. Windows starts without a native title bar or border; **App → Show native Windows title bar and border** restores it after restarting. **Show extra expand-input button** is off by default. Command hints stay below the native input border, and opening working context applies its palette to that input. Event styles apply to event cards, while character dialogs follow the app theme. These changes are included in release 0.7.0.
 
 Appearance and Translation settings both follow the saved app theme. Changing the theme keeps unsaved translation choices intact.
 

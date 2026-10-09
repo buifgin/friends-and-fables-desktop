@@ -31,8 +31,8 @@ The pinned builder's resource editor and portable NSIS target can package this a
 
 Both commands place release files in `out/releases/`:
 
-- `friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage`
-- `friends-and-fables-desktop-0.6.0-windows-x64.exe`
+- `friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage`
+- `friends-and-fables-desktop-0.7.0-windows-x64.exe`
 
 The AppImage uses the modern static AppImage runtime. The Windows release is unsigned; it may display a Windows publisher/reputation prompt. Automatic updates are not included in this version.
 
@@ -43,8 +43,8 @@ The AppImage uses the modern static AppImage runtime. The Windows release is uns
 Run the Linux AppImage without root:
 
 ```sh
-chmod +x out/releases/friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage
-./out/releases/friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage
+chmod +x out/releases/friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage
+./out/releases/friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage
 ```
 
 Check login, restart persistence, zoom, Appearance, picture browsing, and context/dice styles. Check light/custom Appearance themes, pin/unpin, panel dragging and remembered width, fullscreen, and built-in Russian settings labels. Check Translation on/off, original-text switching, preserved names and Russian text, editable drafts, streamed messages, cache reuse, and service failure/recovery. Repeat on Windows with the portable EXE, without an installed Python/Docker/service. Enable translation, open menus, restart, and confirm the model starts and exits with the app. Run `npm run test:bundled-model` against the unpacked Windows package for an offline model/authentication smoke test. If AppImage mounting is unavailable, the runtime also supports `--appimage-extract-and-run`.
@@ -73,20 +73,20 @@ Local commits are preserved; a reset or another pull is unnecessary. See [GitHub
 
 ## Publish on GitHub
 
-The first published release is `v0.1.0`; the current working version is `v0.6.0`. For each release, update `package.json`/`package-lock.json`, rebuild, and update the AUR version/checksum. Publish the exact files you checked.
+The first published release is `v0.1.0`; the current working version is `v0.7.0`. For each release, update `package.json`/`package-lock.json`, rebuild, and update the AUR version/checksum. Publish the exact files you checked.
 
 From the repository root:
 
 ```sh
-git add package.json package-lock.json src assets tests docs/releases/v0.6.0.md
+git add package.json package-lock.json src assets tests docs/releases/v0.7.0.md
 # Stage other release documentation deliberately; preserve unrelated local edits.
-git commit -m "Prepare desktop release v0.6.0"
-git tag -a v0.6.0 -m "Friends & Fables Desktop 0.6.0"
+git commit -m "Prepare desktop release v0.7.0"
+git tag -a v0.7.0 -m "Friends & Fables Desktop 0.7.0"
 git push origin main
-git push origin v0.6.0
-gh release create v0.6.0 --verify-tag --title "Friends & Fables Desktop 0.6.0" --notes-file docs/releases/v0.6.0.md --draft
-gh release upload v0.6.0 out/releases/friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage out/releases/friends-and-fables-desktop-0.6.0-windows-x64.exe out/releases/SHA256SUMS
-gh release edit v0.6.0 --draft=false
+git push origin v0.7.0
+gh release create v0.7.0 --verify-tag --title "Friends & Fables Desktop 0.7.0" --notes-file docs/releases/v0.7.0.md --draft
+gh release upload v0.7.0 out/releases/friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage out/releases/friends-and-fables-desktop-0.7.0-windows-x64.exe out/releases/SHA256SUMS
+gh release edit v0.7.0 --draft=false
 ```
 
 If a tag/release already exists, upload to it rather than recreating it. Never replace a published AppImage with different bytes under the same name: the AUR checksum is tied to it. Use a new version for changed builds.
