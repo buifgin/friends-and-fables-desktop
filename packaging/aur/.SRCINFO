@@ -1,6 +1,6 @@
 pkgbase = friends-and-fables-desktop-bin
 	pkgdesc = Unofficial Friends & Fables desktop app with local appearance customization
-	pkgver = 0.6.0
+	pkgver = 0.7.0
 	pkgrel = 1
 	url = https://github.com/buifgin/friends-and-fables-desktop
 	arch = x86_64
@@ -30,13 +30,13 @@ pkgbase = friends-and-fables-desktop-bin
 	optdepends = hyprland: automatic floating mode for the Appearance window
 	provides = friends-and-fables-desktop
 	conflicts = friends-and-fables-desktop
-	noextract = friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage
+	noextract = friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage
 	options = !strip
 	options = !debug
-	source = https://github.com/buifgin/friends-and-fables-desktop/releases/download/v0.6.0/friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage
+	source = https://github.com/buifgin/friends-and-fables-desktop/releases/download/v0.7.0/friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage
 	source = friends-and-fables-desktop.desktop
 	source = friends-and-fables-desktop
-	sha256sums = b0e896abaed90e348195474083aa2a8ed963aa5e50efcaf7912fa9186b4c49a8
+	sha256sums = d94ccdb8e59de25c56919b643c408f6ede4f4ca4a81742972d4294a3a8e0f871
 	sha256sums = 462dcce05e630e78f5c2cd1e19436d5c50e0762fcf20fdf755d114826901c63a
 	sha256sums = 5a59b5ebb4ce705764d9f85e28299094ec888871c1a849abd4a255e12420442b
 

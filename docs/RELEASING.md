@@ -89,6 +89,8 @@ gh release upload v0.7.0 out/releases/friends-and-fables-desktop-0.7.0-linux-x86
 gh release edit v0.7.0 --draft=false
 ```
 
+For slow local uploads, manually run the **Stage verified release artifacts** workflow with the successful build run ID, existing draft tag, and full tested source SHA. The checkout package version must match the tag. It verifies the run and draft identity, downloads the two CI artifacts, checks their platform sums, and uploads only missing assets. Existing assets must match their size and SHA-256 digest. It never publishes the draft; verify the final assets before the publication command above.
+
 If a tag/release already exists, upload to it rather than recreating it. Never replace a published AppImage with different bytes under the same name: the AUR checksum is tied to it. Use a new version for changed builds.
 
 See [AUR publishing](AUR.md) for installing and submitting the binary package.
@@ -122,3 +124,13 @@ Release source: `34cdedc8f1fc362c879b4a56117348da69ac9cdf`. [Native workflow 372
 | --- | ---: | --- |
 | friends-and-fables-desktop-0.6.0-linux-x86_64.AppImage | 117234025 | `b0e896abaed90e348195474083aa2a8ed963aa5e50efcaf7912fa9186b4c49a8` |
 | friends-and-fables-desktop-0.6.0-windows-x64.exe | 324180136 | `1fb27e678948f47fea3547430d5c4934ebfe40e2c0262748d2b6561539684abb` |
+
+## 0.7.0 verification
+
+Release source: `b4f7c736080ff1e75a2051451c72380b9987dff5` (`v0.7.0`). [Native workflow 37979826689](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/37979826689) passed Linux and Windows source and packaged-resource suites, including combat controls and the Windows bundled translation model. The Windows job passed on attempt 2 after a transient PowerShell helper process timeout; Linux passed on attempt 1. Exact CI artifacts were checked against both platform checksum files and uploaded without rebuilding. GitHub asset sizes and SHA-256 digests match the local manifest. The Arch recipe source verification passed against the same cached AppImage and both local recipe sources. Download the canonical [SHA256SUMS file](https://github.com/buifgin/friends-and-fables-desktop/releases/download/v0.7.0/SHA256SUMS).
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage | 117274978 | `d94ccdb8e59de25c56919b643c408f6ede4f4ca4a81742972d4294a3a8e0f871` |
+| friends-and-fables-desktop-0.7.0-windows-x64.exe | 324205070 | `5d00a49a30621ebf1895552828c808e33331602d7942095495215fab6a03deda` |
+| SHA256SUMS | 236 | `6d5933556ba145e2d7befc0bfa7c4938765f03459daa2cf6b35c6c05590a100b` |
