@@ -20,18 +20,20 @@ window.mount=()=>{
 };mount();
 // Captured ExecuteActionsForm: FormProvider props, keyed field-array wrapper,
 // AttackCard props and sibling FormField(control, name=attacks.N.targets).
+window.pendingMounts=0;
 window.mountPending=()=>{
+ window.pendingMounts++;
  const dock=document.querySelector('section');dock.innerHTML='<form id="pending-form"><div id="pending-list" style="height:180px;overflow:auto"></div><textarea name="message">pending message</textarea><button type="submit">Submit Actions</button></form>';
  const form=dock.querySelector('form'),list=document.querySelector('#pending-list');
- window.pendingValues={attacks:[{name:'Vicious Weapon',type:'melee',requires_attack_roll:true,modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,description:'weapon description',targets:[{id:1,name:'Wolf',ac:12}],damage_rolls:[{dice_count:1,dice_size:8,fixed_damage_bonus:0}]},{name:'Spell Attack',type:'spell',requires_attack_roll:true,modifier_stat:'intelligence',modifier_value:2,proficiency_bonus:3,spell_id:4,targets:[{id:2}],damage_rolls:[]},{name:'Save spell',type:'spell',requires_attack_roll:false,targets:[],damage_rolls:[]}],message:'pending message'};
+ window.pendingValues={attacks:[{name:'Vicious Weapon',image:'weapon.webp',type:'melee',requires_attack_roll:true,modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,description:'weapon description',targets:[{id:1,name:'Wolf',ac:12}],damage_rolls:[{dice_count:1,dice_size:8,fixed_damage_bonus:0}]},{name:'Spell Attack',image:'spell.webp',type:'spell',requires_attack_roll:true,modifier_stat:'intelligence',modifier_value:2,proficiency_bonus:3,spell_id:4,targets:[{id:2}],damage_rolls:[]},{name:'Save spell',type:'spell',requires_attack_roll:false,targets:[],damage_rolls:[]}],message:'pending message'};
  window.pendingWrites=[];window.pendingSubmits=0;window.pendingControl={};
  window.pendingMethods={control:pendingControl,getValues(name){return name?name.split('.').reduce((v,k)=>v?.[k],pendingValues):pendingValues},setValue(name,value,options){pendingWrites.push({name,value,options});const keys=name.split('.'),leaf=keys.pop();keys.reduce((v,k)=>v[k],pendingValues)[leaf]=value}};
  const provider={memoizedProps:pendingMethods,return:null};
  window.pendingCards=[];
  pendingValues.attacks.forEach((attack,index)=>{
   const wrapper=document.createElement('div'),card=document.createElement('div'),target=document.createElement('button');card.className='rounded-lg border bg-card clickable';card.textContent=attack.name;target.type='button';target.setAttribute('role','checkbox');target.setAttribute('aria-checked','true');target.textContent='Wolf';wrapper.append(card,target);list.append(wrapper);
-  const fieldAttack={...attack,id:'native-field-'+index};
-  const props={attack:fieldAttack,usersCharacter:{strength:10,dexterity:14,constitution:12,intelligence:14,wisdom:10,charisma:8,adjusted_stats:{dexterity:{adjusted:16}}},showDropdown:true,onClick(){throw Error('Full editor must not open')},onEdit(){throw Error('Field array must not update')}};
+  const fieldAttack={...attack,id:'native-field-'+pendingMounts+'-'+index};
+  const props={attack:fieldAttack,usersCharacter:{id:83026155,equipped:{two_handed:{id:566,name:'Vicious Weapon',image:'weapon.webp'}},inventory:[{item:{id:566,name:'Vicious Weapon',image:'weapon.webp'}}],spells:[{spell:{id:'spell-catalog-1',name:'Spell Attack',image:'spell.webp'}}],strength:10,dexterity:14,constitution:12,intelligence:14,wisdom:10,charisma:8,adjusted_stats:{dexterity:{adjusted:16}}},showDropdown:true,onClick(){throw Error('Full editor must not open')},onEdit(){throw Error('Field array must not update')}};
   const wrapperFiber={key:fieldAttack.id,memoizedProps:{children:[{props},{props:{control:pendingControl,name:'attacks.'+index+'.targets'}}]},return:{memoizedProps:{},return:provider}};
   card.__reactFiber$fixture={memoizedProps:{className:card.className},return:{memoizedProps:props,return:wrapperFiber}};
   pendingCards.push({card,target,wrapper,fieldAttack});
@@ -148,6 +150,24 @@ app.on('window-all-closed', () => {});
  await mutate("document.querySelector('#pending-form button[type=submit]').disabled=true");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");await click(weapon+' [data-ff-correction-modifier_value-plus]');assert.equal(await js('pendingValues.attacks[0].modifier_value'),3,'Current native turn/submitting restriction respected.');
  await mutate("document.querySelector('#pending-form button[type=submit]').disabled=false");await until("!document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");
  await configure(true,'ru');assert.equal(await js("document.querySelector('[data-ff-pending-corrections] summary').textContent"),'Поправки к броску');assert.equal(await pendingIdentity(),true);assert.equal(await js('pendingSubmits'),0);
+ // Explicitly save once, then a new RHF control and ephemeral row UUID
+ // must reuse the stable equipped/inventory catalog identity automatically.
+ await configure(true,'en');
+ assert.equal(await js("!!document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-save-default]')"),true,'Selected weapon exposes Save default.');
+ await click(weapon+' [data-ff-correction-save-default]');
+ assert.match(await js("document.querySelector('[data-ff-pending-corrections=\"0\"] [role=status]').textContent"),/saved/i);
+ await mutate('mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
+ await until("pendingValues.attacks[0].modifier_stat==='dexterity'&&pendingValues.attacks[0].modifier_value===3");
+ assert.equal(await js('pendingValues.attacks[0].proficiency_bonus'),0);
+ assert.equal(await js('pendingWrites.length'),3,'Saved default writes only three permitted leaves once.');
+ assert.equal(await pendingIdentity(),true);assert.equal(await js('pendingSubmits'),0);
+ await click(weapon+' summary');await click(weapon+' [data-ff-correction-modifier_value-plus]');
+ await new Promise(resolve=>setTimeout(resolve,650));
+ assert.equal(await js('pendingValues.attacks[0].modifier_value'),4,'Manual correction survives subsequent polling.');
+ await click(weapon+' [data-ff-correction-clear-default]');
+ assert.equal(await js('pendingValues.attacks[0].modifier_value'),4,'Clear leaves the pending form intact.');
+ await mutate('mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
+ await new Promise(resolve=>setTimeout(resolve,600));assert.equal(await js('pendingWrites.length'),0,'Cleared default cannot affect future forms.');
  await mutate('pendingCards[0].wrapper.remove()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===1");
  await configure(false);assert.equal(await js("document.querySelector('[data-ff-pending-corrections]')"),null);assert.equal(await js('pendingSubmits'),0);
  console.log('Combat corrections fixture PASS'); window.destroy(); clearTimeout(timer); app.exit(0);
