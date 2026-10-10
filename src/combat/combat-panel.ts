@@ -433,7 +433,11 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
         && Array.from(dialog.querySelectorAll('div.text-center.absolute')).some(title => /^(Roll|Бросок)\s+\S/i.test(title.textContent?.trim() ?? ''));
       return list || detail;
     }) : undefined;
-    const found = skills ?? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? '')));
+    // Native close can leave Actions visible until the delayed Dice mount.
+    // Re-adopting it here would consume the launch token or block the requested
+    // switch. Wait for the requested native surface instead.
+    const awaitingDice = launched === 'skills' || requested === 'skills';
+    const found = skills ?? (!awaitingDice ? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? ''))) : undefined);
     if (found && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     filterAdventure();
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
