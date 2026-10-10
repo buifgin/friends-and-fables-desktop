@@ -13,6 +13,21 @@ document.documentElement.setAttribute('data-ff-combat-open','true');document.doc
 </script>`;
 function checkEmbeddedSyntax() {
   for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
+  const fixture = fs.readFileSync(__filename, 'utf8');
+  for (const match of fixture.matchAll(/\bjs\(\s*(["'])/g)) {
+    const quote = match[1];
+    const start = match.index + match[0].length - 1;
+    let end = start + 1;
+    while (end < fixture.length) {
+      if (fixture[end] === '\\') { end += 2; continue; }
+      if (fixture[end] === quote) break;
+      end++;
+    }
+    if (end >= fixture.length) throw new Error('Unterminated serialized js() expression.');
+    const script = new Function(`return (${fixture.slice(start, end + 1)})`)();
+    try { new Function(script); }
+    catch (error) { throw new Error(`Serialized js() expression syntax failed: ${error.message}`); }
+  }
   const output = require('esbuild').transformSync(fs.readFileSync(path.join(fixtureRoot, 'src/combat/combat-workspace.ts'), 'utf8'), { loader: 'ts', target: 'es2022', format: 'cjs' });
   new Function(output.code);
 }
@@ -32,7 +47,7 @@ app.on('window-all-closed', () => {});
   window = new BrowserWindow({ show: false, width: 1100, height: 780, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
   const js = async source => {
     try { return await window.webContents.executeJavaScript(source); }
-    catch (error) { throw new Error(`Fixture evaluate failed for ${source.slice(0, 180)}: ${error.message}`); }
+    catch (error) { throw new Error(`Fixture evaluate failed for ${source.slice(0, 180)}: ${JSON.stringify({ name: error.name, message: error.message, stack: error.stack, code: error.code })}`); }
   };
   const until = async expression => { for (let n = 0; n < 100; n++) { if (await js(expression)) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw Error('Timed out: ' + expression); };
   const configure = (enabled = true, locale = 'en') => js(`(${configureCombatWorkspace.toString()})(${enabled},${JSON.stringify(locale)})`);
@@ -61,7 +76,8 @@ app.on('window-all-closed', () => {});
     await js(`original.targetName.textContent=${JSON.stringify(name)};localStorage.setItem('ff-desktop-combat-workspace-v1:/campaign-one',JSON.stringify({width:${width}}));`);
     await configure(false); await configure(true, 'en');
     await until(`document.documentElement.style.getPropertyValue('--ff-combat-width')==='${width}px'`);
-    const target = await js("(()=>{const card=original.targetCard,name=original.targetName,range=document.createRange();range.selectNodeContents(name);const text=range.getBoundingClientRect(),c=card.getBoundingClientRect(),checkbox=original.targetCheckbox.getBoundingClientRect(),avatar=original.targetAvatar.getBoundingClientRect();return {name:name.textContent,text:{left:text.left,right:text.right,top:text.top,bottom:text.bottom},card:{left:c.left,right:c.right,top:c.top,bottom:c.bottom,width:c.width,scrollWidth:card.scrollWidth,clientWidth:card.clientWidth},next:{left:document.querySelector('#target-card-next').getBoundingClientRect().left,right:document.querySelector('#target-card-next').getBoundingClientRect().right},panelWidth:original.panel.getBoundingClientRect().width,dock:{scrollWidth:original.panel.scrollWidth,clientWidth:original.panel.clientWidth},lines:[...range.getClientRects()].map(r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom})),checkbox:{width:checkbox.width,height:checkbox.height,checked:original.targetCheckbox.getAttribute('aria-checked')},avatar:{width:avatar.width,height:avatar.height},retained:original.targetCard.isConnected&&original.targetName.isConnected&&document.querySelector('#target-card')===original.targetCard&&document.querySelector('#target-name')===original.targetName&&original.targetCard.onclick===originalTargetHandler}}})()");
+    const target = await js("(()=>{try{const card=original.targetCard,name=original.targetName,range=document.createRange();range.selectNodeContents(name);const text=range.getBoundingClientRect(),c=card.getBoundingClientRect(),checkbox=original.targetCheckbox.getBoundingClientRect(),avatar=original.targetAvatar.getBoundingClientRect();return {name:name.textContent,text:{left:text.left,right:text.right,top:text.top,bottom:text.bottom},card:{left:c.left,right:c.right,top:c.top,bottom:c.bottom,width:c.width,scrollWidth:card.scrollWidth,clientWidth:card.clientWidth},next:{left:document.querySelector('#target-card-next').getBoundingClientRect().left,right:document.querySelector('#target-card-next').getBoundingClientRect().right},panelWidth:original.panel.getBoundingClientRect().width,dock:{scrollWidth:original.panel.scrollWidth,clientWidth:original.panel.clientWidth},lines:[...range.getClientRects()].map(r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom})),checkbox:{width:checkbox.width,height:checkbox.height,checked:original.targetCheckbox.getAttribute('aria-checked')},avatar:{width:avatar.width,height:avatar.height},retained:original.targetCard.isConnected&&original.targetName.isConnected&&document.querySelector('#target-card')===original.targetCard&&document.querySelector('#target-name')===original.targetName&&original.targetCard.onclick===originalTargetHandler}}catch(error){return {__fixtureEvaluationError:{name:error.name,message:error.message,stack:error.stack}}}})()");
+    assert.equal(target.__fixtureEvaluationError, undefined, `Target geometry evaluation failed: ${JSON.stringify(target.__fixtureEvaluationError)}`);
     const alignment = await js("(()=>{const rangeFor=e=>{const r=document.createRange();r.selectNodeContents(e);return [...r.getClientRects()].map(x=>({left:x.left,right:x.right,top:x.top,bottom:x.bottom}))},info=e=>({text:e.textContent.trim(),whiteSpace:getComputedStyle(e).whiteSpace,box:(()=>{const r=e.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,bottom:r.bottom}})(),lines:rangeFor(e)}),attackStat=original.attackStat.getBoundingClientRect(),modifierValue=original.modifierValue.getBoundingClientRect(),damageDice=original.damageDice.getBoundingClientRect(),damageStat=original.damageStat.getBoundingClientRect();return {attackStatTop:attackStat.top,modifierValueTop:modifierValue.top,damageDiceTop:damageDice.top,damageStatTop:damageStat.top,attackLabels:[info(document.querySelector('[data-ff-desktop-detail-card] label')),info(document.querySelector('[data-ff-desktop-detail-card] .grid > .space-y-2:nth-child(2) > .flex label'))],damageLabels:[info(document.querySelector('.relative.group.rounded-lg.border.bg-card.p-4 label')),info(document.querySelector('.relative.group.rounded-lg.border.bg-card.p-4 .space-y-1\\.5:nth-child(2) label'))],values:{modifier:original.modifierValue.value,dice:original.damageDice.value}}})()");
     assert.ok(Math.abs(alignment.attackStatTop - alignment.modifierValueTop) <= 1, `Custom attack characteristic and modifier controls align at ${width}px: ${JSON.stringify(alignment)}`);
     assert.ok(Math.abs(alignment.damageDiceTop - alignment.damageStatTop) <= 1, `Damage dice and characteristic modifier controls align at ${width}px: ${JSON.stringify(alignment)}`);
