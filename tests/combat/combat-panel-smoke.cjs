@@ -28,6 +28,24 @@ window.backgroundWheels=0;window.opens=0;window.skillSelections=0;window.remembe
 const campaign=document.getElementById('campaign'),editor=document.querySelector('.tiptap'),canvas=document.querySelector('canvas');
 window.originalEditor=editor;window.originalCanvas=canvas;
 document.getElementById('composer').__reactFiberFixture={memoizedProps:{encounterActive:true}};
+// Captured native ownership: Zustand stores an immutable React-element snapshot,
+// while a committed composer child receives live, native-derived permission.
+// This imperative renderer models that contract; the coordinator also verifies
+// React reconciliation and DOM identity against the actual signed-in website.
+const element=(type,props,key=null)=>({$$typeof:Symbol.for('react.transitional.element'),type,key,ref:null,props});
+function NativeActionsForm(){};function NativeWarning(){};
+window.permissionProps={campaignId:'fixture',encounterId:412456,isMultiplayerCampaign:true,isUsersCharacterTurn:false};
+const permissionFiber={type:function NativeMoreActions(){},memoizedProps:permissionProps};
+const actionOwner={type:function NativeComposer(){},memoizedProps:{},child:permissionFiber};
+document.getElementById('actions').__reactFiberFixture={type:'button',return:actionOwner};
+let modalState={modalStack:[],openModal:modal=>{modalState={...modalState,modalStack:[...modalState.modalStack,modal]}},closeModalAtIndex:index=>{modalState={...modalState,modalStack:modalState.modalStack.filter((_,i)=>i!==index)}}};
+window.storeWrites=0;window.nativeBusy=false;window.renderModal=null;
+function useModalStore(){};useModalStore.getState=()=>modalState;useModalStore.setState=next=>{window.storeWrites++;modalState={...modalState,...next};window.renderModal?.()};
+window.nativeModuleCache={nativeStore:{exports:{useModalStore}}};window.nativeFactories=new Map();
+window.TURBOPACK={push:chunk=>{if(chunk.length===2){Promise.resolve().then(()=>{for(const id of chunk[1].runtimeModuleIds){const ctx={c:nativeModuleCache,M:nativeFactories};nativeModuleCache[id]={exports:{}};nativeFactories.get(id)(ctx)}})}else{for(let i=1;i<chunk.length-1;i++)nativeFactories.set(chunk[i],chunk[chunk.length-1])}}};
+window.setNativeEncounter=id=>{permissionFiber.memoizedProps={...permissionFiber.memoizedProps,encounterId:id}};
+window.setNativePermission=value=>{permissionFiber.memoizedProps={...permissionFiber.memoizedProps,isUsersCharacterTurn:value};document.getElementById('events-list').append(document.createTextNode('native turn change'))};
+
 campaign.addEventListener('wheel',()=>window.backgroundWheels++);
 campaign.addEventListener('focusin',()=>window.reactFocus++);canvas.addEventListener('click',()=>window.mapClicks++);
 window.nativeClose=()=>{};
@@ -40,6 +58,14 @@ window.openNative=(diceMode=false)=>{
  let list;const detail=()=>{dialog.setAttribute('data-ff-desktop-message','roll-menu');skills.innerHTML='<button id="native-back" type="button"><svg class="lucide-chevron-left"></svg>List</button><div class="text-center absolute left-1/2">Roll Acrobatics Check</div><button type="button" role="combobox">Normal</button>';skills.querySelector('#native-back').onclick=()=>{window.rememberedSkill=false;list()};dialog.querySelector('button[type=submit]').onclick=e=>{e.preventDefault();dialog.querySelector('form').requestSubmit()};dialog.querySelector('button[type=submit]').innerHTML='<svg id="d20" data-ff-desktop-die="d20" width="20" height="20"><title>D20</title><defs><style>.native-die-art{fill:none;stroke:currentColor}</style></defs><path class="native-die-art" d="M2 2h16v16H2z"/></svg><span>Бросок</span>'};
  {list=()=>{dialog.removeAttribute('data-ff-desktop-message');skills.innerHTML='<h3>Ability checks</h3><h3>Skills</h3><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"><button id="acrobatics" class="group bg-[#2a2f34]"><div class="bg-[#1a1f2e]"><svg class="lucide lucide-person-standing"></svg></div><span>Acrobatics Check</span></button></div><button id="native-save">Dexterity Save</button><button id="native-custom">Custom Dice</button><button id="native-attack">Атака в ближнем бою</button><button id="native-spell">Атака заклинанием</button>';skills.querySelector('#acrobatics').onclick=()=>{window.skillSelections++;window.rememberedSkill=true;detail()}};if(window.rememberedSkill)detail();else list()}
  }
+ if(!diceMode){
+ const props={...permissionFiber.memoizedProps};const content=element('div',{children:[element(NativeActionsForm,props),!props.isUsersCharacterTurn&&element(NativeWarning,{variant:'warning',className:'mt-4',children:'It is not your turn - you will not be able to submit an attack until it is your turn.'})]});
+ modalState={...modalState,modalStack:[{content}]};
+ const renderer={type:function NativeModalRenderer(){},memoizedProps:{},memoizedState:{memoizedState:{current:{value:modalState}},next:null}};
+ const formFiber={type:NativeActionsForm,key:null,memoizedProps:props,return:renderer};
+ dialog.querySelector('form').__reactFiberFixture={type:'form',return:formFiber};dialog.__reactFiberFixture={type:'div',return:renderer};
+ window.renderModal=()=>{const entry=modalState.modalStack[0];if(!entry)return;formFiber.memoizedProps=entry.content.props.children[0].props;renderer.memoizedState.memoizedState.current.value=modalState;dialog.querySelector('button[type=submit]').disabled=!formFiber.memoizedProps.isUsersCharacterTurn||nativeBusy;let warning=dialog.querySelector('#native-turn-warning');if(entry.content.props.children[1]){if(!warning){warning=document.createElement('p');warning.id='native-turn-warning';dialog.querySelector('form').after(warning)}warning.textContent=entry.content.props.children[1].props.children}else warning?.remove()};renderModal();
+}
  document.body.append(overlay,dialog);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');
  window.originalForm=dialog.querySelector('form');originalForm.onsubmit=e=>{e.preventDefault();window.submits++;if(window.asyncSubmit){close();window.submitPhase='pending';setTimeout(()=>{if(window.resultAsChat){document.getElementById('events-list').append(document.createTextNode('Native roll result appended to story'));window.submitPhase='complete';return}window.submitPhase='result';const result=document.createElement('div');result.id='native-result';result.setAttribute('role','dialog');result.innerHTML='<h2>Native roll result</h2><button id="result-close">Continue</button>';result.style.cssText='position:fixed;inset:100px;z-index:100;pointer-events:auto;background:white';document.body.append(result);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');result.querySelector('button').onclick=()=>{result.remove();document.body.style.cssText='';campaign.removeAttribute('aria-hidden');window.submitPhase='complete'}},100)}};
  let last=dialog.querySelector('input'),nested=null;
@@ -47,7 +73,7 @@ window.openNative=(diceMode=false)=>{
  const pointer=e=>{if(dialog.contains(e.target)||nested)return;const outside=new CustomEvent('dismissableLayer.pointerDownOutside',{bubbles:false,cancelable:true,detail:{originalEvent:e}});e.target.dispatchEvent(outside);if(!outside.defaultPrevented)close()};
  const scrollLock=e=>{if(!dialog.contains(e.target))e.preventDefault()};document.addEventListener('wheel',scrollLock,{passive:false});
  const escape=e=>{if(e.key==='Escape'&&!nested)close()};
- const close=()=>{document.removeEventListener('wheel',scrollLock);document.removeEventListener('focusin',trap);document.removeEventListener('focusout',trap);document.removeEventListener('pointerdown',pointer);document.removeEventListener('keydown',escape);dialog.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow='';campaign.removeAttribute('aria-hidden')};
+ const close=()=>{window.renderModal=null;modalState={...modalState,modalStack:[]};document.removeEventListener('wheel',scrollLock);document.removeEventListener('focusin',trap);document.removeEventListener('focusout',trap);document.removeEventListener('pointerdown',pointer);document.removeEventListener('keydown',escape);dialog.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow='';campaign.removeAttribute('aria-hidden')};
  window.nativeClose=close;window.originalNativeX=document.getElementById('x');window.originalNativeX.onclick=close;
  document.getElementById('nested').onclick=()=>{
  nested=document.createElement('div');nested.setAttribute('role','listbox');nested.tabIndex=0;nested.style.cssText='position:fixed;left:180px;top:200px;z-index:50;pointer-events:auto;background:white';nested.textContent='Native nested options';document.body.append(nested);
@@ -60,6 +86,9 @@ window.openNative=(diceMode=false)=>{
 };
 document.getElementById('actions').onclick=()=>openNative();document.querySelector('[aria-label=\"Roll dice\"]').onclick=()=>openNative(true);
 </script>`;
+// node --check cannot parse JavaScript inside an HTML template. Validate it
+// before creating any window so a fixture typo cannot mimic a product failure.
+new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 (async () => {
  await app.whenReady();
  const site=session.fromPartition('combat-fixture');site.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
@@ -77,6 +106,25 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  await configure();
  await until("!!document.querySelector('[data-ff-combat-docked]')");
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]').getAttribute('data-ff-combat-panel-mode')"),'actions','Native action docking exposes explicit context to extension controllers.');
+ // Regression must fail before the store bridge: an already mounted native
+ // form still holds false after the composer permission changes to true.
+ await js("window.turnDialog=document.querySelector('[data-ff-combat-docked]');window.turnForm=turnDialog.querySelector('form');window.turnInput=turnForm.querySelector('input');turnInput.value='turn-preserved draft';window.turnTarget=document.createElement('input');turnTarget.type='checkbox';turnTarget.checked=true;turnForm.append(turnTarget);window.turnSpacer=document.createElement('div');turnSpacer.style.height='1000px';turnForm.after(turnSpacer);turnDialog.scrollTop=50;window.turnScroll=turnDialog.scrollTop;turnInput.focus();window.turnOpens=opens;setNativePermission(true)");
+ await until("!turnForm.querySelector('button[type=submit]').disabled");
+ assert.equal(await js("document.querySelector('#native-turn-warning')"),null,'Native stale turn warning clears after permission changes.');
+ assert.deepEqual(await js("({dialog:document.querySelector('[data-ff-combat-docked]')===turnDialog,form:document.querySelector('form')===turnForm,input:turnForm.querySelector('input')===turnInput,draft:turnInput.value,focused:document.activeElement===turnInput,targets:turnTarget.isConnected&&turnTarget.checked,scroll:turnDialog.scrollTop===turnScroll,opens,submits})"),{dialog:true,form:true,input:true,draft:'turn-preserved draft',focused:true,targets:true,scroll:true,opens:1,submits:0},'Native store update preserves the mounted form and focus without reopening/submitting.');
+ await js('window.beforeMismatch=storeWrites;setNativeEncounter(999999);setNativePermission(false)');await new Promise(resolve=>setTimeout(resolve,600));
+ assert.equal(await js('storeWrites'),await js('beforeMismatch'),'A different encounter cannot update the mounted native form.');
+ await js('setNativeEncounter(412456);document.getElementById("nested").click();window.beforeNestedTurn=storeWrites');await new Promise(resolve=>setTimeout(resolve,600));
+ assert.equal(await js('storeWrites'),await js('beforeNestedTurn'),'Turn synchronization yields to nested native layers.');
+ await js('nestedClose()');await until("turnForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
+ await js("window.nativeBusy=true;setNativePermission(true)");await until("!document.querySelector('#native-turn-warning')");
+ assert.equal(await js("turnForm.querySelector('button[type=submit]').disabled"),true,'Native busy permission continues to own disabled state.');
+ await js("window.nativeBusy=false;renderModal();turnTarget.remove();turnSpacer.remove();turnInput.value='custom draft';window.turnWrites=storeWrites");
+ await new Promise(resolve=>setTimeout(resolve,1100));
+ assert.equal(await js('storeWrites'),await js('turnWrites'),'Unchanged scans never write the native modal store.');
+ assert.equal(await js('nativeFactories.size'),0,'Runtime bridge removes its own factory.');
+ assert.deepEqual(await js('Object.keys(nativeModuleCache)'),['nativeStore'],'Runtime bridge removes its own cache entry.');
+
  const inheritedImage='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aX1kAAAAASUVORK5CYII=';
  const ambient={image:inheritedImage,fit:'contain',effects:{blur:3,opacity:.6,overlayColor:'#224466',overlayOpacity:.25}};
  const expectedForeground=await js("getComputedStyle(document.querySelector('[data-ff-combat-docked]')).color");
@@ -157,6 +205,17 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js('submits'),0);
  assert.equal(await js("document.body.style.pointerEvents"),'auto');
  assert.equal(await js("document.getElementById('campaign').hasAttribute('aria-hidden')"),false);
+ // A fresh controller has no captured warning when the native panel opens on
+ // the user's turn. The empty sibling slot still updates without remounting.
+ await js('setNativePermission(true)');await configure();await until("!!document.querySelector('[data-ff-combat-docked]')");
+ await js("window.initialTrueForm=document.querySelector('form');window.initialTrueInput=initialTrueForm.querySelector('input');initialTrueInput.value='initial true draft';initialTrueInput.focus();window.initialTrueOpens=opens;setNativePermission(false)");
+ await until("initialTrueForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].type"),'p','Missing native warning receives an informational host status, without replacing the form.');
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].props.role"),'status');
+ assert.deepEqual(await js("({same:document.querySelector('form')===initialTrueForm,draft:initialTrueInput.value,focused:document.activeElement===initialTrueInput,unchangedOpens:opens===initialTrueOpens})"),{same:true,draft:'initial true draft',focused:true,unchangedOpens:true});
+ await js('setNativePermission(true)');await until("!initialTrueForm.querySelector('button[type=submit]').disabled && !document.querySelector('#native-turn-warning')");
+ await configure(false);await until("!document.querySelector('[role=dialog]')");
+
  assert.equal(await js("getComputedStyle(document.querySelector('.overlay')).display"),'none');
  assert.equal(await js("document.querySelector('form')===originalForm && document.querySelector('canvas')===originalCanvas && document.querySelector('.tiptap')===originalEditor"),true);
  const closeHeadingGeometry=async(title,width)=>js(`(()=>{const panel=document.querySelector('[data-ff-combat-docked]'),heading=panel.querySelector('[data-ff-combat-heading]'),close=panel.querySelector('[data-ff-combat-close]');document.documentElement.style.setProperty('--ff-combat-width','${width}px');heading.textContent=${JSON.stringify(title)};let spacer=panel.querySelector('#close-scroll-spacer');if(!spacer){spacer=document.createElement('div');spacer.id='close-scroll-spacer';spacer.style.height='1000px';close.before(spacer)}const measure=()=>{const p=panel.getBoundingClientRect(),c=close.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(heading);const text=Array.from(range.getClientRects()).map(r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom}));const x=Math.round(c.left+c.width/2),y=Math.round(c.top+c.height/2);return {panel:{left:p.left,right:p.right,top:p.top,bottom:p.bottom},heading:text,close:{left:c.left,right:c.right,top:c.top,bottom:c.bottom,width:c.width,height:c.height},closeHit:close.contains(document.elementFromPoint(x,y)),closeIdentity:close===originalNativeX,closeWithinPanel:c.left>=p.left&&c.right<=p.right&&c.top>=p.top&&c.bottom<=p.bottom,textOverlapsClose:text.some(r=>r.right>c.left&&r.left<c.right&&r.bottom>c.top&&r.top<c.bottom)}};panel.scrollTop=0;const initial=measure();panel.scrollTop=160;return {initial,scrolled:measure(),scrollTop:panel.scrollTop}})()`);
@@ -332,6 +391,17 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.querySelector('[data-ff-combat-controls]')"),null);
 
  assert.equal(await js("document.getElementById('campaign').hasAttribute('aria-hidden')"),false);
+ // A fresh controller has no captured warning when the native panel opens on
+ // the user's turn. The empty sibling slot still updates without remounting.
+ await js('setNativePermission(true)');await configure();await until("!!document.querySelector('[data-ff-combat-docked]')");
+ await js("window.initialTrueForm=document.querySelector('form');window.initialTrueInput=initialTrueForm.querySelector('input');initialTrueInput.value='initial true draft';initialTrueInput.focus();window.initialTrueOpens=opens;setNativePermission(false)");
+ await until("initialTrueForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].type"),'p','Missing native warning receives an informational host status, without replacing the form.');
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].props.role"),'status');
+ assert.deepEqual(await js("({same:document.querySelector('form')===initialTrueForm,draft:initialTrueInput.value,focused:document.activeElement===initialTrueInput,unchangedOpens:opens===initialTrueOpens})"),{same:true,draft:'initial true draft',focused:true,unchangedOpens:true});
+ await js('setNativePermission(true)');await until("!initialTrueForm.querySelector('button[type=submit]').disabled && !document.querySelector('#native-turn-warning')");
+ await configure(false);await until("!document.querySelector('[role=dialog]')");
+
  await js("openNative();document.querySelector('input').value='already open draft'");await configure();
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')"),null,'Do not adapt preexisting modal with unknown focus-listener ordering.');
  assert.equal(await js("document.querySelector('input').value"),'already open draft');await configure(false);await js('nativeClose()');

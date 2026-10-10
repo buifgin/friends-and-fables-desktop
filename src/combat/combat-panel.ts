@@ -266,6 +266,132 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }
     modalActive = true; updateControls();
   }
+  type Fiber = { type?: unknown; key?: string | null; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
+  type NativeElement = { $$typeof: symbol; type: unknown; key: string | null; ref?: unknown; props: Record<string, unknown> };
+  type NativeModal = { content?: NativeElement; [name: string]: unknown };
+  type NativeModalState = { modalStack: NativeModal[]; openModal: unknown; closeModalAtIndex: unknown };
+  type NativeModalStore = (() => unknown) & { getState(): NativeModalState; setState(value: { modalStack: NativeModal[] }): void };
+  let modalStore: NativeModalStore | null = null, bridgeAttempted = false;
+  let turnWarning: NativeElement | null = null;
+  function committedFiber(node: Element): Fiber | null {
+    let fiber = Object.entries(node).find(([name]) => name.startsWith('__reactFiber'))?.[1] as Fiber | undefined;
+    if (!fiber) return null;
+    let root = fiber;
+    for (let depth = 0; root.return && depth < 100; depth++) root = root.return;
+    if (root.return) return null;
+    if (root.stateNode?.current && root.stateNode.current !== root) {
+      fiber = fiber.alternate;
+      if (!fiber) return null;
+      root = fiber;
+      for (let depth = 0; root.return && depth < 100; depth++) root = root.return;
+      if (root.return || root.stateNode?.current && root.stateNode.current !== root) return null;
+    }
+    return fiber;
+  }
+  function nativeElement(value: unknown): value is NativeElement {
+    if (!value || typeof value !== 'object') return false;
+    const node = value as NativeElement;
+    return (node.$$typeof === Symbol.for('react.transitional.element') || node.$$typeof === Symbol.for('react.element'))
+      && !!node.props && typeof node.props === 'object';
+  }
+  function discoverModalStore(): void {
+    if (bridgeAttempted || disposed) return;
+    bridgeAttempted = true;
+    // Captured native Turbopack runtime exposes its initialized module cache to
+    // module factories. Register only our entry; never import/instantiate a
+    // native module, fetch bundles, or depend on a native numeric module ID.
+    const runtime = (window as unknown as { TURBOPACK?: { push?: (chunk: unknown[]) => unknown } }).TURBOPACK;
+    if (!runtime || Array.isArray(runtime) || typeof runtime.push !== 'function') return;
+    const id = `ff-desktop-combat-turn-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const path = `/__${id}.js`;
+    try {
+      runtime.push([path, id, (context: { c?: Record<string, { exports?: Record<string, unknown> }>; M?: Map<string, unknown> }) => {
+        try {
+          if (disposed || !context.c || !(context.M instanceof Map)) return;
+          const candidates = new Set<NativeModalStore>();
+          for (const module of Object.values(context.c)) {
+            const exported = module.exports?.useModalStore as NativeModalStore | undefined;
+            if (typeof exported !== 'function' || typeof exported.getState !== 'function' || typeof exported.setState !== 'function') continue;
+            const state = exported.getState();
+            if (Array.isArray(state?.modalStack) && typeof state.openModal === 'function' && typeof state.closeModalAtIndex === 'function') candidates.add(exported);
+          }
+          if (candidates.size === 1) modalStore = [...candidates][0];
+        } catch { /* A changed native runtime/store must leave native UI alone. */ }
+        finally { if (context.c) delete context.c[id]; context.M?.delete(id); schedule(); }
+      }]);
+      const registered = runtime.push([path, { otherChunks: [], runtimeModuleIds: [id] }]);
+      if (registered && typeof (registered as PromiseLike<unknown>).then === 'function') void Promise.resolve(registered).catch(() => {});
+    } catch { /* No fallback to opening or remounting a native modal. */ }
+  }
+  function syncNativeTurn(): void {
+    if (!picker || mode !== 'actions' || !live() || pending || !action) return;
+    if (!modalStore) { discoverModalStore(); return; }
+    try {
+      const form = picker.querySelector('form');
+      if (!form) return;
+      let formFiber = committedFiber(form);
+      for (let depth = 0; formFiber && depth < 40; depth++, formFiber = formFiber.return ?? null) {
+        const props = formFiber.memoizedProps;
+        if (typeof props?.isUsersCharacterTurn === 'boolean' && typeof props.isMultiplayerCampaign === 'boolean'
+          && typeof props.campaignId === 'string' && props.encounterId != null && typeof formFiber.type === 'function') break;
+      }
+      const props = formFiber?.memoizedProps;
+      if (!props || typeof props.isUsersCharacterTurn !== 'boolean' || !props.campaignId || props.encounterId == null) return;
+      // The website already derives this boolean from its party/encounter
+      // queries. Read the committed composer child; do not infer turn rules
+      // from labels, character names, native disabled state, or query contents.
+      let owner = committedFiber(action);
+      for (let depth = 0; owner && typeof owner.type !== 'function' && depth < 30; depth++) owner = owner.return ?? null;
+      if (!owner || typeof owner.type !== 'function') return;
+      const queue: Fiber[] = [owner], permissions = new Set<boolean>();
+      for (let count = 0; queue.length && count < 350; count++) {
+        const current = queue.shift()!, value = current.memoizedProps;
+        if (value?.campaignId === props.campaignId && value.encounterId === props.encounterId
+          && value.isMultiplayerCampaign === props.isMultiplayerCampaign && typeof value.isUsersCharacterTurn === 'boolean') permissions.add(value.isUsersCharacterTurn);
+        if (current.child) queue.push(current.child);
+        if (current !== owner && current.sibling) queue.push(current.sibling);
+      }
+      if (queue.length || permissions.size !== 1) return;
+      const permission = [...permissions][0], state = modalStore.getState();
+      if (!Array.isArray(state.modalStack) || !state.modalStack.length) return;
+      // Require the mounted modal renderer to own this exact store snapshot.
+      // A store notification may precede React commit; wait for that commit.
+      let ownsSnapshot = false;
+      for (let ancestor = committedFiber(picker), depth = 0; ancestor && depth < 60; ancestor = ancestor.return ?? null, depth++) {
+        for (let hook = ancestor.memoizedState, count = 0; hook && count < 100; hook = hook.next as typeof hook, count++) {
+          const value = hook.memoizedState as { current?: { value?: NativeModalState } } | undefined;
+          if (value?.current?.value?.modalStack === state.modalStack) ownsSnapshot = true;
+        }
+      }
+      if (!ownsSnapshot) return;
+      const index = state.modalStack.length - 1, modal = state.modalStack[index], content = modal.content;
+      if (!nativeElement(content) || content.type !== 'div' || !Array.isArray(content.props.children) || content.props.children.length !== 2) return;
+      const [element, warning] = content.props.children;
+      if (!nativeElement(element) || element.type !== formFiber!.type || element.key !== (formFiber!.key ?? null) || element.props !== props) return;
+      if (nativeElement(warning)) {
+        const nativeWarning = warning.props.variant === 'warning';
+        const ownedWarning = warning.type === 'p' && warning.props.role === 'status' && warning.props['data-ff-combat-turn-warning'] === '';
+        if ((!nativeWarning && !ownedWarning) || warning.props.children !== 'It is not your turn - you will not be able to submit an attack until it is your turn.') return;
+        turnWarning = warning;
+      } else if (warning !== false) return;
+      if (permission === props.isUsersCharacterTurn) return;
+      if (!permission && !turnWarning) {
+        // A panel opened during the user's turn has no native warning element
+        // to retain. Add only informational status text in its empty slot;
+        // the original native form continues to enforce every submit rule.
+        turnWarning = { $$typeof: element.$$typeof, type: 'p', key: null, ref: null, props: { role: 'status', className: 'mt-4', 'data-ff-combat-turn-warning': '',
+          children: 'It is not your turn - you will not be able to submit an attack until it is your turn.' } };
+      }
+      // Preserve every native element type/key and all unrelated modal/props.
+      // React updates permissions and the native warning without losing form
+      // hooks, selected attacks/targets, drafts, scroll or focus.
+      const nextElement = { ...element, props: { ...element.props, isUsersCharacterTurn: permission } };
+      const nextContent = { ...content, props: { ...content.props, children: [nextElement, permission ? false : turnWarning] } };
+      const nextStack = state.modalStack.slice(); nextStack[index] = { ...modal, content: nextContent };
+      if (disposed || modalStore.getState() !== state || !live()) return;
+      modalStore.setState({ modalStack: nextStack });
+    } catch { /* Unknown native ownership/shape is never an enabling signal. */ }
+  }
   function scan(): void {
     queued = false; if (disposed) return;
     const nextRoute = location.pathname + location.search;
@@ -311,6 +437,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (found && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     filterAdventure();
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
+    syncNativeTurn();
     updateControls();
     if (requested && !picker && !otherLayer()) { const next = requested; requested = null; open(next); }
     else if (pending && reserved && !picker && !pendingReopened && !otherLayer()) {
