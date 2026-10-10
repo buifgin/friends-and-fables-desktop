@@ -6,6 +6,7 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, WebCont
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance/appearance'));
 const { DEFAULT_APPEARANCE, validateAppearance } = require(path.join(appRoot, 'dist/appearance/themes'));
+const { combatPanelAppearanceCss } = require(path.join(appRoot, 'dist/combat/combat-panel-style'));
 const { configureZoomShortcuts } = require(path.join(appRoot, 'dist/shell/zoom'));
 const { configureFullscreenShortcuts } = require(path.join(appRoot, 'dist/shell/window-shortcuts'));
 const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/shell/linux-menu'));
@@ -40,7 +41,17 @@ async function save(settings, window) {
 }
 
 (async () => {
-  assert.deepEqual(DEFAULT_APPEARANCE.combatPanel, { enabled: false, color: '#101010', opacity: .92, blur: 12 });
+  assert.equal(DEFAULT_APPEARANCE.combatPanel.enabled, false);
+  for (const key of ['customizeBorder', 'customizeButtons', 'customizeSpacing']) {
+    assert.equal(DEFAULT_APPEARANCE.combatPanel[key], false, `${key} defaults to native styles.`);
+  }
+  const oldPanel = { enabled: true, color: '#234567', opacity: .4, blur: 7 };
+  assert.deepEqual(validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: oldPanel }).combatPanel,
+    { ...DEFAULT_APPEARANCE.combatPanel, ...oldPanel }, 'Legacy background settings keep native borders, buttons and spacing.');
+  for (const patch of [{tileGap:3}, {tileGap:25}, {contentPadding:7}, {contentPadding:33},
+    {tileGap:NaN}, {customizeButtons:'true'}, {borderColor:'red'}, {buttonBackground:'red'}, {buttonTextColor:'red'}]) {
+    assert.throws(() => validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: { ...DEFAULT_APPEARANCE.combatPanel, ...patch } }));
+  }
   const legacyAppearance = structuredClone(DEFAULT_APPEARANCE);
   delete legacyAppearance.combatPanel;
   assert.deepEqual(validateAppearance(legacyAppearance).combatPanel, DEFAULT_APPEARANCE.combatPanel,
@@ -53,9 +64,54 @@ async function save(settings, window) {
     { enabled: true, color: '#101010', opacity: .92 },
   ]) assert.throws(() => validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel }), /combat panel|Colors|between/);
 
+  const customizedPanel = { ...DEFAULT_APPEARANCE.combatPanel, enabled: true,
+    customizeBackground: false, customizeBorder: true, borderColor: '#123456',
+    customizeButtons: true, buttonBackground: '#234567', buttonTextColor: '#fedcba',
+    customizeSpacing: true, tileGap: 24, contentPadding: 32 };
+  assert.deepEqual(validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: customizedPanel }).combatPanel, customizedPanel);
+  const nativeCss = combatPanelAppearanceCss(DEFAULT_APPEARANCE.combatPanel);
+  assert(!nativeCss.includes('--ff-combat-tile-gap:'));
+  assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('#123456'));
+  assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('#234567'));
+  assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('--ff-combat-tile-gap:'));
   userData = process.env.FABLES_TEST_PROFILE_DIR || await mkdtemp(path.join(os.tmpdir(), 'fables-appearance-test-'));
   app.setPath('userData', userData);
   await app.whenReady();
+  // Isolated dock style contract: no manager, React, online actions or native field overrides.
+  const styleWindow = new BrowserWindow({ show: false, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  await styleWindow.loadURL('data:text/html,' + encodeURIComponent(`<!doctype html><style>
+    .grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
+    .p-6,[data-ff-dice-favorites] {padding:12px;}
+    button,input,select,textarea {border:1px solid #777;color:#eee;background:#345;}
+    button:disabled {opacity:.5;}
+  </style><style id="panel-style"></style><div data-ff-combat-docked>
+    <div class="p-6"><div id="standard" class="grid gap-4"><button id="standard-button" class="group"><div><svg class="lucide"></svg></div><span>Standard</span></button></div></div>
+    <div data-ff-dice-favorites><div data-ff-dice-favorite-group-tiles class="grid"><button id="favorite-button" class="group"><div><svg class="lucide"></svg></div><span>Favorite</span></button></div></div>
+    <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button></form>
+  </div><button id="outside">Outside</button><input id="outside-field" value="keep">`));
+  const styleSnapshot = () => styleWindow.webContents.executeJavaScript(`({
+    buttons:['standard-button','favorite-button','action-button','outside'].map(id=>{
+      const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderColor,s.opacity,n.disabled];}),
+    gaps:[document.getElementById('standard'),document.querySelector('[data-ff-dice-favorite-group-tiles]')].map(n=>getComputedStyle(n).gap),
+    padding:[document.querySelector('.p-6'),document.querySelector('[data-ff-dice-favorites]')].map(n=>getComputedStyle(n).padding),
+    fields:['correction','outside-field'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [n.value,s.backgroundColor,s.color];})
+  })`);
+  const setPanelCss = settings => styleWindow.webContents.executeJavaScript(`document.getElementById('panel-style').textContent=${JSON.stringify(combatPanelAppearanceCss(settings))}`);
+  await setPanelCss(DEFAULT_APPEARANCE.combatPanel);
+  const nativePanelStyle = await styleSnapshot();
+  await setPanelCss(customizedPanel);
+  const customPanelStyle = await styleSnapshot();
+  for (const button of customPanelStyle.buttons.slice(0,3)) assert.deepEqual(button.slice(0,3),['rgb(35, 69, 103)','rgb(254, 220, 186)','rgb(18, 52, 86)']);
+  assert.deepEqual(customPanelStyle.buttons[3],nativePanelStyle.buttons[3],'Customization stays within the dock.');
+  assert.equal(customPanelStyle.buttons[2][4],true,'Disabled action state is preserved.');
+  assert.deepEqual(customPanelStyle.gaps,['24px','24px']);
+  assert.deepEqual(customPanelStyle.padding,['32px','32px']);
+  assert.deepEqual(customPanelStyle.fields,nativePanelStyle.fields,'Drafts and native field fills remain intact.');
+  await setPanelCss({ ...customizedPanel, enabled:false });
+  assert.deepEqual(await styleSnapshot(),nativePanelStyle,'Disabling customization restores inherited geometry and controls.');
+  await setPanelCss({ ...customizedPanel, customizeBorder:false, customizeButtons:false, customizeSpacing:false });
+  assert.deepEqual(await styleSnapshot(),nativePanelStyle,'Independent switches restore native styles while customization stays enabled.');
+  styleWindow.destroy();
   const manager = new AppearanceManager();
   await manager.initialize();
   const rollResults = await readFile(path.join(__dirname, '../fixtures/roll-results.html'), 'utf8');
@@ -177,9 +233,24 @@ async function save(settings, window) {
     document.querySelector('#appearance-form').requestSubmit()`);
   await until(settingsContents, "!document.querySelector('#apply').disabled");
   assert.deepEqual(await settingsContents.executeJavaScript('window.appearance.get().then(s=>s.combatPanel)'),
-    { enabled: true, color: '#234567', opacity: 0, blur: 30 }, 'The Appearance controls persist the independent combat-panel settings.');
+    { ...DEFAULT_APPEARANCE.combatPanel, enabled: true, color: '#234567', opacity: 0, blur: 30 }, 'The Appearance controls persist the independent combat-panel settings.');
   assert.deepEqual(JSON.parse(await readFile(path.join(userData, 'appearance.json'), 'utf8')).combatPanel,
-    { enabled: true, color: '#234567', opacity: 0, blur: 30 }, 'The selected combat-panel settings reach disk.');
+    { ...DEFAULT_APPEARANCE.combatPanel, enabled: true, color: '#234567', opacity: 0, blur: 30 }, 'The selected combat-panel settings reach disk.');
+  await settingsContents.executeJavaScript(`
+    for(const id of ['border','buttons','spacing'])document.getElementById('combat-panel-customize-'+id).checked=true;
+    document.getElementById('combat-panel-customize-background').checked=false;
+    document.getElementById('combat-panel-border-color').value='#123456';
+    document.getElementById('combat-panel-button-background').value='#234567';
+    document.getElementById('combat-panel-button-text-color').value='#fedcba';
+    document.getElementById('combat-panel-tile-gap').value='24';
+    document.getElementById('combat-panel-content-padding').value='32';
+    document.getElementById('appearance-form').requestSubmit();`);
+  await until(settingsContents, "!document.querySelector('#apply').disabled");
+  assert.deepEqual(await settingsContents.executeJavaScript('window.appearance.get().then(s=>s.combatPanel)'),
+    { ...customizedPanel, color:'#234567', opacity:0, blur:30 });
+  await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
+  assert.deepEqual(await settingsContents.executeJavaScript(`['tile-gap','content-padding'].map(id=>document.getElementById('combat-panel-'+id).value)`),['24','32']);
+
   await save({ ...DEFAULT_APPEARANCE }, settingsWindow);
   await until(settingsContents, "!document.querySelector('#apply').disabled");
   await save({ preset: 'amoled', customColor: '#161616' }, settingsWindow);
@@ -386,13 +457,13 @@ async function save(settings, window) {
   const selectedTheme = await settingsContents.executeJavaScript(`window.appearance.previewTheme('builtin-forest', ${JSON.stringify({...chatSettings,messageCommands:true})})`);
   assert.equal(selectedTheme.customColor, '#0b1712'); assert.equal(selectedTheme.messageCommands, true);
   assert.equal(selectedTheme.backgroundImage, imported.id);
-  const themed = {...selectedTheme,combatPanel:{enabled:true,color:'#345678',opacity:.35,blur:7},input:{...selectedTheme.input,style:{...selectedTheme.input.style,color:'#273a52'}}};
+  const themed = {...selectedTheme,combatPanel:{...customizedPanel,color:'#345678',opacity:.35,blur:7},input:{...selectedTheme.input,style:{...selectedTheme.input.style,color:'#273a52'}}};
   const savedThemes = await settingsContents.executeJavaScript(`window.appearance.saveTheme('My forest', ${JSON.stringify(themed)})`);
   const named = savedThemes.find(theme => theme.name === 'My forest'); assert(named?.saved);
   assert.equal(JSON.parse(await readFile(path.join(userData,'themes.json'),'utf8'))[0].appearance.input.style.color, '#273a52');
   const restoredTheme = await settingsContents.executeJavaScript(`window.appearance.previewTheme(${JSON.stringify(named.id)}, ${JSON.stringify(chatSettings)})`);
   assert.equal(restoredTheme.input.style.color,'#273a52');
-  assert.deepEqual(restoredTheme.combatPanel,{enabled:true,color:'#345678',opacity:.35,blur:7},'Saved themes carry combat-panel appearance settings.');
+  assert.deepEqual(restoredTheme.combatPanel,{...customizedPanel,color:'#345678',opacity:.35,blur:7},'Saved themes carry combat-panel appearance settings.');
   assert.equal(restoredTheme.messages.player.color,'#183c2b');
   await assert.rejects(settingsContents.executeJavaScript(`window.appearance.saveTheme('', ${JSON.stringify(chatSettings)})`), /theme name/);
   await assert.rejects(settingsContents.executeJavaScript(`window.appearance.previewTheme('../../private', ${JSON.stringify(chatSettings)})`), /library/);
@@ -423,7 +494,7 @@ async function save(settings, window) {
   await website.webContents.executeJavaScript('document.querySelector("#event-message-card-1 .prose").removeAttribute("data-ff-translation-blank");document.querySelector("#event-message-card-1 .prose").textContent="Player text restored";document.dispatchEvent(new Event("ff-desktop-translation-ready"))');
   await save(chatSettings, settingsWindow);
   // Independent context styling must remain opaque when player messages disappear.
-  const newSettings = { ...explicitText, preset:'amoled',
+  const newSettings = { ...explicitText, preset:'amoled', combatPanel:customizedPanel,
     backgroundEffects:{blur:8,opacity:.7,overlayColor:'#000000',overlayOpacity:.6},
     messages:{enabled:true,
       player:{color:'#ffffff',opacity:0,textColor:'#aabbcc',border:{enabled:true,color:'#778899',width:2,radius:12}},
@@ -703,27 +774,31 @@ async function save(settings, window) {
   await until(website.webContents,"document.getElementById('context-bar').dataset.ffDesktopContext==='bar'");
   await until(website.webContents,'document.querySelector(".composer").dataset.ffDesktopMessage==="input"');
   // Export/import includes a portable picture without paths or machine preferences.
+  const portablePanel = {...decorated,combatPanel:customizedPanel};
   const saveDialog=dialog.showSaveDialog;
   const themeFile=path.join(userData,'shared.fables-theme.json');
   dialog.showSaveDialog=async()=>({canceled:false,filePath:themeFile});
-  assert.equal(await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(decorated)},true)`),true);
+  assert.equal(await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(portablePanel)},true)`),true);
   dialog.showSaveDialog=saveDialog;
   const shared=JSON.parse(await readFile(themeFile,'utf8'));
+  assert.deepEqual(shared.appearance.combatPanel,customizedPanel);
   assert.equal(shared.version,1);assert(shared.image.pngBase64);assert.equal(shared.appearance.backgroundImage,null);
   assert.equal(shared.appearance.appearancePinned,undefined);assert.equal(shared.appearance.appearancePanelWidth,undefined);assert.equal(shared.appearance.linuxBlackMenu,undefined);assert.equal(shared.appearance.linuxFloatingAppearance,undefined);
   assert.equal(shared.appearance.messages.gm.opacity,.35);assert.equal(shared.appearance.messages.gm.gradient.secondOpacity,.35);assert.equal(shared.appearance.messages.gm.gradient.opacity,undefined);assert.equal(shared.appearance.messages.gm.gradient.balance,75);
   assert.equal(shared.appearance.dice.resultTextColor,'#23e2ab');
   assert.deepEqual(shared.appearance.dice.natural20,critical20);assert.deepEqual(shared.appearance.dice.natural1,critical1);
   dialog.showSaveDialog=async()=>({canceled:false,filePath:themeFile});
-  await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(decorated)},false)`);
+  await settingsContents.executeJavaScript(`window.appearance.exportTheme(${JSON.stringify(portablePanel)},false)`);
   assert.equal(JSON.parse(await readFile(themeFile,'utf8')).image,null);
   dialog.showOpenDialog=async()=>({canceled:false,filePaths:[themeFile]});
   const colorOnly=await settingsContents.executeJavaScript('window.appearance.importTheme()');
+  assert.deepEqual(colorOnly.combatPanel,customizedPanel);
   assert.equal(colorOnly.backgroundImage,decorated.backgroundImage);
   assert.equal(colorOnly.linuxFloatingAppearance,manager.getSettings().linuxFloatingAppearance);
   await writeFile(themeFile,JSON.stringify(shared));dialog.showSaveDialog=saveDialog;
   dialog.showOpenDialog=async()=>({canceled:false,filePaths:[themeFile]});
   const importedTheme=await settingsContents.executeJavaScript('window.appearance.importTheme()');
+  assert.deepEqual(importedTheme.combatPanel,customizedPanel);
   assert.deepEqual(importedTheme.context, (await settingsContents.executeJavaScript('window.appearance.get()')).context);
   assert.equal(importedTheme.imagePreview,imported.preview);
   dialog.showOpenDialog=showDialog;

@@ -1,3 +1,5 @@
+import type { CombatPanelSettings } from '../appearance/themes';
+
 /** Scoped styles for the native battle action slide panel. */
 export const combatPanelCss = `
   :root {
@@ -553,17 +555,18 @@ export interface CombatPanelAmbient {
 
 /** One appearance policy for lists and detail forms; only background layers fade. */
 export function combatPanelAppearanceCss(
-  settings: { enabled: boolean; color: string; opacity: number; blur: number },
+  settings: Pick<CombatPanelSettings, 'enabled' | 'color' | 'opacity' | 'blur'> & Partial<CombatPanelSettings>,
   ambient?: CombatPanelAmbient,
 ): string {
   const hex = (value: string, fallback: string) => /^#[\da-f]{6}$/i.test(value) ? value : fallback;
   const range = (value: number | undefined, max: number, fallback: number) =>
     typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : fallback;
-  const image = !settings.enabled && ambient?.image ? ambient.image : null;
-  const fill = settings.enabled
+  const backgroundEnabled = settings.enabled && settings.customizeBackground !== false;
+  const image = !backgroundEnabled && ambient?.image ? ambient.image : null;
+  const fill = backgroundEnabled
     ? `color-mix(in srgb, ${hex(settings.color, '#101010')} ${range(settings.opacity, 1, .92) * 100}%, transparent)`
     : 'color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 88%, transparent)';
-  const blur = settings.enabled ? range(settings.blur, 30, 12) : 12;
+  const blur = backgroundEnabled ? range(settings.blur, 30, 12) : 12;
   const imageBlur = range(ambient?.effects.blur, 30, 0);
   const imageOpacity = range(ambient?.effects.opacity, 1, 1);
   const overlay = hex(ambient?.effects.overlayColor ?? '', '#000000');
@@ -571,6 +574,44 @@ export function combatPanelAppearanceCss(
   // Repeated ownership attributes beat theme/dialog and dice-card rules regardless
   // of whether a selected detail contains the native die SVG.
   const surface = ':is([data-ff-combat-docked][data-ff-combat-docked][data-ff-combat-docked], [data-ff-combat-panel][data-ff-combat-panel][data-ff-combat-panel])';
+  const customizedSurface = `${surface}${surface}`;
+  const buttons = `${customizedSurface} button:not([role="checkbox"]):not([role="switch"])`;
+  const border = settings.enabled && settings.customizeBorder ? `
+    ${customizedSurface} { border-right-color: ${hex(settings.borderColor ?? '', '#555555')} !important; }
+    ${customizedSurface} :is([data-ff-combat-heading], h2, button, input, select, textarea, [role="combobox"], [class~="border"], [class*="border-"]) {
+      border-color: ${hex(settings.borderColor ?? '', '#555555')} !important;
+    }
+  ` : '';
+  const buttonColors = settings.enabled && settings.customizeButtons ? `
+    ${buttons} {
+      background: ${hex(settings.buttonBackground ?? '', '#202020')} !important;
+      color: ${hex(settings.buttonTextColor ?? '', '#ffffff')} !important;
+    }
+    ${buttons} :is(span, div) { color: inherit !important; }
+    ${buttons}:is([aria-selected="true"], [aria-pressed="true"], [data-state="active"]) {
+      box-shadow: inset 0 0 0 2px ${hex(settings.buttonTextColor ?? '', '#ffffff')} !important;
+    }
+    ${buttons}:hover:not(:disabled) {
+      background: color-mix(in srgb, ${hex(settings.buttonBackground ?? '', '#202020')} 80%, ${hex(settings.buttonTextColor ?? '', '#ffffff')}) !important;
+    }
+  ` : '';
+  const bounded = (value: number | undefined, min: number, max: number, fallback: number) =>
+    typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : fallback;
+  const spacing = settings.enabled && settings.customizeSpacing ? `
+    ${customizedSurface} {
+      --ff-combat-tile-gap: ${bounded(settings.tileGap, 4, 24, 16)}px;
+      --ff-combat-content-padding: ${bounded(settings.contentPadding, 8, 32, 12)}px;
+    }
+    ${customizedSurface} :is([data-ff-dice-favorites], [data-ff-combat-body], div[class~="p-6"], div[class~="p-4"]) {
+      padding: var(--ff-combat-content-padding) !important;
+    }
+    ${customizedSurface} :is([data-ff-combat-heading], h2) {
+      padding-left: var(--ff-combat-content-padding) !important;
+    }
+    ${customizedSurface} :is([data-ff-dice-favorite-tiles], [data-ff-dice-favorite-group-tiles], [data-ff-dice-navigation], [role="tablist"], [class*="grid"][class*="gap-"]) {
+      gap: var(--ff-combat-tile-gap) !important;
+    }
+  ` : '';
   return `
     ${surface} {
       background: ${fill} !important;
@@ -637,5 +678,8 @@ export function combatPanelAppearanceCss(
     ${surface} :is(button.group:has(> div > svg.lucide), [role="tab"])[aria-selected="true"] {
       border-color: hsl(var(--primary, 0 0% 70%)) !important;
     }
+    ${border}
+    ${buttonColors}
+    ${spacing}
   `;
 }

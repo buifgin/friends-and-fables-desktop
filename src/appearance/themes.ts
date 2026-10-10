@@ -24,7 +24,12 @@ export interface AppearanceSettings {
   combatPanel: CombatPanelSettings;
 }
 
-export interface CombatPanelSettings { enabled: boolean; color: string; opacity: number; blur: number }
+export interface CombatPanelSettings {
+  enabled: boolean; color: string; opacity: number; blur: number;
+  customizeBackground: boolean; customizeBorder: boolean; borderColor: string;
+  customizeButtons: boolean; buttonBackground: string; buttonTextColor: string;
+  customizeSpacing: boolean; tileGap: number; contentPadding: number;
+}
 
 export interface DicePalette { enabled: boolean; faceColor: string; edgeColor: string; numberColor: string }
 
@@ -64,7 +69,10 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   nativeWindowsFrame: false,
   linuxBlackMenu: true,
   linuxFloatingAppearance: true,
-  combatPanel: { enabled: false, color: '#101010', opacity: .92, blur: 12 },
+  combatPanel: { enabled: false, color: '#101010', opacity: .92, blur: 12,
+    customizeBackground: true, customizeBorder: false, borderColor: '#555555',
+    customizeButtons: false, buttonBackground: '#202020', buttonTextColor: '#ffffff',
+    customizeSpacing: false, tileGap: 16, contentPadding: 12 },
 };
 
 const PRESETS: ThemePreset[] = ['website', 'amoled', 'black', 'light', 'custom'];
@@ -169,7 +177,13 @@ export function validateAppearance(value: unknown): AppearanceSettings {
     backgroundEffects: { blur: range(effects.blur, 0, 30), opacity: range(effects.opacity, 0, 1),
       overlayColor: hex(effects.overlayColor), overlayOpacity: range(effects.overlayOpacity, 0, 1) },
     combatPanel: { enabled: combatPanel.enabled, color: hex(combatPanel.color),
-      opacity: range(combatPanel.opacity, 0, 1), blur: range(combatPanel.blur, 0, 30) },
+      opacity: range(combatPanel.opacity, 0, 1), blur: range(combatPanel.blur, 0, 30),
+      customizeBackground: flag(combatPanel.customizeBackground ?? true),
+      customizeBorder: flag(combatPanel.customizeBorder ?? false), borderColor: hex(combatPanel.borderColor ?? '#555555'),
+      customizeButtons: flag(combatPanel.customizeButtons ?? false),
+      buttonBackground: hex(combatPanel.buttonBackground ?? '#202020'), buttonTextColor: hex(combatPanel.buttonTextColor ?? '#ffffff'),
+      customizeSpacing: flag(combatPanel.customizeSpacing ?? false),
+      tileGap: range(combatPanel.tileGap ?? 16, 4, 24), contentPadding: range(combatPanel.contentPadding ?? 12, 8, 32) },
     input: { enabled: flag(composer.enabled), style: messageStyle(composer.style) },
     messages: { enabled: styles.enabled, player: messageStyle(styles.player), gm: messageStyle(styles.gm) },
     context: { enabled: flag(context.enabled), style: contextStyle,
