@@ -156,6 +156,12 @@ app.on('window-all-closed', () => {});
  // must reuse the stable equipped/inventory catalog identity automatically.
  await configure(true,'en');
  assert.equal(await js("!!document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-save-default]')"),true,'Selected weapon exposes Save default.');
+ for(const width of [280,390]){
+  await mutate(`document.querySelector('section').style.width='${width}px'`);await configure(true,'ru');
+  const fit=await js("(()=>{const node=document.querySelector('[data-ff-pending-corrections=\"0\"]'),box=node.getBoundingClientRect();return ['save-default','clear-default'].every(marker=>{const button=node.querySelector('[data-ff-correction-'+marker+']'),rect=button.getBoundingClientRect();return rect.width>0&&rect.height>=28&&rect.left>=box.left&&rect.right<=box.right})})()");
+  assert.equal(fit,true,'Localized default controls fit '+width+'px without truncation.');
+ }
+ await mutate("document.querySelector('section').style.width='308px'");await configure(true,'en');
  await click(weapon+' [data-ff-correction-proficiency_bonus-plus]');
  await click(weapon+' [data-ff-correction-save-default]');
  assert.match(await js("document.querySelector('[data-ff-pending-corrections=\"0\"] [role=status]').textContent"),/saved/i);

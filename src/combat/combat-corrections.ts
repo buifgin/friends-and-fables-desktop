@@ -271,7 +271,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
       if (!clear) next.push({ ...identity, ability: current.attack.modifier_stat!, modifier_value: current.attack.modifier_value!, proficiency_bonus: current.attack.proficiency_bonus! });
       const serialized = JSON.stringify({ version: 1, entries: next });
       if (next.length > 100 || serialized.length > 32768) { feedback('Saved defaults are full. Clear an unused default first.', 'Хранилище заполнено. Сначала удалите ненужную настройку.'); return; }
-      try { localStorage.setItem(defaultKey(), serialized); const state = rowState(current); if (state) state.consumed = true; feedback(clear ? 'Saved default cleared. Current form unchanged.' : 'Attack default saved locally.', clear ? 'Настройка удалена. Текущая форма не изменена.' : 'Настройка атаки сохранена локально.'); }
+      try { localStorage.setItem(defaultKey(), serialized); const state = rowState(current); if (state) state.consumed = true; feedback(clear ? 'Saved default cleared. Current form unchanged.' : 'Saved for this character in this campaign. Applies to future matching attacks.', clear ? 'Настройка удалена. Текущая форма не изменена.' : 'Сохранено для этого персонажа в кампании. Применится к следующим таким атакам.'); }
       catch { feedback('Local storage is unavailable. Nothing was saved.', 'Локальное хранилище недоступно. Ничего не сохранено.'); }
     }
     const saveDefault = button('save-default', () => persistDefault(false)), clearDefault = button('clear-default', () => persistDefault(true));
@@ -299,7 +299,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     function refresh(force = false): void {
       const current = native(); if (current) autoDefault(current);
       const disabled = !current || !pendingWritable(card, current);
-      saveDefault.textContent = language === 'ru' ? 'Сохранить настройку' : 'Save default'; clearDefault.textContent = language === 'ru' ? 'Удалить настройку' : 'Clear default';
+      saveDefault.textContent = language === 'ru' ? 'Сохранить по умолчанию' : 'Save default'; clearDefault.textContent = language === 'ru' ? 'Удалить настройку' : 'Clear default';
       const identity = current && attackIdentity(current); saveDefault.disabled = disabled || !identity; clearDefault.disabled = !identity;
       title.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections'; abilityText.textContent = language === 'ru' ? 'Характеристика' : 'Ability'; empty.textContent = '—';
       texts.forEach((text, i) => text.textContent = language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус умения') : (i === 0 ? 'Modifier' : 'Proficiency bonus')); applyButtons.forEach(b => b.textContent = language === 'ru' ? 'Применить' : 'Apply');
