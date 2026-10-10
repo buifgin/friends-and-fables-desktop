@@ -27,7 +27,7 @@ const html = `<!doctype html><meta charset="utf-8"><style>body{margin:0}.hidden,
 <script>
 window.nativeDiceMarkup=${JSON.stringify(nativeDiceMarkup)};window.nativeEnglish=${JSON.stringify(nativeEnglish)};
 window.rendererErrors=[];window.addEventListener('error',event=>window.rendererErrors.push(event.message));
-window.opens=0;window.selections=0;window.rolls=0;window.nativeForms=[];window.encounter=false;
+window.delayedTransition=false;window.transitionCloses=0;window.opens=0;window.selections=0;window.rolls=0;window.nativeForms=[];window.encounter=false;
 window.originalEditor=document.querySelector('.tiptap');
 document.querySelector('#composer').__reactFiberFixture={memoizedProps:{encounterActive:false}};
 localStorage.clear();
@@ -57,16 +57,21 @@ function launch(dice){
  // Radix FocusScope's removed-node recovery and focus trapping.
  const focusObserver=new MutationObserver(records=>{if(document.activeElement===document.body&&records.some(r=>r.removedNodes.length))panel.focus()});focusObserver.observe(panel,{childList:true,subtree:true});
  document.addEventListener('focusin',focusIn);document.addEventListener('focusout',focusOut);
- const close=()=>{focusObserver.disconnect();document.removeEventListener('focusin',focusIn);document.removeEventListener('focusout',focusOut);panel.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow='';document.querySelector('#campaign').removeAttribute('aria-hidden')};panel.querySelector('#close').onclick=close;
+ let closing=false;
+ const finishClose=()=>{focusObserver.disconnect();document.removeEventListener('focusin',focusIn);document.removeEventListener('focusout',focusOut);panel.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow='';document.querySelector('#campaign').removeAttribute('aria-hidden')};
+ // Live Radix/store trace retained the old Actions dialog with data-state=open
+ // for66ms after Close, then mounted Dice116ms after the composer click.
+ const close=()=>{if(closing)return;closing=true;window.transitionCloses++;if(window.delayedTransition){window.closingPanel=panel;setTimeout(finishClose,70)}else finishClose()};panel.querySelector('#close').onclick=close;
  document.body.append(overlay,panel);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';document.querySelector('#campaign').setAttribute('aria-hidden','true');
  (dice?content.querySelector('input'):form.querySelector('input')).focus();
 }
-document.querySelector('#dice').onclick=()=>launch(true);document.querySelector('#attacks').onclick=()=>launch(false);
+document.querySelector('#dice').onclick=()=>{if(window.delayedTransition)setTimeout(()=>launch(true),120);else launch(true)};document.querySelector('#attacks').onclick=()=>launch(false);
 // Count actual observer deliveries. A runaway chain is disconnected only in
 // this fixture so a failing baseline can report its cause without hanging.
 const NativeObserver=window.MutationObserver;window.observers=[];window.deliveries=0;window.mutations=0;window.storm=null;window.recent=[];
 window.MutationObserver=class extends NativeObserver{constructor(callback){super((records,observer)=>{window.deliveries++;window.mutations+=records.length;window.recent.push(records.slice(0,8).map(r=>[r.type,r.attributeName,r.target.nodeName,r.target.id,Array.from(r.addedNodes).map(n=>n.nodeName)]));if(window.recent.length>12)window.recent.shift();if(window.deliveries>500){window.storm=window.recent;for(const owned of window.observers)owned.disconnect();return}callback(records,observer)});window.observers.push(this)}};
 </script>`;
+new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 (async () => {
  if (process.env.FABLES_TEST_PROFILE_DIR) app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
  await app.whenReady();
@@ -115,7 +120,7 @@ window.MutationObserver=class extends NativeObserver{constructor(callback){super
    assert.equal(await js("document.querySelectorAll('[role=dialog]').length"),expectedPickers,label+' owns the expected native picker count');
    await js('window.deliveries=0;window.mutations=0;window.recent=[]');
  };
- const click=async(selector,label,expectedPickers=1)=>{
+ const click=async(selector,label,expectedPickers=1,ready)=>{
    await js(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'center'})`);
    await js('new Promise(resolve=>requestAnimationFrame(resolve))');
    const target=await js(`(()=>{const node=document.querySelector(${JSON.stringify(selector)}),box=node.getBoundingClientRect(),x=Math.round(box.left+box.width/2),y=Math.round(box.top+box.height/2);return {label:node.getAttribute('aria-label')||node.textContent.trim().slice(0,64),x,y,width:box.width,height:box.height,hit:node.contains(document.elementFromPoint(x,y)),pointer:getComputedStyle(node).pointerEvents,bodyPointer:getComputedStyle(document.body).pointerEvents,focused:document.hasFocus()}})()`);
@@ -125,7 +130,7 @@ window.MutationObserver=class extends NativeObserver{constructor(callback){super
    window.webContents.sendInputEvent({type:'mouseMove',x:target.x,y:target.y});
    window.webContents.sendInputEvent({type:'mouseDown',x:target.x,y:target.y,button:'left',clickCount:1});
    window.webContents.sendInputEvent({type:'mouseUp',x:target.x,y:target.y,button:'left',clickCount:1});
-   await until(`document.querySelectorAll('[role=dialog]').length===${expectedPickers}`);
+   await until(ready || `document.querySelectorAll('[role=dialog]').length===${expectedPickers}`);
    await settle(label,expectedPickers);
  };
  await configure('en');
@@ -181,6 +186,26 @@ window.MutationObserver=class extends NativeObserver{constructor(callback){super
    await js('document.querySelector("#composer").__reactFiberFixture.memoizedProps.encounterActive=false;document.querySelector("#composer").append(document.createElement("span"))');
    await until("document.querySelector('[data-ff-combat-mode=actions]').disabled");
  }
+ // Faithful delayed-close/delayed-mount transition. The native composer
+ // launch token must survive a scan of the still-visible closing Actions.
+ await configure('en');
+ await js('document.querySelector("#composer").__reactFiberFixture.memoizedProps.encounterActive=true;document.querySelector("#composer").append(document.createElement("span"))');
+ await until("document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
+ await js('window.delayedTransition=true;window.transitionBefore={opens,closes:transitionCloses,selections,rolls};window.transitionDraft=originalEditor.textContent;window.transitionFavorites=localStorage.getItem("ff-desktop-combat-pins-v1:fixture")');
+ await click('#dice','Delayed native composer Actions -> Dice',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='skills'");
+ assert.equal(await js('opens'),await js('transitionBefore.opens+1'),'Delayed native Dice launches exactly once.');
+ assert.equal(await js('transitionCloses'),await js('transitionBefore.closes+1'),'Closing Actions is not retried during the delay.');
+ assert.equal(await js('closingPanel.hasAttribute("data-ff-combat-docked")'),false,'Closing Actions never gets re-docked.');
+ assert.equal(await js('rolls'),0,'Delayed transitions never submit.');
+ assert.equal(await js('originalEditor.textContent===transitionDraft'),true,'Composer draft survives delayed native switching.');
+ assert.equal(await js('localStorage.getItem("ff-desktop-combat-pins-v1:fixture")===transitionFavorites'),true,'Native favorites stay unchanged.');
+ await js('window.delayedTransition=false');
+ await click('[data-ff-combat-mode=actions]','Return to Actions before delayed owned launch',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
+ await js('window.delayedTransition=true;window.ownedTransitionOpens=opens');
+ await click('[data-ff-combat-mode=skills]','Delayed sidebar Actions -> Dice',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='skills'");
+ assert.equal(await js('opens'),await js('ownedTransitionOpens+1'),'Owned launch waits for native close and opens Dice once.');
+ assert.equal(await js('closingPanel.hasAttribute("data-ff-combat-docked")'),false,'Owned launch does not re-dock closing Actions.');
+ await js('window.delayedTransition=false');
  await js(`history.pushState({},'', '/fixture/settings');window.dispatchEvent(new PopStateEvent('popstate'));true`);
  await js('new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,30)))');
  await manager.shutdown();
