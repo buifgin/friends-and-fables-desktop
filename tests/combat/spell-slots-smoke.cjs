@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
-const html = `<!doctype html><html><body><aside id="sidebar"><div class="container-[size]"><div id="rows"></div><button id="open" type="button">Open Spellbook</button></div></aside><textarea id="draft">preserve this draft</textarea><script>
-window.calls=[];window.opens=0;window.closes=0;window.cacheInvalidations=0;window.toasts=0;
+const html = `<!doctype html><html><head><style>:root{--foreground:220 10% 90%;--primary:45 100% 50%}body{background:#080808;color:#eee}.flex{display:flex}.flex-col{flex-direction:column}.gap-1{gap:4px}.h-3{height:12px}.w-3{width:12px}.h-4{height:16px}.w-4{width:16px}.rounded-full{border-radius:999px;box-sizing:border-box}.border{border:1px solid #999}[class~="bg-primary/70"]{background:hsl(var(--primary)/.7)}.bg-primary{background:hsl(var(--primary))}.bg-muted,.bg-gray-800{background:#222}[role=dialog]{position:fixed;inset:100px;background:#080808}.fixed{position:fixed}.inset-0{inset:0}</style></head><body><aside id="sidebar"><div class="container-[size]"><div id="rows"></div><button id="open" type="button">Open Spellbook</button></div></aside><textarea id="draft">preserve this draft</textarea><script>
+window.keydowns=[];document.addEventListener('keydown',event=>window.keydowns.push({key:event.key,repeat:event.repeat}),true);window.calls=[];window.opens=0;window.closes=0;window.cacheInvalidations=0;window.toasts=0;
 window.config={characterId:123,campaignId:'fixture',phase:'campaign',viewOnly:false,pending:false,used:2,max:4};
 window.mountSidebar=()=>{
  const rows=document.querySelector('#rows');rows.innerHTML='<div class="flex flex-col items-center"><span>Level 1</span><div class="flex gap-1 mt-1" id="circles"></div></div><div><span>Cantrips</span><svg id="infinity"></svg></div>';
@@ -39,13 +39,26 @@ let win;const timer=setTimeout(()=>{console.error('Spell slots fixture timed out
 app.on('window-all-closed',()=>{});
 (async()=>{
  await app.whenReady();const site=session.fromPartition('spell-slots-'+process.pid);site.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
- win=new BrowserWindow({show:false,width:900,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
- await win.loadURL('https://fixture.invalid/campaign/fixture/play');
+ win=new BrowserWindow({show:true,width:900,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
+ await win.loadURL('https://fixture.invalid/campaign/fixture/play');win.focus();win.webContents.focus();assert.equal(win.isVisible(),true);assert.equal(win.isFocused(),true);
  const js=source=>win.webContents.executeJavaScript(source);
  const {configureSpellSlots}=require(path.join(root,'dist/combat/spell-slots'));
  await js('('+configureSpellSlots.toString()+')(true,"en")');
  const wait=async source=>{for(let i=0;i<80;i++){if(await js(source))return;await new Promise(r=>setTimeout(r,25))}throw Error('Not ready: '+source)};
  await wait('document.querySelector("[data-ff-spell-slot]")');
+ const assertAppearance=async(selector,size)=>{
+  const circles=await js('Array.from(document.querySelectorAll('+JSON.stringify(selector)+')).map(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height,shadow:getComputedStyle(node).boxShadow,background:getComputedStyle(node).backgroundColor,available:node.dataset.ffSpellAvailable}))');
+  assert.equal(circles.length,4);
+  for(const circle of circles){assert.equal(circle.width,size);assert.equal(circle.height,size);assert.match(circle.shadow,/inset/);assert.match(circle.shadow,/rgba?\(/);assert.notEqual(circle.shadow,'none')}
+  assert.equal(circles[0].available,'true');assert.equal(circles[2].available,'false');assert.notEqual(circles[0].background,circles[2].background);assert.match(circles[0].background,/255, 191, 0/);assert.match(circles[2].background,/rgba\(0, 0, 0, 0\)/);
+ };
+ assert.equal(await js('getComputedStyle(document.body).backgroundColor'),'rgb(8, 8, 8)');
+ await assertAppearance('#sidebar [data-ff-spell-slot]',12);
+ await js('mountBook()');await wait('document.querySelectorAll("#book [data-ff-spell-slot]").length===4');await assertAppearance('#book [data-ff-spell-slot]',16);await js('document.querySelector("#book button").click()');
+ // Matching callback text is insufficient when it belongs to another character owner.
+ await js('window.originalOpenFiber=document.querySelector("#open").__reactFiber$fixture;document.querySelector("#open").__reactFiber$fixture={return:{memoizedProps:{character:{id:123}},return:null}};document.querySelectorAll("#sidebar [data-ff-spell-slot]")[2].click()');
+ assert.equal(await js('opens'),0);assert.equal(await js('calls.length'),0);
+ await js('document.querySelector("#open").__reactFiber$fixture=originalOpenFiber');
  assert.equal(await js('document.querySelector("#infinity").hasAttribute("data-ff-spell-slot")'),false);
  await js('document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
  await wait('calls.length===1');
@@ -53,12 +66,27 @@ app.on('window-all-closed',()=>{});
  assert.equal(await js('cacheInvalidations'),1);assert.equal(await js('toasts'),1);
  assert.equal(await js('document.querySelector("#draft").value'),'preserve this draft');
  await wait('!document.querySelector("#book")');await new Promise(r=>setTimeout(r,350));assert.equal(await js('lastDialog.getAttribute("style")'),null);assert.equal(await js('lastOverlay.getAttribute("style")'),null);
+ for(const [index,key] of ['Enter','Space'].entries()){
+  await js('document.querySelectorAll("#sidebar [data-ff-spell-slot]")[3].focus()');
+  assert.equal(await js('document.activeElement===document.querySelectorAll("#sidebar [data-ff-spell-slot]")[3]'),true);
+  win.webContents.sendInputEvent({type:'keyDown',keyCode:key});
+  win.webContents.sendInputEvent({type:'char',keyCode:key==='Space'?' ':key});
+  win.webContents.sendInputEvent({type:'keyDown',keyCode:key,modifiers:['isautorepeat']});
+  win.webContents.sendInputEvent({type:'keyUp',keyCode:key});
+  await wait('calls.length==='+String(index+2));await wait('!document.querySelector("#book")');await new Promise(r=>setTimeout(r,350));
+  assert.equal(await js('calls.length'),index+2,'one native callback per keyboard activation including repeat');
+ }
+ assert.deepEqual(await js('keydowns'),[{key:'Enter',repeat:false},{key:'Enter',repeat:true},{key:' ',repeat:false},{key:' ',repeat:true}]);
+ assert.deepEqual(await js('calls.slice(1)'),[{characterId:123,campaignId:'fixture',level:1,maxSlots:4,usedSlots:1},{characterId:123,campaignId:'fixture',level:1,maxSlots:4,usedSlots:1}]);
+ // Available slots use the same fresh native callback and increase used_slots.
+ await js('document.querySelectorAll("#sidebar [data-ff-spell-slot]")[0].click()');await wait('calls.length===4');await wait('!document.querySelector("#book")');await new Promise(r=>setTimeout(r,350));
+ assert.deepEqual(await js('calls[3]'),{characterId:123,campaignId:'fixture',level:1,maxSlots:4,usedSlots:3});
  for(const override of [{viewOnly:true},{characterId:999},{campaignId:'other'},{pending:true},{max:2},{phase:'template'}]){
   await js('Object.assign(config,{characterId:123,campaignId:"fixture",phase:"campaign",viewOnly:false,pending:false,used:2,max:4},'+JSON.stringify(override)+');document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
-  await wait('!document.querySelector("[aria-busy=true]")');await js('document.querySelector("#book button")?.click()');await new Promise(r=>setTimeout(r,100));assert.equal(await js('calls.length'),1,JSON.stringify(override));
+  await wait('!document.querySelector("[aria-busy=true]")');await js('document.querySelector("#book button")?.click()');await new Promise(r=>setTimeout(r,100));assert.equal(await js('calls.length'),4,JSON.stringify(override));
  }
  await js('Object.assign(config,{characterId:123,campaignId:"fixture",phase:"campaign",viewOnly:false,pending:false,used:2,max:4});const existing=document.createElement("div");existing.setAttribute("role","dialog");existing.id="existing";document.body.append(existing);document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
- assert.equal(await js('calls.length'),1);assert.equal(await js('document.querySelector("#existing").isConnected'),true);
+ assert.equal(await js('calls.length'),4);assert.equal(await js('document.querySelector("#existing").isConnected'),true);
  await js('document.querySelector("#existing").remove();('+configureSpellSlots.toString()+')(false,"en")');
  assert.equal(await js('document.querySelectorAll("[data-ff-spell-slot]").length'),0);
  console.log('Spell slots native payload/cache/permission/identity/busy/bounds/lifecycle PASS');clearTimeout(timer);win.destroy();app.exit(0);
