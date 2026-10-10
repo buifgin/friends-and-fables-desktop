@@ -42,15 +42,17 @@ const actionOwner={type:function NativeComposer(){},memoizedProps:{},child:permi
 const currentActionFiber={type:'button',return:actionOwner};
 const previousActionFiber={type:'button',return:{type:actionOwner.type,memoizedProps:{}}};
 currentActionFiber.alternate=previousActionFiber;previousActionFiber.alternate=currentActionFiber;
+actionOwner.alternate=previousActionFiber.return;previousActionFiber.return.alternate=actionOwner;
+actionOwner.child=permissionFiber;previousActionFiber.return.child=previousActionFiber;
 let currentActionRoot=actionOwner,previousActionRoot=previousActionFiber.return;
 for(let depth=2;depth<=140;depth++){
- const currentParent={type:'div'},previousParent={type:'div'};
+ const currentParent={type:'div',child:currentActionRoot},previousParent={type:'div',child:previousActionRoot};
  currentActionRoot.return=currentParent;previousActionRoot.return=previousParent;
  currentParent.alternate=previousParent;previousParent.alternate=currentParent;
  currentActionRoot=currentParent;previousActionRoot=previousParent;
 }
 const actionRootState={current:currentActionRoot};
-currentActionRoot.stateNode=actionRootState;previousActionRoot.stateNode=actionRootState;
+currentActionRoot.tag=previousActionRoot.tag=3;currentActionRoot.stateNode=actionRootState;previousActionRoot.stateNode=actionRootState;
 document.getElementById('actions').__reactFiberFixture=previousActionFiber;
 let modalState={modalStack:[],openModal:modal=>{modalState={...modalState,modalStack:[...modalState.modalStack,modal]}},closeModalAtIndex:index=>{modalState={...modalState,modalStack:modalState.modalStack.filter((_,i)=>i!==index)}}};
 window.storeWrites=0;window.nativeBusy=false;window.renderModal=null;
@@ -76,9 +78,24 @@ window.openNative=(diceMode=false)=>{
  const props={...permissionFiber.memoizedProps};const content=element('div',{children:[element(NativeActionsForm,props),!props.isUsersCharacterTurn&&element(NativeWarning,{variant:'warning',className:'mt-4',children:'It is not your turn - you will not be able to submit an attack until it is your turn.'})]});
  modalState={...modalState,modalStack:[{content}]};
  const renderer={type:function NativeModalRenderer(){},memoizedProps:{},memoizedState:{memoizedState:{current:{value:modalState}},next:null}};
+ const previousRenderer={type:renderer.type,memoizedProps:{}};
  const formFiber={type:NativeActionsForm,key:null,memoizedProps:props,return:renderer};
- dialog.querySelector('form').__reactFiberFixture={type:'form',return:formFiber};dialog.__reactFiberFixture={type:'div',return:renderer};
- window.renderModal=()=>{const entry=modalState.modalStack[0];if(!entry)return;formFiber.memoizedProps=entry.content.props.children[0].props;renderer.memoizedState.memoizedState.current.value=modalState;dialog.querySelector('button[type=submit]').disabled=!formFiber.memoizedProps.isUsersCharacterTurn||nativeBusy;let warning=dialog.querySelector('#native-turn-warning');if(entry.content.props.children[1]){if(!warning){warning=document.createElement('p');warning.id='native-turn-warning';dialog.querySelector('form').after(warning)}warning.textContent=entry.content.props.children[1].props.children}else warning?.remove()};renderModal();
+ // React bailout shares a host child whose return still points at the old
+ // component. Both component returns can point at the same current parent;
+ // its child list, not a root-only return walk, selects the current alternate.
+ const previousFormFiber={type:NativeActionsForm,key:null,memoizedProps:{...props,isUsersCharacterTurn:!props.isUsersCharacterTurn},return:renderer};
+ formFiber.alternate=previousFormFiber;previousFormFiber.alternate=formFiber;
+ const sharedFormHost={type:'form',return:previousFormFiber};
+ formFiber.child=previousFormFiber.child=sharedFormHost;
+ renderer.child=formFiber;previousRenderer.child=previousFormFiber;
+ renderer.alternate=previousRenderer;previousRenderer.alternate=renderer;
+ const currentRoot={tag:3,child:renderer},previousRoot={tag:3,child:previousRenderer};
+ currentRoot.alternate=previousRoot;previousRoot.alternate=currentRoot;
+ currentRoot.stateNode=previousRoot.stateNode={current:currentRoot};
+ renderer.return=currentRoot;previousRenderer.return=previousRoot;
+ window.setFormPropsMismatch=value=>{const mountedProps=modalState.modalStack[0].content.props.children[0].props;previousFormFiber.memoizedProps=mountedProps;formFiber.memoizedProps=value?{...mountedProps}:mountedProps};
+ dialog.querySelector('form').__reactFiberFixture=sharedFormHost;dialog.__reactFiberFixture={type:'div',return:renderer};
+ window.renderModal=()=>{const entry=modalState.modalStack[0];if(!entry)return;if(formFiber.memoizedProps!==entry.content.props.children[0].props)previousFormFiber.memoizedProps=formFiber.memoizedProps;formFiber.memoizedProps=entry.content.props.children[0].props;renderer.memoizedState.memoizedState.current.value=modalState;dialog.querySelector('button[type=submit]').disabled=!formFiber.memoizedProps.isUsersCharacterTurn||nativeBusy;let warning=dialog.querySelector('#native-turn-warning');if(entry.content.props.children[1]){if(!warning){warning=document.createElement('p');warning.id='native-turn-warning';dialog.querySelector('form').after(warning)}warning.textContent=entry.content.props.children[1].props.children}else warning?.remove()};renderModal();
 }
  document.body.append(overlay,dialog);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');
  window.originalForm=dialog.querySelector('form');originalForm.onsubmit=e=>{e.preventDefault();window.submits++;if(window.asyncSubmit){close();window.submitPhase='pending';setTimeout(()=>{if(window.resultAsChat){document.getElementById('events-list').append(document.createTextNode('Native roll result appended to story'));window.submitPhase='complete';return}window.submitPhase='result';const result=document.createElement('div');result.id='native-result';result.setAttribute('role','dialog');result.innerHTML='<h2>Native roll result</h2><button id="result-close">Continue</button>';result.style.cssText='position:fixed;inset:100px;z-index:100;pointer-events:auto;background:white';document.body.append(result);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';campaign.setAttribute('aria-hidden','true');result.querySelector('button').onclick=()=>{result.remove();document.body.style.cssText='';campaign.removeAttribute('aria-hidden');window.submitPhase='complete'}},100)}};
@@ -126,6 +143,11 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await until("!turnForm.querySelector('button[type=submit]').disabled");
  assert.equal(await js("document.querySelector('#native-turn-warning')===null"),true,'Native stale turn warning clears after permission changes.');
  assert.deepEqual(await js("({dialog:document.querySelector('[data-ff-combat-docked]')===turnDialog,form:document.querySelector('form')===turnForm,input:turnForm.querySelector('input')===turnInput,draft:turnInput.value,focused:document.activeElement===turnInput,targets:turnTarget.isConnected&&turnTarget.checked,scroll:turnDialog.scrollTop===turnScroll,opens,submits})"),{dialog:true,form:true,input:true,draft:'turn-preserved draft',focused:true,targets:true,scroll:true,opens:1,submits:0},'Native store update preserves the mounted form and focus without reopening/submitting.');
+ // An old alternate matching the store is insufficient: only the resolved
+ // current component may prove exact mounted props ownership.
+ await js('window.beforePropsMismatch=storeWrites;setFormPropsMismatch(true);setNativePermission(false)');await new Promise(resolve=>setTimeout(resolve,600));
+ assert.equal(await js('storeWrites'),await js('beforePropsMismatch'),'Matching old-alternate props cannot authorize a write when current props do not match.');
+ await js('setFormPropsMismatch(false);setNativePermission(true)');
  await js('window.beforeMismatch=storeWrites;setNativeEncounter(999999);setNativePermission(false)');await new Promise(resolve=>setTimeout(resolve,600));
  assert.equal(await js('storeWrites'),await js('beforeMismatch'),'A different encounter cannot update the mounted native form.');
  await js('setNativeEncounter(412456);document.getElementById("nested").click();window.beforeNestedTurn=storeWrites');await new Promise(resolve=>setTimeout(resolve,600));
