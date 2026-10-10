@@ -27,6 +27,14 @@ window.attachCustomMode=(requires=true)=>{
  select.__reactFiber$fixture={memoizedProps:{},return:{memoizedProps:{trigger},return:{memoizedProps:{name:'attack_roll_type',control},return:{memoizedProps:customModeMethods}}}};
  window.customModeTrigger=trigger;window.customModeSelect=select;
 };
+// Captured native Dice tW/tG: no RHF or native form, shared enum setter.
+window.mountCheckMode=()=>{
+ const dock=document.querySelector('section');dock.innerHTML='<div id="native-check"><button id="vantage" type="button" role="combobox">Normal</button></div>';
+ window.checkMode='normal';window.checkModeWrites=[];const trigger=document.querySelector('#vantage');
+ const setSelectedVantage=value=>{checkMode=value;checkModeWrites.push(value);owner.memoizedProps.selectedVantage=value;parent.memoizedProps.selectedVantage=value;trigger.textContent=value};
+ const parent={memoizedProps:{numberOfDice:1,setNumberOfDice(){},typeOfDie:'d20',setTypeOfDie(){},modifierValue:0,setModifierValue(){},proficiencyBonus:0,setProficiencyBonus(){},selectedVantage:'normal',setSelectedVantage}};
+ const owner={memoizedProps:{selectedVantage:'normal',setSelectedVantage},return:parent};trigger.__reactFiber$fixture={memoizedProps:{id:'vantage',role:'combobox'},return:owner};window.checkModeTrigger=trigger;window.checkModeOwner=owner;window.checkModeParent=parent;
+};
 // Captured ExecuteActionsForm: FormProvider props, keyed field-array wrapper,
 // AttackCard props and sibling FormField(control, name=attacks.N.targets).
 window.pendingMounts=0;window.pendingCharacterOverride={};window.pendingWeaponOverride={};window.pendingBlocked=false;
@@ -291,5 +299,15 @@ app.on('window-all-closed', () => {});
  assert.equal(await pendingIdentity(),true);assert.equal(await js('pendingSubmits'),0);
  await mutate('pendingCards[0].wrapper.remove()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===1");
  await configure(false);assert.equal(await js("document.querySelector('[data-ff-pending-corrections]')"),null);assert.equal(await js('pendingSubmits'),0);
+ await configure();await mutate('mountCheckMode()');await until("document.querySelector('[data-ff-check-corrections]')");
+ await click('[data-ff-check-corrections] summary');
+ for(const value of ['advantage','disadvantage','normal']){await mutate(`const mode=document.querySelector('[data-ff-check-corrections] select');mode.value='${value}';mode.dispatchEvent(new Event('change',{bubbles:true}))`);assert.equal(await js('checkMode'),value);}
+ assert.deepEqual(await js('checkModeWrites'),['advantage','disadvantage','normal']);
+ assert.equal(await js("document.querySelectorAll('[data-ff-check-corrections] button,[data-ff-check-corrections] input').length"),0,'Check mode has no save controls or fabricated numeric fields.');
+ await mutate('checkModeTrigger.hidden=true');await until("!document.querySelector('[data-ff-check-corrections]')");
+ await mutate('checkModeTrigger.hidden=false;checkModeParent.memoizedProps.setSelectedVantage=()=>{}');await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js("!!document.querySelector('[data-ff-check-corrections]')"),false,'Mismatched native setter fails closed.');
+ await mutate('mountCheckMode();checkModeTrigger.disabled=true');await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js("!!document.querySelector('[data-ff-check-corrections]')"),false);
+ await mutate('mountCheckMode();checkModeOwner.memoizedProps.selectedVantage="invented"');await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js("!!document.querySelector('[data-ff-check-corrections]')"),false);
+ await mutate('mountCheckMode()');await until("document.querySelector('[data-ff-check-corrections]')");await configure(false);assert.equal(await js("!!document.querySelector('[data-ff-check-corrections]')"),false);
  console.log('Combat corrections fixture PASS'); window.destroy(); clearTimeout(timer); app.exit(0);
 })().catch(error=>{console.error(error);window?.destroy();clearTimeout(timer);app.exit(1)});
