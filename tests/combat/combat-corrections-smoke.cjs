@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const fixtureRoot = path.join(__dirname, '..', '..');
-const html = `<!doctype html><meta charset="utf-8"><style>body{background:#222;color:white}section{width:308px}input{max-width:100%}</style>
+const html = `<!doctype html><meta charset="utf-8"><style>:root{--border:210 10% 30%;--input:210 10% 35%;--foreground:0 0% 90%;--background:210 10% 12%;--primary:41 62% 65%;--primary-focus:41 62% 55%;--primary-foreground:0 0% 13%;--secondary:210 10% 22%;--secondary-foreground:0 0% 90%;--accent:210 10% 26%;--accent-foreground:0 0% 95%;--ring:210 50% 55%}body{background:#222;color:white}section{width:308px}input{max-width:100%}</style>
 <div contenteditable id="draft">preserved draft</div><canvas id="canvas"></canvas><section data-ff-combat-docked></section><script>
 window.submits=[];window.changes=0;window.inputs=0;
 window.mount=()=>{
@@ -67,6 +67,17 @@ app.on('window-all-closed', () => {});
  const until = async expression => { for (let n=0;n<100;n++) { if(await js(expression))return; await new Promise(resolve=>setTimeout(resolve,20)); } throw Error('Timed out: '+expression); };
  const configure = (enabled=true,locale='en') => js(`(${configureCombatCorrections.toString()})(${enabled},${JSON.stringify(locale)})`);
  const click = selector => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
+ const testDisclosure=async selector=>{
+  for(const side of ['arrow','text']){
+   const point=await js(`(()=>{const summary=document.querySelector(${JSON.stringify(selector)}),rect=summary.getBoundingClientRect();return {x:Math.round(${JSON.stringify(side)}==='arrow'?rect.left+12:rect.right-8),y:Math.round(rect.top+rect.height/2),before:summary.parentElement.open,hit:summary.contains(document.elementFromPoint(${JSON.stringify(side)}==='arrow'?rect.left+12:rect.right-8,rect.top+rect.height/2))}})()`);
+   assert.equal(point.hit,true,side+' lies in the whole summary hit area.');
+   window.webContents.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:'left',clickCount:1});window.webContents.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:'left',clickCount:1});await until(`document.querySelector(${JSON.stringify(selector)}).parentElement.open===${!point.before}`);
+  }
+  for(const keyCode of ['Enter','Space']){
+   const before=await js(`document.querySelector(${JSON.stringify(selector)}).parentElement.open`);await js(`document.querySelector(${JSON.stringify(selector)}).focus()`);
+   window.webContents.sendInputEvent({type:'keyDown',keyCode});window.webContents.sendInputEvent({type:'char',keyCode:keyCode==='Enter'?'\r':' '});window.webContents.sendInputEvent({type:'keyUp',keyCode});await until(`document.querySelector(${JSON.stringify(selector)}).parentElement.open===${!before}`);
+  }
+ };
  const set = (selector,value) => js(`document.querySelector(${JSON.stringify(selector)}).value=${JSON.stringify(value)}`);
  const identity = () => js("native.form===document.querySelector('form')&&native.submit===document.querySelector('#submit')&&native.modifier===document.querySelector('#modifier_value')&&native.proficiency===document.querySelector('#proficiency_bonus')&&native.description.value==='attack draft'&&native.draft.textContent==='preserved draft'&&native.canvas===document.querySelector('canvas')&&document.querySelector('#unrecognised').value==='keep'");
  await window.loadURL('https://play.fables.gg/campaign-one/play'); window.showInactive(); window.webContents.focus();
@@ -81,6 +92,9 @@ app.on('window-all-closed', () => {});
  await click('[data-ff-combat-corrections] summary');
  assert.equal(await js("document.querySelector('[data-ff-combat-corrections]').open"),true);
  assert.equal(await js('submits.length'),0,'Opening correction details never submits the native form.');
+ await testDisclosure('[data-ff-combat-corrections] summary');assert.equal(await js('submits.length'),0,'Native summary clicks and keyboard never submit.');
+ assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-combat-corrections]')).borderTopColor"),'rgb(69, 77, 84)','Correction border follows native border token.');
+ assert.equal(await js("getComputedStyle(document.querySelector('[data-ff-combat-corrections] input')).backgroundColor"),'rgb(28, 31, 34)','Correction input follows native background token.');
  assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null);
  assert.equal(await js("document.querySelector('[data-ff-combat-corrections]').closest('form')"),null,'Owned controls cannot implicitly submit the native form.');
  await set('[data-ff-correction-value=modifier_value]','3'); await click('[data-ff-correction-apply-modifier_value]');
@@ -135,7 +149,7 @@ app.on('window-all-closed', () => {});
  assert.equal(await pendingIdentity(),true);
  assert.equal(await js('pendingWrites.length'),0,'Discovery must never change native values.');
  const weapon='[data-ff-pending-corrections="0"]',spell='[data-ff-pending-corrections="1"]';
- await click(weapon+' summary');
+ await click(weapon+' summary');await testDisclosure(weapon+' summary');assert.equal(await js('pendingSubmits'),0);
  await set(weapon+' [data-ff-correction-value=modifier_value]','4');await click(weapon+' [data-ff-correction-apply-modifier_value]');
  assert.equal(await js('pendingValues.attacks[0].modifier_value'),4,'Actual RHF pending value changes.');
  assert.equal(await js('pendingCards[0].fieldAttack.modifier_value'),0,'Native field-array snapshot is never counterfeited.');
@@ -151,11 +165,11 @@ app.on('window-all-closed', () => {});
  assert.equal(await js("pendingValues.message==='pending message'&&pendingValues.attacks[0].description==='weapon description'"),true);
  await mutate("document.querySelector('#pending-form button[type=submit]').disabled=true");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input')?.disabled===true");await click(weapon+' [data-ff-correction-modifier_value-plus]');assert.equal(await js('pendingValues.attacks[0].modifier_value'),3,'Current native turn/submitting restriction respected.');
  await mutate("document.querySelector('#pending-form button[type=submit]').disabled=false");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input')?.disabled===false");
- await configure(true,'ru');assert.equal(await js("document.querySelector('[data-ff-pending-corrections] summary').textContent"),'Поправки к броску');assert.equal(await pendingIdentity(),true);assert.equal(await js('pendingSubmits'),0);
+ await configure(true,'ru');assert.equal(await js("document.querySelector('[data-ff-pending-corrections] summary').textContent"),'Поправки к броску');assert.deepEqual(await js("Array.from(document.querySelector('[data-ff-correction-ability]').options).slice(1).map(option=>option.textContent)"),['СИЛ — Сила','ЛОВ — Ловкость','ТЕЛ — Телосложение','ИНТ — Интеллект','МДР — Мудрость','ХАР — Харизма']);assert.equal(await pendingIdentity(),true);assert.equal(await js('pendingSubmits'),0);
  // Explicitly save once, then a new RHF control and ephemeral row UUID
  // must reuse the stable equipped/inventory catalog identity automatically.
  await configure(true,'en');
- assert.equal(await js("!!document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-save-here]')"),true,'Selected weapon exposes Save default.');
+ assert.equal(await js("!!document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-save-here]')"),true,'Selected weapon exposes Save here.');
  for(const width of [280,390]){
   await mutate(`document.querySelector('section').style.width='${width}px'`);await configure(true,'ru');
   const fit=await js("(()=>{const node=document.querySelector('[data-ff-pending-corrections=\"0\"]'),box=node.getBoundingClientRect();return ['save-here','clear-default'].every(marker=>{const button=node.querySelector('[data-ff-correction-'+marker+']'),rect=button.getBoundingClientRect();return rect.width>0&&rect.height>=28&&rect.left>=box.left&&rect.right<=box.right})})()");
@@ -191,7 +205,8 @@ app.on('window-all-closed', () => {});
  await click(weapon+' summary');await click(weapon+' [data-ff-correction-clear-default]');await mutate('pendingWeaponOverride={};pendingCharacterOverride={};mountPending()');await until("pendingValues.attacks[0].modifier_value===3");
  // Scopes use stable catalog identities, never ephemeral row UUIDs.
  assert.equal(await js("savedDefaults.includes('native-field-')"),false);
- for(const mutation of ["pendingCharacterOverride={id:83026156}","pendingWeaponOverride={type:'ranged'}","pendingWeaponOverride={image:'foreign.webp'}","pendingCharacterOverride={two_handed:{id:567,name:'Vicious Weapon',image:'weapon.webp'},inventory:[]}","pendingCharacterOverride={two_handed:null,inventory:[]}","pendingCharacterOverride={inventory:[{item:{id:567,name:'Vicious Weapon',image:'weapon.webp'}}]}"]){
+ await mutate("pendingWeaponOverride={type:'ranged'};mountPending()");await until("pendingValues.attacks[0].modifier_value===3");assert.equal(await js('pendingValues.attacks[0].modifier_stat'),'dexterity','Per-weapon override also applies to its ranged attack.');await mutate('pendingWeaponOverride={}');
+ for(const mutation of ["pendingCharacterOverride={id:83026156}","pendingWeaponOverride={image:'foreign.webp'}","pendingCharacterOverride={two_handed:{id:567,name:'Vicious Weapon',image:'weapon.webp'},inventory:[]}","pendingCharacterOverride={two_handed:null,inventory:[]}","pendingCharacterOverride={inventory:[{item:{id:567,name:'Vicious Weapon',image:'weapon.webp'}}]}"]){
   await mutate(mutation+';mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js('pendingWrites.length'),0,'Foreign, missing or ambiguous catalog identity cannot auto-apply.');
   await mutate('pendingCharacterOverride={};pendingWeaponOverride={}');
  }
@@ -234,16 +249,28 @@ app.on('window-all-closed', () => {});
  await mutate("pendingWeaponOverride={name:'Longbow',type:'ranged',image:'bow.webp'};mountPending()");await until("pendingValues.attacks[0].modifier_value===2");
  assert.equal(await js('pendingValues.attacks[1].modifier_value'),2,'Weapon default does not change spells.');
  await click(spell+' summary');await click(spell+' [data-ff-correction-save-here]');await set(spell+' [data-ff-correction-value=modifier_value]','5');await click(spell+' [data-ff-correction-apply-modifier_value]');await click(spell+' [data-ff-correction-save-default]');
+ await mutate("const key='ff-desktop-attack-defaults-v1:/campaign-two',data=JSON.parse(localStorage.getItem(key));data.entries.push({...data.entries[0],character:'n:83026156'});localStorage.setItem(key,JSON.stringify(data));window.foreignDefault=JSON.stringify(data.entries[data.entries.length-1]);window.customPresetBefore=localStorage.getItem('ff-desktop-combat-corrections-v1:/campaign-two');localStorage.setItem('ff-desktop-attack-defaults-v1:/foreign-campaign','other campaign unchanged')");
  await click(weapon+' summary');await set(weapon+' [data-ff-correction-value=modifier_value]','6');await click(weapon+' [data-ff-correction-apply-modifier_value]');await click(weapon+' [data-ff-correction-overwrite-all]');
  await mutate('pendingWeaponOverride={};mountPending()');await until("pendingValues.attacks[0].modifier_value===6");assert.equal(await js('pendingValues.attacks[1].modifier_value'),2,'Weapon overwrite retains spell override.');
+ assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-attack-defaults-v1:/campaign-two')).version"),2,'Validated v1 storage migrates atomically to v2 on explicit save.');
+ assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-attack-defaults-v1:/campaign-two')).entries.some(entry=>JSON.stringify(entry)===foreignDefault)"),true,'Overwrite preserves foreign-character overrides.');
+ assert.equal(await js("localStorage.getItem('ff-desktop-attack-defaults-v1:/foreign-campaign')"),'other campaign unchanged');assert.equal(await js("localStorage.getItem('ff-desktop-combat-corrections-v1:/campaign-two')===customPresetBefore"),true,'Category writes preserve manual presets.');
  await click(weapon+' summary');await set(weapon+' [data-ff-correction-value=modifier_value]','4');await click(weapon+' [data-ff-correction-apply-modifier_value]');await click(weapon+' [data-ff-correction-save-here]');await click(weapon+' [data-ff-correction-clear-default]');
  assert.equal(await js('pendingValues.attacks[0].modifier_value'),4,'Delete here removes only the override, preserving current values.');
  await mutate('mountPending()');await until("pendingValues.attacks[0].modifier_value===6");
  // Native roll mode is explicitly current-roll only, never part of defaults.
  await click(weapon+' summary');await mutate("const mode=document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-roll-mode]');mode.value='advantage';mode.dispatchEvent(new Event('change',{bubbles:true}))");
- assert.equal(await js('pendingValues.attacks[0].attack_roll_type'),'advantage');await click(weapon+' [data-ff-correction-save-here]');
+ assert.equal(await js('pendingValues.attacks[0].attack_roll_type'),'advantage');
+ await mutate("const mode=document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-roll-mode]');mode.value='disadvantage';mode.dispatchEvent(new Event('change',{bubbles:true}))");assert.equal(await js('pendingValues.attacks[0].attack_roll_type'),'disadvantage');await click(weapon+' [data-ff-correction-save-here]');
  assert.equal(await js("localStorage.getItem('ff-desktop-attack-defaults-v1:/campaign-two').includes('attack_roll_type')"),false);
  await mutate('mountPending()');await until("pendingValues.attacks[0].modifier_value===6");assert.equal(await js('pendingValues.attacks[0].attack_roll_type'),'normal','New native rows retain native roll mode, never saved advantage.');
+ await click(spell+' summary');await click(spell+' [data-ff-correction-overwrite-all]');
+ await mutate('mountPending()');await until("pendingValues.attacks[1].modifier_value===2");assert.equal(await js('pendingValues.attacks[0].modifier_value'),6,'Spell overwrite preserves weapon override/default.');
+ assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-attack-defaults-v1:/campaign-two')).entries.some(entry=>entry.character==='n:83026155'&&entry.type==='spell')"),false);
+ for(const unsupported of ["pendingWeaponOverride={attack_roll_type:undefined}","pendingWeaponOverride={attack_roll_type:'invented'}"]){
+  await mutate(unsupported+';mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");assert.equal(await js("pendingCards[0].card.querySelector('[data-ff-correction-roll-mode]').getClientRects().length"),0,'Unsupported native mode never creates a visible control.');
+ }
+ await mutate('pendingWeaponOverride={};mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
  assert.equal(await pendingIdentity(),true);assert.equal(await js('pendingSubmits'),0);
  await mutate('pendingCards[0].wrapper.remove()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===1");
  await configure(false);assert.equal(await js("document.querySelector('[data-ff-pending-corrections]')"),null);assert.equal(await js('pendingSubmits'),0);

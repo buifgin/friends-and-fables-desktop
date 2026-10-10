@@ -95,7 +95,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   ui.append(save, load, remove, status);
   // Owned text inputs must never trigger the native form's implicit Enter submit.
   ui.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
-  const style = document.createElement('style'); style.setAttribute('data-ff-combat-corrections-style', ''); style.textContent = `[data-ff-combat-corrections]{margin:8px 0;padding:8px;border:1px solid currentColor;border-radius:6px;font-size:12px;overflow-wrap:anywhere}[data-ff-combat-corrections] p{margin:6px 0}[data-ff-combat-corrections] summary{cursor:pointer}[data-ff-combat-corrections] .ff-correction-row{display:flex;flex-wrap:wrap;align-items:end;gap:4px;margin:6px 0}[data-ff-combat-corrections] label{display:flex;flex-direction:column;gap:3px}[data-ff-combat-corrections] input{width:90px;max-width:100%;color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;padding:4px}[data-ff-combat-corrections] select{display:block;max-width:100%;color:inherit;background:hsl(var(--card,0 0% 12%));margin:6px 0}[data-ff-combat-corrections] button{color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;min-height:28px;padding:3px 6px;margin-right:3px}[data-ff-combat-corrections] button:disabled{opacity:.5}[data-ff-pending-corrections] .ff-pending-correction-label{min-height:2.4em;display:flex;align-items:end}[data-ff-pending-corrections] .ff-correction-row{align-items:end}[data-ff-pending-corrections] select{margin:0;min-height:28px}`;
+  const style = document.createElement('style'); style.setAttribute('data-ff-combat-corrections-style', ''); style.textContent = `[data-ff-combat-corrections]{margin:8px 0;padding:8px;border:1px solid hsl(var(--border));border-radius:6px;font-size:12px;color:hsl(var(--foreground));overflow-wrap:anywhere}[data-ff-combat-corrections] p{margin:6px 0}[data-ff-combat-corrections] summary{cursor:pointer;box-sizing:border-box;padding:6px 8px;min-height:32px;width:100%;border-radius:4px} [data-ff-combat-corrections] summary:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}[data-ff-combat-corrections] .ff-correction-row{display:flex;flex-wrap:wrap;align-items:end;gap:4px;margin:6px 0}[data-ff-combat-corrections] label{display:flex;flex-direction:column;gap:3px}[data-ff-combat-corrections] input{width:90px;max-width:100%;color:hsl(var(--foreground));background:hsl(var(--background));border:1px solid hsl(var(--input));border-radius:4px;padding:4px}[data-ff-combat-corrections] select{display:block;max-width:100%;color:hsl(var(--foreground));background:hsl(var(--background));border:1px solid hsl(var(--input));border-radius:4px;margin:6px 0}[data-ff-combat-corrections] button{color:hsl(var(--primary-foreground));background:linear-gradient(to bottom,hsl(var(--primary)),hsl(var(--primary-focus,var(--primary))));border:1px solid hsl(var(--primary-focus,var(--primary)));border-radius:4px;min-height:28px;padding:3px 6px;margin-right:3px}[data-ff-combat-corrections] button:disabled{opacity:.5}[data-ff-combat-corrections] [hidden]{display:none!important}[data-ff-combat-corrections] button:hover:not(:disabled){filter:brightness(1.1)}[data-ff-combat-corrections] :is(input,select,button):focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px}[data-ff-pending-corrections] .ff-pending-correction-label{min-height:2.4em;display:flex;align-items:end}[data-ff-pending-corrections] .ff-correction-row{align-items:end}[data-ff-pending-corrections] select{margin:0;min-height:28px}`;
   document.head.append(style);
   function translate(): void {
     summary.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections';
@@ -110,7 +110,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   }
   // The selected-action cards have no native numeric inputs. Bind only the
   // captured field-array wrapper and its own FormProvider, never item data.
-  type NativeAttack = { id?: string; name?: string; image?: string; type?: string; requires_attack_roll?: boolean; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
+  type NativeAttack = { id?: string; name?: string; image?: string; type?: string; requires_attack_roll?: boolean; attack_roll_type?: string; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
   type NativeMethods = { control: unknown; getFieldState?(name: string): { isDirty?: boolean; isTouched?: boolean }; getValues(name: string): unknown; setValue(name: string, value: string | number, options: { shouldDirty: boolean; shouldValidate: boolean }): void };
   type NativeProps = { attack?: NativeAttack; usersCharacter?: Record<string, unknown>; children?: unknown; control?: unknown; name?: string; value?: NativeMethods; getValues?: NativeMethods['getValues']; setValue?: NativeMethods['setValue']; showDropdown?: boolean; onEdit?: unknown };
   type Fiber = { memoizedProps?: NativeProps; return?: Fiber; alternate?: Fiber; key?: string; stateNode?: { current?: Fiber } };
@@ -149,6 +149,8 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   const pendingWritable = (card: HTMLElement, current: Binding): boolean => !current.submit.disabled && !current.submit.matches(':disabled') && !card.closest('[aria-disabled="true"],[hidden],[aria-hidden="true"]') && card.getClientRects().length > 0 && getComputedStyle(card).visibility === 'visible';
   const pendingNumber = (value: unknown, id: typeof ids[number]): number | null => { const result = number(value); return result !== null && result >= (id === 'modifier_value' ? -10 : 0) && result <= 10 ? result : null; };
   type AttackDefault = { character: string; catalog: string; type: string; ability: string; modifier_value: number; proficiency_bonus: number };
+  type CategoryDefault = Omit<AttackDefault, 'catalog'>;
+  const category = (type: string): 'weapon' | 'spell' => type === 'spell' ? 'spell' : 'weapon';
   type RowState = { consumed: boolean; edited: boolean; initial: string };
   const rows = new WeakMap<object, Map<string, RowState>>();
   const defaultKey = (): string => `ff-desktop-attack-defaults-v1:${campaign}`;
@@ -193,20 +195,30 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     if (matches.length !== 1 || matches[0][1].image !== image) return null;
     return { character, catalog: matches[0][0], type: attack.type! };
   }
-  function readDefaults(): { entries: AttackDefault[]; valid: boolean; available: boolean } {
+  function readDefaults(): { entries: AttackDefault[]; defaults: CategoryDefault[]; valid: boolean; available: boolean } {
+    const invalid = (available: boolean) => ({ entries: [], defaults: [], valid: false, available });
     try {
       const raw = localStorage.getItem(defaultKey());
-      if (raw === null) return { entries: [], valid: true, available: true };
-      if (raw.length > 32768) return { entries: [], valid: false, available: true };
-      const data = JSON.parse(raw), entries: AttackDefault[] = [], seen = new Set<string>();
-      if (data?.version !== 1 || !Array.isArray(data.entries) || data.entries.length > 100) return { entries, valid: false, available: true };
+      if (raw === null) return { entries: [], defaults: [], valid: true, available: true };
+      if (raw.length > 32768) return invalid(true);
+      const data = JSON.parse(raw), entries: AttackDefault[] = [], defaults: CategoryDefault[] = [], seen = new Set<string>();
+      if (![1, 2].includes(data?.version) || !Array.isArray(data.entries) || data.entries.length > 100
+        || data.version === 2 && (!Array.isArray(data.defaults) || data.defaults.length + data.entries.length > 100)) return invalid(true);
+      // Retain v1 melee/ranged records exactly. New writes use a weapon-wide
+      // override; this avoids losing distinct legacy values during migration.
       for (const value of data.entries) {
-        if (!defaultValues(value) || !storedId(value.character) || !storedId(value.catalog) || !['melee', 'ranged', 'spell'].includes(value.type)) return { entries: [], valid: false, available: true };
-        const id = identityKey(value); if (seen.has(id)) return { entries: [], valid: false, available: true }; seen.add(id);
+        if (!defaultValues(value) || !storedId(value.character) || !storedId(value.catalog)
+          || !(data.version === 1 ? ['melee', 'ranged', 'spell'] : ['weapon', 'melee', 'ranged', 'spell']).includes(value.type)) return invalid(true);
+        const id = identityKey(value); if (seen.has(id)) return invalid(true); seen.add(id);
         entries.push({ character: value.character, catalog: value.catalog, type: value.type, ability: value.ability, modifier_value: value.modifier_value, proficiency_bonus: value.proficiency_bonus });
       }
-      return { entries, valid: true, available: true };
-    } catch { return { entries: [], valid: false, available: false }; }
+      for (const value of data.version === 2 ? data.defaults : []) {
+        if (!defaultValues(value) || !storedId(value.character) || !['weapon', 'spell'].includes(value.type)) return invalid(true);
+        const id = JSON.stringify([value.character, value.type]); if (seen.has(id)) return invalid(true); seen.add(id);
+        defaults.push({ character: value.character, type: value.type, ability: value.ability, modifier_value: value.modifier_value, proficiency_bonus: value.proficiency_bonus });
+      }
+      return { entries, defaults, valid: true, available: true };
+    } catch { return invalid(false); }
   }
   function rowState(current: Binding): RowState | null {
     const control = current.methods.control;
@@ -263,28 +275,54 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
       try { current.methods.setValue(`attacks.${current.index}.modifier_stat`, stat, { shouldDirty: true, shouldValidate: true }); current.methods.setValue(`attacks.${current.index}.modifier_value`, modifier, { shouldDirty: true, shouldValidate: true }); refresh(true); say(true); } catch { say(false); }
     });
     const feedback = (en: string, ru: string): void => { pendingStatus.textContent = language === 'ru' ? ru : en; };
-    function persistDefault(clear: boolean): void {
+    function persistDefault(action: 'here' | 'delete' | 'general' | 'overwrite'): void {
       const current = native(), identity = current && attackIdentity(current), stored = readDefaults();
-      if (!current || !identity || !clear && (!pendingWritable(card, current) || !defaultValues({ ability: current.attack.modifier_stat, ...current.attack }))) { feedback('A unique catalog attack and valid values are required.', 'Нужны однозначная запись атаки и корректные значения.'); return; }
+      const character = current && stableId(current.character.id), kind = current && category(current.attack.type!);
+      const clear = action === 'delete';
+      if (!current || !character || !kind || (action === 'here' || clear) && !identity
+        || !clear && (!pendingWritable(card, current) || !defaultValues({ ability: current.attack.modifier_stat, ...current.attack }))) {
+        feedback('A valid attack identity and values are required.', 'Нужны корректная атака и значения.'); return;
+      }
       if (!stored.available || !stored.valid) { feedback('Local storage is unavailable or invalid. Nothing was saved.', 'Локальное хранилище недоступно или повреждено. Ничего не сохранено.'); return; }
-      const next = stored.entries.filter(value => identityKey(value) !== identityKey(identity));
-      if (!clear) next.push({ ...identity, ability: current.attack.modifier_stat!, modifier_value: current.attack.modifier_value!, proficiency_bonus: current.attack.proficiency_bonus! });
-      const serialized = JSON.stringify({ version: 1, entries: next });
-      if (next.length > 100 || serialized.length > 32768) { feedback('Saved defaults are full. Clear an unused default first.', 'Хранилище заполнено. Сначала удалите ненужную настройку.'); return; }
-      try { localStorage.setItem(defaultKey(), serialized); const state = rowState(current); if (state) state.consumed = true; feedback(clear ? 'Saved default cleared. Current form unchanged.' : 'Saved for this character in this campaign. Applies to future matching attacks.', clear ? 'Настройка удалена. Текущая форма не изменена.' : 'Сохранено для этого персонажа в кампании. Применится к следующим таким атакам.'); }
-      catch { feedback('Local storage is unavailable. Nothing was saved.', 'Локальное хранилище недоступно. Ничего не сохранено.'); }
+      let next = stored.entries.slice(), defaults = stored.defaults.slice();
+      const sameCategory = (value: AttackDefault): boolean => value.character === character && category(value.type) === kind;
+      const values = { ability: current.attack.modifier_stat!, modifier_value: current.attack.modifier_value!, proficiency_bonus: current.attack.proficiency_bonus! };
+      if (action === 'here' || clear) {
+        next = next.filter(value => !(sameCategory(value) && value.catalog === identity!.catalog));
+        if (!clear) next.push({ character, catalog: identity!.catalog, type: kind, ...values });
+      } else {
+        defaults = defaults.filter(value => value.character !== character || value.type !== kind);
+        defaults.push({ character, type: kind, ...values });
+        if (action === 'overwrite') next = next.filter(value => !sameCategory(value));
+      }
+      const serialized = JSON.stringify({ version: 2, entries: next, defaults });
+      if (next.length + defaults.length > 100 || serialized.length > 32768) { feedback('Saved defaults are full. Clear an unused override first.', 'Хранилище заполнено. Сначала удалите ненужную настройку.'); return; }
+      try {
+        // One atomic replacement migrates validated v1 and preserves every
+        // unrelated scope. The old record remains intact on write failure.
+        localStorage.setItem(defaultKey(), serialized);
+        rowState(current);
+        if (current.methods.control && typeof current.methods.control === 'object') for (const state of rows.get(current.methods.control)?.values() ?? []) state.consumed = true;
+        if (clear) feedback('Attack override removed. Future attacks use the category default. Current form unchanged.', 'Настройка атаки удалена. Следующие атаки используют общую настройку. Текущая форма не изменена.');
+        else if (action === 'here') feedback('Attack override saved for this character and campaign.', 'Настройка этой атаки сохранена для персонажа в кампании.');
+        else feedback(action === 'overwrite' ? 'Category default saved; this category’s attack overrides removed.' : 'Category default saved for future attacks without overrides.', action === 'overwrite' ? 'Общая настройка сохранена; индивидуальные настройки этой категории удалены.' : 'Общая настройка сохранена для следующих атак без индивидуальных настроек.');
+      } catch { feedback('Local storage is unavailable. Nothing was saved.', 'Локальное хранилище недоступно. Ничего не сохранено.'); }
     }
-    const saveDefault = button('save-default', () => persistDefault(false)), clearDefault = button('clear-default', () => persistDefault(true));
+    const saveHere = button('save-here', () => persistDefault('here')), clearDefault = button('clear-default', () => persistDefault('delete'));
+    const saveDefault = button('save-default', () => persistDefault('general')), overwriteAll = button('overwrite-all', () => persistDefault('overwrite'));
     function autoDefault(current: Binding): void {
       const state = rowState(current); if (!state || state.consumed) return;
       if (state.edited || rowValues(current) !== state.initial) { state.consumed = true; return; }
       const identity = attackIdentity(current), stored = readDefaults();
       if (!identity || !stored.valid || !stored.available) { state.consumed = true; return; }
-      const saved = stored.entries.find(value => identityKey(value) === identityKey(identity));
+      const kind = category(identity.type);
+      const saved = stored.entries.find(value => value.character === identity.character && value.catalog === identity.catalog && value.type === kind)
+        ?? stored.entries.find(value => identityKey(value) === identityKey(identity))
+        ?? stored.defaults.find(value => value.character === identity.character && value.type === kind);
       if (!saved) { state.consumed = true; return; }
       try {
         if (typeof current.methods.getFieldState !== 'function') { state.consumed = true; return; }
-        for (const leaf of ['modifier_stat', ...ids]) { const field = current.methods.getFieldState(`attacks.${current.index}.${leaf}`); if (field?.isDirty !== false || field.isTouched !== false) { state.consumed = true; return; } }
+        for (const leaf of ['modifier_stat', ...ids, ...(['normal', 'advantage', 'disadvantage'].includes(current.attack.attack_roll_type ?? '') ? ['attack_roll_type'] : [])]) { const field = current.methods.getFieldState(`attacks.${current.index}.${leaf}`); if (field?.isDirty !== false || field.isTouched !== false) { state.consumed = true; return; } }
         if (!pendingWritable(card, current)) return;
         state.consumed = true;
         current.methods.setValue(`attacks.${current.index}.modifier_stat`, saved.ability, { shouldDirty: true, shouldValidate: true });
@@ -292,17 +330,35 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
         feedback('Saved attack default applied.', 'Сохранённая настройка атаки применена.');
       } catch { state.consumed = true; feedback('Saved default could not be applied.', 'Не удалось применить сохранённую настройку.'); }
     }
-    node.append(saveDefault, clearDefault, total, pendingStatus);
+    const rollModes = ['normal', 'advantage', 'disadvantage'];
+    const modeLabel = document.createElement('label'), modeText = document.createElement('span'), rollMode = document.createElement('select');
+    rollMode.setAttribute('data-ff-correction-roll-mode', ''); modeLabel.append(modeText, rollMode);
+    for (const value of rollModes) { const option = document.createElement('option'); option.value = value; rollMode.append(option); }
+    rollMode.addEventListener('change', () => {
+      const current = native(), value = rollMode.value;
+      if (!current || !pendingWritable(card, current) || !rollModes.includes(current.attack.attack_roll_type ?? '')
+        || !rollModes.includes(current.snapshot.attack_roll_type ?? '') || !rollModes.includes(value)) { say(false); return; }
+      const state = rowState(current); if (state) state.edited = true;
+      try { current.methods.setValue(`attacks.${current.index}.attack_roll_type`, value, { shouldDirty: true, shouldValidate: true }); refresh(); say(true); } catch { say(false); }
+    });
+    node.append(modeLabel);
+    node.append(saveHere, clearDefault, saveDefault, overwriteAll, total, pendingStatus);
     node.addEventListener('click', event => event.stopPropagation());
     node.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
     const last: unknown[] = [];
     function refresh(force = false): void {
       const current = native(); if (current) autoDefault(current);
       const disabled = !current || !pendingWritable(card, current);
-      saveDefault.textContent = language === 'ru' ? 'Сохранить по умолчанию' : 'Save default'; clearDefault.textContent = language === 'ru' ? 'Удалить настройку' : 'Clear default';
-      const identity = current && attackIdentity(current); saveDefault.disabled = disabled || !identity; clearDefault.disabled = !identity;
+      saveHere.textContent = language === 'ru' ? 'Сохранить здесь' : 'Save here'; clearDefault.textContent = language === 'ru' ? 'Удалить настройку' : 'Delete here';
+      saveDefault.textContent = language === 'ru' ? 'Сохранить по умолчанию' : 'Save default'; overwriteAll.textContent = language === 'ru' ? 'Перезаписать всё' : 'Overwrite all';
+      const identity = current && attackIdentity(current); saveHere.disabled = disabled || !identity; clearDefault.disabled = !identity; saveDefault.disabled = overwriteAll.disabled = disabled || !current || !stableId(current.character.id);
+      modeLabel.hidden = !current || !rollModes.includes(current.attack.attack_roll_type ?? '') || !rollModes.includes(current.snapshot.attack_roll_type ?? '');
+      rollMode.disabled = disabled || modeLabel.hidden; modeText.textContent = language === 'ru' ? 'Тип броска' : 'Roll mode';
+      Array.from(rollMode.options).forEach((option, i) => option.textContent = language === 'ru' ? ['Обычный', 'Преимущество', 'Помеха'][i] : ['Normal', 'Advantage', 'Disadvantage'][i]);
+      if (current && !modeLabel.hidden) rollMode.value = current.attack.attack_roll_type!;
       title.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections'; abilityText.textContent = language === 'ru' ? 'Характеристика' : 'Ability'; empty.textContent = '—';
       texts.forEach((text, i) => text.textContent = language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус умения') : (i === 0 ? 'Modifier' : 'Proficiency bonus')); applyButtons.forEach(b => b.textContent = language === 'ru' ? 'Применить' : 'Apply');
+      Array.from(ability.options).slice(1).forEach((option, i) => option.textContent = language === 'ru' ? ['СИЛ — Сила', 'ЛОВ — Ловкость', 'ТЕЛ — Телосложение', 'ИНТ — Интеллект', 'МДР — Мудрость', 'ХАР — Харизма'][i] : ['STR — Strength', 'DEX — Dexterity', 'CON — Constitution', 'INT — Intelligence', 'WIS — Wisdom', 'CHA — Charisma'][i]);
       ability.disabled = disabled; if (current && (force || document.activeElement !== ability)) ability.value = current.attack.modifier_stat ?? '';
       inputs.forEach((edit, i) => { edit.disabled = disabled; const value = current?.attack[ids[i]]; if (force || last[i] !== value && document.activeElement !== edit) edit.value = value === undefined ? '' : String(value); last[i] = value; }); buttons.forEach(b => b.disabled = disabled);
       for (const quick of node.querySelectorAll<HTMLButtonElement>('[data-ff-correction-delta]')) {
