@@ -43,7 +43,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   let pinned = read(), draft = new Set(pinned);
   const owned = document.createElement('section'); owned.dataset.ffCombatShortcuts = ''; owned.dataset.ffDiceNavigation = ''; owned.dataset.ffTranslationIgnore = 'true';
   const favorites = document.createElement('section'); favorites.dataset.ffDiceFavorites = ''; favorites.dataset.ffTranslationIgnore = 'true';
-  const tiles = document.createElement('div'); tiles.dataset.ffDiceFavoriteTiles = '';
+  const tiles = document.createElement('div'); tiles.dataset.ffDiceFavoriteTiles = ''; tiles.className = 'flex-1 w-full overflow-y-auto p-4 space-y-6';
   type FavoriteGroup = { section: HTMLElement; heading: HTMLHeadingElement; tiles: HTMLDivElement };
   const favoriteGroups = new Map<Item['group'], FavoriteGroup>();
   const groupLabels: Record<Item['group'], { en: string; ru: string }> = {
@@ -76,10 +76,10 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     [data-ff-dice-navigation] svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
     [data-ff-dice-selection-confirm]{display:grid;place-items:center;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;}
     [data-ff-dice-selection-confirm] svg{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
-    [data-ff-dice-favorites]{padding:8px;min-width:0;box-sizing:border-box;}
-    [data-ff-dice-favorite-tiles]{display:flex;flex-direction:column;gap:10px;min-width:0;}
+    [data-ff-dice-favorites]{padding:12px;min-width:0;box-sizing:border-box;}
+    [data-ff-dice-favorite-tiles]{display:flex;flex-direction:column;gap:24px;padding:8px;min-width:0;box-sizing:border-box;}
     [data-ff-dice-favorite-group]{min-width:0;}
-    [data-ff-dice-favorite-group]>h3{margin:0 0 6px;font-size:.875em;font-weight:600;text-transform:uppercase;color:hsl(var(--primary,45 80% 60%));}
+    [data-ff-dice-favorite-group]>h3{margin:0;}
     [data-ff-dice-favorite-group-tiles]{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px;min-width:0;}
     [data-ff-dice-favorite-group-tiles]>button{box-sizing:border-box;width:100%;min-width:0;max-width:100%;font:inherit;color:inherit;}
     [data-ff-dice-add]{display:block;margin:12px auto 0;}
@@ -182,7 +182,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     for (const item of selectedItems) {
       let group = favoriteGroups.get(item.group);
       if (!group) {
-        const section = document.createElement('section'); section.dataset.ffDiceFavoriteGroup = item.group;
+        const section = document.createElement('section'); section.dataset.ffDiceFavoriteGroup = item.group; section.className = 'space-y-3';
         const heading = document.createElement('h3'), groupTiles = document.createElement('div'); groupTiles.dataset.ffDiceFavoriteGroupTiles = '';
         section.append(heading, groupTiles); group = { section, heading, tiles: groupTiles }; favoriteGroups.set(item.group, group);
       }
@@ -198,6 +198,11 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     for (const item of selectedItems) {
       const native = options.get(item);
       const group = favoriteGroups.get(item.group)!;
+      const nativeGroup = native?.parentElement?.parentElement;
+      const nativeHeading = nativeGroup?.firstElementChild;
+      const nativeGrid = native?.parentElement;
+      if (nativeHeading instanceof HTMLHeadingElement) group.heading.className = nativeHeading.className;
+      if (nativeGrid instanceof HTMLElement) group.tiles.className = nativeGrid.className;
       let tile = favoriteButtons.get(item.id);
       if (!tile) {
         tile = button('data-ff-dice-favorite-tile', () => {
