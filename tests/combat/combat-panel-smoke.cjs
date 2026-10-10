@@ -38,7 +38,7 @@ window.permissionProps={campaignId:'fixture',encounterId:412456,isMultiplayerCam
 const permissionFiber={type:function NativeMoreActions(){},memoizedProps:permissionProps};
 const actionOwner={type:function NativeComposer(){},memoizedProps:{},child:permissionFiber};
 document.getElementById('actions').__reactFiberFixture={type:'button',return:actionOwner};
-let modalState={modalStack:[],openModal:modal=>{modalState={...modalState,modalStack:[...modalState.modalStack,modal]}},closeModalAtIndex:index=>{modalState={...modalState,modalStack:modalState.modalStack.filter((_,i)=>i!==index)}};
+let modalState={modalStack:[],openModal:modal=>{modalState={...modalState,modalStack:[...modalState.modalStack,modal]}},closeModalAtIndex:index=>{modalState={...modalState,modalStack:modalState.modalStack.filter((_,i)=>i!==index)}}};
 window.storeWrites=0;window.nativeBusy=false;window.renderModal=null;
 function useModalStore(){};useModalStore.getState=()=>modalState;useModalStore.setState=next=>{window.storeWrites++;modalState={...modalState,...next};window.renderModal?.()};
 window.nativeModuleCache={nativeStore:{exports:{useModalStore}}};window.nativeFactories=new Map();
@@ -86,6 +86,9 @@ window.openNative=(diceMode=false)=>{
 };
 document.getElementById('actions').onclick=()=>openNative();document.querySelector('[aria-label=\"Roll dice\"]').onclick=()=>openNative(true);
 </script>`;
+// node --check cannot parse JavaScript inside an HTML template. Validate it
+// before creating any window so a fixture typo cannot mimic a product failure.
+new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 (async () => {
  await app.whenReady();
  const site=session.fromPartition('combat-fixture');site.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
