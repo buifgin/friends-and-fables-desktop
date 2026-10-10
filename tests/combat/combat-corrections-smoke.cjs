@@ -18,6 +18,26 @@ window.mount=()=>{
  }
  native.form.addEventListener('submit',event=>{event.preventDefault();submits.push({...state,description:native.description.value})});
 };mount();
+// Captured ExecuteActionsForm: FormProvider props, keyed field-array wrapper,
+// AttackCard props and sibling FormField(control, name=attacks.N.targets).
+window.mountPending=()=>{
+ const dock=document.querySelector('section');dock.innerHTML='<form id="pending-form"><div id="pending-list" style="height:180px;overflow:auto"></div><textarea name="message">pending message</textarea><button type="submit">Submit Actions</button></form>';
+ const form=dock.querySelector('form'),list=document.querySelector('#pending-list');
+ window.pendingValues={attacks:[{name:'Vicious Weapon',type:'melee',requires_attack_roll:true,modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,description:'weapon description',targets:[{id:1,name:'Wolf',ac:12}],damage_rolls:[{dice_count:1,dice_size:8,fixed_damage_bonus:0}]},{name:'Spell Attack',type:'spell',requires_attack_roll:true,modifier_stat:'intelligence',modifier_value:2,proficiency_bonus:3,spell_id:4,targets:[{id:2}],damage_rolls:[]},{name:'Save spell',type:'spell',requires_attack_roll:false,targets:[],damage_rolls:[]}],message:'pending message'};
+ window.pendingWrites=[];window.pendingSubmits=0;window.pendingControl={};
+ window.pendingMethods={control:pendingControl,getValues(name){return name?name.split('.').reduce((v,k)=>v?.[k],pendingValues):pendingValues},setValue(name,value,options){pendingWrites.push({name,value,options});const keys=name.split('.'),leaf=keys.pop();keys.reduce((v,k)=>v[k],pendingValues)[leaf]=value}};
+ const provider={memoizedProps:pendingMethods,return:null};
+ window.pendingCards=[];
+ pendingValues.attacks.forEach((attack,index)=>{
+  const wrapper=document.createElement('div'),card=document.createElement('div'),target=document.createElement('button');card.className='rounded-lg border bg-card clickable';card.textContent=attack.name;target.type='button';target.setAttribute('role','checkbox');target.setAttribute('aria-checked','true');target.textContent='Wolf';wrapper.append(card,target);list.append(wrapper);
+  const fieldAttack={...attack,id:'native-field-'+index};
+  const props={attack:fieldAttack,usersCharacter:{strength:10,dexterity:14,constitution:12,intelligence:14,wisdom:10,charisma:8,adjusted_stats:{dexterity:{adjusted:16}}},showDropdown:true,onClick(){throw Error('Full editor must not open')},onEdit(){throw Error('Field array must not update')}};
+  const wrapperFiber={key:fieldAttack.id,memoizedProps:{children:[{props},{props:{control:pendingControl,name:'attacks.'+index+'.targets'}}]},return:{memoizedProps:{},return:provider}};
+  card.__reactFiber$fixture={memoizedProps:{className:card.className},return:{memoizedProps:props,return:wrapperFiber}};
+  pendingCards.push({card,target,wrapper,fieldAttack});
+ });
+ window.pendingNative={form,message:form.querySelector('textarea'),list,cards:pendingCards.slice()};form.addEventListener('submit',event=>{event.preventDefault();pendingSubmits++});
+};
 </script>`;
 for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
 const output = require('esbuild').transformSync(fs.readFileSync(path.join(fixtureRoot, 'src/combat/combat-corrections.ts'), 'utf8'), { loader: 'ts', target: 'es2022', format: 'cjs' });
@@ -104,5 +124,31 @@ app.on('window-all-closed', () => {});
  await mutate("history.pushState({},'', '/campaign-two/play');dispatchEvent(new PopStateEvent('popstate'))"); await until("!!document.querySelector('[data-ff-combat-corrections]')");
  await configure(false); assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null); assert.equal(await js("document.querySelector('[data-ff-combat-corrections-style]')"),null); assert.equal(await js("document.querySelector('[data-ff-combat-corrections]')"),null); assert.equal(await identity(),true);
  assert.equal(await js('submits.length'),1); assert.ok(await js('changes>0&&inputs>0'));
+ await configure(false); await mutate('mountPending()');
+ const pendingIdentity=()=>js("pendingNative.form===document.querySelector('#pending-form')&&pendingNative.message===document.querySelector('textarea')&&pendingNative.message.value==='pending message'&&pendingNative.cards.every(x=>x.card.isConnected&&x.target.isConnected&&x.target.getAttribute('aria-checked')==='true')");
+ await configure(); await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
+ await mutate("pendingNative.list.scrollTop=12;window.pendingScroll=pendingNative.list.scrollTop");
+ assert.equal(await pendingIdentity(),true);
+ assert.equal(await js('pendingWrites.length'),0,'Discovery must never change native values.');
+ const weapon='[data-ff-pending-corrections="0"]',spell='[data-ff-pending-corrections="1"]';
+ await click(weapon+' summary');
+ await set(weapon+' [data-ff-correction-value=modifier_value]','4');await click(weapon+' [data-ff-correction-apply-modifier_value]');
+ assert.equal(await js('pendingValues.attacks[0].modifier_value'),4,'Actual RHF pending value changes.');
+ assert.equal(await js('pendingCards[0].fieldAttack.modifier_value'),0,'Native field-array snapshot is never counterfeited.');
+ assert.equal(await js('pendingNative.list.scrollTop===pendingScroll'),true,'Correction preserves native scroll.');
+ await set(weapon+' [data-ff-correction-ability]','dexterity');await mutate("document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-ability]').dispatchEvent(new Event('change',{bubbles:true}))");
+ assert.equal(await js('pendingValues.attacks[0].modifier_stat'),'dexterity');assert.equal(await js('pendingValues.attacks[0].modifier_value'),3,'Ability uses native adjusted character stat.');
+ await click(spell+' summary'); await click(spell+' [data-ff-correction-proficiency_bonus-plus]');assert.equal(await js('pendingValues.attacks[1].proficiency_bonus'),4,'Spell uses its own exact array index.');
+ for(const value of ['11','-11','1e1']){await set(weapon+' [data-ff-correction-value=modifier_value]',value);await click(weapon+' [data-ff-correction-apply-modifier_value]');}
+ assert.equal(await js('pendingValues.attacks[0].modifier_value'),3,'Native bounds and decimal input rules enforced.');
+ await set(spell+' [data-ff-correction-value=proficiency_bonus]','-1');await click(spell+' [data-ff-correction-apply-proficiency_bonus]');assert.equal(await js('pendingValues.attacks[1].proficiency_bonus'),4);
+ assert.equal(await js("pendingWrites.every(x=>/^attacks\\.[01]\\.(modifier_stat|modifier_value|proficiency_bonus)$/.test(x.name)&&x.options.shouldDirty===true&&x.options.shouldValidate===true)"),true,'Only permitted native leaves are written with validation.');
+ assert.deepEqual(await js('pendingValues.attacks[0].targets'),[{id:1,name:'Wolf',ac:12}]);assert.deepEqual(await js('pendingValues.attacks[0].damage_rolls'),[{dice_count:1,dice_size:8,fixed_damage_bonus:0}]);
+ assert.equal(await js("pendingValues.message==='pending message'&&pendingValues.attacks[0].description==='weapon description'"),true);
+ await mutate("document.querySelector('#pending-form button[type=submit]').disabled=true");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");await click(weapon+' [data-ff-correction-modifier_value-plus]');assert.equal(await js('pendingValues.attacks[0].modifier_value'),3,'Current native turn/submitting restriction respected.');
+ await mutate("document.querySelector('#pending-form button[type=submit]').disabled=false");await until("!document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");
+ await configure(true,'ru');assert.equal(await js("document.querySelector('[data-ff-pending-corrections] summary').textContent"),'Поправки к броску');assert.equal(await pendingIdentity(),true);assert.equal(await js('pendingSubmits'),0);
+ await mutate('pendingCards[0].wrapper.remove()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===1");
+ await configure(false);assert.equal(await js("document.querySelector('[data-ff-pending-corrections]')"),null);assert.equal(await js('pendingSubmits'),0);
  console.log('Combat corrections fixture PASS'); window.destroy(); clearTimeout(timer); app.exit(0);
 })().catch(error=>{console.error(error);window?.destroy();clearTimeout(timer);app.exit(1)});
