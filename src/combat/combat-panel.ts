@@ -277,13 +277,13 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     let fiber = Object.entries(node).find(([name]) => name.startsWith('__reactFiber'))?.[1] as Fiber | undefined;
     if (!fiber) return null;
     let root = fiber;
-    for (let depth = 0; root.return && depth < 100; depth++) root = root.return;
+    for (let depth = 0; root.return && depth < 256; depth++) root = root.return;
     if (root.return) return null;
     if (root.stateNode?.current && root.stateNode.current !== root) {
       fiber = fiber.alternate;
       if (!fiber) return null;
       root = fiber;
-      for (let depth = 0; root.return && depth < 100; depth++) root = root.return;
+      for (let depth = 0; root.return && depth < 256; depth++) root = root.return;
       if (root.return || root.stateNode?.current && root.stateNode.current !== root) return null;
     }
     return fiber;
