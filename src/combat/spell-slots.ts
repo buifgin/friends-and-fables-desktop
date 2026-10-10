@@ -180,9 +180,16 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
       if (!r.mutation?.getCurrentResult?.().isPending) finish();
       return;
     }
-    const candidates = Array.from(r.dialog.querySelectorAll<HTMLElement>('button.rounded-full')).map(binding).filter((b): b is Binding => !!b && b.character === r.b.character && b.level === r.b.level && b.index === r.b.index);
+    const levelSlots = Array.from(r.dialog.querySelectorAll<HTMLElement>('button.rounded-full')).map(binding).filter((b): b is Binding => !!b && b.character === r.b.character && b.level === r.b.level);
+    const candidates = levelSlots.filter(b => b.index === r.b.index);
     const b = candidates.length === 1 ? candidates[0] : undefined;
-    if (!b) return;
+    if (!b) {
+      // A ready native query proves the rendered level's bounds. If those differ
+      // from the clicked sidebar row, its absent index cannot become a safe action.
+      // Unresolved/loading levels still retain the bounded mount deadline.
+      if (levelSlots.some(slot => slot.max !== r.b.max && ready(slot))) finish();
+      return;
+    }
     const original = binding(r.b.node);
     if (!original || original.character !== r.b.character || original.level !== r.b.level || original.index !== r.b.index || original.available !== r.b.available || b.max !== r.b.max || b.available !== r.b.available || !ready(b) || props(b.node)?.disabled || typeof props(b.node)?.onClick !== 'function') { finish(); return; }
     r.mutation = observers(b.owner).find(value => value.options?.mutationFn && /maxSlots/.test(String(value.options.mutationFn)) && /usedSlots/.test(String(value.options.mutationFn)));
