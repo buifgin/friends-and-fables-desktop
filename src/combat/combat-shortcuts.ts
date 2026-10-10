@@ -79,7 +79,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     [data-ff-dice-favorites]{padding:8px;min-width:0;box-sizing:border-box;}
     [data-ff-dice-favorite-tiles]{display:flex;flex-direction:column;gap:10px;min-width:0;}
     [data-ff-dice-favorite-group]{min-width:0;}
-    [data-ff-dice-favorite-group]>h3{margin:0 0 6px;font-size:.875em;font-weight:600;}
+    [data-ff-dice-favorite-group]>h3{margin:0 0 6px;font-size:.875em;font-weight:600;text-transform:uppercase;color:hsl(var(--primary,45 80% 60%));}
     [data-ff-dice-favorite-group-tiles]{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px;min-width:0;}
     [data-ff-dice-favorite-group-tiles]>button{box-sizing:border-box;width:100%;min-width:0;max-width:100%;font:inherit;color:inherit;}
     [data-ff-dice-add]{display:block;margin:12px auto 0;}
@@ -173,6 +173,12 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     const selectedItems = items.filter(item => selected.has(item.id));
     const presentGroups = new Set(selectedItems.map(item => item.group));
     for (const [name, group] of favoriteGroups) if (!presentGroups.has(name)) { group.section.remove(); favoriteGroups.delete(name); }
+    const groupIndexes = new Map<Item['group'], number>();
+    const itemIndexes = new Map<string, number>();
+    for (const item of selectedItems) {
+      const index = groupIndexes.get(item.group) ?? 0;
+      itemIndexes.set(item.id, index); groupIndexes.set(item.group, index + 1);
+    }
     for (const item of selectedItems) {
       let group = favoriteGroups.get(item.group);
       if (!group) {
@@ -180,9 +186,15 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
         const heading = document.createElement('h3'), groupTiles = document.createElement('div'); groupTiles.dataset.ffDiceFavoriteGroupTiles = '';
         section.append(heading, groupTiles); group = { section, heading, tiles: groupTiles }; favoriteGroups.set(item.group, group);
       }
-      group.heading.textContent = text(groupLabels[item.group].en, groupLabels[item.group].ru);
-      if (group.section.parentElement !== tiles) tiles.append(group.section);
+      const headingText = text(groupLabels[item.group].en, groupLabels[item.group].ru);
+      if (group.heading.textContent !== headingText) group.heading.textContent = headingText;
     }
+    const orderedGroups = (['check', 'skill', 'save'] as const).filter(name => presentGroups.has(name));
+    orderedGroups.forEach((name, index) => {
+      const section = favoriteGroups.get(name)!.section;
+      const currentAtIndex = tiles.children[index] ?? null;
+      if (currentAtIndex !== section) tiles.insertBefore(section, currentAtIndex);
+    });
     for (const item of selectedItems) {
       const native = options.get(item);
       const group = favoriteGroups.get(item.group)!;
@@ -216,7 +228,8 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
           for (const attribute of [...child.attributes]) if (attribute.name.startsWith('data-ff-')) child.removeAttribute(attribute.name); }
       }
       tile.disabled = !native || unavailable(native); tile.setAttribute('aria-disabled', String(tile.disabled));
-      if (tile.parentElement !== group.tiles) group.tiles.append(tile);
+      const currentAtIndex = group.tiles.children[itemIndexes.get(item.id)!] ?? null;
+      if (currentAtIndex !== tile) group.tiles.insertBefore(tile, currentAtIndex);
     }
     if (view === 'favorites') {
       // Hide the smallest common native list branch; never hide the dock/header/owned slot.

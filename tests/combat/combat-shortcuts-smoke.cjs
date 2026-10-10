@@ -80,6 +80,7 @@ const wait = async (contents, expression) => {
     { name: 'skill', title: 'Навыки', items: ['skill.acrobatics'] },
     { name: 'save', title: 'Спасброски', items: ['save.strength'] },
   ], 'Only populated favorites render, in native standard-dice category order.');
+  assert.equal(await run(`(()=>{const h=document.querySelector('[data-ff-dice-favorite-group] h3');return getComputedStyle(h).textTransform==='uppercase'&&getComputedStyle(h).color!=='rgb(255, 255, 255)'})()`), true, 'Favorite group headings use the standard gold-accent heading treatment.');
   for (const width of [390, 280]) {
     const geometry = await run(`(()=>{const dock=document.querySelector('[data-ff-combat-docked]'),tiles=document.querySelector('[data-ff-dice-favorite-group="check"] [data-ff-dice-favorite-group-tiles]');dock.style.width='${width}px';const box=tiles.getBoundingClientRect(),style=getComputedStyle(tiles),nodes=[...tiles.querySelectorAll('[data-ff-dice-favorite-tile]')],cards=nodes.map(node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,clipped:node.scrollWidth>node.clientWidth||node.scrollHeight>node.clientHeight}});return {columns:style.gridTemplateColumns.split(' ').length,overflow:dock.scrollWidth>dock.clientWidth,within:cards.every(r=>r.left>=box.left&&r.right<=box.right),sameRow:Math.abs(cards[0].top-cards[1].top)<1,clipped:cards.some(r=>r.clipped),cards}})()`);
     assert.equal(geometry.columns, width === 390 ? 2 : 1, `${width}px favorites use a compact responsive grid: ${JSON.stringify(geometry)}`);
@@ -111,6 +112,18 @@ const wait = async (contents, expression) => {
   assert.equal(await run(`(()=>{const b=document.querySelector('[data-ff-dice-selection-confirm]');return b.getAttribute('aria-label')==='Confirm'&&b.title==='Confirm'&&b.textContent.trim()===''&&!!b.querySelector('svg[aria-hidden="true"][focusable="false"]')})()`), true, 'English confirm keeps a localized accessible name and tooltip with decorative icon only.');
   await click('[data-ff-dice-selection-cancel]');
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile]').textContent`), 'Strength Check');
+  const savedPins = await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`);
+  await run(`window.__friendsFablesDesktopCombatShortcuts.dispose();localStorage.setItem('ff-desktop-combat-pins-v1:campaign','["save.strength"]');(${configureCombatShortcuts.toString()})(true,'en')`);
+  await wait(contents, `document.querySelectorAll('[data-ff-dice-favorite-group]').length===1`);
+  assert.deepEqual(await run(`[...document.querySelectorAll('[data-ff-dice-favorite-group]')].map(x=>x.dataset.ffDiceFavoriteGroup)`), ['save'], 'Save-only favorites render only the later group.');
+  await click('[data-ff-dice-add]'); await click('#dex-check input'); await click('[data-ff-dice-selection-confirm]');
+  assert.equal(await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '["ability.dexterity","save.strength"]', 'Adding an earlier check preserves the save.');
+  assert.deepEqual(await run(`[...document.querySelectorAll('[data-ff-dice-favorite-group]')].map(x=>x.dataset.ffDiceFavoriteGroup)`), ['check', 'save'], 'A newly added earlier category is inserted before the existing save group.');
+  await click('[data-ff-dice-add]'); await click('#check input'); await click('[data-ff-dice-selection-confirm]');
+  assert.deepEqual(await run(`[...document.querySelectorAll('[data-ff-dice-favorite-group="check"] [data-ff-dice-favorite-tile]')].map(x=>x.dataset.ffDiceFavoriteTile)`), ['ability.strength', 'ability.dexterity'], 'A newly added earlier check is inserted before the existing check tile.');
+  assert.equal(await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '["ability.strength","ability.dexterity","save.strength"]', 'The saved selection remains in canonical native item order.');
+  await run(`window.__friendsFablesDesktopCombatShortcuts.dispose();localStorage.setItem('ff-desktop-combat-pins-v1:campaign',${JSON.stringify(savedPins)});(${configureCombatShortcuts.toString()})(true,'en')`);
+  await wait(contents, `document.querySelectorAll('[data-ff-dice-favorite-tile]').length===4`);
   await run(`document.querySelector('#skill').setAttribute('aria-disabled','true')`);
   await wait(contents, `document.querySelector('[data-ff-dice-favorite-tile="skill.acrobatics"]').disabled`);
   await click('[data-ff-dice-favorite-tile="skill.acrobatics"]'); assert.equal(await run('window.selections'), 2);
