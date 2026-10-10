@@ -83,7 +83,12 @@ app.on('window-all-closed',()=>{});
  assert.deepEqual(await js('calls[3]'),{characterId:123,campaignId:'fixture',level:1,maxSlots:4,usedSlots:3});
  for(const override of [{viewOnly:true},{characterId:999},{campaignId:'other'},{pending:true},{max:2},{phase:'template'}]){
   await js('Object.assign(config,{characterId:123,campaignId:"fixture",phase:"campaign",viewOnly:false,pending:false,used:2,max:4},'+JSON.stringify(override)+');document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
-  await wait('!document.querySelector("[aria-busy=true]")');await js('document.querySelector("#book button")?.click()');await new Promise(r=>setTimeout(r,100));assert.equal(await js('calls.length'),4,JSON.stringify(override));
+  try { await wait('!document.querySelector("[aria-busy=true]")'); }
+  catch(error){error.message+=' guard='+JSON.stringify(override)+' state='+JSON.stringify(await js('({calls:calls.length,slots:document.querySelectorAll("#book button.rounded-full").length,dialog:!!document.querySelector("#book")})'));throw error}
+  assert.equal(await js('calls.length'),4,JSON.stringify(override));
+  assert.equal(await js('cacheInvalidations'),4,JSON.stringify(override));assert.equal(await js('toasts'),4,JSON.stringify(override));
+  if(override.max===2)assert.equal(await js('document.querySelector("#book")'),null,'ready native bounds mismatch refuses and closes owned book without waiting for mount deadline');
+  await js('document.querySelector("#book button")?.click()');await new Promise(r=>setTimeout(r,100));
  }
  await js('Object.assign(config,{characterId:123,campaignId:"fixture",phase:"campaign",viewOnly:false,pending:false,used:2,max:4});const existing=document.createElement("div");existing.setAttribute("role","dialog");existing.id="existing";document.body.append(existing);document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
  assert.equal(await js('calls.length'),4);assert.equal(await js('document.querySelector("#existing").isConnected'),true);
