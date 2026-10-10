@@ -625,7 +625,7 @@ export function combatPanelAppearanceCss(
     ) {
       background: transparent !important;
     }
-    ${surface} :is(button.group:has(> div > svg.lucide), [role="tab"], input, select, textarea, [role="combobox"]) {
+    ${surface} :is(button.group:has(> div > svg.lucide), [role="tab"]) {
       background: color-mix(in srgb, hsl(var(--card, 0 0% 12%)) 72%, transparent) !important;
       color: hsl(var(--foreground, 0 0% 96%)) !important;
       border-color: hsl(var(--border, 0 0% 50%)) !important;
