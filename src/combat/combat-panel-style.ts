@@ -602,9 +602,10 @@ export function combatPanelAppearanceCss(
       --ff-combat-tile-gap: ${bounded(settings.tileGap, 4, 24, 8)}px;
       --ff-combat-content-padding: ${bounded(settings.contentPadding, 8, 32, 20)}px;
     }
-    ${customizedSurface} :is([data-ff-dice-favorites], [data-ff-combat-body]:not(:has(div[class~="p-6"])), div[class~="p-6"]) {
+    ${customizedSurface} :is([data-ff-dice-favorites]:not([data-ff-dice-favorites-inline]), [data-ff-combat-body]:not(:has(div[class~="p-6"])), div[class~="p-6"]) {
       padding: var(--ff-combat-content-padding) !important;
     }
+    ${customizedSurface} [data-ff-dice-favorites][data-ff-dice-favorites-inline],
     ${customizedSurface} [data-ff-combat-body]:has(div[class~="p-6"]),
     ${customizedSurface} [data-ff-dice-favorites] [data-ff-dice-favorite-tiles],
     ${customizedSurface} div[class~="p-6"] .flex-1.w-full.overflow-y-auto.p-4.space-y-6 {
