@@ -110,12 +110,12 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   }
   // The selected-action cards have no native numeric inputs. Bind only the
   // captured field-array wrapper and its own FormProvider, never item data.
-  type NativeAttack = { id?: string; name?: string; type?: string; requires_attack_roll?: boolean; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
-  type NativeMethods = { control: unknown; getValues(name: string): unknown; setValue(name: string, value: string | number, options: { shouldDirty: boolean; shouldValidate: boolean }): void };
+  type NativeAttack = { id?: string; name?: string; image?: string; type?: string; requires_attack_roll?: boolean; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
+  type NativeMethods = { control: unknown; getFieldState?(name: string): { isDirty?: boolean; isTouched?: boolean }; getValues(name: string): unknown; setValue(name: string, value: string | number, options: { shouldDirty: boolean; shouldValidate: boolean }): void };
   type NativeProps = { attack?: NativeAttack; usersCharacter?: Record<string, unknown>; children?: unknown; control?: unknown; name?: string; value?: NativeMethods; getValues?: NativeMethods['getValues']; setValue?: NativeMethods['setValue']; showDropdown?: boolean; onEdit?: unknown };
   type Fiber = { memoizedProps?: NativeProps; return?: Fiber; alternate?: Fiber; key?: string; stateNode?: { current?: Fiber } };
-  type Binding = { methods: NativeMethods; index: number; id: string; attack: NativeAttack; character: Record<string, unknown>; form: HTMLFormElement; submit: HTMLButtonElement };
-  type PendingUI = { node: HTMLDetailsElement; refresh(): void };
+  type Binding = { methods: NativeMethods; index: number; id: string; attack: NativeAttack; snapshot: NativeAttack; character: Record<string, unknown>; form: HTMLFormElement; submit: HTMLButtonElement };
+  type PendingUI = { node: HTMLDetailsElement; control: unknown; id: string; refresh(): void };
   const abilities = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
   const pending = new Map<HTMLElement, PendingUI>();
   function binding(card: HTMLElement): Binding | null {
@@ -140,7 +140,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
         try {
           const attack = methods.getValues(`attacks.${index}`) as NativeAttack | undefined;
           if (!attack || !props?.attack || !['melee', 'ranged', 'spell'].includes(attack.type ?? '') || attack.requires_attack_roll !== true || attack.name !== props.attack.name || attack.type !== props.attack.type) return null;
-          return { methods, index, id, attack, character: props.usersCharacter!, form: nativeForm, submit: submits[0] };
+          return { methods, index, id, attack, snapshot: props.attack, character: props.usersCharacter!, form: nativeForm, submit: submits[0] };
         } catch { return null; }
       }
     }
@@ -148,6 +148,86 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   }
   const pendingWritable = (card: HTMLElement, current: Binding): boolean => !current.submit.disabled && !current.submit.matches(':disabled') && !card.closest('[aria-disabled="true"],[hidden],[aria-hidden="true"]') && card.getClientRects().length > 0 && getComputedStyle(card).visibility === 'visible';
   const pendingNumber = (value: unknown, id: typeof ids[number]): number | null => { const result = number(value); return result !== null && result >= (id === 'modifier_value' ? -10 : 0) && result <= 10 ? result : null; };
+  type AttackDefault = { character: string; catalog: string; type: string; ability: string; modifier_value: number; proficiency_bonus: number };
+  type RowState = { consumed: boolean; edited: boolean; initial: string };
+  const rows = new WeakMap<object, Map<string, RowState>>();
+  const defaultKey = (): string => `ff-desktop-attack-defaults-v1:${campaign}`;
+  const stableId = (value: unknown): string | null => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? `n:${value}`
+    : typeof value === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(value) ? `s:${value}` : null;
+  const storedId = (value: unknown): boolean => typeof value === 'string' && (value.startsWith('n:') ? stableId(Number(value.slice(2))) === value : value.startsWith('s:') && stableId(value.slice(2)) === value);
+  const identityKey = (value: Pick<AttackDefault, 'character' | 'catalog' | 'type'>): string => JSON.stringify([value.character, value.catalog, value.type]);
+  const defaultValues = (value: unknown): boolean => {
+    const data = value as AttackDefault | null;
+    return !!data && abilities.includes(data.ability) && typeof data.modifier_value === 'number' && typeof data.proficiency_bonus === 'number'
+      && pendingNumber(data.modifier_value, 'modifier_value') !== null && pendingNumber(data.proficiency_bonus, 'proficiency_bonus') !== null;
+  };
+  function attackIdentity(current: Binding): Pick<AttackDefault, 'character' | 'catalog' | 'type'> | null {
+    const character = stableId(current.character.id), attack = current.attack;
+    const rawImage = attack.image ?? current.snapshot.image;
+    if (rawImage != null && typeof rawImage !== 'string' || attack.image && current.snapshot.image && attack.image !== current.snapshot.image) return null;
+    const image = typeof rawImage === 'string' && rawImage ? rawImage : undefined;
+    if (!character || typeof attack.name !== 'string' || !attack.name || attack.name.length > 200
+      || image && image.length > 2048 || !['melee', 'ranged', 'spell'].includes(attack.type ?? '')) return null;
+    const catalog: unknown[] = [];
+    if (attack.type === 'spell') {
+      const spells = current.character.spells;
+      if (!Array.isArray(spells) || spells.length > 1000) return null;
+      for (const entry of spells) catalog.push(entry?.spell);
+    } else {
+      for (const slot of ['right_hand', 'left_hand', 'two_handed']) if (current.character[slot]) catalog.push(current.character[slot]);
+      const inventory = current.character.inventory;
+      if (!Array.isArray(inventory) || inventory.length > 1000) return null;
+      for (const entry of inventory) catalog.push(entry?.item);
+    }
+    const items = new Map<string, { name: string; image?: string }>();
+    for (const candidate of catalog) {
+      if (!candidate || typeof candidate !== 'object') continue;
+      const item = candidate as { id?: unknown; name?: unknown; image?: unknown }, id = stableId(item.id);
+      if (item.name !== attack.name) continue;
+      if (!id || item.image != null && typeof item.image !== 'string') return null;
+      const prior = items.get(id), itemImage = typeof item.image === 'string' && item.image ? item.image : undefined;
+      if (prior?.image && itemImage && prior.image !== itemImage) return null;
+      items.set(id, { name: attack.name, image: itemImage ?? prior?.image });
+    }
+    const matches = [...items].filter(([, item]) => image === undefined || !item.image || item.image === image);
+    if (matches.length !== 1 || matches[0][1].image !== image) return null;
+    return { character, catalog: matches[0][0], type: attack.type! };
+  }
+  function readDefaults(): { entries: AttackDefault[]; valid: boolean; available: boolean } {
+    try {
+      const raw = localStorage.getItem(defaultKey());
+      if (raw === null) return { entries: [], valid: true, available: true };
+      if (raw.length > 32768) return { entries: [], valid: false, available: true };
+      const data = JSON.parse(raw), entries: AttackDefault[] = [], seen = new Set<string>();
+      if (data?.version !== 1 || !Array.isArray(data.entries) || data.entries.length > 100) return { entries, valid: false, available: true };
+      for (const value of data.entries) {
+        if (!defaultValues(value) || !storedId(value.character) || !storedId(value.catalog) || !['melee', 'ranged', 'spell'].includes(value.type)) return { entries: [], valid: false, available: true };
+        const id = identityKey(value); if (seen.has(id)) return { entries: [], valid: false, available: true }; seen.add(id);
+        entries.push({ character: value.character, catalog: value.catalog, type: value.type, ability: value.ability, modifier_value: value.modifier_value, proficiency_bonus: value.proficiency_bonus });
+      }
+      return { entries, valid: true, available: true };
+    } catch { return { entries: [], valid: false, available: false }; }
+  }
+  function rowState(current: Binding): RowState | null {
+    const control = current.methods.control;
+    if (!control || typeof control !== 'object') return null;
+    let states = rows.get(control); if (!states) { states = new Map(); rows.set(control, states); }
+    let state = states.get(current.id);
+    if (!state) {
+      if (states.size >= 100) return null;
+      const snapshot = JSON.stringify([current.snapshot.modifier_stat, current.snapshot.modifier_value, current.snapshot.proficiency_bonus]);
+      state = { consumed: false, edited: snapshot !== rowValues(current), initial: rowValues(current) }; states.set(current.id, state);
+    }
+    return state;
+  }
+  const rowValues = (current: Binding): string => JSON.stringify([current.attack.modifier_stat, current.attack.modifier_value, current.attack.proficiency_bonus]);
+  const editedEvent = (event: Event): void => {
+    const target = event.target;
+    if (!(target instanceof Element)) return;
+    const editedForm = target.closest('form'); if (!editedForm) return;
+    for (const card of pending.keys()) { const current = binding(card); if (current?.form === editedForm) { const state = rowState(current); if (state) state.edited = true; } }
+  };
+  document.addEventListener('input', editedEvent, true); document.addEventListener('change', editedEvent, true);
   function mountPending(card: HTMLElement, initial: Binding): PendingUI {
     const node = document.createElement('details'); node.setAttribute('data-ff-combat-corrections', ''); node.setAttribute('data-ff-pending-corrections', String(initial.index)); node.setAttribute('data-ff-translation-ignore', 'true');
     const title = document.createElement('summary'), abilityLabel = document.createElement('label'), abilityText = document.createElement('span'), ability = document.createElement('select');
@@ -162,6 +242,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     function apply(id: typeof ids[number], value: unknown): void {
       const current = native(), parsed = pendingNumber(value, id);
       if (!current || !pendingWritable(card, current) || parsed === null) { say(false); return; }
+      const state = rowState(current); if (state) state.edited = true;
       try { current.methods.setValue(`attacks.${current.index}.${id}`, parsed, { shouldDirty: true, shouldValidate: true }); refresh(true); say(true); } catch { say(false); }
     }
     ids.forEach(id => {
@@ -178,14 +259,48 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
       const score = adjusted || current.character[stat] || 0;
       const modifier = typeof score === 'number' && Number.isFinite(score) ? pendingNumber(Math.floor((score - 10) / 2), 'modifier_value') : null;
       if (modifier === null) { say(false); return; }
+      const state = rowState(current); if (state) state.edited = true;
       try { current.methods.setValue(`attacks.${current.index}.modifier_stat`, stat, { shouldDirty: true, shouldValidate: true }); current.methods.setValue(`attacks.${current.index}.modifier_value`, modifier, { shouldDirty: true, shouldValidate: true }); refresh(true); say(true); } catch { say(false); }
     });
-    node.append(total, pendingStatus);
+    const feedback = (en: string, ru: string): void => { pendingStatus.textContent = language === 'ru' ? ru : en; };
+    function persistDefault(clear: boolean): void {
+      const current = native(), identity = current && attackIdentity(current), stored = readDefaults();
+      if (!current || !identity || !clear && (!pendingWritable(card, current) || !defaultValues({ ability: current.attack.modifier_stat, ...current.attack }))) { feedback('A unique catalog attack and valid values are required.', 'Нужны однозначная запись атаки и корректные значения.'); return; }
+      if (!stored.available || !stored.valid) { feedback('Local storage is unavailable or invalid. Nothing was saved.', 'Локальное хранилище недоступно или повреждено. Ничего не сохранено.'); return; }
+      const next = stored.entries.filter(value => identityKey(value) !== identityKey(identity));
+      if (!clear) next.push({ ...identity, ability: current.attack.modifier_stat!, modifier_value: current.attack.modifier_value!, proficiency_bonus: current.attack.proficiency_bonus! });
+      const serialized = JSON.stringify({ version: 1, entries: next });
+      if (next.length > 100 || serialized.length > 32768) { feedback('Saved defaults are full. Clear an unused default first.', 'Хранилище заполнено. Сначала удалите ненужную настройку.'); return; }
+      try { localStorage.setItem(defaultKey(), serialized); const state = rowState(current); if (state) state.consumed = true; feedback(clear ? 'Saved default cleared. Current form unchanged.' : 'Attack default saved locally.', clear ? 'Настройка удалена. Текущая форма не изменена.' : 'Настройка атаки сохранена локально.'); }
+      catch { feedback('Local storage is unavailable. Nothing was saved.', 'Локальное хранилище недоступно. Ничего не сохранено.'); }
+    }
+    const saveDefault = button('save-default', () => persistDefault(false)), clearDefault = button('clear-default', () => persistDefault(true));
+    function autoDefault(current: Binding): void {
+      const state = rowState(current); if (!state || state.consumed) return;
+      if (state.edited || rowValues(current) !== state.initial) { state.consumed = true; return; }
+      const identity = attackIdentity(current), stored = readDefaults();
+      if (!identity || !stored.valid || !stored.available) { state.consumed = true; return; }
+      const saved = stored.entries.find(value => identityKey(value) === identityKey(identity));
+      if (!saved) { state.consumed = true; return; }
+      try {
+        if (typeof current.methods.getFieldState !== 'function') { state.consumed = true; return; }
+        for (const leaf of ['modifier_stat', ...ids]) { const field = current.methods.getFieldState(`attacks.${current.index}.${leaf}`); if (field?.isDirty !== false || field.isTouched !== false) { state.consumed = true; return; } }
+        if (!pendingWritable(card, current)) return;
+        state.consumed = true;
+        current.methods.setValue(`attacks.${current.index}.modifier_stat`, saved.ability, { shouldDirty: true, shouldValidate: true });
+        for (const id of ids) current.methods.setValue(`attacks.${current.index}.${id}`, saved[id], { shouldDirty: true, shouldValidate: true });
+        feedback('Saved attack default applied.', 'Сохранённая настройка атаки применена.');
+      } catch { state.consumed = true; feedback('Saved default could not be applied.', 'Не удалось применить сохранённую настройку.'); }
+    }
+    node.append(saveDefault, clearDefault, total, pendingStatus);
     node.addEventListener('click', event => event.stopPropagation());
     node.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
     const last: unknown[] = [];
     function refresh(force = false): void {
-      const current = native(), disabled = !current || !pendingWritable(card, current);
+      const current = native(); if (current) autoDefault(current);
+      const disabled = !current || !pendingWritable(card, current);
+      saveDefault.textContent = language === 'ru' ? 'Сохранить настройку' : 'Save default'; clearDefault.textContent = language === 'ru' ? 'Удалить настройку' : 'Clear default';
+      const identity = current && attackIdentity(current); saveDefault.disabled = disabled || !identity; clearDefault.disabled = !identity;
       title.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections'; abilityText.textContent = language === 'ru' ? 'Характеристика' : 'Ability'; empty.textContent = '—';
       texts.forEach((text, i) => text.textContent = language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус умения') : (i === 0 ? 'Modifier' : 'Proficiency bonus')); applyButtons.forEach(b => b.textContent = language === 'ru' ? 'Применить' : 'Apply');
       ability.disabled = disabled; if (current && (force || document.activeElement !== ability)) ability.value = current.attack.modifier_stat ?? '';
@@ -197,14 +312,14 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
       const sum = Number(current?.attack.modifier_value) + Number(current?.attack.proficiency_bonus); total.textContent = `${language === 'ru' ? 'К попаданию' : 'To Hit'}: ${Number.isFinite(sum) ? (sum >= 0 ? '+' : '') + sum : '—'}`;
       node.setAttribute('data-ff-pending-corrections', String(current?.index ?? initial.index));
     }
-    card.append(node); refresh(true); return { node, refresh };
+    card.append(node); refresh(true); return { node, control: initial.methods.control, id: initial.id, refresh };
   }
   function scanPending(dock: HTMLElement | null): void {
     const seen = new Set<HTMLElement>();
     for (const card of dock?.querySelectorAll<HTMLElement>('form div.clickable') ?? []) {
       if (card.closest('[data-ff-combat-corrections]')) continue;
       const current = binding(card); if (!current) continue;
-      seen.add(card); if (!pending.has(card) || !pending.get(card)!.node.isConnected) { pending.get(card)?.node.remove(); pending.set(card, mountPending(card, current)); } else pending.get(card)!.refresh();
+      seen.add(card); if (!pending.has(card) || !pending.get(card)!.node.isConnected || pending.get(card)!.id !== current.id || pending.get(card)!.control !== current.methods.control) { pending.get(card)?.node.remove(); pending.set(card, mountPending(card, current)); } else pending.get(card)!.refresh();
     }
     for (const [card, item] of pending) if (!seen.has(card)) { item.node.remove(); pending.delete(card); }
   }
@@ -234,6 +349,6 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   const observer = new MutationObserver(records => { if (records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest('[data-ff-combat-corrections]'))) schedule(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'disabled', 'readonly', 'id', 'type', 'inputmode', 'aria-disabled', 'data-disabled', 'hidden', 'aria-hidden', 'style', 'class'] });
   const timer = window.setInterval(schedule, 500); window.addEventListener('popstate', schedule);
-  host[key] = { update(value) { language = value; translate(); for (const item of pending.values()) item.refresh(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); unmount(); for (const item of pending.values()) item.node.remove(); pending.clear(); style.remove(); delete host[key]; } };
+  host[key] = { update(value) { language = value; translate(); for (const item of pending.values()) item.refresh(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); document.removeEventListener('input', editedEvent, true); document.removeEventListener('change', editedEvent, true); unmount(); for (const item of pending.values()) item.node.remove(); pending.clear(); style.remove(); delete host[key]; } };
   translate(); scan();
 }
