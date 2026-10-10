@@ -93,6 +93,7 @@ window.openNative=(diceMode=false)=>{
  currentRoot.alternate=previousRoot;previousRoot.alternate=currentRoot;
  currentRoot.stateNode=previousRoot.stateNode={current:currentRoot};
  renderer.return=currentRoot;previousRenderer.return=previousRoot;
+ window.setFormPropsMismatch=value=>{const mountedProps=modalState.modalStack[0].content.props.children[0].props;previousFormFiber.memoizedProps=mountedProps;formFiber.memoizedProps=value?{...mountedProps}:mountedProps};
  dialog.querySelector('form').__reactFiberFixture=sharedFormHost;dialog.__reactFiberFixture={type:'div',return:renderer};
  window.renderModal=()=>{const entry=modalState.modalStack[0];if(!entry)return;if(formFiber.memoizedProps!==entry.content.props.children[0].props)previousFormFiber.memoizedProps=formFiber.memoizedProps;formFiber.memoizedProps=entry.content.props.children[0].props;renderer.memoizedState.memoizedState.current.value=modalState;dialog.querySelector('button[type=submit]').disabled=!formFiber.memoizedProps.isUsersCharacterTurn||nativeBusy;let warning=dialog.querySelector('#native-turn-warning');if(entry.content.props.children[1]){if(!warning){warning=document.createElement('p');warning.id='native-turn-warning';dialog.querySelector('form').after(warning)}warning.textContent=entry.content.props.children[1].props.children}else warning?.remove()};renderModal();
 }
@@ -142,6 +143,11 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await until("!turnForm.querySelector('button[type=submit]').disabled");
  assert.equal(await js("document.querySelector('#native-turn-warning')===null"),true,'Native stale turn warning clears after permission changes.');
  assert.deepEqual(await js("({dialog:document.querySelector('[data-ff-combat-docked]')===turnDialog,form:document.querySelector('form')===turnForm,input:turnForm.querySelector('input')===turnInput,draft:turnInput.value,focused:document.activeElement===turnInput,targets:turnTarget.isConnected&&turnTarget.checked,scroll:turnDialog.scrollTop===turnScroll,opens,submits})"),{dialog:true,form:true,input:true,draft:'turn-preserved draft',focused:true,targets:true,scroll:true,opens:1,submits:0},'Native store update preserves the mounted form and focus without reopening/submitting.');
+ // An old alternate matching the store is insufficient: only the resolved
+ // current component may prove exact mounted props ownership.
+ await js('window.beforePropsMismatch=storeWrites;setFormPropsMismatch(true);setNativePermission(false)');await new Promise(resolve=>setTimeout(resolve,600));
+ assert.equal(await js('storeWrites'),await js('beforePropsMismatch'),'Matching old-alternate props cannot authorize a write when current props do not match.');
+ await js('setFormPropsMismatch(false);setNativePermission(true)');
  await js('window.beforeMismatch=storeWrites;setNativeEncounter(999999);setNativePermission(false)');await new Promise(resolve=>setTimeout(resolve,600));
  assert.equal(await js('storeWrites'),await js('beforeMismatch'),'A different encounter cannot update the mounted native form.');
  await js('setNativeEncounter(412456);document.getElementById("nested").click();window.beforeNestedTurn=storeWrites');await new Promise(resolve=>setTimeout(resolve,600));

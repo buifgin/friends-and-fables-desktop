@@ -266,27 +266,78 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }
     modalActive = true; updateControls();
   }
-  type Fiber = { type?: unknown; key?: string | null; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
+  type Fiber = { tag?: number; type?: unknown; key?: string | null; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
   type NativeElement = { $$typeof: symbol; type: unknown; key: string | null; ref?: unknown; props: Record<string, unknown> };
   type NativeModal = { content?: NativeElement; [name: string]: unknown };
   type NativeModalState = { modalStack: NativeModal[]; openModal: unknown; closeModalAtIndex: unknown };
   type NativeModalStore = (() => unknown) & { getState(): NativeModalState; setState(value: { modalStack: NativeModal[] }): void };
   let modalStore: NativeModalStore | null = null, bridgeAttempted = false;
   let turnWarning: NativeElement | null = null;
-  function committedFiber(node: Element): Fiber | null {
-    let fiber = Object.entries(node).find(([name]) => name.startsWith('__reactFiber'))?.[1] as Fiber | undefined;
-    if (!fiber) return null;
+  function fiberRoot(fiber: Fiber): Fiber | null {
     let root = fiber;
     for (let depth = 0; root.return && depth < 256; depth++) root = root.return;
-    if (root.return) return null;
-    if (root.stateNode?.current && root.stateNode.current !== root) {
-      fiber = fiber.alternate;
-      if (!fiber) return null;
-      root = fiber;
-      for (let depth = 0; root.return && depth < 256; depth++) root = root.return;
-      if (root.return || root.stateNode?.current && root.stateNode.current !== root) return null;
+    return root.return || root.tag !== 3 ? null : root;
+  }
+  function currentFiber(fiber: Fiber | null | undefined): Fiber | null {
+    if (!fiber) return null;
+    const alternate = fiber.alternate;
+    if (!alternate) {
+      const root = fiberRoot(fiber);
+      const current = root?.stateNode?.current;
+      return root && current && (current === root || current === root.alternate) ? fiber : null;
     }
-    return fiber;
+    if (alternate.alternate !== fiber) return null;
+    const root = fiberRoot(fiber), alternateRoot = fiberRoot(alternate), currentRoot = root?.stateNode?.current;
+    if (!root || !alternateRoot || !currentRoot || alternateRoot.stateNode?.current !== currentRoot
+      || (currentRoot !== root && currentRoot !== alternateRoot)) return null;
+    // React can reuse a child in both trees without updating its return.
+    // Resolve the alternate pair through parent child lists, as React's
+    // current-fiber slow path does; a root-only return walk is insufficient.
+    let a = fiber, b = alternate;
+    for (let depth = 0; depth < 256; depth++) {
+      const parentA = a.return;
+      if (!parentA) {
+        if (a.tag !== 3) return null;
+        const current = a.stateNode?.current;
+        return current === a ? fiber : current === b ? alternate : null;
+      }
+      const parentB = parentA.alternate;
+      if (!parentB) {
+        if (!parentA.return) return null;
+        a = parentA.return;
+        continue;
+      }
+      if (parentA.child === parentB.child) {
+        const root = fiberRoot(parentA), current = root?.stateNode?.current;
+        if (!root || !current || (current !== root && current !== root.alternate)) return null;
+        let child = parentA.child;
+        for (let count = 0; child && count < 350; count++, child = child.sibling) {
+          if (child === a) return fiber;
+          if (child === b) return alternate;
+        }
+        return null;
+      }
+      if (a.return !== b.return) { a = parentA; b = parentB; }
+      else {
+        let found = false;
+        for (const parent of [parentA, parentB]) {
+          let child = parent.child;
+          for (let count = 0; child && count < 350; count++, child = child.sibling) {
+            if (child === a) { a = parent; b = parent === parentA ? parentB : parentA; found = true; break; }
+            if (child === b) { b = parent; a = parent === parentA ? parentB : parentA; found = true; break; }
+          }
+          if (found) break;
+          if (child) return null;
+        }
+        if (!found) return null;
+      }
+      if (a.alternate !== b || b.alternate !== a) return null;
+    }
+    return null;
+  }
+  function committedFiber(node: Element): Fiber | null {
+    const fiber = Object.entries(node).find(([name]) => name.startsWith('__reactFiber'))?.[1] as Fiber | undefined;
+    return currentFiber(fiber);
   }
   function nativeElement(value: unknown): value is NativeElement {
     if (!value || typeof value !== 'object') return false;
@@ -330,7 +381,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       const form = picker.querySelector('form');
       if (!form) return;
       let formFiber = committedFiber(form);
-      for (let depth = 0; formFiber && depth < 40; depth++, formFiber = formFiber.return ?? null) {
+      for (let depth = 0; formFiber && depth < 40; depth++, formFiber = currentFiber(formFiber.return)) {
         const props = formFiber.memoizedProps;
         if (typeof props?.isUsersCharacterTurn === 'boolean' && typeof props.isMultiplayerCampaign === 'boolean'
           && typeof props.campaignId === 'string' && props.encounterId != null && typeof formFiber.type === 'function') break;
@@ -341,7 +392,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       // queries. Read the committed composer child; do not infer turn rules
       // from labels, character names, native disabled state, or query contents.
       let owner = committedFiber(action);
-      for (let depth = 0; owner && typeof owner.type !== 'function' && depth < 30; depth++) owner = owner.return ?? null;
+      for (let depth = 0; owner && typeof owner.type !== 'function' && depth < 30; depth++) owner = currentFiber(owner.return);
       if (!owner || typeof owner.type !== 'function') return;
       const queue: Fiber[] = [owner], permissions = new Set<boolean>();
       for (let count = 0; queue.length && count < 350; count++) {
@@ -357,7 +408,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       // Require the mounted modal renderer to own this exact store snapshot.
       // A store notification may precede React commit; wait for that commit.
       let ownsSnapshot = false;
-      for (let ancestor = committedFiber(picker), depth = 0; ancestor && depth < 60; ancestor = ancestor.return ?? null, depth++) {
+      for (let ancestor = committedFiber(picker), depth = 0; ancestor && depth < 60; ancestor = currentFiber(ancestor.return), depth++) {
         for (let hook = ancestor.memoizedState, count = 0; hook && count < 100; hook = hook.next as typeof hook, count++) {
           const value = hook.memoizedState as { current?: { value?: NativeModalState } } | undefined;
           if (value?.current?.value?.modalStack === state.modalStack) ownsSnapshot = true;
