@@ -167,8 +167,11 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    await click('[data-ff-dice-selection-confirm]',locale+' save favorites');
    await click('[data-ff-dice-favorite-tile="skill.acrobatics"]',locale+' favorite -> native detail');
    assert.equal(await js('currentForm===document.querySelector("form") && currentForm.querySelector("input").value==="retained check draft"'),true,'Native detail retains its form and draft.');
-   assert.equal(await js("document.querySelector('[data-ff-dice-navigation]').hidden && document.querySelector('[data-ff-dice-favorites]').hidden"),true,'No dice list controls leak into check detail.');
+   assert.equal(await js("(()=>{const navigation=document.querySelector('[data-ff-dice-navigation]'),favorites=document.querySelector('[data-ff-dice-favorites]');return !!navigation&&navigation.hidden&&(!favorites||favorites.hidden)})()"),true,'Check detail hides navigation and has no visible Favorites list, whether native content retained or replaced its mount.');
    await click('#back',locale+' native detail -> list');
+   await until("document.querySelector('[data-ff-dice-navigation]')&&document.querySelector('[data-ff-dice-favorites]')");
+   assert.equal(await js("document.querySelectorAll('[data-ff-dice-favorites]').length===1&&!document.querySelector('[data-ff-dice-favorites]').hidden&&!document.querySelector('[data-ff-dice-navigation]').hidden"),true,'Back remounts exactly one visible Favorites list and navigation.');
+   assert.equal(await js('currentForm===document.querySelector("form") && currentForm.querySelector("input").value==="retained check draft"'),true,'Favorites remount preserves the native form and draft.');
    await click('#close',locale+' close Dice',0);
    // The encounter state enables attacks, while preventing automatic opening
    // through the previously attempted explicit Dice launch.
