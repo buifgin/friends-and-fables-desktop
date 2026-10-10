@@ -149,13 +149,19 @@ app.on('window-all-closed', () => {});
  assert.equal(await js("pendingWrites.every(x=>/^attacks\\.[01]\\.(modifier_stat|modifier_value|proficiency_bonus)$/.test(x.name)&&x.options.shouldDirty===true&&x.options.shouldValidate===true)"),true,'Only permitted native leaves are written with validation.');
  assert.deepEqual(await js('pendingValues.attacks[0].targets'),[{id:1,name:'Wolf',ac:12}]);assert.deepEqual(await js('pendingValues.attacks[0].damage_rolls'),[{dice_count:1,dice_size:8,fixed_damage_bonus:0}]);
  assert.equal(await js("pendingValues.message==='pending message'&&pendingValues.attacks[0].description==='weapon description'"),true);
- await mutate("document.querySelector('#pending-form button[type=submit]').disabled=true");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");await click(weapon+' [data-ff-correction-modifier_value-plus]');assert.equal(await js('pendingValues.attacks[0].modifier_value'),3,'Current native turn/submitting restriction respected.');
- await mutate("document.querySelector('#pending-form button[type=submit]').disabled=false");await until("!document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");
+ await mutate("document.querySelector('#pending-form button[type=submit]').disabled=true");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input')?.disabled===true");await click(weapon+' [data-ff-correction-modifier_value-plus]');assert.equal(await js('pendingValues.attacks[0].modifier_value'),3,'Current native turn/submitting restriction respected.');
+ await mutate("document.querySelector('#pending-form button[type=submit]').disabled=false");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input')?.disabled===false");
  await configure(true,'ru');assert.equal(await js("document.querySelector('[data-ff-pending-corrections] summary').textContent"),'Поправки к броску');assert.equal(await pendingIdentity(),true);assert.equal(await js('pendingSubmits'),0);
  // Explicitly save once, then a new RHF control and ephemeral row UUID
  // must reuse the stable equipped/inventory catalog identity automatically.
  await configure(true,'en');
  assert.equal(await js("!!document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-save-default]')"),true,'Selected weapon exposes Save default.');
+ for(const width of [280,390]){
+  await mutate(`document.querySelector('section').style.width='${width}px'`);await configure(true,'ru');
+  const fit=await js("(()=>{const node=document.querySelector('[data-ff-pending-corrections=\"0\"]'),box=node.getBoundingClientRect();return ['save-default','clear-default'].every(marker=>{const button=node.querySelector('[data-ff-correction-'+marker+']'),rect=button.getBoundingClientRect();return rect.width>0&&rect.height>=28&&rect.left>=box.left&&rect.right<=box.right})})()");
+  assert.equal(fit,true,'Localized default controls fit '+width+'px without truncation.');
+ }
+ await mutate("document.querySelector('section').style.width='308px'");await configure(true,'en');
  await click(weapon+' [data-ff-correction-proficiency_bonus-plus]');
  await click(weapon+' [data-ff-correction-save-default]');
  assert.match(await js("document.querySelector('[data-ff-pending-corrections=\"0\"] [role=status]').textContent"),/saved/i);
@@ -190,11 +196,11 @@ app.on('window-all-closed', () => {});
   await mutate('pendingCharacterOverride={};pendingWeaponOverride={}');
  }
  await mutate("history.pushState({},'', '/campaign-three/play');dispatchEvent(new PopStateEvent('popstate'));mountPending()");await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js('pendingWrites.length'),0,'Campaign scope is isolated.');
- await mutate("history.pushState({},'', '/campaign-two/play');dispatchEvent(new PopStateEvent('popstate'));pendingBlocked=true;mountPending()");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");
+ await mutate("history.pushState({},'', '/campaign-two/play');dispatchEvent(new PopStateEvent('popstate'));pendingBlocked=true;mountPending()");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input')?.disabled===true");
  assert.equal(await js('pendingWrites.length'),0,'Wait for writable native form before applying.');
  await mutate("pendingBlocked=false;document.querySelector('#pending-form button[type=submit]').disabled=false");await until("pendingValues.attacks[0].modifier_value===3");
- await mutate('pendingBlocked=true;mountPending()');await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");
- await mutate("pendingMethods.setValue('attacks.0.modifier_value',9,{shouldDirty:true,shouldValidate:true});pendingBlocked=false;document.querySelector('#pending-form button[type=submit]').disabled=false");await until("!document.querySelector('[data-ff-pending-corrections=\"0\"] input').disabled");
+ await mutate('pendingBlocked=true;mountPending()');await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input')?.disabled===true");
+ await mutate("pendingMethods.setValue('attacks.0.modifier_value',9,{shouldDirty:true,shouldValidate:true});pendingBlocked=false;document.querySelector('#pending-form button[type=submit]').disabled=false");await until("document.querySelector('[data-ff-pending-corrections=\"0\"] input')?.disabled===false");
  await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js('pendingValues.attacks[0].modifier_value'),9,'Edits while awaiting writable form prevent later automatic apply.');
  await configure(false);await mutate("mountPending();pendingMethods.setValue('attacks.0.modifier_stat','strength',{shouldDirty:true,shouldValidate:true})");await configure();await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");await new Promise(resolve=>setTimeout(resolve,550));
  assert.equal(await js('pendingValues.attacks[0].modifier_value'),0,'Dirty native leaf before discovery blocks auto-fill even when its value matches the initial snapshot.');assert.equal(await js('pendingWrites.length'),1);
