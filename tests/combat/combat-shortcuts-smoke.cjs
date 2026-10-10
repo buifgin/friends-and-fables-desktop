@@ -17,14 +17,14 @@ const wait = async (contents, expression) => {
   const testSession = session.fromPartition('combat-shortcuts-smoke');
   testSession.protocol.handle('https', () => new Response(`<!doctype html><html><head><meta charset="utf-8"></head><body>
     <div data-ff-combat-docked data-ff-combat-panel-mode="skills"><h2>Dice</h2><div data-ff-combat-shortcuts-slot></div>
-      <div id="native-list"><button id="check" class="native-tile"><div><svg id="d20"><path id="icon-path"/></svg><span>Проверка силы</span></div></button>
+      <div id="native-list"><button id="check" class="native-tile"><div><svg id="d20"><path id="icon-path"/></svg><span>Проверка силы</span></div></button><button id="dex-check">Проверка ловкости</button>
         <button id="save">Спасбросок силы</button><button id="skill">Проверка акробатики</button><button id="custom">Custom roll</button></div>
       <form id="detail" hidden><button type="button" id="back">Back</button><input id="draft" value="untouched"><button type="submit">Roll</button></form>
     </div>
     <script>localStorage.clear();window.rolls=0;window.selections=0;window.pointerSelections=0;
       window.originalCheck=document.querySelector('#check');window.originalDraft=document.querySelector('#draft');
       document.querySelector('#detail').onsubmit=event=>{event.preventDefault();window.rolls++};
-      for(const id of ['check','save','skill']){
+      for(const id of ['check','dex-check','save','skill']){
         document.getElementById(id).onmousedown=()=>window.pointerSelections++;
         document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};
       }
@@ -50,7 +50,7 @@ const wait = async (contents, expression) => {
   await click('[data-ff-dice-standard]');
   assert.equal(await run(`document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`), false);
   await click('[data-ff-dice-favorites-nav]'); await click('[data-ff-dice-add]');
-  assert.equal(await run(`document.querySelectorAll('[data-ff-dice-selection-checkbox]').length`), 3, 'Only real native canonical tiles get checkboxes.');
+  assert.equal(await run(`document.querySelectorAll('[data-ff-dice-selection-checkbox]').length`), 4, 'Only real native canonical tiles get checkboxes.');
   await run(`document.querySelector('#check').dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true}));document.querySelector('#check').click()`);
   assert.equal(await run('window.pointerSelections+window.selections'), 0, 'Selection blocks native pointer/click handlers.');
   assert.equal(await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), null, 'Draft changes do not persist.');
@@ -58,6 +58,7 @@ const wait = async (contents, expression) => {
   window.show(); window.focus();
   await wait(contents, `document.visibilityState==='visible'&&document.hasFocus()`);
   await run(`document.querySelector('#save').dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}))`);
+  await run(`document.querySelector('#dex-check').dispatchEvent(new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}))`);
   await run(`document.querySelector('#skill input').focus();document.querySelector('#skill input').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}))`);
   assert.equal(await run(`document.activeElement===document.querySelector('#skill input')`), true, 'Checkbox selection retains keyboard focus.');
   assert.equal(await run(`(()=>{const b=document.querySelector('[data-ff-dice-selection-confirm]'),s=b.querySelector('svg');return b.getAttribute('aria-label')==='Подтвердить'&&b.title==='Подтвердить'&&b.textContent.trim()===''&&b.tabIndex===0&&s?.getAttribute('aria-hidden')==='true'&&s?.getAttribute('focusable')==='false'&&s?.getAttribute('viewBox')==='0 0 24 24'&&getComputedStyle(b).width==='40px'&&getComputedStyle(b).height==='40px'&&getComputedStyle(s).width==='20px'&&getComputedStyle(s).height==='20px'})()`), true, 'Russian confirm is icon-only, keyboard-focusable, accessible, decorative, and has a 40px target with a centered 20px icon.');
@@ -65,9 +66,9 @@ const wait = async (contents, expression) => {
   assert.equal(await run(`document.activeElement===document.querySelector('[data-ff-dice-selection-confirm]')&&!document.querySelector('[data-ff-dice-selection-confirm]').hidden`), true, 'Confirm remains focusable and visible during selection.');
   await click('[data-ff-dice-selection-cancel]');
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-favorite-tile]').length`), 0, 'Cancel discards the entire draft.');
-  await click('[data-ff-dice-add]'); await click('#check'); await click('#skill input'); await click('#save input');
+  await click('[data-ff-dice-add]'); await click('#check'); await click('#dex-check input'); await click('#skill input'); await click('#save input');
   await click('[data-ff-dice-selection-confirm]');
-  assert.equal(await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '["ability.strength","skill.acrobatics","save.strength"]');
+  assert.equal(await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '["ability.strength","ability.dexterity","skill.acrobatics","save.strength"]');
   assert.equal(await run(`document.querySelector('[data-ff-dice-add]').textContent`), 'Добавить ещё');
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-selection-checkbox]').length`), 0);
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile]').className`), 'native-tile');
@@ -75,18 +76,20 @@ const wait = async (contents, expression) => {
   assert.equal(await run(`document.querySelectorAll('#d20').length`), 1, 'Cloned visuals never duplicate native IDs.');
   assert.equal(await run(`!!document.querySelector('[data-ff-dice-favorite-tile] > div > svg')`), true, 'Cloned native icon wrappers retain normal tile CSS structure.');
   assert.deepEqual(await run(`Array.from(document.querySelectorAll('[data-ff-dice-favorite-group]'),group=>({name:group.dataset.ffDiceFavoriteGroup,title:group.querySelector('h3')?.textContent,items:[...group.querySelectorAll('[data-ff-dice-favorite-tile]')].map(tile=>tile.dataset.ffDiceFavoriteTile)}))`), [
-    { name: 'check', title: 'Проверки характеристик', items: ['ability.strength'] },
+    { name: 'check', title: 'Проверки характеристик', items: ['ability.strength', 'ability.dexterity'] },
     { name: 'skill', title: 'Навыки', items: ['skill.acrobatics'] },
     { name: 'save', title: 'Спасброски', items: ['save.strength'] },
   ], 'Only populated favorites render, in native standard-dice category order.');
   for (const width of [390, 280]) {
-    const geometry = await run(`(()=>{const dock=document.querySelector('[data-ff-combat-docked]'),tiles=document.querySelector('[data-ff-dice-favorite-tiles]');dock.style.width='${width}px';const box=tiles.getBoundingClientRect(),style=getComputedStyle(tiles),cards=[...tiles.querySelectorAll('[data-ff-dice-favorite-tile]')].map(node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}});return {columns:style.gridTemplateColumns.split(' ').length,overflow:dock.scrollWidth>dock.clientWidth,within:cards.every(r=>r.left>=box.left&&r.right<=box.right),cards}})()`);
+    const geometry = await run(`(()=>{const dock=document.querySelector('[data-ff-combat-docked]'),tiles=document.querySelector('[data-ff-dice-favorite-group="check"] [data-ff-dice-favorite-group-tiles]');dock.style.width='${width}px';const box=tiles.getBoundingClientRect(),style=getComputedStyle(tiles),nodes=[...tiles.querySelectorAll('[data-ff-dice-favorite-tile]')],cards=nodes.map(node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,clipped:node.scrollWidth>node.clientWidth||node.scrollHeight>node.clientHeight}});return {columns:style.gridTemplateColumns.split(' ').length,overflow:dock.scrollWidth>dock.clientWidth,within:cards.every(r=>r.left>=box.left&&r.right<=box.right),sameRow:Math.abs(cards[0].top-cards[1].top)<1,clipped:cards.some(r=>r.clipped),cards}})()`);
     assert.equal(geometry.columns, width === 390 ? 2 : 1, `${width}px favorites use a compact responsive grid: ${JSON.stringify(geometry)}`);
     assert.equal(geometry.overflow, false, `${width}px favorites stay within the panel: ${JSON.stringify(geometry)}`);
     assert.equal(geometry.within, true, `${width}px favorite tiles remain inside their group grid: ${JSON.stringify(geometry)}`);
+    assert.equal(geometry.clipped, false, `${width}px favorite labels and icons are not clipped: ${JSON.stringify(geometry)}`);
+    if(width===390)assert.equal(geometry.sameRow,true,'Both ability checks appear in one standard-dice style row.');
   }
   await run(`document.querySelector('[data-ff-combat-docked]').style.removeProperty('width')`);
-  await run(`window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.removeAttribute('data-ff-dice-native-hidden');old.replaceWith(replacement);for(const id of ['check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check');true`);
+  await run(`window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.removeAttribute('data-ff-dice-native-hidden');old.replaceWith(replacement);for(const id of ['check','dex-check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check');true`);
   await wait(contents, `document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`);
   assert.equal(await run(`window.ownedFavorite===document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]')`), true, 'Identical native list remount preserves the owned favorite button.');
   await click('[data-ff-dice-favorite-tile="ability.strength"]');
@@ -121,7 +124,7 @@ const wait = async (contents, expression) => {
   await run(`localStorage.setItem('ff-desktop-combat-pins-v1:other','broken');window.__friendsFablesDesktopCombatShortcuts.dispose();(${configureCombatShortcuts.toString()})(true,'en')`);
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-favorite-tile]').length`), 0, 'Malformed storage is safe.');
   await run(`history.pushState({},'', '/campaign/play');document.body.append(document.createElement('aside'));true`);
-  await wait(contents, `document.querySelectorAll('[data-ff-dice-favorite-tile]').length===3`);
+  await wait(contents, `document.querySelectorAll('[data-ff-dice-favorite-tile]').length===4`);
   await run(`window.__friendsFablesDesktopCombatShortcuts.dispose()`);
   assert.equal(await run(`document.querySelector('[data-ff-combat-shortcuts],[data-ff-dice-favorites],[data-ff-dice-selection-confirm],[data-ff-dice-native-hidden],[data-ff-dice-selection-tile]')`), null);
   assert.equal(await run(`window.originalCheck===document.querySelector('#check')&&window.originalDraft===document.querySelector('#draft')&&document.querySelector('#draft').value==='untouched'`), true, 'Cleanup preserves original native nodes and draft.');
