@@ -5,7 +5,7 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
   const host = window as unknown as Record<string, Controller | undefined>;
   if (host[key]) { if (enabled) host[key]!.update(locale); else host[key]!.dispose(); return; }
   if (!enabled) return;
-  type Props = { character?: { id?: unknown }; characterId?: unknown; campaignId?: unknown; phase?: unknown; viewOnly?: unknown; onClick?: () => void; disabled?: boolean; preventClose?: boolean; onClose?: () => void };
+  type Props = { character?: { id?: unknown }; characterId?: unknown; campaignId?: unknown; phase?: unknown; viewOnly?: unknown; onClick?: () => void; disabled?: boolean; preventClose?: boolean; onClose?: () => void; open?: boolean; onOpenChange?: (value: boolean) => void };
   type Fiber = { key?: string | null; tag?: number; memoizedProps?: Props; return?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber }; memoizedState?: Hook };
   type Hook = { memoizedState?: unknown; next?: Hook };
   type Binding = { node: HTMLElement; row: HTMLElement; owner: Fiber; character: string; level: number; index: number; max: number; available: boolean; sheet: boolean };
@@ -96,7 +96,7 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
     if (!entry || !Number.isInteger(entry.max_slots) || !Number.isInteger(entry.used_slots) || entry.max_slots !== b.max || entry.used_slots < 0 || entry.used_slots > entry.max_slots) return false;
     return b.index >= 0 && b.index < entry.max_slots && b.available === (b.index < entry.max_slots - entry.used_slots);
   }
-  type Request = { b: Binding; route: string; focus: Element | null; deadline: number; dialog?: HTMLElement; overlay?: HTMLElement; close?: HTMLButtonElement; styles?: string[]; called: boolean; mutation?: NativeObserver };
+  type Request = { b: Binding; route: string; focus: Element | null; deadline: number; dialog?: HTMLElement; overlay?: HTMLElement; close?: HTMLButtonElement; styles?: (string | null)[]; injectedStyles?: (string | null)[]; provider?: Fiber; called: boolean; mutation?: NativeObserver };
   let request: Request | undefined;
   function portal(node: HTMLElement): Fiber | undefined { let f = fiber(node); for (let i = 0; f && i < 60; i++, f = f.return) if (f.tag === 4) return f; return; }
   function closeButton(dialog: HTMLElement): HTMLButtonElement | undefined {
@@ -105,19 +105,49 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
       let f = fiber(button), allowed = false;
       for (let i = 0; f && i < 40; i++, f = f.return) {
         const p = f.memoizedProps;
-        if (p && 'preventClose' in p) { allowed = p.preventClose === false && typeof p.onClose === 'function'; break; }
+        if (p && 'preventClose' in p) { allowed = p.preventClose !== true; break; }
       }
       if (allowed) return button;
     }
     return;
   }
+  function dialogProvider(dialog: HTMLElement, overlay: HTMLElement): Fiber | undefined {
+    if (!portal(dialog) || !portal(overlay)) return;
+    const ancestors = new Set<Fiber>(); let f = fiber(dialog);
+    for (let i = 0; f && i < 60; i++, f = f.return) ancestors.add(f);
+    f = fiber(overlay);
+    for (let i = 0; f && i < 60; i++, f = f.return) {
+      const p = f.memoizedProps;
+      if (ancestors.has(f) && p?.open === true && typeof p.onOpenChange === 'function') return f;
+    }
+    return;
+  }
+  function matchingIdentity(dialog: HTMLElement, character: string, route: string): boolean {
+    return Array.from(dialog.querySelectorAll<HTMLElement>('*')).some(node => {
+      let f = fiber(node); for (let i = 0; f && i < 40; i++, f = f.return) {
+        const p = f.memoizedProps;
+        if (String(p?.characterId) === character && p?.campaignId === route && p?.phase === 'campaign') return true;
+      }
+      return false;
+    });
+  }
+  function owned(r: Request): boolean {
+    const current = r.dialog && r.overlay ? dialogProvider(r.dialog, r.overlay) : undefined;
+    const sameProvider = !!current && (current === r.provider || current.alternate === r.provider);
+    return !!r.dialog?.isConnected && !!r.overlay?.isConnected && r.dialog.previousElementSibling === r.overlay && !!r.close?.isConnected && r.dialog.contains(r.close) && closeButton(r.dialog) === r.close && sameProvider && matchingIdentity(r.dialog, r.b.character, r.route);
+  }
   function finish(): void {
     const r = request; if (!r) return;
     request = undefined;
-    if (r.dialog?.isConnected && r.close?.isConnected) r.close.click();
-    // Restore only our exact nodes; never remove a native portal or change its open state.
+    // A user may replace a mounted modal or change its identity while the request waits.
+    if (owned(r)) r.close!.click();
     window.setTimeout(() => {
-      if (r.styles) { r.dialog?.setAttribute('style', r.styles[0]!); r.overlay?.setAttribute('style', r.styles[1]!); }
+      // Preserve user/native style writes that occurred after our concealment.
+      for (const [index, node] of [r.dialog, r.overlay].entries()) {
+        if (!node || !r.styles || !r.injectedStyles || node.getAttribute('style') !== r.injectedStyles[index]) continue;
+        const original = r.styles[index];
+        if (original === null) node.removeAttribute('style'); else if (original !== undefined) node.setAttribute('style', original);
+      }
       if (r.focus instanceof HTMLElement && r.focus.isConnected && !document.querySelector('[role="dialog"], [role="alertdialog"]')) r.focus.focus({ preventScroll: true });
     }, 300);
     attribute(r.b.node, 'aria-busy', null);
@@ -130,19 +160,15 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
       const d = dialogs[0]!, overlay = d.previousElementSibling;
       const close = closeButton(d);
       // Bind before concealing: exact character modal descendants, native close and common portal.
-      const identities = Array.from(d.querySelectorAll<HTMLElement>('*')).some(node => {
-        let f = fiber(node); for (let i = 0; f && i < 40; i++, f = f.return) {
-          const p = f.memoizedProps; if (String(p?.characterId) === r.b.character && p?.campaignId === r.route && p?.phase === 'campaign') return true;
-        }
-        return false;
-      });
-      if (identities && close && overlay instanceof HTMLElement && overlay.classList.contains('fixed') && overlay.classList.contains('inset-0') && overlay.getAttribute('data-state') === 'open' && portal(d) && portal(d) === portal(overlay)) {
-        r.dialog = d; r.overlay = overlay; r.close = close; r.styles = [d.getAttribute('style') ?? '', overlay.getAttribute('style') ?? ''];
+      const provider = overlay instanceof HTMLElement ? dialogProvider(d, overlay) : undefined;
+      if (matchingIdentity(d, r.b.character, r.route) && close && overlay instanceof HTMLElement && overlay.classList.contains('fixed') && overlay.classList.contains('inset-0') && overlay.getAttribute('data-state') === 'open' && provider) {
+        r.dialog = d; r.overlay = overlay; r.close = close; r.provider = provider; r.styles = [d.getAttribute('style'), overlay.getAttribute('style')];
         d.style.setProperty('opacity', '0', 'important'); overlay.style.setProperty('opacity', '0', 'important');
+        r.injectedStyles = [d.getAttribute('style'), overlay.getAttribute('style')];
       } else if (Date.now() > r.deadline - 4000) { finish(); return; }
     }
     if (!r.dialog) return;
-    if (dialogs.length !== 1 || dialogs[0] !== r.dialog || !r.close?.isConnected) { finish(); return; }
+    if (dialogs.length !== 1 || dialogs[0] !== r.dialog || !owned(r)) { finish(); return; }
     if (r.called) {
       if (!r.mutation?.getCurrentResult?.().isPending) finish();
       return;

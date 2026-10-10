@@ -25,7 +25,7 @@ window.mountBook=()=>{
   const nativeCallback=()=>{const usedSlots=i<c.max-c.used?c.used+1:c.used-1;window.calls.push({characterId:c.characterId,campaignId:c.campaignId,level:1,maxSlots:c.max,usedSlots});observer.options.onSuccess();window.toasts++};
   node.__reactProps$fixture={onClick:nativeCallback,disabled:node.disabled,className:node.className};node.__reactFiber$fixture={memoizedProps:node.__reactProps$fixture,return:row.__reactFiber$fixture};row.lastChild.append(node);
  }
- document.body.append(overlay,dialog);
+ window.lastDialog=dialog;window.lastOverlay=overlay;window.lastOwner=owner;document.body.append(overlay,dialog);
 };window.mountSidebar();
 </script></body></html>`;
 for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
@@ -52,7 +52,7 @@ app.on('window-all-closed',()=>{});
  assert.deepEqual(await js('calls[0]'),{characterId:123,campaignId:'fixture',level:1,maxSlots:4,usedSlots:1});
  assert.equal(await js('cacheInvalidations'),1);assert.equal(await js('toasts'),1);
  assert.equal(await js('document.querySelector("#draft").value'),'preserve this draft');
- await wait('!document.querySelector("#book")');
+ await wait('!document.querySelector("#book")');await new Promise(r=>setTimeout(r,350));assert.equal(await js('lastDialog.getAttribute("style")'),null);assert.equal(await js('lastOverlay.getAttribute("style")'),null);
  for(const override of [{viewOnly:true},{characterId:999},{campaignId:'other'},{pending:true},{max:2},{phase:'template'}]){
   await js('Object.assign(config,{characterId:123,campaignId:"fixture",phase:"campaign",viewOnly:false,pending:false,used:2,max:4},'+JSON.stringify(override)+');document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
   await wait('!document.querySelector("[aria-busy=true]")');await js('document.querySelector("#book button")?.click()');await new Promise(r=>setTimeout(r,100));assert.equal(await js('calls.length'),1,JSON.stringify(override));
