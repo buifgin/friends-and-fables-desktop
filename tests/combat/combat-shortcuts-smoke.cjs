@@ -17,6 +17,7 @@ const wait = async (contents, expression) => {
   const testSession = session.fromPartition('combat-shortcuts-smoke');
   testSession.protocol.handle('https', () => new Response(`<!doctype html><html><head><meta charset="utf-8"><style>
     body{margin:0}.p-6{box-sizing:border-box;padding:12px}.p-4{box-sizing:border-box;padding:8px}
+    [data-ff-combat-docked]{box-sizing:border-box;padding-right:11px}/* Captured 388px panel has a 377px client area. */
     .space-y-6>:not([hidden])~:not([hidden]){margin-block-start:24px}.space-y-3>:not([hidden])~:not([hidden]){margin-block-start:12px}
     .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px}
     h3{margin:0}.native-tile{box-sizing:border-box;width:100%;min-width:0;padding:8px}.text-\\[\\#C5A766\\]{color:rgb(197,167,102)}
