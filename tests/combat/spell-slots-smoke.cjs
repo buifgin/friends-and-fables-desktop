@@ -11,21 +11,21 @@ window.mountSidebar=()=>{
  const owner={memoizedProps:{character:{id:123}},return:null};
  const row=rows.firstChild;row.__reactFiber$fixture={key:'1',memoizedProps:{},return:owner};
  for(let i=0;i<4;i++){const node=document.createElement('div');node.className='w-3 h-3 rounded-full border '+(i<2?'bg-primary/70 border-primary':'bg-muted border-muted-foreground/30');node.__reactFiber$fixture={memoizedProps:{className:node.className},return:row.__reactFiber$fixture};document.querySelector('#circles').append(node)}
- document.querySelector('#open').__reactProps$fixture={onClick:()=>{window.opens++;window.mountBook()}};
+ document.querySelector('#open').__reactProps$fixture={onClick:()=>{const options={defaultTab:"spells"};window.opens++;window.mountBook(options)}};
 };
 window.mountBook=()=>{
- const c=window.config;const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.id='book';
- const close=document.createElement('button');close.type='button';close.setAttribute('aria-label','Close');close.textContent='Close';close.onclick=()=>{window.closes++;dialog.remove()};
- close.__reactProps$fixture={onClick:close.onclick};dialog.append(close);
+ const c=window.config;const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.id='book';dialog.setAttribute('data-state','open');const portal={tag:4,return:null};const overlay=document.createElement('div');overlay.className='fixed inset-0';overlay.setAttribute('data-state','open');overlay.__reactFiber$fixture={return:portal};dialog.__reactFiber$fixture={return:portal};
+ const close=document.createElement('button');close.type='button';close.innerHTML='<svg class="lucide-x"></svg>';close.setAttribute('aria-label','Close');close.onclick=()=>{window.closes++;dialog.remove();overlay.remove()};
+ close.__reactProps$fixture={onClick:close.onclick};close.__reactFiber$fixture={memoizedProps:close.__reactProps$fixture,return:{memoizedProps:{preventClose:false,onClose:close.onclick},return:portal}};dialog.append(close);
  const observer={options:{mutationFn:async function({characterId,campaignId,level,maxSlots,usedSlots}){return {characterId,campaignId,level,maxSlots,usedSlots}},onSuccess(){window.cacheInvalidations++}},getCurrentResult(){return {isPending:window.config.pending,status:window.config.pending?'pending':'idle'}}};
- const owner={memoizedProps:{characterId:c.characterId,campaignId:c.campaignId,phase:c.phase,viewOnly:c.viewOnly},memoizedState:{memoizedState:observer,next:null},return:null};
+ const owner={memoizedProps:{characterId:c.characterId,campaignId:c.campaignId,phase:c.phase,viewOnly:c.viewOnly},memoizedState:{memoizedState:observer,next:{memoizedState:{options:{queryKey:['spellSlots',c.characterId]},getCurrentResult(){return {status:'success',isPending:false,isLoading:false,isFetching:false,data:[{level:1,max_slots:c.max,used_slots:c.used}]}}},next:null}},return:portal};
  const row=document.createElement('div');row.className='flex flex-col gap-1';row.__reactFiber$fixture={key:'1',memoizedProps:{},return:owner};row.innerHTML='<p>Level 1</p><div class="flex flex-row"></div>';dialog.append(row);
  for(let i=0;i<c.max;i++){
   const node=document.createElement('button');node.type='button';node.className='h-4 w-4 rounded-full '+(i<c.max-c.used?'bg-primary':'bg-gray-800');node.disabled=c.viewOnly||c.phase!=='campaign';
   const nativeCallback=()=>{const usedSlots=i<c.max-c.used?c.used+1:c.used-1;window.calls.push({characterId:c.characterId,campaignId:c.campaignId,level:1,maxSlots:c.max,usedSlots});observer.options.onSuccess();window.toasts++};
   node.__reactProps$fixture={onClick:nativeCallback,disabled:node.disabled,className:node.className};node.__reactFiber$fixture={memoizedProps:node.__reactProps$fixture,return:row.__reactFiber$fixture};row.lastChild.append(node);
  }
- document.body.append(dialog);
+ document.body.append(overlay,dialog);
 };window.mountSidebar();
 </script></body></html>`;
 for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
@@ -55,7 +55,7 @@ app.on('window-all-closed',()=>{});
  await wait('!document.querySelector("#book")');
  for(const override of [{viewOnly:true},{characterId:999},{campaignId:'other'},{pending:true},{max:2},{phase:'template'}]){
   await js('Object.assign(config,{characterId:123,campaignId:"fixture",phase:"campaign",viewOnly:false,pending:false,used:2,max:4},'+JSON.stringify(override)+');document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
-  await wait('!document.querySelector("#book")');await new Promise(r=>setTimeout(r,100));assert.equal(await js('calls.length'),1,JSON.stringify(override));
+  await wait('!document.querySelector("[aria-busy=true]")');await js('document.querySelector("#book button")?.click()');await new Promise(r=>setTimeout(r,100));assert.equal(await js('calls.length'),1,JSON.stringify(override));
  }
  await js('Object.assign(config,{characterId:123,campaignId:"fixture",phase:"campaign",viewOnly:false,pending:false,used:2,max:4});const existing=document.createElement("div");existing.setAttribute("role","dialog");existing.id="existing";document.body.append(existing);document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
  assert.equal(await js('calls.length'),1);assert.equal(await js('document.querySelector("#existing").isConnected'),true);
