@@ -43,6 +43,7 @@ window.storeWrites=0;window.nativeBusy=false;window.renderModal=null;
 function useModalStore(){};useModalStore.getState=()=>modalState;useModalStore.setState=next=>{window.storeWrites++;modalState={...modalState,...next};window.renderModal?.()};
 window.nativeModuleCache={nativeStore:{exports:{useModalStore}}};window.nativeFactories=new Map();
 window.TURBOPACK={push:chunk=>{if(chunk.length===2){Promise.resolve().then(()=>{for(const id of chunk[1].runtimeModuleIds){const ctx={c:nativeModuleCache,M:nativeFactories};nativeModuleCache[id]={exports:{}};nativeFactories.get(id)(ctx)}})}else{for(let i=1;i<chunk.length-1;i++)nativeFactories.set(chunk[i],chunk[chunk.length-1])}}};
+window.setNativeEncounter=id=>{permissionFiber.memoizedProps={...permissionFiber.memoizedProps,encounterId:id}};
 window.setNativePermission=value=>{permissionFiber.memoizedProps={...permissionFiber.memoizedProps,isUsersCharacterTurn:value};document.getElementById('events-list').append(document.createTextNode('native turn change'))};
 
 campaign.addEventListener('wheel',()=>window.backgroundWheels++);
@@ -104,14 +105,18 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]').getAttribute('data-ff-combat-panel-mode')"),'actions','Native action docking exposes explicit context to extension controllers.');
  // Regression must fail before the store bridge: an already mounted native
  // form still holds false after the composer permission changes to true.
- await js("window.turnDialog=document.querySelector('[data-ff-combat-docked]');window.turnForm=turnDialog.querySelector('form');window.turnInput=turnForm.querySelector('input');turnInput.value='turn-preserved draft';turnInput.focus();window.turnOpens=opens;setNativePermission(true)");
+ await js("window.turnDialog=document.querySelector('[data-ff-combat-docked]');window.turnForm=turnDialog.querySelector('form');window.turnInput=turnForm.querySelector('input');turnInput.value='turn-preserved draft';window.turnTarget=document.createElement('input');turnTarget.type='checkbox';turnTarget.checked=true;turnForm.append(turnTarget);window.turnSpacer=document.createElement('div');turnSpacer.style.height='1000px';turnForm.after(turnSpacer);turnDialog.scrollTop=50;window.turnScroll=turnDialog.scrollTop;turnInput.focus();window.turnOpens=opens;setNativePermission(true)");
  await until("!turnForm.querySelector('button[type=submit]').disabled");
  assert.equal(await js("document.querySelector('#native-turn-warning')"),null,'Native stale turn warning clears after permission changes.');
- assert.deepEqual(await js("({dialog:document.querySelector('[data-ff-combat-docked]')===turnDialog,form:document.querySelector('form')===turnForm,input:turnForm.querySelector('input')===turnInput,draft:turnInput.value,focused:document.activeElement===turnInput,opens,submits})"),{dialog:true,form:true,input:true,draft:'turn-preserved draft',focused:true,opens:1,submits:0},'Native store update preserves the mounted form and focus without reopening/submitting.');
- await js('setNativePermission(false)');await until("turnForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
+ assert.deepEqual(await js("({dialog:document.querySelector('[data-ff-combat-docked]')===turnDialog,form:document.querySelector('form')===turnForm,input:turnForm.querySelector('input')===turnInput,draft:turnInput.value,focused:document.activeElement===turnInput,targets:turnTarget.isConnected&&turnTarget.checked,scroll:turnDialog.scrollTop===turnScroll,opens,submits})"),{dialog:true,form:true,input:true,draft:'turn-preserved draft',focused:true,targets:true,scroll:true,opens:1,submits:0},'Native store update preserves the mounted form and focus without reopening/submitting.');
+ await js('window.beforeMismatch=storeWrites;setNativeEncounter(999999);setNativePermission(false)');await new Promise(resolve=>setTimeout(resolve,600));
+ assert.equal(await js('storeWrites'),await js('beforeMismatch'),'A different encounter cannot update the mounted native form.');
+ await js('setNativeEncounter(412456);document.getElementById("nested").click();window.beforeNestedTurn=storeWrites');await new Promise(resolve=>setTimeout(resolve,600));
+ assert.equal(await js('storeWrites'),await js('beforeNestedTurn'),'Turn synchronization yields to nested native layers.');
+ await js('nestedClose()');await until("turnForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
  await js("window.nativeBusy=true;setNativePermission(true)");await until("!document.querySelector('#native-turn-warning')");
  assert.equal(await js("turnForm.querySelector('button[type=submit]').disabled"),true,'Native busy permission continues to own disabled state.');
- await js("window.nativeBusy=false;renderModal();turnInput.value='custom draft';window.turnWrites=storeWrites");
+ await js("window.nativeBusy=false;renderModal();turnTarget.remove();turnSpacer.remove();turnInput.value='custom draft';window.turnWrites=storeWrites");
  await new Promise(resolve=>setTimeout(resolve,1100));
  assert.equal(await js('storeWrites'),await js('turnWrites'),'Unchanged scans never write the native modal store.');
  assert.equal(await js('nativeFactories.size'),0,'Runtime bridge removes its own factory.');
@@ -197,6 +202,17 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js('submits'),0);
  assert.equal(await js("document.body.style.pointerEvents"),'auto');
  assert.equal(await js("document.getElementById('campaign').hasAttribute('aria-hidden')"),false);
+ // A fresh controller has no captured warning when the native panel opens on
+ // the user's turn. The empty sibling slot still updates without remounting.
+ await js('setNativePermission(true)');await configure();await until("!!document.querySelector('[data-ff-combat-docked]')");
+ await js("window.initialTrueForm=document.querySelector('form');window.initialTrueInput=initialTrueForm.querySelector('input');initialTrueInput.value='initial true draft';initialTrueInput.focus();window.initialTrueOpens=opens;setNativePermission(false)");
+ await until("initialTrueForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].type"),'p','Missing native warning receives an informational host status, without replacing the form.');
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].props.role"),'status');
+ assert.deepEqual(await js("({same:document.querySelector('form')===initialTrueForm,draft:initialTrueInput.value,focused:document.activeElement===initialTrueInput,unchangedOpens:opens===initialTrueOpens})"),{same:true,draft:'initial true draft',focused:true,unchangedOpens:true});
+ await js('setNativePermission(true)');await until("!initialTrueForm.querySelector('button[type=submit]').disabled && !document.querySelector('#native-turn-warning')");
+ await configure(false);await until("!document.querySelector('[role=dialog]')");
+
  assert.equal(await js("getComputedStyle(document.querySelector('.overlay')).display"),'none');
  assert.equal(await js("document.querySelector('form')===originalForm && document.querySelector('canvas')===originalCanvas && document.querySelector('.tiptap')===originalEditor"),true);
  const closeHeadingGeometry=async(title,width)=>js(`(()=>{const panel=document.querySelector('[data-ff-combat-docked]'),heading=panel.querySelector('[data-ff-combat-heading]'),close=panel.querySelector('[data-ff-combat-close]');document.documentElement.style.setProperty('--ff-combat-width','${width}px');heading.textContent=${JSON.stringify(title)};let spacer=panel.querySelector('#close-scroll-spacer');if(!spacer){spacer=document.createElement('div');spacer.id='close-scroll-spacer';spacer.style.height='1000px';close.before(spacer)}const measure=()=>{const p=panel.getBoundingClientRect(),c=close.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(heading);const text=Array.from(range.getClientRects()).map(r=>({left:r.left,right:r.right,top:r.top,bottom:r.bottom}));const x=Math.round(c.left+c.width/2),y=Math.round(c.top+c.height/2);return {panel:{left:p.left,right:p.right,top:p.top,bottom:p.bottom},heading:text,close:{left:c.left,right:c.right,top:c.top,bottom:c.bottom,width:c.width,height:c.height},closeHit:close.contains(document.elementFromPoint(x,y)),closeIdentity:close===originalNativeX,closeWithinPanel:c.left>=p.left&&c.right<=p.right&&c.top>=p.top&&c.bottom<=p.bottom,textOverlapsClose:text.some(r=>r.right>c.left&&r.left<c.right&&r.bottom>c.top&&r.top<c.bottom)}};panel.scrollTop=0;const initial=measure();panel.scrollTop=160;return {initial,scrolled:measure(),scrollTop:panel.scrollTop}})()`);
@@ -372,6 +388,17 @@ document.getElementById('actions').onclick=()=>openNative();document.querySelect
  assert.equal(await js("document.querySelector('[data-ff-combat-controls]')"),null);
 
  assert.equal(await js("document.getElementById('campaign').hasAttribute('aria-hidden')"),false);
+ // A fresh controller has no captured warning when the native panel opens on
+ // the user's turn. The empty sibling slot still updates without remounting.
+ await js('setNativePermission(true)');await configure();await until("!!document.querySelector('[data-ff-combat-docked]')");
+ await js("window.initialTrueForm=document.querySelector('form');window.initialTrueInput=initialTrueForm.querySelector('input');initialTrueInput.value='initial true draft';initialTrueInput.focus();window.initialTrueOpens=opens;setNativePermission(false)");
+ await until("initialTrueForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].type"),'p','Missing native warning receives an informational host status, without replacing the form.');
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].props.role"),'status');
+ assert.deepEqual(await js("({same:document.querySelector('form')===initialTrueForm,draft:initialTrueInput.value,focused:document.activeElement===initialTrueInput,unchangedOpens:opens===initialTrueOpens})"),{same:true,draft:'initial true draft',focused:true,unchangedOpens:true});
+ await js('setNativePermission(true)');await until("!initialTrueForm.querySelector('button[type=submit]').disabled && !document.querySelector('#native-turn-warning')");
+ await configure(false);await until("!document.querySelector('[role=dialog]')");
+
  await js("openNative();document.querySelector('input').value='already open draft'");await configure();
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')"),null,'Do not adapt preexisting modal with unknown focus-listener ordering.');
  assert.equal(await js("document.querySelector('input').value"),'already open draft');await configure(false);await js('nativeClose()');
