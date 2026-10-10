@@ -76,7 +76,8 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     [data-ff-dice-navigation] svg{width:20px;height:20px;display:block;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
     [data-ff-dice-selection-confirm]{display:grid;place-items:center;width:40px;height:40px;min-width:40px;min-height:40px;padding:0;}
     [data-ff-dice-selection-confirm] svg{display:block;width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
-    [data-ff-dice-favorites]{padding:12px;min-width:0;box-sizing:border-box;}
+    [data-ff-dice-favorites]{padding:12px;min-width:0;width:100%;box-sizing:border-box;}
+    [data-ff-dice-favorites][data-ff-dice-favorites-inline]{padding:0;}
     [data-ff-dice-favorite-tiles]{display:flex;flex-direction:column;padding:8px;min-width:0;box-sizing:border-box;}
     [data-ff-dice-favorite-group]{min-width:0;}
     [data-ff-dice-favorite-group]>h3{margin:0;}
@@ -98,7 +99,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     const result = new Map<Item, HTMLButtonElement>();
     if (!dock) return result;
     for (const node of dock.querySelectorAll<HTMLButtonElement>('button')) {
-      if (owned.contains(node) || favorites.contains(node) || node === confirm) continue;
+      if (node.closest('[data-ff-combat-shortcuts],[data-ff-dice-favorites],[data-ff-dice-selection-confirm]')) continue;
       // Native captions contain repeated whitespace; translation collapses it.
       // Recognize both presentations so hiding/restoring the native list cannot
       // alternate between an empty and populated options map.
@@ -106,6 +107,15 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
       if (item && !result.has(item)) result.set(item, node);
     }
     return result;
+  }
+  function nativeCommon(options: Map<Item, HTMLButtonElement>, slot: HTMLElement | null): HTMLElement | null {
+    const nodes = [...options.values()];
+    // Prefer the complete native dice list even if only one category is populated.
+    const list = nodes[0]?.closest<HTMLElement>('.p-4.space-y-6');
+    if (list && list !== dock && !list.contains(slot) && nodes.every(node => list.contains(node))) return list;
+    let common: HTMLElement | null = nodes[0]?.parentElement ?? null;
+    while (common && !nodes.every(node => common!.contains(node))) common = common.parentElement;
+    return common && common !== dock && !common.contains(slot) ? common : null;
   }
   function restore(): void {
     for (const node of nativeHidden) node.removeAttribute('data-ff-dice-native-hidden'); nativeHidden.clear();
@@ -115,7 +125,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     }
     overlays.clear(); dock?.removeAttribute('data-ff-dice-selection');
   }
-  function detach(): void { restore(); owned.remove(); favorites.remove(); confirm.remove(); dock?.removeEventListener('click', capture, true); dock?.removeEventListener('keydown', capture, true); dock?.removeEventListener('pointerdown', capture, true); dock?.removeEventListener('mousedown', capture, true); }
+  function detach(): void { restore(); owned.remove(); favorites.remove(); favorites.removeAttribute('data-ff-dice-favorites-inline'); confirm.remove(); dock?.removeEventListener('click', capture, true); dock?.removeEventListener('keydown', capture, true); dock?.removeEventListener('pointerdown', capture, true); dock?.removeEventListener('mousedown', capture, true); }
   function toggle(item: Item): void { if (draft.has(item.id)) draft.delete(item.id); else draft.add(item.id); sync(); }
   function capture(event: Event): void {
     if (view !== 'selection' || dock?.dataset.ffCombatPanelMode !== 'skills' || !(event.target instanceof Element)) return;
@@ -138,12 +148,17 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     }
     const options = nativeOptions();
     const slot = dock?.querySelector<HTMLElement>('[data-ff-combat-shortcuts-slot]');
+    const common = nativeCommon(options, slot ?? null);
+    const inline = !!common?.matches('.p-4.space-y-6') && !!common.closest('.p-6') &&
+      !!common.parentElement && common.parentElement !== dock;
+    const favoriteParent = inline ? common!.parentElement : dock;
     const active = !!slot && dock?.dataset.ffCombatPanelMode === 'skills' &&
       [...options.values()].some(node => !node.closest('[hidden],[aria-hidden="true"]'));
     const nextSignature = JSON.stringify([route, language, view, pinned, [...draft], active, [...options].map(([item, node]) => [item.id, node.textContent, node.className, node.innerHTML.replace(/<input[^>]*>/g, ''), unavailable(node)])]);
     // Identity matters in every view: identical replacement lists need fresh hiding and overlays.
     const sameNodes = options.size === previousOptions.size && [...options].every(([item, node]) => previousOptions.get(item) === node);
-    if (signature === nextSignature && sameNodes && (!active || owned.parentElement === slot)) return;
+    if (signature === nextSignature && sameNodes && (!active || (owned.parentElement === slot && favorites.parentElement === favoriteParent &&
+      favorites.hasAttribute('data-ff-dice-favorites-inline') === inline && (!inline || favorites.previousElementSibling === common)))) return;
     const focused = document.activeElement;
     const focusedTile = focused instanceof Element ? focused.closest<HTMLButtonElement>('[data-ff-dice-selection-tile]') : null;
     const focusCheckbox = focused instanceof HTMLInputElement && focused.hasAttribute('data-ff-dice-selection-checkbox');
@@ -151,7 +166,10 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     owned.hidden = favorites.hidden = confirm.hidden = !active;
     if (!active) { if (view === 'selection') { view = 'favorites'; draft = new Set(pinned); signature = ''; } return; }
     if (owned.parentElement !== slot) slot!.append(owned);
-    if (favorites.parentElement !== dock) dock!.append(favorites);
+    favorites.toggleAttribute('data-ff-dice-favorites-inline', inline);
+    if (inline) {
+      if (favorites.parentElement !== favoriteParent || favorites.previousElementSibling !== common) common!.after(favorites);
+    } else if (favorites.parentElement !== dock) dock!.append(favorites);
     if (confirm.parentElement !== dock) dock!.append(confirm);
     standard.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/><circle cx="12" cy="12" r="1"/></svg>';
     favoriteNav.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78Z"/></svg>';
@@ -238,9 +256,7 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     }
     if (view === 'favorites') {
       // Hide the smallest common native list branch; never hide the dock/header/owned slot.
-      let common: HTMLElement | null = options.values().next().value?.parentElement ?? null;
-      while (common && ![...options.values()].every(node => common!.contains(node))) common = common.parentElement;
-      if (common && common !== dock && !common.contains(slot!)) {
+      if (common) {
         common.setAttribute('data-ff-dice-native-hidden', ''); nativeHidden.add(common);
       } else for (const node of options.values()) { node.setAttribute('data-ff-dice-native-hidden', ''); nativeHidden.add(node); }
     } else if (view === 'selection') {

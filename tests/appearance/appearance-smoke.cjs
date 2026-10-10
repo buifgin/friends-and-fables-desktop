@@ -87,6 +87,7 @@ async function save(settings, window) {
   await styleWindow.loadURL('data:text/html,' + encodeURIComponent(`<!doctype html><style>
     .grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
     .p-6,[data-ff-dice-favorites] {padding:12px;}
+    [data-ff-dice-favorites][data-ff-dice-favorites-inline] {padding:0;width:100%;box-sizing:border-box;}
     .p-4,[data-ff-dice-favorite-tiles] {padding:8px;}
     [data-ff-combat-body] {padding:12px;}
     button,input,select,textarea {border:1px solid #777;color:#eee;background:#345;}
@@ -122,6 +123,16 @@ async function save(settings, window) {
   assert.deepEqual(await styleSnapshot(),nativePanelStyle,'Disabling customization restores inherited geometry and controls.');
   await setPanelCss({ ...customizedPanel, customizeBorder:false, customizeButtons:false, customizeSpacing:false });
   assert.deepEqual(await styleSnapshot(),nativePanelStyle,'Independent switches restore native styles while customization stays enabled.');
+  // Inline Favorites shares the native outer p6 rather than adding its own inset.
+  await styleWindow.webContents.executeJavaScript(`const favorites=document.querySelector('[data-ff-dice-favorites]');
+    favorites.setAttribute('data-ff-dice-favorites-inline','');document.querySelector('.p-6').append(favorites);`);
+  await setPanelCss(DEFAULT_APPEARANCE.combatPanel);
+  const inlineNativeStyle = await styleSnapshot();
+  await setPanelCss(customizedPanel);
+  assert.deepEqual((await styleSnapshot()).padding,['32px','0px'],'Inline Favorites inherits custom padding from the native outer container.');
+  assert.equal(await styleWindow.webContents.executeJavaScript("getComputedStyle(document.querySelector('[data-ff-dice-favorite-tiles]')).padding"),'0px','Inline Favorites inner list does not add another custom inset.');
+  await setPanelCss({ ...customizedPanel, enabled:false });
+  assert.deepEqual(await styleSnapshot(),inlineNativeStyle,'Global disable restores inline native layout.');
   styleWindow.destroy();
   const manager = new AppearanceManager();
   await manager.initialize();
