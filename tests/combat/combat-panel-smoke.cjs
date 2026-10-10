@@ -93,7 +93,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await app.whenReady();
  const site=session.fromPartition('combat-fixture');site.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
  window=new BrowserWindow({show:false,width:1280,height:850,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
- const js=source=>window.webContents.executeJavaScript(source);
+ const js=async source=>{try{return await window.webContents.executeJavaScript(source)}catch(error){console.error('Combat renderer evaluation failed:',source);throw error}};
  const until=async expression=>{for(let n=0;n<100;n++){if(await js(expression))return;await new Promise(resolve=>setTimeout(resolve,20));}throw Error('Timed out: '+expression)};
  const configure=(enabled=true,locale='en',appearance={enabled:false,color:'#101010',opacity:.92,blur:12},ambient)=>js(`(${configureCombatPanel.toString()})(${enabled},${JSON.stringify(locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(appearance,ambient))})`);
  await window.loadURL('https://play.fables.gg/fixture/play');
@@ -110,7 +110,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  // form still holds false after the composer permission changes to true.
  await js("window.turnDialog=document.querySelector('[data-ff-combat-docked]');window.turnForm=turnDialog.querySelector('form');window.turnInput=turnForm.querySelector('input');turnInput.value='turn-preserved draft';window.turnTarget=document.createElement('input');turnTarget.type='checkbox';turnTarget.checked=true;turnForm.append(turnTarget);window.turnSpacer=document.createElement('div');turnSpacer.style.height='1000px';turnForm.after(turnSpacer);turnDialog.scrollTop=50;window.turnScroll=turnDialog.scrollTop;turnInput.focus();window.turnOpens=opens;setNativePermission(true)");
  await until("!turnForm.querySelector('button[type=submit]').disabled");
- assert.equal(await js("document.querySelector('#native-turn-warning')"),null,'Native stale turn warning clears after permission changes.');
+ assert.equal(await js("document.querySelector('#native-turn-warning')===null"),true,'Native stale turn warning clears after permission changes.');
  assert.deepEqual(await js("({dialog:document.querySelector('[data-ff-combat-docked]')===turnDialog,form:document.querySelector('form')===turnForm,input:turnForm.querySelector('input')===turnInput,draft:turnInput.value,focused:document.activeElement===turnInput,targets:turnTarget.isConnected&&turnTarget.checked,scroll:turnDialog.scrollTop===turnScroll,opens,submits})"),{dialog:true,form:true,input:true,draft:'turn-preserved draft',focused:true,targets:true,scroll:true,opens:1,submits:0},'Native store update preserves the mounted form and focus without reopening/submitting.');
  await js('window.beforeMismatch=storeWrites;setNativeEncounter(999999);setNativePermission(false)');await new Promise(resolve=>setTimeout(resolve,600));
  assert.equal(await js('storeWrites'),await js('beforeMismatch'),'A different encounter cannot update the mounted native form.');
@@ -205,16 +205,6 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  assert.equal(await js('submits'),0);
  assert.equal(await js("document.body.style.pointerEvents"),'auto');
  assert.equal(await js("document.getElementById('campaign').hasAttribute('aria-hidden')"),false);
- // A fresh controller has no captured warning when the native panel opens on
- // the user's turn. The empty sibling slot still updates without remounting.
- await js('setNativePermission(true)');await configure();await until("!!document.querySelector('[data-ff-combat-docked]')");
- await js("window.initialTrueForm=document.querySelector('form');window.initialTrueInput=initialTrueForm.querySelector('input');initialTrueInput.value='initial true draft';initialTrueInput.focus();window.initialTrueOpens=opens;setNativePermission(false)");
- await until("initialTrueForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
- assert.equal(await js("modalState.modalStack[0].content.props.children[1].type"),'p','Missing native warning receives an informational host status, without replacing the form.');
- assert.equal(await js("modalState.modalStack[0].content.props.children[1].props.role"),'status');
- assert.deepEqual(await js("({same:document.querySelector('form')===initialTrueForm,draft:initialTrueInput.value,focused:document.activeElement===initialTrueInput,unchangedOpens:opens===initialTrueOpens})"),{same:true,draft:'initial true draft',focused:true,unchangedOpens:true});
- await js('setNativePermission(true)');await until("!initialTrueForm.querySelector('button[type=submit]').disabled && !document.querySelector('#native-turn-warning')");
- await configure(false);await until("!document.querySelector('[role=dialog]')");
 
  assert.equal(await js("getComputedStyle(document.querySelector('.overlay')).display"),'none');
  assert.equal(await js("document.querySelector('form')===originalForm && document.querySelector('canvas')===originalCanvas && document.querySelector('.tiptap')===originalEditor"),true);
@@ -388,7 +378,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await js("history.pushState({},'', '/fixture/play');dispatchEvent(new PopStateEvent('popstate'))");await until("!!document.querySelector('[data-ff-combat-docked]')");
  await configure(false);await until("!document.querySelector('[role=dialog]')");
  assert.equal(await js("document.body.style.cssText"),'','Disposal of active panel lets native modal cleanup finish.');
- assert.equal(await js("document.querySelector('[data-ff-combat-controls]')"),null);
+ assert.equal(await js("document.querySelector('[data-ff-combat-controls]')===null"),true);
 
  assert.equal(await js("document.getElementById('campaign').hasAttribute('aria-hidden')"),false);
  // A fresh controller has no captured warning when the native panel opens on
@@ -396,17 +386,17 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await js('setNativePermission(true)');await configure();await until("!!document.querySelector('[data-ff-combat-docked]')");
  await js("window.initialTrueForm=document.querySelector('form');window.initialTrueInput=initialTrueForm.querySelector('input');initialTrueInput.value='initial true draft';initialTrueInput.focus();window.initialTrueOpens=opens;setNativePermission(false)");
  await until("initialTrueForm.querySelector('button[type=submit]').disabled && !!document.querySelector('#native-turn-warning')");
- assert.equal(await js("modalState.modalStack[0].content.props.children[1].type"),'p','Missing native warning receives an informational host status, without replacing the form.');
+ assert.equal(await js("modalState.modalStack[0].content.props.children[1].type==='p'"),true,'Missing native warning receives an informational host status, without replacing the form.');
  assert.equal(await js("modalState.modalStack[0].content.props.children[1].props.role"),'status');
  assert.deepEqual(await js("({same:document.querySelector('form')===initialTrueForm,draft:initialTrueInput.value,focused:document.activeElement===initialTrueInput,unchangedOpens:opens===initialTrueOpens})"),{same:true,draft:'initial true draft',focused:true,unchangedOpens:true});
  await js('setNativePermission(true)');await until("!initialTrueForm.querySelector('button[type=submit]').disabled && !document.querySelector('#native-turn-warning')");
  await configure(false);await until("!document.querySelector('[role=dialog]')");
 
  await js("openNative();document.querySelector('input').value='already open draft'");await configure();
- assert.equal(await js("document.querySelector('[data-ff-combat-docked]')"),null,'Do not adapt preexisting modal with unknown focus-listener ordering.');
+ assert.equal(await js("document.querySelector('[data-ff-combat-docked]')===null"),true,'Do not adapt preexisting modal with unknown focus-listener ordering.');
  assert.equal(await js("document.querySelector('input').value"),'already open draft');await configure(false);await js('nativeClose()');
  await js('window.rememberedSkill=true;openNative(true)');await configure();
- assert.equal(await js("document.querySelector('[data-ff-combat-docked]')"),null,'Even native-shaped remembered skill detail must stay modal when it predates the adapter.');
+ assert.equal(await js("document.querySelector('[data-ff-combat-docked]')===null"),true,'Even native-shaped remembered skill detail must stay modal when it predates the adapter.');
  assert.equal(await js("document.querySelector('#d20')!==null"),true);await configure(false);await js('nativeClose()');
  console.log('Combat modal fidelity fixture passed');window.destroy();clearTimeout(timer);app.exit(0);
 })().catch(error=>{console.error(error);window?.destroy();clearTimeout(timer);app.exit(1)});
