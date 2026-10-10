@@ -290,7 +290,7 @@ app.on('window-all-closed', () => {});
  assert.equal(await js("localStorage.getItem('ff-desktop-attack-defaults-v1:/campaign-two').includes('attack_roll_type')"),false);
  await mutate('mountPending()');await until("pendingValues.attacks[0].modifier_value===6");assert.equal(await js('pendingValues.attacks[0].attack_roll_type'),'normal','New native rows retain native roll mode, never saved advantage.');
  await click(spell+' summary');await click(spell+' [data-ff-correction-overwrite-all]');
- await mutate('mountPending()');await until("pendingValues.attacks[1].modifier_value===2");assert.equal(await js('pendingValues.attacks[0].modifier_value'),6,'Spell overwrite preserves weapon override/default.');
+ await mutate('mountPending()');await until("pendingValues.attacks[0].modifier_value===6&&pendingValues.attacks[1].modifier_value===5&&pendingWrites.length===6");assert.equal(await js('pendingValues.attacks[0].modifier_value'),6,'Spell overwrite preserves weapon override/default.');assert.equal(await js('pendingValues.attacks[1].modifier_value'),5,'Spell overwrite applies only the spell category default.');
  assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-attack-defaults-v1:/campaign-two')).entries.some(entry=>entry.character==='n:83026155'&&entry.type==='spell')"),false);
  for(const unsupported of ["pendingWeaponOverride={attack_roll_type:undefined}","pendingWeaponOverride={attack_roll_type:'invented'}"]){
   await mutate(unsupported+';mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");assert.equal(await js("pendingCards[0].card.querySelector('[data-ff-correction-roll-mode]').getClientRects().length"),0,'Unsupported native mode never creates a visible control.');
