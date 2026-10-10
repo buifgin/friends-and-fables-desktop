@@ -44,7 +44,7 @@ function useModalStore(){};useModalStore.getState=()=>modalState;useModalStore.s
 window.nativeModuleCache={nativeStore:{exports:{useModalStore}}};window.nativeFactories=new Map();
 window.TURBOPACK={push:chunk=>{if(chunk.length===2){Promise.resolve().then(()=>{for(const id of chunk[1].runtimeModuleIds){const ctx={c:nativeModuleCache,M:nativeFactories};nativeModuleCache[id]={exports:{}};nativeFactories.get(id)(ctx)}})}else{for(let i=1;i<chunk.length-1;i++)nativeFactories.set(chunk[i],chunk[chunk.length-1])}}};
 window.setNativeEncounter=id=>{permissionFiber.memoizedProps={...permissionFiber.memoizedProps,encounterId:id}};
-window.setNativePermission=value=>{permissionFiber.memoizedProps={...permissionFiber.memoizedProps,isUsersCharacterTurn:value};document.getElementById('events-list').append(document.createTextNode('native turn change'))};
+window.setNativePermission=value=>{permissionFiber.memoizedProps={...permissionFiber.memoizedProps,isUsersCharacterTurn:value};document.getElementById('events-list').append(document.createComment('native turn change'))};
 
 campaign.addEventListener('wheel',()=>window.backgroundWheels++);
 campaign.addEventListener('focusin',()=>window.reactFocus++);canvas.addEventListener('click',()=>window.mapClicks++);
