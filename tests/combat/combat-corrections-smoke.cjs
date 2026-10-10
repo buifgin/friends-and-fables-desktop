@@ -136,7 +136,7 @@ app.on('window-all-closed', () => {});
  assert.equal(await js('pendingValues.attacks[0].modifier_value'),4,'Actual RHF pending value changes.');
  assert.equal(await js('pendingCards[0].fieldAttack.modifier_value'),0,'Native field-array snapshot is never counterfeited.');
  assert.equal(await js('pendingNative.list.scrollTop===pendingScroll'),true,'Correction preserves native scroll.');
- await set(weapon+' [data-ff-correction-ability]','dexterity');await mutate("document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-ability]').dispatchEvent(new Event('change',{bubbles:true}))");
+ await mutate("const ability=document.querySelector('[data-ff-pending-corrections=\"0\"] [data-ff-correction-ability]');ability.value='dexterity';ability.dispatchEvent(new Event('change',{bubbles:true}))");
  assert.equal(await js('pendingValues.attacks[0].modifier_stat'),'dexterity');assert.equal(await js('pendingValues.attacks[0].modifier_value'),3,'Ability uses native adjusted character stat.');
  await click(spell+' summary'); await click(spell+' [data-ff-correction-proficiency_bonus-plus]');assert.equal(await js('pendingValues.attacks[1].proficiency_bonus'),4,'Spell uses its own exact array index.');
  for(const value of ['11','-11','1e1']){await set(weapon+' [data-ff-correction-value=modifier_value]',value);await click(weapon+' [data-ff-correction-apply-modifier_value]');}
