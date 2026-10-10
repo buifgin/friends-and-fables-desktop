@@ -317,6 +317,10 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-story').firstChild===blankText"),true);
  assert.equal(await contents.executeJavaScript("getComputedStyle(document.getElementById('blank-story')).webkitTextFillColor"),'rgba(0, 0, 0, 0)','Pending text remains concealed with themed important text colors.');
  assert.equal(await contents.executeJavaScript("document.getElementById('blank-editor').textContent"),'Original English draft.');
+ // This assertion samples the first paint, so keep the containing BrowserWindow
+ // visible and focused. Electron can suspend requestAnimationFrame in a hidden
+ // or occluded window, leaving the promise pending until the suite watchdog.
+ website.show();website.focus();contents.focus();
  const firstFrame=await contents.executeJavaScript(`new Promise(resolve=>{document.getElementById('blank-late').innerHTML='<p id="new-source">The hidden stone shines.</p><span id="new-local">ABILITY CHECKS</span>';requestAnimationFrame(()=>resolve({hidden:document.getElementById('new-source').hasAttribute('data-ff-translation-blank'),local:document.getElementById('new-local').textContent,dots:getComputedStyle(document.querySelector('#new-source [data-ff-translation-dot]'),'::after').animationName}))})`);
  assert.deepEqual(firstFrame,{hidden:true,local:'Проверки характеристик',dots:'ff-translation-dots'});
  await sleep(210);
