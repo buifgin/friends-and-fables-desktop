@@ -61,7 +61,7 @@ const wait = async (contents, expression) => {
   assert.deepEqual(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).map(x=>x.getAttribute('aria-label'))`), ['Все проверки', 'Избранное']);
   assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).every(x=>x.textContent.trim()===''&&x.title===x.getAttribute('aria-label')&&x.querySelector('svg[aria-hidden="true"]'))`), true, 'Visible top navigation is icon-only with Russian accessible names and tooltips.');
   await click('[data-ff-dice-standard]');
-  assert.equal(await run(`document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`), false);
+  assert.equal(await run(`document.querySelector('#native-content').hasAttribute('data-ff-dice-native-hidden')`), false, 'Standard dice restores the actual native content branch.');
   await click('[data-ff-dice-favorites-nav]'); await click('[data-ff-dice-add]');
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-selection-checkbox]').length`), 4, 'Only real native canonical tiles get checkboxes.');
   await run(`document.querySelector('#check').dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true}));document.querySelector('#check').click()`);
@@ -114,8 +114,10 @@ const wait = async (contents, expression) => {
     if(width===388)assert.equal(geometry.sameRow,true,'Both ability checks appear in one standard-dice style row.');
   }
   await run(`document.querySelector('[data-ff-combat-docked]').style.removeProperty('width')`);
-  await run(`window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.removeAttribute('data-ff-dice-native-hidden');old.replaceWith(replacement);for(const id of ['check','dex-check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check');true`);
-  await wait(contents, `document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`);
+  await run(`window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.removeAttribute('data-ff-dice-native-hidden');replacement.querySelectorAll('[data-ff-dice-native-hidden]').forEach(node=>node.removeAttribute('data-ff-dice-native-hidden'));old.replaceWith(replacement);for(const id of ['check','dex-check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check');true`);
+  await wait(contents, `document.querySelector('#native-content').hasAttribute('data-ff-dice-native-hidden')`);
+  assert.equal(await run(`document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`), false, 'Favorites hides the deepest common native branch after list remount.');
+  assert.deepEqual(await run(`[...document.querySelectorAll('[data-ff-dice-native-hidden]')].map(node=>node.id)`), ['native-content'], 'Remount cleanup removes stale hidden markers before Favorites reapplies ownership.');
   assert.equal(await run(`window.ownedFavorite===document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]')`), true, 'Identical native list remount preserves the owned favorite button.');
   await click('[data-ff-dice-favorite-tile="ability.strength"]');
   await wait(contents, `document.querySelector('[data-ff-dice-navigation]').hidden`);
@@ -123,7 +125,9 @@ const wait = async (contents, expression) => {
   assert.equal(await run('window.rolls'), 0);
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorites]').hidden && document.querySelector('[data-ff-dice-selection-confirm]').hidden`), true, 'Detail hides all owned dice UI.');
   await click('#back'); await wait(contents, `!document.querySelector('[data-ff-dice-favorites]').hidden`);
-  await click('[data-ff-dice-standard]'); await click('#save');
+  await click('[data-ff-dice-standard]');
+  assert.equal(await run(`!document.querySelector('#native-content').hasAttribute('data-ff-dice-native-hidden')&&getComputedStyle(document.querySelector('#native-content')).display!=='none'`), true, 'Standard view restores the native content branch after remount.');
+  await click('#save');
   await wait(contents, `document.querySelector('[data-ff-dice-navigation]').hidden`);
   assert.equal(await run('window.selections'), 2, 'Standard view keeps the original native click handler.');
   await click('#back'); await wait(contents, `!document.querySelector('[data-ff-dice-navigation]').hidden`);
@@ -153,7 +157,7 @@ const wait = async (contents, expression) => {
   await click('[data-ff-dice-favorite-tile="skill.acrobatics"]'); assert.equal(await run('window.selections'), 2);
   await run(`document.querySelector('[data-ff-combat-docked]').dataset.ffCombatPanelMode='actions'`);
   await wait(contents, `document.querySelector('[data-ff-dice-navigation]').hidden`);
-  assert.equal(await run(`document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`), false, 'Actions/spell targeting restores native content.');
+  assert.equal(await run(`!document.querySelector('#native-content').hasAttribute('data-ff-dice-native-hidden')&&getComputedStyle(document.querySelector('#native-content')).display!=='none'`), true, 'Actions/spell targeting restores the native content branch.');
   await run(`document.querySelector('[data-ff-combat-docked]').removeAttribute('data-ff-combat-panel-mode')`);
   await wait(contents, `document.querySelector('[data-ff-dice-favorites]').hidden`);
   await run(`document.querySelector('[data-ff-combat-docked]').dataset.ffCombatPanelMode='skills';history.pushState({},'', '/other/play');document.body.append(document.createElement('aside'));true`);
