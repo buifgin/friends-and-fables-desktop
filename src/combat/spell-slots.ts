@@ -16,6 +16,7 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
   function fiber(node: HTMLElement): Fiber | undefined {
     let result = Object.entries(node).find(([name]) => name.startsWith('__reactFiber$'))?.[1] as Fiber | undefined;
     let root = result; for (let i = 0; root?.return && i < 256; i++) root = root.return;
+    if (!root || root.return) return;
     if (root?.alternate && root.stateNode?.current === root.alternate) result = result?.alternate;
     return result;
   }
