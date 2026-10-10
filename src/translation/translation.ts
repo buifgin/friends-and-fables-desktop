@@ -37,6 +37,8 @@ export class TranslationManager {
   private busy = false;
   private retryAfter = 0;
   private stopped = false;
+  private stopRendererWork!: () => void;
+  private rendererStopped = new Promise<void>(resolve => { this.stopRendererWork = resolve; });
   private bundled: BundledTranslator | undefined;
   private endpoint: TranslatorEndpoint | undefined;
   private theme = { preset: DEFAULT_APPEARANCE.preset, customColor: DEFAULT_APPEARANCE.customColor };
@@ -128,12 +130,13 @@ export class TranslationManager {
     contents.on('did-start-navigation',navigating);contents.on('did-fail-load',failed);contents.on('dom-ready',ready);contents.on('destroyed',destroyed);
   }
   private allowed(contents: WebContents): boolean {
-    if (contents.isDestroyed()) return false;
+    if (this.stopped || contents.isDestroyed()) return false;
     try { return new URL(contents.getURL()).origin === 'https://play.fables.gg'; } catch { return false; }
   }
   private configure(website: Website): Promise<void> {
+    if (this.stopped) return Promise.resolve();
     const token = website.token = randomUUID();
-    website.pending = website.pending.catch(() => {}).then(async () => {
+    const configuring = website.pending.catch(() => {}).then(async () => {
       if (token !== website.token || !this.allowed(website.contents)) return;
       const settings = this.getSettings();
       if(settings.enabled&&!settings.showOriginal&&settings.hideUntranslated)website.presentation?.setVisible(false);
@@ -143,6 +146,9 @@ export class TranslationManager {
     }).catch(() => { /* Navigation can discard an in-flight renderer call. */ }).finally(()=>{
       if(token===website.token&&!website.contents.isDestroyed())website.presentation?.setVisible(true);
     });
+    // Renderer calls can remain pending after the owning window closes. Persistence
+    // must be able to drain without waiting for that discarded renderer.
+    website.pending = Promise.race([configuring, this.rendererStopped]);
     return website.pending;
   }
   private async translateBatch(nodes: TextRequest[], progress: (results: TextResult[]) => Promise<void>): Promise<TextResult[]> {
@@ -245,10 +251,11 @@ export class TranslationManager {
   closeWindow(): void { this.window?.close(); }
   async shutdown(): Promise<void> {
     this.stopped = true; this.engine.abort(); if (this.timer) clearInterval(this.timer);
+    for (const website of this.websites) { website.token = ''; website.detach?.(); }
+    this.websites.clear();
+    this.stopRendererWork();
     await this.writes.catch(() => {});
     await this.bundled?.stop();
-    await Promise.all([...this.websites].map(website => this.configure(website)));
-    for(const website of this.websites)website.detach?.();this.websites.clear();
     await this.cache.flush().catch(() => {});
     for (const method of ['get', 'save', 'check', 'clear-cache', 'close']) ipcMain.removeHandler(`translation:${method}`);
   }
