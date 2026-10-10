@@ -18,6 +18,15 @@ window.mount=()=>{
  }
  native.form.addEventListener('submit',event=>{event.preventDefault();submits.push({...state,description:native.description.value})});
 };mount();
+window.attachCustomMode=(requires=true)=>{
+ const form=document.querySelector('#native-form'),trigger=document.createElement('button'),select=document.createElement('select');trigger.type='button';trigger.setAttribute('role','combobox');trigger.textContent='Normal';
+ select.setAttribute('aria-hidden','true');select.tabIndex=-1;select.style.cssText='position:absolute;width:1px;height:1px;overflow:hidden';
+ for(const value of ['normal','advantage','disadvantage']){const option=document.createElement('option');option.value=value;select.append(option)}
+ form.append(trigger,select);window.customModeValues={requires_attack_roll:requires,attack_roll_type:'normal'};window.customModeWrites=[];const control={};
+ window.customModeMethods={control,getValues(name){return customModeValues[name]},getFieldState(){return {isDirty:false,isTouched:false}},setValue(name,value,options){if(name!=='attack_roll_type')throw Error('Unexpected leaf');customModeValues[name]=value;customModeWrites.push({name,value,options});select.value=value;trigger.textContent=value}};
+ select.__reactFiber$fixture={memoizedProps:{},return:{memoizedProps:{trigger},return:{memoizedProps:{name:'attack_roll_type',control},return:{memoizedProps:customModeMethods}}}};
+ window.customModeTrigger=trigger;window.customModeSelect=select;
+};
 // Captured ExecuteActionsForm: FormProvider props, keyed field-array wrapper,
 // AttackCard props and sibling FormField(control, name=attacks.N.targets).
 window.pendingMounts=0;window.pendingCharacterOverride={};window.pendingWeaponOverride={};window.pendingBlocked=false;
@@ -122,6 +131,14 @@ app.on('window-all-closed', () => {});
   await mutate(`native.modifier.removeAttribute(${JSON.stringify(attribute)})`);
   await until("!document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
  }
+ // Exact captured Radix Controller + own FormProvider binding. The enum
+ // alone does not authorize a mode on damage-only custom forms.
+ await mutate('attachCustomMode(false)');await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js("document.querySelector('[data-ff-combat-corrections] [data-ff-correction-roll-mode]').getClientRects().length"),0);
+ await mutate('customModeValues.requires_attack_roll=true');await configure();await until("document.querySelector('[data-ff-combat-corrections] [data-ff-correction-roll-mode]').getClientRects().length>0");
+ for(const value of ['advantage','disadvantage','normal']){await mutate(`const mode=document.querySelector('[data-ff-combat-corrections] [data-ff-correction-roll-mode]');mode.value='${value}';mode.dispatchEvent(new Event('change',{bubbles:true}))`);assert.equal(await js('customModeValues.attack_roll_type'),value);}
+ assert.equal(await js("customModeWrites.every(write=>write.name==='attack_roll_type'&&write.options.shouldDirty&&write.options.shouldValidate)"),true);
+ assert.equal(await js("localStorage.getItem('ff-desktop-combat-corrections-v1:/campaign-one').includes('attack_roll_type')"),false,'Manual custom presets exclude transient roll mode.');
+ await mutate('customModeTrigger.disabled=true');await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js("document.querySelector('[data-ff-combat-corrections] [data-ff-correction-roll-mode]').getClientRects().length"),0);await mutate('customModeTrigger.disabled=false');
  await click('[data-ff-correction-delete]'); assert.deepEqual(await js("JSON.parse(localStorage.getItem('ff-desktop-combat-corrections-v1:/campaign-one'))"),[]);
  assert.equal(await identity(),true); assert.equal(await js('submits.length'),1);
  await configure(true,'ru'); assert.equal(await js("document.querySelector('[data-ff-combat-corrections] summary').textContent"),'Поправки к броску'); assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null);

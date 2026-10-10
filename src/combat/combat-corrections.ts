@@ -112,7 +112,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   // captured field-array wrapper and its own FormProvider, never item data.
   type NativeAttack = { id?: string; name?: string; image?: string; type?: string; requires_attack_roll?: boolean; attack_roll_type?: string; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
   type NativeMethods = { control: unknown; getFieldState?(name: string): { isDirty?: boolean; isTouched?: boolean }; getValues(name: string): unknown; setValue(name: string, value: string | number, options: { shouldDirty: boolean; shouldValidate: boolean }): void };
-  type NativeProps = { attack?: NativeAttack; usersCharacter?: Record<string, unknown>; children?: unknown; control?: unknown; name?: string; value?: NativeMethods; getValues?: NativeMethods['getValues']; setValue?: NativeMethods['setValue']; showDropdown?: boolean; onEdit?: unknown };
+  type NativeProps = { attack?: NativeAttack; usersCharacter?: Record<string, unknown>; children?: unknown; control?: unknown; name?: string; value?: NativeMethods; getValues?: NativeMethods['getValues']; setValue?: NativeMethods['setValue']; showDropdown?: boolean; trigger?: HTMLElement; disabled?: boolean; onEdit?: unknown };
   type Fiber = { memoizedProps?: NativeProps; return?: Fiber; alternate?: Fiber; key?: string; stateNode?: { current?: Fiber } };
   type Binding = { methods: NativeMethods; index: number; id: string; attack: NativeAttack; snapshot: NativeAttack; character: Record<string, unknown>; form: HTMLFormElement; submit: HTMLButtonElement };
   type PendingUI = { node: HTMLDetailsElement; control: unknown; id: string; refresh(): void };
@@ -146,6 +146,56 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     }
     return null;
   }
+  const nativeModes = ['normal', 'advantage', 'disadvantage'];
+  type ModeBinding = { methods: NativeMethods; trigger: HTMLElement; field: string; value: string };
+  function customModeBinding(): ModeBinding | null {
+    if (!form || !panel || !form.isConnected || fields.some(field => !writable(field))) return null;
+    const submits = form.querySelectorAll<HTMLButtonElement>('button[type="submit"]');
+    if (submits.length !== 1 || submits[0].disabled || submits[0].matches(':disabled')) return null;
+    const candidates: ModeBinding[] = [];
+    for (const select of Array.from(form.querySelectorAll<HTMLSelectElement>('select[aria-hidden="true"]')).slice(0, 8)) {
+      const values = Array.from(select.options).map(option => option.value);
+      if (values.length !== 3 || nativeModes.some(value => !values.includes(value)) || select.disabled) continue;
+      let fiber = Object.entries(select).find(([name]) => name.startsWith('__reactFiber$'))?.[1] as Fiber | undefined;
+      let trigger: HTMLElement | null = null, control: unknown;
+      for (let depth = 0; fiber && depth < 35; depth++, fiber = fiber.return) {
+        const props = fiber.memoizedProps; if (!props) continue;
+        if (!trigger && props.trigger instanceof HTMLElement && props.trigger.closest('form') === form) trigger = props.trigger;
+        if (props.name === 'attack_roll_type' && props.control) { if (control && control !== props.control) break; control = props.control; }
+        const methods = (typeof props.getValues === 'function' && typeof props.setValue === 'function' ? props : props.value) as NativeMethods | undefined;
+        if (control && trigger && methods?.control === control && typeof methods.getValues === 'function' && typeof methods.setValue === 'function') {
+          try {
+            const value = methods.getValues('attack_roll_type');
+            // Captured custom damage forms expose the enum too. It is not an
+            // attack-roll control unless the native form explicitly says so.
+            if (methods.getValues('requires_attack_roll') !== true || typeof value !== 'string' || !nativeModes.includes(value)
+              || !trigger.isConnected || trigger.hasAttribute('disabled') || trigger.matches(':disabled')
+              || trigger.closest('[hidden],[aria-hidden="true"],[aria-disabled="true"]') || !trigger.getClientRects().length
+              || getComputedStyle(trigger).visibility !== 'visible') break;
+            candidates.push({ methods, trigger, field: 'attack_roll_type', value });
+          } catch { /* Unknown native context has no owned mode control. */ }
+          break;
+        }
+      }
+    }
+    return candidates.length === 1 ? candidates[0] : null;
+  }
+  const customModeLabel = document.createElement('label'), customModeText = document.createElement('span'), customMode = document.createElement('select');
+  customMode.setAttribute('data-ff-correction-roll-mode', ''); customModeLabel.append(customModeText, customMode); customModeLabel.hidden = true;
+  for (const value of nativeModes) { const option = document.createElement('option'); option.value = value; customMode.append(option); }
+  ui.insertBefore(customModeLabel, nameLabel);
+  function refreshCustomMode(): void {
+    const current = customModeBinding(); customModeLabel.hidden = !current; customMode.disabled = !current;
+    customModeText.textContent = language === 'ru' ? 'Тип броска' : 'Roll mode';
+    Array.from(customMode.options).forEach((option, i) => option.textContent = language === 'ru' ? ['Обычный', 'Преимущество', 'Помеха'][i] : ['Normal', 'Advantage', 'Disadvantage'][i]);
+    if (current && document.activeElement !== customMode) customMode.value = current.value;
+  }
+  customMode.addEventListener('change', () => {
+    const current = customModeBinding(), value = customMode.value;
+    if (!current || !nativeModes.includes(value)) { message('Native roll mode is unavailable.', 'Тип исходного броска недоступен.'); refreshCustomMode(); return; }
+    try { current.methods.setValue(current.field, value, { shouldDirty: true, shouldValidate: true }); refreshCustomMode(); message('Applied to this roll only.', 'Применено только к текущему броску.'); }
+    catch { message('Native roll mode is unavailable.', 'Тип исходного броска недоступен.'); }
+  });
   const pendingWritable = (card: HTMLElement, current: Binding): boolean => !current.submit.disabled && !current.submit.matches(':disabled') && !card.closest('[aria-disabled="true"],[hidden],[aria-hidden="true"]') && card.getClientRects().length > 0 && getComputedStyle(card).visibility === 'visible';
   const pendingNumber = (value: unknown, id: typeof ids[number]): number | null => { const result = number(value); return result !== null && result >= (id === 'modifier_value' ? -10 : 0) && result <= 10 ? result : null; };
   type AttackDefault = { character: string; catalog: string; type: string; ability: string; modifier_value: number; proficiency_bonus: number };
@@ -379,7 +429,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     }
     for (const [card, item] of pending) if (!seen.has(card)) { item.node.remove(); pending.delete(card); }
   }
-  function unmount(): void { ui.remove(); ui.open = false; fields = []; form = null; panel = null; status.textContent = ''; }
+  function unmount(): void { customModeLabel.hidden = true; ui.remove(); ui.open = false; fields = []; form = null; panel = null; status.textContent = ''; }
   function scan(): void {
     frame = 0; if (disposed) return;
     const nextRoute = location.pathname + location.search;
@@ -399,12 +449,12 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
       form!.insertAdjacentElement('afterend', ui);
     }
     fields.forEach((field, i) => { const disabled = !writable(field); edits[i].disabled = disabled; for (const b of ui.querySelectorAll<HTMLButtonElement>(`.ff-correction-row:nth-of-type(${i + 1}) button`)) b.disabled = disabled; });
-    load.disabled = fields.some(f => !writable(f));
+    load.disabled = fields.some(f => !writable(f)); refreshCustomMode();
   }
   function schedule(): void { if (!frame && !disposed) frame = requestAnimationFrame(scan); }
   const observer = new MutationObserver(records => { if (records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest('[data-ff-combat-corrections]'))) schedule(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'disabled', 'readonly', 'id', 'type', 'inputmode', 'aria-disabled', 'data-disabled', 'hidden', 'aria-hidden', 'style', 'class'] });
   const timer = window.setInterval(schedule, 500); window.addEventListener('popstate', schedule);
-  host[key] = { update(value) { language = value; translate(); for (const item of pending.values()) item.refresh(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); document.removeEventListener('input', editedEvent, true); document.removeEventListener('change', editedEvent, true); unmount(); for (const item of pending.values()) item.node.remove(); pending.clear(); style.remove(); delete host[key]; } };
+  host[key] = { update(value) { language = value; translate(); refreshCustomMode(); for (const item of pending.values()) item.refresh(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); document.removeEventListener('input', editedEvent, true); document.removeEventListener('change', editedEvent, true); unmount(); for (const item of pending.values()) item.node.remove(); pending.clear(); style.remove(); delete host[key]; } };
   translate(); scan();
 }
