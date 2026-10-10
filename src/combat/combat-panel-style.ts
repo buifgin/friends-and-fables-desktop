@@ -304,17 +304,30 @@ export const combatPanelCss = `
     white-space: normal;
   }
 
+  [data-ff-combat-docked] [data-ff-desktop-detail-card] > .grid[class~="sm:grid-cols-3"][class~="gap-4"] > div.space-y-2:not(.ff-correction-row):not([data-ff-combat-corrections] *) {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  [data-ff-combat-docked] [data-ff-desktop-detail-card] > .grid[class~="sm:grid-cols-3"][class~="gap-4"] > div.space-y-2:not(.ff-correction-row):not([data-ff-combat-corrections] *) > div:first-child {
+    flex: 1 1 auto;
+  }
+
   [data-ff-combat-docked] [data-ff-desktop-detail-card] > .grid[class~="sm:grid-cols-3"][class~="gap-4"] > div.space-y-2:not(.ff-correction-row):not([data-ff-combat-corrections] *) > div:first-child > label {
     display: block;
-    min-height: 3em;
-    min-height: 3lh;
     white-space: normal;
+  }
+
+  [data-ff-combat-docked] .relative.group.rounded-lg.border.bg-card.p-4 > .grid[class~="lg:grid-cols-4"][class~="gap-4"] > div.space-y-1\\.5:not(.ff-correction-row):not([data-ff-combat-corrections] *) {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
   }
 
   [data-ff-combat-docked] .relative.group.rounded-lg.border.bg-card.p-4 > .grid[class~="lg:grid-cols-4"][class~="gap-4"] > div.space-y-1\\.5:not(.ff-correction-row):not([data-ff-combat-corrections] *) > label {
     display: block;
-    min-height: 3em;
-    min-height: 3lh;
+    flex: 1 1 auto;
     white-space: normal;
   }
 
