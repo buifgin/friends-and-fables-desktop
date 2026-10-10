@@ -5,8 +5,8 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
   const host = window as unknown as Record<string, Controller | undefined>;
   if (host[key]) { if (enabled) host[key]!.update(locale); else host[key]!.dispose(); return; }
   if (!enabled) return;
-  type Props = { character?: { id?: unknown }; characterId?: unknown; campaignId?: unknown; phase?: unknown; viewOnly?: unknown; onClick?: () => void; disabled?: boolean; preventClose?: boolean; onClose?: () => void; open?: boolean; onOpenChange?: (value: boolean) => void };
-  type Fiber = { key?: string | null; tag?: number; memoizedProps?: Props; return?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber }; memoizedState?: Hook };
+  type Props = { character?: { id?: unknown }; characterId?: unknown; campaignId?: unknown; phase?: unknown; viewOnly?: unknown; onClick?: () => void; disabled?: boolean; preventClose?: boolean; onClose?: () => void; open?: boolean; onOpenChange?: (value: boolean) => void; contentId?: string };
+  type Fiber = { key?: string | null; tag?: number; memoizedProps?: Props; return?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber; containerInfo?: unknown }; memoizedState?: Hook };
   type Hook = { memoizedState?: unknown; next?: Hook };
   type Binding = { node: HTMLElement; row: HTMLElement; owner: Fiber; character: string; level: number; index: number; max: number; available: boolean; sheet: boolean };
   let language = locale, disposed = false, queued = false;
@@ -15,7 +15,7 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
   const campaign = () => /\/([^/]+)\/play\/?$/.exec(location.pathname)?.[1] ?? '';
   function fiber(node: HTMLElement): Fiber | undefined {
     let result = Object.entries(node).find(([name]) => name.startsWith('__reactFiber$'))?.[1] as Fiber | undefined;
-    let root = result; for (let i = 0; root?.return && i < 100; i++) root = root.return;
+    let root = result; for (let i = 0; root?.return && i < 256; i++) root = root.return;
     if (root?.alternate && root.stateNode?.current === root.alternate) result = result?.alternate;
     return result;
   }
@@ -112,13 +112,19 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
     return;
   }
   function dialogProvider(dialog: HTMLElement, overlay: HTMLElement): Fiber | undefined {
-    if (!portal(dialog) || !portal(overlay)) return;
-    const ancestors = new Set<Fiber>(); let f = fiber(dialog);
-    for (let i = 0; f && i < 60; i++, f = f.return) ancestors.add(f);
-    f = fiber(overlay);
-    for (let i = 0; f && i < 60; i++, f = f.return) {
+    const dPortal = portal(dialog), oPortal = portal(overlay);
+    if (dPortal?.stateNode?.containerInfo !== document.body || oPortal?.stateNode?.containerInfo !== document.body) return;
+    const ancestors: Fiber[] = []; let f = fiber(dialog);
+    for (let i = 0; f && i < 100; i++, f = f.return) {
       const p = f.memoizedProps;
-      if (ancestors.has(f) && p?.open === true && typeof p.onOpenChange === 'function') return f;
+      if (p?.open === true && p.contentId === dialog.id && typeof p.onOpenChange === 'function') ancestors.push(f);
+    }
+    f = fiber(overlay);
+    for (let i = 0; f && i < 100; i++, f = f.return) {
+      const p = f.memoizedProps;
+      if (p?.open !== true || p.contentId !== dialog.id || typeof p.onOpenChange !== 'function') continue;
+      const match = ancestors.find(value => value === f || value.alternate === f || value.memoizedProps?.onOpenChange === p.onOpenChange);
+      if (match) return match;
     }
     return;
   }
@@ -190,7 +196,11 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
     for (let i = 0; container && i < 10; i++, container = container.parentElement) {
       open = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(button => {
         const action = props(button)?.onClick;
-        return typeof action === 'function' && /defaultTab:["']spells["']/.test(String(action));
+        let candidate = fiber(button), owner: Fiber | undefined;
+        for (let depth = 0; candidate && depth < 40; depth++, candidate = candidate.return) {
+          if (candidate.memoizedProps?.character?.id !== undefined) { owner = candidate; break; }
+        }
+        return !!owner && (owner === b.owner || owner.alternate === b.owner || b.owner.alternate === owner) && typeof action === 'function' && /defaultTab:["']spells["']/.test(String(action));
       });
       if (open) break;
     }
