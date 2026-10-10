@@ -602,13 +602,16 @@ export function combatPanelAppearanceCss(
       --ff-combat-tile-gap: ${bounded(settings.tileGap, 4, 24, 16)}px;
       --ff-combat-content-padding: ${bounded(settings.contentPadding, 8, 32, 12)}px;
     }
-    ${customizedSurface} :is([data-ff-dice-favorites], [data-ff-combat-body], div[class~="p-6"], div[class~="p-4"]) {
+    ${customizedSurface} :is([data-ff-dice-favorites], [data-ff-combat-body], div[class~="p-6"]) {
       padding: var(--ff-combat-content-padding) !important;
+    }
+    ${customizedSurface} div[class~="p-6"] .flex-1.w-full.overflow-y-auto.p-4.space-y-6 {
+      padding: 0 !important;
     }
     ${customizedSurface} :is([data-ff-combat-heading], h2) {
       padding-left: var(--ff-combat-content-padding) !important;
     }
-    ${customizedSurface} :is([data-ff-dice-favorite-tiles], [data-ff-dice-favorite-group-tiles], [data-ff-dice-navigation], [role="tablist"], [class*="grid"][class*="gap-"]) {
+    ${customizedSurface} :is([data-ff-dice-favorite-group-tiles], [class*="grid"][class*="gap-"]) {
       gap: var(--ff-combat-tile-gap) !important;
     }
   ` : '';

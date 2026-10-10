@@ -82,10 +82,11 @@ async function save(settings, window) {
   await styleWindow.loadURL('data:text/html,' + encodeURIComponent(`<!doctype html><style>
     .grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px; }
     .p-6,[data-ff-dice-favorites] {padding:12px;}
+    .p-4 {padding:8px;}
     button,input,select,textarea {border:1px solid #777;color:#eee;background:#345;}
     button:disabled {opacity:.5;}
   </style><style id="panel-style"></style><div data-ff-combat-docked>
-    <div class="p-6"><div id="standard" class="grid gap-4"><button id="standard-button" class="group"><div><svg class="lucide"></svg></div><span>Standard</span></button></div></div>
+    <div class="p-6"><div class="flex-1 w-full overflow-y-auto p-4 space-y-6"><div id="standard" class="grid gap-4"><button id="standard-button" class="group"><div><svg class="lucide"></svg></div><span>Standard</span></button></div></div></div>
     <div data-ff-dice-favorites><div data-ff-dice-favorite-group-tiles class="grid"><button id="favorite-button" class="group"><div><svg class="lucide"></svg></div><span>Favorite</span></button></div></div>
     <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button></form>
   </div><button id="outside">Outside</button><input id="outside-field" value="keep">`));
@@ -106,6 +107,7 @@ async function save(settings, window) {
   assert.equal(customPanelStyle.buttons[2][4],true,'Disabled action state is preserved.');
   assert.deepEqual(customPanelStyle.gaps,['24px','24px']);
   assert.deepEqual(customPanelStyle.padding,['32px','32px']);
+  assert.equal(await styleWindow.webContents.executeJavaScript("getComputedStyle(document.querySelector('.p-6 .p-4')).padding"),'0px','Custom content padding is applied once across native nested containers.');
   assert.deepEqual(customPanelStyle.fields,nativePanelStyle.fields,'Drafts and native field fills remain intact.');
   await setPanelCss({ ...customizedPanel, enabled:false });
   assert.deepEqual(await styleSnapshot(),nativePanelStyle,'Disabling customization restores inherited geometry and controls.');
