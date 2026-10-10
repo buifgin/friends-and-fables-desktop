@@ -17,7 +17,7 @@ const wait = async (contents, expression) => {
   const testSession = session.fromPartition('combat-shortcuts-smoke');
   testSession.protocol.handle('https', () => new Response(`<!doctype html><html><head><meta charset="utf-8"></head><body>
     <div data-ff-combat-docked data-ff-combat-panel-mode="skills"><h2>Dice</h2><div data-ff-combat-shortcuts-slot></div>
-      <div id="native-list"><button id="check" class="native-tile"><div><svg id="d20"><path id="icon-path"/></svg><span>Проверка силы</span></div></button><button id="dex-check">Проверка ловкости</button>
+      <div id="native-list"><button id="check" class="native-tile"><div><svg id="d20" width="24" height="24" viewBox="0 0 24 24"><path id="icon-path"/></svg><span>Проверка силы</span></div></button><button id="dex-check">Проверка ловкости</button>
         <button id="save">Спасбросок силы</button><button id="skill">Проверка акробатики</button><button id="custom">Custom roll</button></div>
       <form id="detail" hidden><button type="button" id="back">Back</button><input id="draft" value="untouched"><button type="submit">Roll</button></form>
     </div>
@@ -73,6 +73,7 @@ const wait = async (contents, expression) => {
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-selection-checkbox]').length`), 0);
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile]').className`), 'native-tile');
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile] svg')!==null`), true, 'Favorite tile retains the native icon.');
+  assert.equal(await run(`getComputedStyle(document.querySelector('[data-ff-dice-favorite-tile] svg')).width`), '24px', 'Fixture native dice art keeps its captured 24px dimensions.');
   assert.equal(await run(`document.querySelectorAll('#d20').length`), 1, 'Cloned visuals never duplicate native IDs.');
   assert.equal(await run(`!!document.querySelector('[data-ff-dice-favorite-tile] > div > svg')`), true, 'Cloned native icon wrappers retain normal tile CSS structure.');
   assert.deepEqual(await run(`Array.from(document.querySelectorAll('[data-ff-dice-favorite-group]'),group=>({name:group.dataset.ffDiceFavoriteGroup,title:group.querySelector('h3')?.textContent,items:[...group.querySelectorAll('[data-ff-dice-favorite-tile]')].map(tile=>tile.dataset.ffDiceFavoriteTile)}))`), [
