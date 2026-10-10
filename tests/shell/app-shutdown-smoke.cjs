@@ -5,7 +5,7 @@ const { app, BrowserWindow, session, webContents } = require('electron');
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '../..');
 if (process.env.FABLES_TEST_PROFILE_DIR) app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
 const { TranslationManager } = require(path.join(appRoot, 'dist/translation/translation'));
-let translation, releaseFlush, flushStarted = false, flushFinished = false, quitEvents = 0;
+let translation, releaseFlush, pendingSave, rendererCalls = 0, flushStarted = false, flushFinished = false, quitEvents = 0;
 const flushGate = new Promise(resolve => { releaseFlush = resolve; });
 const initialize = TranslationManager.prototype.initialize;
 TranslationManager.prototype.initialize = async function (...args) {
@@ -36,6 +36,9 @@ app.on('before-quit', () => { quitEvents++; });
 app.on('will-quit', () => {
   try {
     assert(flushFinished, 'Normal quit must drain the cache write before exiting.');
+    const preferences = JSON.parse(readFileSync(path.join(app.getPath('userData'), 'translation.json'), 'utf8'));
+    assert.equal(preferences.enabled, true);
+    assert.equal(preferences.showOriginal, true);
     const saved = JSON.parse(readFileSync(path.join(app.getPath('userData'), 'translation-cache.json'), 'utf8'));
     assert(saved.entries.some(entry => entry[1] === 'Проверка сохранения при выходе.'));
     assert(quitEvents >= 2, 'The prevented quit must resume after shutdown.');
@@ -54,12 +57,18 @@ void app.whenReady().then(async () => {
   const contents = webContents.getAllWebContents().find(contents => contents.getURL() === 'https://play.fables.gg/');
   await until(() => !contents.isLoading(), 'offline website loaded');
   assert.equal(await contents.executeJavaScript('document.getElementById("draft").value'), 'Preserved draft');
+  // Model Chromium discarding a renderer invocation without settling its promise.
+  // Queue a real preferences save behind it, just as the native failing trace did.
+  contents.executeJavaScript = () => { rendererCalls++; return new Promise(() => {}); };
+  pendingSave = translation.save({ ...translation.getSettings(), enabled: true, showOriginal: true });
+  await until(() => rendererCalls > 0, 'renderer configuration is pending');
   const main = BrowserWindow.getAllWindows()[0];
   assert(main, 'The real entry point must create its main window.');
   main.close();
   await until(() => flushStarted, 'shutdown reaches cache persistence');
   assert.equal(flushFinished, false);
   assert.equal(quitEvents, 1, 'App must remain in the prevented quit while persistence is pending.');
+  await pendingSave;
   releaseFlush();
 
 }).catch(error => { console.error(error); clearTimeout(timer); app.exit(1); });
