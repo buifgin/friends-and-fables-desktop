@@ -287,6 +287,23 @@ export const combatPanelCss = `
     text-align: center;
   }
 
+  [data-ff-combat-docked] label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+
+  [data-ff-combat-docked] label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) > div.flex.flex-row.items-center.gap-2 {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+
+  [data-ff-combat-docked] label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) > div.flex.flex-row.items-center.gap-2 > div.text-sm.font-medium {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
   [data-ff-combat-docked] :is(table, pre) {
     display: block;
     max-width: 100%;
