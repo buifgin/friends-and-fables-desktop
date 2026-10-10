@@ -37,7 +37,21 @@ function NativeActionsForm(){};function NativeWarning(){};
 window.permissionProps={campaignId:'fixture',encounterId:412456,isMultiplayerCampaign:true,isUsersCharacterTurn:false};
 const permissionFiber={type:function NativeMoreActions(){},memoizedProps:permissionProps};
 const actionOwner={type:function NativeComposer(){},memoizedProps:{},child:permissionFiber};
-document.getElementById('actions').__reactFiberFixture={type:'button',return:actionOwner};
+// Actual composer ancestry has 140 return edges to HostRoot. Exercise both
+// bounded walks: the DOM points at the previous tree, its alternate is current.
+const currentActionFiber={type:'button',return:actionOwner};
+const previousActionFiber={type:'button',return:{type:actionOwner.type,memoizedProps:{}}};
+currentActionFiber.alternate=previousActionFiber;previousActionFiber.alternate=currentActionFiber;
+let currentActionRoot=actionOwner,previousActionRoot=previousActionFiber.return;
+for(let depth=2;depth<=140;depth++){
+ const currentParent={type:'div'},previousParent={type:'div'};
+ currentActionRoot.return=currentParent;previousActionRoot.return=previousParent;
+ currentParent.alternate=previousParent;previousParent.alternate=currentParent;
+ currentActionRoot=currentParent;previousActionRoot=previousParent;
+}
+const actionRootState={current:currentActionRoot};
+currentActionRoot.stateNode=actionRootState;previousActionRoot.stateNode=actionRootState;
+document.getElementById('actions').__reactFiberFixture=previousActionFiber;
 let modalState={modalStack:[],openModal:modal=>{modalState={...modalState,modalStack:[...modalState.modalStack,modal]}},closeModalAtIndex:index=>{modalState={...modalState,modalStack:modalState.modalStack.filter((_,i)=>i!==index)}}};
 window.storeWrites=0;window.nativeBusy=false;window.renderModal=null;
 function useModalStore(){};useModalStore.getState=()=>modalState;useModalStore.setState=next=>{window.storeWrites++;modalState={...modalState,...next};window.renderModal?.()};
