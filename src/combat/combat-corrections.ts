@@ -95,7 +95,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   ui.append(save, load, remove, status);
   // Owned text inputs must never trigger the native form's implicit Enter submit.
   ui.addEventListener('keydown', event => { if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
-  const style = document.createElement('style'); style.setAttribute('data-ff-combat-corrections-style', ''); style.textContent = `[data-ff-combat-corrections]{margin:8px 0;padding:8px;border:1px solid currentColor;border-radius:6px;font-size:12px;overflow-wrap:anywhere}[data-ff-combat-corrections] p{margin:6px 0}[data-ff-combat-corrections] summary{cursor:pointer}[data-ff-combat-corrections] .ff-correction-row{display:flex;flex-wrap:wrap;align-items:end;gap:4px;margin:6px 0}[data-ff-combat-corrections] label{display:flex;flex-direction:column;gap:3px}[data-ff-combat-corrections] input{width:90px;max-width:100%;color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;padding:4px}[data-ff-combat-corrections] select{display:block;max-width:100%;color:inherit;background:hsl(var(--card,0 0% 12%));margin:6px 0}[data-ff-combat-corrections] button{color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;min-height:28px;padding:3px 6px;margin-right:3px}[data-ff-combat-corrections] button:disabled{opacity:.5}`;
+  const style = document.createElement('style'); style.setAttribute('data-ff-combat-corrections-style', ''); style.textContent = `[data-ff-combat-corrections]{margin:8px 0;padding:8px;border:1px solid currentColor;border-radius:6px;font-size:12px;overflow-wrap:anywhere}[data-ff-combat-corrections] p{margin:6px 0}[data-ff-combat-corrections] summary{cursor:pointer}[data-ff-combat-corrections] .ff-correction-row{display:flex;flex-wrap:wrap;align-items:end;gap:4px;margin:6px 0}[data-ff-combat-corrections] label{display:flex;flex-direction:column;gap:3px}[data-ff-combat-corrections] input{width:90px;max-width:100%;color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;padding:4px}[data-ff-combat-corrections] select{display:block;max-width:100%;color:inherit;background:hsl(var(--card,0 0% 12%));margin:6px 0}[data-ff-combat-corrections] button{color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;min-height:28px;padding:3px 6px;margin-right:3px}[data-ff-combat-corrections] button:disabled{opacity:.5}[data-ff-pending-corrections] .ff-pending-correction-label{min-height:2.4em;display:flex;align-items:end}[data-ff-pending-corrections] .ff-correction-row{align-items:end}[data-ff-pending-corrections] select{margin:0;min-height:28px}`;
   document.head.append(style);
   function translate(): void {
     summary.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections';
@@ -108,6 +108,106 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     save.textContent = language === 'ru' ? 'Сохранить' : 'Save'; load.textContent = language === 'ru' ? 'Загрузить' : 'Load'; remove.textContent = language === 'ru' ? 'Удалить' : 'Delete';
     status.textContent = ''; options();
   }
+  // The selected-action cards have no native numeric inputs. Bind only the
+  // captured field-array wrapper and its own FormProvider, never item data.
+  type NativeAttack = { id?: string; name?: string; type?: string; requires_attack_roll?: boolean; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
+  type NativeMethods = { control: unknown; getValues(name: string): unknown; setValue(name: string, value: string | number, options: { shouldDirty: boolean; shouldValidate: boolean }): void };
+  type NativeProps = { attack?: NativeAttack; usersCharacter?: Record<string, unknown>; children?: unknown; control?: unknown; name?: string; value?: NativeMethods; getValues?: NativeMethods['getValues']; setValue?: NativeMethods['setValue']; showDropdown?: boolean; onEdit?: unknown };
+  type Fiber = { memoizedProps?: NativeProps; return?: Fiber; alternate?: Fiber; key?: string; stateNode?: { current?: Fiber } };
+  type Binding = { methods: NativeMethods; index: number; id: string; attack: NativeAttack; character: Record<string, unknown>; form: HTMLFormElement; submit: HTMLButtonElement };
+  type PendingUI = { node: HTMLDetailsElement; refresh(): void };
+  const abilities = ['strength', 'dexterity', 'constitution', 'intelligence', 'wisdom', 'charisma'];
+  const pending = new Map<HTMLElement, PendingUI>();
+  function binding(card: HTMLElement): Binding | null {
+    if (!card.isConnected || !card.closest('[data-ff-combat-docked]')) return null;
+    const nativeForm = card.closest('form'), submits = nativeForm?.querySelectorAll<HTMLButtonElement>('button[type="submit"]');
+    if (!nativeForm || submits?.length !== 1) return null;
+    let fiber = Object.entries(card).find(([name]) => name.startsWith('__reactFiber$'))?.[1] as Fiber | undefined;
+    // DOM React expandos may point at the alternate from the last committed render.
+    let root = fiber; for (let depth = 0; root?.return && depth < 100; depth++) root = root.return;
+    if (root?.alternate && root.stateNode?.current === root.alternate) fiber = fiber?.alternate ?? fiber;
+    let props: NativeProps | undefined, index = -1, control: unknown, id = '';
+    for (let depth = 0; fiber && depth < 35; depth++, fiber = fiber.return) {
+      const current = fiber.memoizedProps;
+      if (!current) continue;
+      if (!props && current.attack && current.usersCharacter && current.showDropdown === true && typeof current.onEdit === 'function') props = current;
+      if (props && index < 0 && fiber.key === props.attack?.id && Array.isArray(current.children)) {
+        const fields = current.children.map(child => (child as { props?: NativeProps })?.props).filter(child => /^attacks\.\d+\.targets$/.test(child?.name ?? '') && !!child?.control);
+        if (fields.length === 1) { index = Number(fields[0]!.name!.split('.')[1]); control = fields[0]!.control; id = fiber.key!; }
+      }
+      const methods = (typeof current.getValues === 'function' && typeof current.setValue === 'function' ? current : current.value) as NativeMethods | undefined;
+      if (index >= 0 && methods && methods.control === control && typeof methods.getValues === 'function' && typeof methods.setValue === 'function') {
+        try {
+          const attack = methods.getValues(`attacks.${index}`) as NativeAttack | undefined;
+          if (!attack || !props?.attack || !['melee', 'ranged', 'spell'].includes(attack.type ?? '') || attack.requires_attack_roll !== true || attack.name !== props.attack.name || attack.type !== props.attack.type) return null;
+          return { methods, index, id, attack, character: props.usersCharacter!, form: nativeForm, submit: submits[0] };
+        } catch { return null; }
+      }
+    }
+    return null;
+  }
+  const pendingWritable = (card: HTMLElement, current: Binding): boolean => !current.submit.disabled && !current.submit.matches(':disabled') && !card.closest('[aria-disabled="true"],[hidden],[aria-hidden="true"]') && card.getClientRects().length > 0 && getComputedStyle(card).visibility === 'visible';
+  const pendingNumber = (value: unknown, id: typeof ids[number]): number | null => { const result = number(value); return result !== null && result >= (id === 'modifier_value' ? -10 : 0) && result <= 10 ? result : null; };
+  function mountPending(card: HTMLElement, initial: Binding): PendingUI {
+    const node = document.createElement('details'); node.setAttribute('data-ff-combat-corrections', ''); node.setAttribute('data-ff-pending-corrections', String(initial.index)); node.setAttribute('data-ff-translation-ignore', 'true');
+    const title = document.createElement('summary'), abilityLabel = document.createElement('label'), abilityText = document.createElement('span'), ability = document.createElement('select');
+    ability.setAttribute('data-ff-correction-ability', ''); abilityLabel.append(abilityText, ability); node.append(title, abilityLabel);
+    const empty = document.createElement('option'); empty.value = ''; empty.disabled = true; ability.append(empty);
+    abilities.forEach((stat, i) => { const option = document.createElement('option'); option.value = stat; option.textContent = ['STR', 'DEX', 'CON', 'INT', 'WIS', 'CHA'][i]; ability.append(option); });
+    const pendingStatus = document.createElement('p'); pendingStatus.setAttribute('role', 'status'); pendingStatus.setAttribute('aria-live', 'polite');
+    const total = document.createElement('p'); total.setAttribute('data-ff-correction-to-hit', '');
+    const inputs: HTMLInputElement[] = [], texts: HTMLSpanElement[] = [], applyButtons: HTMLButtonElement[] = [], buttons: HTMLButtonElement[] = [];
+    const native = (): Binding | null => { const current = binding(card); return current?.id === initial.id && current.methods.control === initial.methods.control ? current : null; };
+    const say = (ok: boolean): void => { pendingStatus.textContent = language === 'ru' ? (ok ? 'Применено к этой форме броска.' : 'Поле недоступно или значение некорректно.') : (ok ? 'Applied to this roll form.' : 'This field is unavailable or the value is invalid.'); };
+    function apply(id: typeof ids[number], value: unknown): void {
+      const current = native(), parsed = pendingNumber(value, id);
+      if (!current || !pendingWritable(card, current) || parsed === null) { say(false); return; }
+      try { current.methods.setValue(`attacks.${current.index}.${id}`, parsed, { shouldDirty: true, shouldValidate: true }); refresh(true); say(true); } catch { say(false); }
+    }
+    ids.forEach(id => {
+      const row = document.createElement('div'); row.className = 'ff-correction-row';
+      const label = document.createElement('label'), text = document.createElement('span'), edit = document.createElement('input'); text.className = 'ff-pending-correction-label'; edit.type = 'text'; edit.inputMode = 'decimal'; edit.maxLength = 7; edit.setAttribute('data-ff-correction-value', id); texts.push(text); inputs.push(edit); label.append(text, edit); row.append(label);
+      const applyButton = button(`apply-${id}`, () => apply(id, edit.value)); applyButtons.push(applyButton); buttons.push(applyButton); row.append(applyButton);
+      for (const delta of [-1, 1, 0]) { const quick = button(`${id}-${delta === -1 ? 'minus' : delta === 1 ? 'plus' : 'zero'}`, () => { const value = native()?.attack[id]; apply(id, delta === 0 ? 0 : typeof value === 'number' ? value + delta : NaN); }); quick.textContent = delta === -1 ? '−1' : delta === 1 ? '+1' : '0'; quick.setAttribute('data-ff-correction-delta', String(delta)); quick.setAttribute('data-ff-correction-field', id); buttons.push(quick); row.append(quick); }
+      node.append(row);
+    });
+    ability.addEventListener('change', () => {
+      const current = native(), stat = ability.value;
+      if (!current || !pendingWritable(card, current) || !abilities.includes(stat)) { say(false); return; }
+      const adjusted = (current.character.adjusted_stats as Record<string, { adjusted?: number }> | undefined)?.[stat]?.adjusted;
+      const score = adjusted || current.character[stat] || 0;
+      const modifier = typeof score === 'number' && Number.isFinite(score) ? pendingNumber(Math.floor((score - 10) / 2), 'modifier_value') : null;
+      if (modifier === null) { say(false); return; }
+      try { current.methods.setValue(`attacks.${current.index}.modifier_stat`, stat, { shouldDirty: true, shouldValidate: true }); current.methods.setValue(`attacks.${current.index}.modifier_value`, modifier, { shouldDirty: true, shouldValidate: true }); refresh(true); say(true); } catch { say(false); }
+    });
+    node.append(total, pendingStatus);
+    node.addEventListener('click', event => event.stopPropagation());
+    node.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
+    const last: unknown[] = [];
+    function refresh(force = false): void {
+      const current = native(), disabled = !current || !pendingWritable(card, current);
+      title.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections'; abilityText.textContent = language === 'ru' ? 'Характеристика' : 'Ability'; empty.textContent = '—';
+      texts.forEach((text, i) => text.textContent = language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус умения') : (i === 0 ? 'Modifier' : 'Proficiency bonus')); applyButtons.forEach(b => b.textContent = language === 'ru' ? 'Применить' : 'Apply');
+      ability.disabled = disabled; if (current && (force || document.activeElement !== ability)) ability.value = current.attack.modifier_stat ?? '';
+      inputs.forEach((edit, i) => { edit.disabled = disabled; const value = current?.attack[ids[i]]; if (force || last[i] !== value && document.activeElement !== edit) edit.value = value === undefined ? '' : String(value); last[i] = value; }); buttons.forEach(b => b.disabled = disabled);
+      for (const quick of node.querySelectorAll<HTMLButtonElement>('[data-ff-correction-delta]')) {
+        const delta = Number(quick.getAttribute('data-ff-correction-delta')), label = texts[quick.getAttribute('data-ff-correction-field') === 'modifier_value' ? 0 : 1].textContent;
+        quick.setAttribute('aria-label', `${label}: ${language === 'ru' ? (delta === 0 ? 'сбросить на 0' : delta > 0 ? 'увеличить на 1' : 'уменьшить на 1') : (delta === 0 ? 'reset to 0' : delta > 0 ? 'increase by 1' : 'decrease by 1')}`);
+      }
+      const sum = Number(current?.attack.modifier_value) + Number(current?.attack.proficiency_bonus); total.textContent = `${language === 'ru' ? 'К попаданию' : 'To Hit'}: ${Number.isFinite(sum) ? (sum >= 0 ? '+' : '') + sum : '—'}`;
+      node.setAttribute('data-ff-pending-corrections', String(current?.index ?? initial.index));
+    }
+    card.append(node); refresh(true); return { node, refresh };
+  }
+  function scanPending(dock: HTMLElement | null): void {
+    const seen = new Set<HTMLElement>();
+    for (const card of dock?.querySelectorAll<HTMLElement>('form div.clickable') ?? []) {
+      if (card.closest('[data-ff-combat-corrections]')) continue;
+      const current = binding(card); if (!current) continue;
+      seen.add(card); if (!pending.has(card) || !pending.get(card)!.node.isConnected) { pending.get(card)?.node.remove(); pending.set(card, mountPending(card, current)); } else pending.get(card)!.refresh();
+    }
+    for (const [card, item] of pending) if (!seen.has(card)) { item.node.remove(); pending.delete(card); }
+  }
   function unmount(): void { ui.remove(); ui.open = false; fields = []; form = null; panel = null; status.textContent = ''; }
   function scan(): void {
     frame = 0; if (disposed) return;
@@ -116,6 +216,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     const search = new URLSearchParams(location.search);
     const play = /\/play\/?$/.test(location.pathname) && (!search.has('view') || search.get('view') === 'play');
     const dock = play ? document.querySelector<HTMLElement>('[data-ff-combat-docked]') : null;
+    scanPending(dock);
     const candidates = ids.map(id => dock?.querySelectorAll<HTMLInputElement>(`input[id="${id}"]`));
     const next = candidates.map(nodes => nodes?.length === 1 ? nodes[0] : null);
     const recognised = next.every(f => f instanceof HTMLInputElement && (f.type === 'text' && f.inputMode === 'decimal' || f.type === 'number') && f.form && !f.closest('[data-ff-combat-corrections]')) && next[0]!.form === next[1]!.form;
@@ -133,6 +234,6 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   const observer = new MutationObserver(records => { if (records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest('[data-ff-combat-corrections]'))) schedule(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'disabled', 'readonly', 'id', 'type', 'inputmode', 'aria-disabled', 'data-disabled', 'hidden', 'aria-hidden', 'style', 'class'] });
   const timer = window.setInterval(schedule, 500); window.addEventListener('popstate', schedule);
-  host[key] = { update(value) { language = value; translate(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); unmount(); style.remove(); delete host[key]; } };
+  host[key] = { update(value) { language = value; translate(); for (const item of pending.values()) item.refresh(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); unmount(); for (const item of pending.values()) item.node.remove(); pending.clear(); style.remove(); delete host[key]; } };
   translate(); scan();
 }
