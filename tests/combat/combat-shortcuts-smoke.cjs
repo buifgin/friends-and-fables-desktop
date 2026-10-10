@@ -15,10 +15,23 @@ const wait = async (contents, expression) => {
   if (process.env.FABLES_TEST_PROFILE_DIR) app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
   await app.whenReady();
   const testSession = session.fromPartition('combat-shortcuts-smoke');
-  testSession.protocol.handle('https', () => new Response(`<!doctype html><html><head><meta charset="utf-8"></head><body>
+  testSession.protocol.handle('https', () => new Response(`<!doctype html><html><head><meta charset="utf-8"><style>
+    body{margin:0}.p-6{box-sizing:border-box;padding:12px}.p-4{box-sizing:border-box;padding:8px}
+    [data-ff-combat-docked]{box-sizing:border-box;padding-right:11px}/* Captured 388px panel has a 377px client area. */
+    .space-y-6>:not([hidden])~:not([hidden]){margin-block-start:24px}.space-y-3>:not([hidden])~:not([hidden]){margin-block-start:12px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,140px),1fr));gap:8px}
+    h3{margin:0}.native-tile{box-sizing:border-box;width:100%;min-width:0;padding:8px}.text-\\[\\#C5A766\\]{color:rgb(197,167,102)}
+    .font-semibold{font-weight:600}.text-sm{font-size:14px;line-height:20px}.uppercase{text-transform:uppercase}.tracking-wider{letter-spacing:.7px}.px-1{padding-left:4px;padding-right:4px}
+  </style></head><body>
     <div data-ff-combat-docked data-ff-combat-panel-mode="skills"><h2>Dice</h2><div data-ff-combat-shortcuts-slot></div>
-      <div id="native-list"><button id="check" class="native-tile"><div><svg id="d20" width="24" height="24" viewBox="0 0 24 24"><path id="icon-path"/></svg><span>Проверка силы</span></div></button><button id="dex-check">Проверка ловкости</button>
-        <button id="save">Спасбросок силы</button><button id="skill">Проверка акробатики</button><button id="custom">Custom roll</button></div>
+      <div id="native-list" class="p-6 h-full"><div class="w-full flex-1 flex flex-col justify-start items-start overflow-hidden"><div id="native-content" class="flex-1 w-full overflow-y-auto p-4 space-y-6">
+        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Ability Checks</h3><div id="check-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <button id="check" class="native-tile"><div><svg id="d20" class="lucide" width="24" height="24" viewBox="0 0 24 24"><path id="icon-path"/></svg></div><span>Проверка силы</span></button><button id="dex-check" class="native-tile"><div><svg class="lucide" width="24" height="24" viewBox="0 0 24 24"></svg></div><span>Проверка ловкости</span></button>
+        </div></div>
+        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Skills</h3><div id="skill-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"><button id="skill" class="native-tile"><div><svg class="lucide" width="24" height="24" viewBox="0 0 24 24"></svg></div><span>Проверка акробатики</span></button></div></div>
+        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Saving Throws</h3><div id="save-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"><button id="save" class="native-tile"><div><svg class="lucide" width="24" height="24" viewBox="0 0 24 24"></svg></div><span>Спасбросок силы</span></button></div></div>
+        <button id="custom">Custom roll</button>
+      </div></div></div>
       <form id="detail" hidden><button type="button" id="back">Back</button><input id="draft" value="untouched"><button type="submit">Roll</button></form>
     </div>
     <script>localStorage.clear();window.rolls=0;window.selections=0;window.pointerSelections=0;
@@ -82,13 +95,23 @@ const wait = async (contents, expression) => {
     { name: 'save', title: 'Спасброски', items: ['save.strength'] },
   ], 'Only populated favorites render, in native standard-dice category order.');
   assert.equal(await run(`(()=>{const h=document.querySelector('[data-ff-dice-favorite-group] h3');return getComputedStyle(h).textTransform==='uppercase'&&getComputedStyle(h).color!=='rgb(255, 255, 255)'})()`), true, 'Favorite group headings use the standard gold-accent heading treatment.');
-  for (const width of [390, 280]) {
-    const geometry = await run(`(()=>{const dock=document.querySelector('[data-ff-combat-docked]'),tiles=document.querySelector('[data-ff-dice-favorite-group="check"] [data-ff-dice-favorite-group-tiles]');dock.style.width='${width}px';const box=tiles.getBoundingClientRect(),style=getComputedStyle(tiles),nodes=[...tiles.querySelectorAll('[data-ff-dice-favorite-tile]')],cards=nodes.map(node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,clipped:node.scrollWidth>node.clientWidth||node.scrollHeight>node.clientHeight}});return {columns:style.gridTemplateColumns.split(' ').length,overflow:dock.scrollWidth>dock.clientWidth,within:cards.every(r=>r.left>=box.left&&r.right<=box.right),sameRow:Math.abs(cards[0].top-cards[1].top)<1,clipped:cards.some(r=>r.clipped),cards}})()`);
-    assert.equal(geometry.columns, width === 390 ? 2 : 1, `${width}px favorites use a compact responsive grid: ${JSON.stringify(geometry)}`);
+  for (const width of [388, 280]) {
+    await run(`document.querySelector('[data-ff-combat-docked]').style.width='${width}px'`);
+    await click('[data-ff-dice-standard]');
+    const standardGeometry = await run(`(()=>{const dock=document.querySelector('[data-ff-combat-docked]'),groups=[...document.querySelectorAll('#native-content>.space-y-3')],group=groups[0],heading=group.querySelector('h3'),grid=group.querySelector('.grid'),cards=[...grid.querySelectorAll('button')],rect=grid.getBoundingClientRect(),h=heading.getBoundingClientRect(),category=groups[1].getBoundingClientRect();return {columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,gridLeft:rect.left-dock.getBoundingClientRect().left,tileWidth:cards[0].getBoundingClientRect().width,headingGridGap:rect.top-h.bottom,categoryGap:category.top-groups[0].getBoundingClientRect().bottom,headingStyle:(()=>{const s=getComputedStyle(heading);return {font:s.font,fontWeight:s.fontWeight,color:s.color,letterSpacing:s.letterSpacing,padding:s.padding}})()}})()`);
+    await click('[data-ff-dice-favorites-nav]');
+    const geometry = await run(`(()=>{const dock=document.querySelector('[data-ff-combat-docked]'),groups=[...document.querySelectorAll('[data-ff-dice-favorite-group]')],group=groups[0],heading=group.querySelector('h3'),grid=group.querySelector('[data-ff-dice-favorite-group-tiles]'),cards=[...grid.querySelectorAll('[data-ff-dice-favorite-tile]')],rect=grid.getBoundingClientRect(),h=heading.getBoundingClientRect(),category=groups[1].getBoundingClientRect(),box=document.querySelector('[data-ff-dice-favorite-tiles]').getBoundingClientRect();return {columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,gridLeft:rect.left-dock.getBoundingClientRect().left,tileWidth:cards[0].getBoundingClientRect().width,headingGridGap:rect.top-h.bottom,categoryGap:category.top-groups[0].getBoundingClientRect().bottom,headingStyle:(()=>{const s=getComputedStyle(heading);return {font:s.font,fontWeight:s.fontWeight,color:s.color,letterSpacing:s.letterSpacing,padding:s.padding}})(),overflow:dock.scrollWidth>dock.clientWidth,within:cards.every(node=>{const r=node.getBoundingClientRect();return r.left>=box.left&&r.right<=box.right}),sameRow:Math.abs(cards[0].getBoundingClientRect().top-cards[1].getBoundingClientRect().top)<1,clipped:cards.some(node=>node.scrollWidth>node.clientWidth||node.scrollHeight>node.clientHeight)}})()`);
+    assert.equal(geometry.columns, width === 388 ? 2 : 1, `${width}px favorites use a compact responsive grid: ${JSON.stringify(geometry)}`);
     assert.equal(geometry.overflow, false, `${width}px favorites stay within the panel: ${JSON.stringify(geometry)}`);
     assert.equal(geometry.within, true, `${width}px favorite tiles remain inside their group grid: ${JSON.stringify(geometry)}`);
     assert.equal(geometry.clipped, false, `${width}px favorite labels and icons are not clipped: ${JSON.stringify(geometry)}`);
-    if(width===390)assert.equal(geometry.sameRow,true,'Both ability checks appear in one standard-dice style row.');
+    assert.equal(geometry.columns, standardGeometry.columns, `${width}px favorite and standard dice use the same column count.`);
+    assert.ok(Math.abs(geometry.gridLeft-standardGeometry.gridLeft)<1, `${width}px favorite and standard dice share the same left inset: ${JSON.stringify({geometry,standardGeometry})}`);
+    assert.ok(Math.abs(geometry.tileWidth-standardGeometry.tileWidth)<1, `${width}px favorite and standard tiles have equal widths: ${JSON.stringify({geometry,standardGeometry})}`);
+    assert.ok(Math.abs(geometry.headingGridGap-standardGeometry.headingGridGap)<1, `${width}px favorite headings match standard heading-to-grid spacing: ${JSON.stringify({geometry,standardGeometry})}`);
+    assert.ok(Math.abs(geometry.categoryGap-standardGeometry.categoryGap)<1, `${width}px favorite categories match standard category spacing: ${JSON.stringify({geometry,standardGeometry})}`);
+    assert.deepEqual(geometry.headingStyle, standardGeometry.headingStyle, `${width}px favorite headings reuse the standard native heading treatment.`);
+    if(width===388)assert.equal(geometry.sameRow,true,'Both ability checks appear in one standard-dice style row.');
   }
   await run(`document.querySelector('[data-ff-combat-docked]').style.removeProperty('width')`);
   await run(`window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.removeAttribute('data-ff-dice-native-hidden');old.replaceWith(replacement);for(const id of ['check','dex-check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check');true`);
