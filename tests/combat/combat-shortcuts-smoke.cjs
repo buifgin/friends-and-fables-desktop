@@ -42,6 +42,8 @@ const wait = async (contents, expression) => {
   await wait(contents, `!!document.querySelector('[data-ff-dice-favorites]')`);
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorites]').hidden`), false, 'Favorites is the initial view; the former manager cannot satisfy this.');
   assert.equal(await run(`document.querySelector('[data-ff-dice-add]').textContent`), 'Добавить');
+  assert.equal(await run(`document.querySelectorAll('[data-ff-dice-favorite-group]').length`), 0, 'Empty favorites do not show empty category headings.');
+  assert.equal(await run(`document.querySelector('[data-ff-dice-favorites] p').hidden`), false, 'Empty favorites explain that nothing is selected.');
   assert.equal(await run(`document.querySelector('[data-ff-shortcut-manager],[data-ff-shortcut-tray],[data-ff-native-favorites]')`), null);
   assert.deepEqual(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).map(x=>x.getAttribute('aria-label'))`), ['Все проверки', 'Избранное']);
   assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).every(x=>x.textContent.trim()===''&&x.title===x.getAttribute('aria-label')&&x.querySelector('svg[aria-hidden="true"]'))`), true, 'Visible top navigation is icon-only with Russian accessible names and tooltips.');
@@ -63,15 +65,27 @@ const wait = async (contents, expression) => {
   assert.equal(await run(`document.activeElement===document.querySelector('[data-ff-dice-selection-confirm]')&&!document.querySelector('[data-ff-dice-selection-confirm]').hidden`), true, 'Confirm remains focusable and visible during selection.');
   await click('[data-ff-dice-selection-cancel]');
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-favorite-tile]').length`), 0, 'Cancel discards the entire draft.');
-  await click('[data-ff-dice-add]'); await click('#check'); await click('#skill input');
+  await click('[data-ff-dice-add]'); await click('#check'); await click('#skill input'); await click('#save input');
   await click('[data-ff-dice-selection-confirm]');
-  assert.equal(await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '["ability.strength","skill.acrobatics"]');
+  assert.equal(await run(`localStorage.getItem('ff-desktop-combat-pins-v1:campaign')`), '["ability.strength","skill.acrobatics","save.strength"]');
   assert.equal(await run(`document.querySelector('[data-ff-dice-add]').textContent`), 'Добавить ещё');
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-selection-checkbox]').length`), 0);
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile]').className`), 'native-tile');
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorite-tile] svg')!==null`), true, 'Favorite tile retains the native icon.');
   assert.equal(await run(`document.querySelectorAll('#d20').length`), 1, 'Cloned visuals never duplicate native IDs.');
   assert.equal(await run(`!!document.querySelector('[data-ff-dice-favorite-tile] > div > svg')`), true, 'Cloned native icon wrappers retain normal tile CSS structure.');
+  assert.deepEqual(await run(`Array.from(document.querySelectorAll('[data-ff-dice-favorite-group]'),group=>({name:group.dataset.ffDiceFavoriteGroup,title:group.querySelector('h3')?.textContent,items:[...group.querySelectorAll('[data-ff-dice-favorite-tile]')].map(tile=>tile.dataset.ffDiceFavoriteTile)}))`), [
+    { name: 'check', title: 'Проверки характеристик', items: ['ability.strength'] },
+    { name: 'skill', title: 'Навыки', items: ['skill.acrobatics'] },
+    { name: 'save', title: 'Спасброски', items: ['save.strength'] },
+  ], 'Only populated favorites render, in native standard-dice category order.');
+  for (const width of [390, 280]) {
+    const geometry = await run(`(()=>{const dock=document.querySelector('[data-ff-combat-docked]'),tiles=document.querySelector('[data-ff-dice-favorite-tiles]');dock.style.width='${width}px';const box=tiles.getBoundingClientRect(),style=getComputedStyle(tiles),cards=[...tiles.querySelectorAll('[data-ff-dice-favorite-tile]')].map(node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom}});return {columns:style.gridTemplateColumns.split(' ').length,overflow:dock.scrollWidth>dock.clientWidth,within:cards.every(r=>r.left>=box.left&&r.right<=box.right),cards}})()`);
+    assert.equal(geometry.columns, width === 390 ? 2 : 1, `${width}px favorites use a compact responsive grid: ${JSON.stringify(geometry)}`);
+    assert.equal(geometry.overflow, false, `${width}px favorites stay within the panel: ${JSON.stringify(geometry)}`);
+    assert.equal(geometry.within, true, `${width}px favorite tiles remain inside their group grid: ${JSON.stringify(geometry)}`);
+  }
+  await run(`document.querySelector('[data-ff-combat-docked]').style.removeProperty('width')`);
   await run(`window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.removeAttribute('data-ff-dice-native-hidden');old.replaceWith(replacement);for(const id of ['check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check');true`);
   await wait(contents, `document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`);
   assert.equal(await run(`window.ownedFavorite===document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]')`), true, 'Identical native list remount preserves the owned favorite button.');
@@ -87,6 +101,7 @@ const wait = async (contents, expression) => {
   await click('#back'); await wait(contents, `!document.querySelector('[data-ff-dice-navigation]').hidden`);
   await click('[data-ff-dice-favorites-nav]');
   await run(`window.__friendsFablesDesktopCombatShortcuts.update('en')`);
+  assert.deepEqual(await run(`[...document.querySelectorAll('[data-ff-dice-favorite-group] h3')].map(x=>x.textContent)`), ['Ability Checks', 'Skills', 'Saving Throws']);
   assert.deepEqual(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).map(x=>x.getAttribute('aria-label'))`), ['All checks', 'Favorites']);
   assert.equal(await run(`[...document.querySelector('[data-ff-dice-navigation]').querySelectorAll('button')].filter(x=>!x.hidden).every(x=>x.title===x.getAttribute('aria-label'))`), true, 'Visible navigation tooltips follow the English locale.');
   await click('[data-ff-dice-add]');
@@ -106,7 +121,7 @@ const wait = async (contents, expression) => {
   await run(`localStorage.setItem('ff-desktop-combat-pins-v1:other','broken');window.__friendsFablesDesktopCombatShortcuts.dispose();(${configureCombatShortcuts.toString()})(true,'en')`);
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-favorite-tile]').length`), 0, 'Malformed storage is safe.');
   await run(`history.pushState({},'', '/campaign/play');document.body.append(document.createElement('aside'));true`);
-  await wait(contents, `document.querySelectorAll('[data-ff-dice-favorite-tile]').length===2`);
+  await wait(contents, `document.querySelectorAll('[data-ff-dice-favorite-tile]').length===3`);
   await run(`window.__friendsFablesDesktopCombatShortcuts.dispose()`);
   assert.equal(await run(`document.querySelector('[data-ff-combat-shortcuts],[data-ff-dice-favorites],[data-ff-dice-selection-confirm],[data-ff-dice-native-hidden],[data-ff-dice-selection-tile]')`), null);
   assert.equal(await run(`window.originalCheck===document.querySelector('#check')&&window.originalDraft===document.querySelector('#draft')&&document.querySelector('#draft').value==='untouched'`), true, 'Cleanup preserves original native nodes and draft.');

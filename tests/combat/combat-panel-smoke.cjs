@@ -323,6 +323,24 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    assert.equal(tile.textWithin,true,`${width}px Russian check label must wrap inside tile: ${JSON.stringify(tile)}`);
    assert.equal(tile.scrollHeight,tile.clientHeight,'Tile must grow to fit wrapped label');assert.ok(tile.height>=72);assert.equal(tile.icon,'24px');assert.notEqual(tile.background,'rgb(255, 255, 255)');
  }
+ await js(`(()=>{const panel=document.querySelector('[data-ff-combat-docked]'),card=document.createElement('section');card.id='label-gap-fixture';card.dataset.ffDesktopDetailCard='';card.className='relative group rounded-lg border bg-card p-4';card.innerHTML='<div id="label-row-one" class="grid sm:grid-cols-3 gap-4"><div class="space-y-2"><div><label id="label-one-long">Модификатор характеристики</label></div><input id="control-one-long" value="native one"></div><div class="space-y-2"><div><label id="label-one-short">Сила</label></div><input id="control-one-short" value="native two"></div><div class="space-y-2"><div><label>Ловкость</label></div><input value="native three"></div></div><div id="label-row-two" class="grid lg:grid-cols-4 gap-4"><div class="space-y-1.5"><label id="label-two-long">Модификатор характеристики<input id="control-two-long" value="native four"></label></div><div class="space-y-1.5"><label id="label-two-short">Сила<input id="control-two-short" value="native five"></label></div><div class="space-y-1.5"><label>Ловкость<input value="native six"></label></div></div>';panel.append(card);window.labelGapInputs=[...card.querySelectorAll('input')];window.labelGapOriginal=[...labelGapInputs];window.labelGapInputs[1].focus();return true})()`);
+ for(const width of [390,280]){
+   const gap=await js(`(()=>{const panel=document.querySelector('[data-ff-combat-docked]'),card=document.querySelector('#label-gap-fixture');document.documentElement.style.setProperty('--ff-combat-width','${width}px');const row=(id,inputs)=>{const grid=document.getElementById(id),controls=inputs.map(selector=>grid.querySelector(selector)),rects=controls.map(node=>node.getBoundingClientRect()),long=grid.querySelector(id==='label-row-one'?'#label-one-long':'#label-two-long'),short=grid.querySelector(id==='label-row-one'?'#label-one-short':'#label-two-short'),range=document.createRange();range.selectNodeContents(long);return {columns:getComputedStyle(grid).gridTemplateColumns.split(' ').length,controlTops:rects.slice(0,2).map(rect=>rect.top),longLines:range.getClientRects().length,shortHeight:short.getBoundingClientRect().height,lineHeight:parseFloat(getComputedStyle(short).lineHeight)||parseFloat(getComputedStyle(short).fontSize)*1.2}};return {overflow:panel.scrollWidth>panel.clientWidth,rowOne:row('label-row-one',['#control-one-long','#control-one-short']),rowTwo:row('label-row-two',['#control-two-long','#control-two-short']),identity:labelGapInputs.every((node,index)=>node===labelGapOriginal[index]),values:labelGapInputs.map(node=>node.value),focus:document.activeElement===labelGapInputs[1]}})()`);
+   assert.equal(gap.overflow,false,`${width}px custom rows must not overflow horizontally: ${JSON.stringify(gap)}`);
+   assert.equal(gap.rowOne.columns,width===390?2:1,`${width}px first row uses responsive columns: ${JSON.stringify(gap.rowOne)}`);
+   assert.equal(gap.rowTwo.columns,width===390?2:1,`${width}px second row uses responsive columns: ${JSON.stringify(gap.rowTwo)}`);
+   if(width===390){
+     assert.ok(Math.abs(gap.rowOne.controlTops[0]-gap.rowOne.controlTops[1])<1,`First-row controls align under the tallest wrapped label: ${JSON.stringify(gap.rowOne)}`);
+     assert.ok(Math.abs(gap.rowTwo.controlTops[0]-gap.rowTwo.controlTops[1])<1,`Second-row controls align under the tallest wrapped label: ${JSON.stringify(gap.rowTwo)}`);
+     assert.ok(gap.rowOne.longLines>=2&&gap.rowTwo.longLines>=2,`Long Russian labels actually wrap at 390px: ${JSON.stringify(gap)}`);
+   }else{
+     assert.ok(gap.rowOne.shortHeight<gap.rowOne.lineHeight*2,`One-line labels reserve no artificial three-line height at 280px: ${JSON.stringify(gap.rowOne)}`);
+   }
+   assert.deepEqual(gap.values,['native one','native two','native three','native four','native five','native six']);
+   assert.equal(gap.identity,true,'Native control nodes remain unchanged across responsive layout.');
+   assert.equal(gap.focus,true,'Responsive layout preserves the focused native control.');
+ }
+ await js("document.querySelector('#label-gap-fixture').remove();document.documentElement.style.removeProperty('--ff-combat-width')");
  await js("document.documentElement.style.removeProperty('--ff-combat-width');document.querySelector('[data-ff-combat-docked]').style.removeProperty('height')");
 
  await js("document.getElementById('acrobatics').click()");await until("!document.querySelector('#acrobatics')");
