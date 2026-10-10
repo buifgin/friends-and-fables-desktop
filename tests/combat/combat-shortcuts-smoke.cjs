@@ -27,11 +27,11 @@ const wait = async (contents, expression) => {
   </style></head><body>
     <div data-ff-combat-docked data-ff-combat-panel-mode="skills"><h2>Dice</h2><div data-ff-combat-shortcuts-slot></div>
       <div id="native-list" class="p-6 h-full"><div class="w-full flex-1 flex flex-col justify-start items-start overflow-hidden"><div id="native-content" class="flex-1 w-full overflow-y-auto p-4 space-y-6">
-        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Ability Checks</h3><div id="check-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Проверки характеристик</h3><div id="check-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           <button id="check" class="native-tile"><div><svg id="d20" class="lucide" width="24" height="24" viewBox="0 0 24 24"><path id="icon-path"/></svg></div><span>Проверка силы</span></button><button id="dex-check" class="native-tile"><div><svg class="lucide" width="24" height="24" viewBox="0 0 24 24"></svg></div><span>Проверка ловкости</span></button>
         </div></div>
-        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Skills</h3><div id="skill-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"><button id="skill" class="native-tile"><div><svg class="lucide" width="24" height="24" viewBox="0 0 24 24"></svg></div><span>Проверка акробатики</span></button></div></div>
-        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Saving Throws</h3><div id="save-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"><button id="save" class="native-tile"><div><svg class="lucide" width="24" height="24" viewBox="0 0 24 24"></svg></div><span>Спасбросок силы</span></button></div></div>
+        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Навыки</h3><div id="skill-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"><button id="skill" class="native-tile"><div><svg class="lucide" width="24" height="24" viewBox="0 0 24 24"></svg></div><span>Проверка акробатики</span></button></div></div>
+        <div class="space-y-3"><h3 class="text-[#C5A766] font-semibold text-sm uppercase tracking-wider px-1">Спасброски</h3><div id="save-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"><button id="save" class="native-tile"><div><svg class="lucide" width="24" height="24" viewBox="0 0 24 24"></svg></div><span>Спасбросок силы</span></button></div></div>
         <button id="custom">Custom roll</button>
       </div></div></div>
       <form id="detail" hidden><button type="button" id="back">Back</button><input id="draft" value="untouched"><button type="submit">Roll</button></form>
