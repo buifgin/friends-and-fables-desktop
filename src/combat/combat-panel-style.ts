@@ -287,6 +287,37 @@ export const combatPanelCss = `
     text-align: center;
   }
 
+  [data-ff-combat-docked] label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+  }
+
+  [data-ff-combat-docked] label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) > div.flex.flex-row.items-center.gap-2 {
+    flex: 1 1 0%;
+    min-width: 0;
+  }
+
+  [data-ff-combat-docked] label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) > div.flex.flex-row.items-center.gap-2 > div.text-sm.font-medium {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  [data-ff-combat-docked] [data-ff-desktop-detail-card] > .grid[class~="sm:grid-cols-3"][class~="gap-4"] > div.space-y-2:not(.ff-correction-row):not([data-ff-combat-corrections] *) > div:first-child > label {
+    display: block;
+    min-height: 3em;
+    min-height: 3lh;
+    white-space: normal;
+  }
+
+  [data-ff-combat-docked] .relative.group.rounded-lg.border.bg-card.p-4 > .grid[class~="lg:grid-cols-4"][class~="gap-4"] > div.space-y-1\\.5:not(.ff-correction-row):not([data-ff-combat-corrections] *) > label {
+    display: block;
+    min-height: 3em;
+    min-height: 3lh;
+    white-space: normal;
+  }
+
   [data-ff-combat-docked] :is(table, pre) {
     display: block;
     max-width: 100%;
