@@ -151,13 +151,26 @@
 
         <section id="combat-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="combat-panel-enabled"> Customize side panel</label>
-          <p class="help">By default, the side panel inherits the current theme and chat background. Customize its background color, opacity, and blur for checks, actions, and selected roll details. Text and controls stay fully opaque.</p>
+          <p class="help">By default, the side panel inherits the current theme and chat background. Customize background, borders, buttons, and spacing independently for checks, actions, and selected roll details. Text and controls stay fully opaque.</p>
+          <label class="switch-row"><input type="checkbox" id="combat-panel-customize-background" checked> Customize panel background</label>
           <div class="effect-controls">
             <label class="setting-row" for="combat-panel-color">Background color <input type="color" id="combat-panel-color" value="#101010"></label>
             <label for="combat-panel-opacity">Background opacity <output id="combat-panel-opacity-label">92%</output></label>
             <input type="range" id="combat-panel-opacity" min="0" max="100" value="92">
             <label for="combat-panel-blur">Panel background blur <output id="combat-panel-blur-label">12 px</output></label>
             <input type="range" id="combat-panel-blur" min="0" max="30" value="12">
+          </div>
+          <label class="switch-row"><input type="checkbox" id="combat-panel-customize-border"> Customize panel borders</label>
+          <label class="setting-row" for="combat-panel-border-color">Border color <input type="color" id="combat-panel-border-color" value="#555555"></label>
+          <label class="switch-row"><input type="checkbox" id="combat-panel-customize-buttons"> Customize panel buttons</label>
+          <label class="setting-row" for="combat-panel-button-background">Button background <input type="color" id="combat-panel-button-background" value="#202020"></label>
+          <label class="setting-row" for="combat-panel-button-text-color">Button text color <input type="color" id="combat-panel-button-text-color" value="#ffffff"></label>
+          <label class="switch-row"><input type="checkbox" id="combat-panel-customize-spacing"> Customize panel spacing</label>
+          <div class="effect-controls">
+            <label for="combat-panel-tile-gap">Tile spacing <output id="combat-panel-tile-gap-label">8 px</output></label>
+            <input type="range" id="combat-panel-tile-gap" min="4" max="24" value="8">
+            <label for="combat-panel-content-padding">Panel content padding <output id="combat-panel-content-padding-label">20 px</output></label>
+            <input type="range" id="combat-panel-content-padding" min="8" max="32" value="20">
           </div>
         </section>
 
