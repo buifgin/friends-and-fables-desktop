@@ -599,12 +599,14 @@ export function combatPanelAppearanceCss(
     typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : fallback;
   const spacing = settings.enabled && settings.customizeSpacing ? `
     ${customizedSurface} {
-      --ff-combat-tile-gap: ${bounded(settings.tileGap, 4, 24, 16)}px;
-      --ff-combat-content-padding: ${bounded(settings.contentPadding, 8, 32, 12)}px;
+      --ff-combat-tile-gap: ${bounded(settings.tileGap, 4, 24, 8)}px;
+      --ff-combat-content-padding: ${bounded(settings.contentPadding, 8, 32, 20)}px;
     }
-    ${customizedSurface} :is([data-ff-dice-favorites], [data-ff-combat-body], div[class~="p-6"]) {
+    ${customizedSurface} :is([data-ff-dice-favorites], [data-ff-combat-body]:not(:has(div[class~="p-6"])), div[class~="p-6"]) {
       padding: var(--ff-combat-content-padding) !important;
     }
+    ${customizedSurface} [data-ff-combat-body]:has(div[class~="p-6"]),
+    ${customizedSurface} [data-ff-dice-favorites] [data-ff-dice-favorite-tiles],
     ${customizedSurface} div[class~="p-6"] .flex-1.w-full.overflow-y-auto.p-4.space-y-6 {
       padding: 0 !important;
     }

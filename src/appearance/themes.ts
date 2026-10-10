@@ -72,7 +72,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   combatPanel: { enabled: false, color: '#101010', opacity: .92, blur: 12,
     customizeBackground: true, customizeBorder: false, borderColor: '#555555',
     customizeButtons: false, buttonBackground: '#202020', buttonTextColor: '#ffffff',
-    customizeSpacing: false, tileGap: 16, contentPadding: 12 },
+    customizeSpacing: false, tileGap: 8, contentPadding: 20 },
 };
 
 const PRESETS: ThemePreset[] = ['website', 'amoled', 'black', 'light', 'custom'];
@@ -183,7 +183,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
       customizeButtons: flag(combatPanel.customizeButtons ?? false),
       buttonBackground: hex(combatPanel.buttonBackground ?? '#202020'), buttonTextColor: hex(combatPanel.buttonTextColor ?? '#ffffff'),
       customizeSpacing: flag(combatPanel.customizeSpacing ?? false),
-      tileGap: range(combatPanel.tileGap ?? 16, 4, 24), contentPadding: range(combatPanel.contentPadding ?? 12, 8, 32) },
+      tileGap: range(combatPanel.tileGap ?? 8, 4, 24), contentPadding: range(combatPanel.contentPadding ?? 20, 8, 32) },
     input: { enabled: flag(composer.enabled), style: messageStyle(composer.style) },
     messages: { enabled: styles.enabled, player: messageStyle(styles.player), gm: messageStyle(styles.gm) },
     context: { enabled: flag(context.enabled), style: contextStyle,

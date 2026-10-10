@@ -116,7 +116,7 @@ function showSettings(settings) {
     ['customize-background','customizeBackground',true], ['customize-border','customizeBorder',false],
     ['border-color','borderColor','#555555'], ['customize-buttons','customizeButtons',false],
     ['button-background','buttonBackground','#202020'], ['button-text-color','buttonTextColor','#ffffff'],
-    ['customize-spacing','customizeSpacing',false], ['tile-gap','tileGap',16], ['content-padding','contentPadding',12],
+    ['customize-spacing','customizeSpacing',false], ['tile-gap','tileGap',8], ['content-padding','contentPadding',20],
   ]) {
     const control = element(`combat-panel-${id}`);
     control[control.type === 'checkbox' ? 'checked' : 'value'] = combatPanel[key] ?? fallback;
