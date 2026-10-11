@@ -35,13 +35,24 @@ if(process.argv.includes('--syntax')){console.log('Spell slots serialized fixtur
 const {app,BrowserWindow,session}=require('electron');
 if(!process.env.FABLES_TEST_PROFILE_DIR)throw Error('Use central fixture runner/private profile');
 app.setPath('userData',process.env.FABLES_TEST_PROFILE_DIR);
-let win;const timer=setTimeout(()=>{console.error('Spell slots fixture timed out');win?.destroy();app.exit(1)},20000);
+let win;const fixtureDeadline=Date.now()+20000;const timer=setTimeout(()=>{console.error('Spell slots fixture timed out');win?.destroy();app.exit(1)},20000);
 app.on('window-all-closed',()=>{});
 (async()=>{
  await app.whenReady();const site=session.fromPartition('spell-slots-'+process.pid);site.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
  win=new BrowserWindow({show:true,width:900,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
- await win.loadURL('https://fixture.invalid/campaign/fixture/play');win.focus();win.webContents.focus();assert.equal(win.isVisible(),true);assert.equal(win.isFocused(),true);
+ let nativeFocusEvents=0;win.on('focus',()=>nativeFocusEvents++);
+ await win.loadURL('https://fixture.invalid/campaign/fixture/play');win.focus();win.webContents.focus();
  const js=source=>win.webContents.executeJavaScript(source);
+ const focusDiagnostics=async()=>({bounds:win.getBounds(),visible:win.isVisible(),focused:win.isFocused(),documentHasFocus:await js('document.hasFocus()').catch(()=>false),nativeFocusEvents});
+ let readiness;
+ while(Date.now()<fixtureDeadline){
+  readiness=await focusDiagnostics();
+  if(readiness.visible&&readiness.focused&&readiness.documentHasFocus)break;
+  await new Promise(r=>setTimeout(r,25));
+ }
+ assert.equal(readiness?.visible,true,'fixture window did not become visible before native input: '+JSON.stringify(readiness));
+ assert.equal(readiness?.focused,true,'fixture window did not receive native focus before native input: '+JSON.stringify(readiness));
+ assert.equal(readiness?.documentHasFocus,true,'fixture document did not receive focus before native input: '+JSON.stringify(readiness));
  const {configureSpellSlots}=require(path.join(root,'dist/combat/spell-slots'));
  await js('('+configureSpellSlots.toString()+')(true,"en")');
  const wait=async source=>{for(let i=0;i<80;i++){if(await js(source))return;await new Promise(r=>setTimeout(r,25))}throw Error('Not ready: '+source)};
