@@ -12,16 +12,38 @@ export function configureWebsiteSettings(enabled: boolean, locale: 'en' | 'ru'):
   }
 
   const campaignPath = /^\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/play$/i;
-  const url = new URL(window.location.href);
-  if (url.protocol !== 'https:' || url.hostname !== 'play.fables.gg' || !campaignPath.test(url.pathname)) return;
+  const isCampaignRoute = () => {
+    const current = new URL(window.location.href);
+    return current.origin === 'https://play.fables.gg' && campaignPath.test(current.pathname);
+  };
+  if (!isCampaignRoute()) return;
 
   const buttonKey = 'data-ff-desktop-music-launcher';
   const translations = locale === 'ru' ? { music: 'Музыка' } : { music: 'Music' };
   let observer: MutationObserver | undefined;
   let queued = false;
+  let active = true;
+  let frame = 0;
+
+  const cleanup = () => {
+    if (!active) return;
+    active = false;
+    observer?.disconnect();
+    if (frame) cancelAnimationFrame(frame);
+    document.removeEventListener('click', interceptGear, true);
+    window.removeEventListener('popstate', checkRoute);
+    document.querySelectorAll(`[${buttonKey}]`).forEach(button => button.remove());
+    if ((window as any)[controllerKey] === cleanup) delete (window as any)[controllerKey];
+  };
 
   const mount = () => {
+    if (!active) return;
     queued = false;
+    frame = 0;
+    if (!isCampaignRoute()) {
+      cleanup();
+      return;
+    }
     const avatarContainer = document.querySelector<HTMLElement>(
       'header div.ml-1.flex.flex-row.space-x-1, [role="banner"] div.ml-1.flex.flex-row.space-x-1'
     );
@@ -65,6 +87,10 @@ export function configureWebsiteSettings(enabled: boolean, locale: 'en' | 'ru'):
       button.addEventListener('click', event => {
         event.preventDefault();
         event.stopPropagation();
+        if (!isCampaignRoute()) {
+          cleanup();
+          return;
+        }
         window.open('fables-desktop://music/', '_blank');
       });
     }
@@ -75,12 +101,21 @@ export function configureWebsiteSettings(enabled: boolean, locale: 'en' | 'ru'):
   };
 
   const scheduleMount = () => {
-    if (queued) return;
+    if (!active || queued) return;
     queued = true;
-    requestAnimationFrame(mount);
+    frame = requestAnimationFrame(mount);
+  };
+
+  const checkRoute = () => {
+    if (isCampaignRoute()) scheduleMount();
+    else cleanup();
   };
 
   const interceptGear = (event: MouseEvent) => {
+    if (!isCampaignRoute()) {
+      cleanup();
+      return;
+    }
     const target = event.target;
     if (!(target instanceof Element)) return;
     const gear = target.closest<HTMLButtonElement>('button:has(svg.lucide-settings)');
@@ -92,12 +127,9 @@ export function configureWebsiteSettings(enabled: boolean, locale: 'en' | 'ru'):
   };
 
   document.addEventListener('click', interceptGear, true);
+  window.addEventListener('popstate', checkRoute);
   observer = new MutationObserver(scheduleMount);
   observer.observe(document.documentElement, { childList: true, subtree: true });
+  (window as any)[controllerKey] = cleanup;
   mount();
-  (window as any)[controllerKey] = () => {
-    observer?.disconnect();
-    document.removeEventListener('click', interceptGear, true);
-    document.querySelectorAll(`[${buttonKey}]`).forEach(button => button.remove());
-  };
 }
