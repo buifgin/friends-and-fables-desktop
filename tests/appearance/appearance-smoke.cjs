@@ -969,7 +969,8 @@ async function save(settings, window) {
   // Leave a reset backup on disk to exercise Undo after a fresh manager starts.
   await settingsContents.executeJavaScript(`window.appearance.reset(${JSON.stringify(finalState)})`);
   await save(finalState,settingsWindow);
-  const { imagePreview: _preview, platform: _platform, canUndoReset: _undo, presentation: _presentation, locale: _locale, localeRevision: _localeRevision, revision: _revision, themes: _themes, ...persisted } = finalState;
+  assert.equal(finalState.panelNavigationWidth,0,'Standalone Appearance state has no dock navigation offset.');
+  const { imagePreview: _preview, platform: _platform, canUndoReset: _undo, presentation: _presentation, panelNavigationWidth: _panelNavigationWidth, locale: _locale, localeRevision: _localeRevision, revision: _revision, themes: _themes, ...persisted } = finalState;
   assert.deepEqual(JSON.parse(await readFile(path.join(userData, 'appearance.json'), 'utf8')),
     persisted);
   settingsWindow.destroy();
@@ -981,6 +982,7 @@ async function save(settings, window) {
   reopened.hide();
   assert.deepEqual(await reopened.webContents.executeJavaScript('window.appearance.get()'),
     {...finalState,canUndoReset:true,revision:0});
+  assert.equal(await reopened.webContents.executeJavaScript('window.appearance.get().then(state=>state.panelNavigationWidth)'),0,'Standalone navigation metadata remains runtime-only after restart.');
   assert.equal((await reopened.webContents.executeJavaScript('window.appearance.folderPictures()')).folderName,'background-options');
   const restoredUndo=await reopened.webContents.executeJavaScript('window.appearance.undoReset()');assert.equal(restoredUndo.canUndoReset,false);assert.equal(restoredUndo.backgroundImage,finalState.backgroundImage);
   const restoredWebsite = new BrowserWindow({ show: false, webPreferences: {
