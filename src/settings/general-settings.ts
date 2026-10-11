@@ -6,6 +6,8 @@ export class GeneralSettings {
   private writes = Promise.resolve();
   hideDesktopTopbarInFullscreen = false;
   async initialize(): Promise<void> { try { const value = JSON.parse(await readFile(this.file,'utf8')); if (typeof value.hideDesktopTopbarInFullscreen === 'boolean') this.hideDesktopTopbarInFullscreen = value.hideDesktopTopbarInFullscreen; } catch { /* Default off. */ } }
+  // Surface the last queued write failure to the shutdown coordinator.
+  async flush(): Promise<void> { await this.writes; }
   save(value: unknown): Promise<void> {
     if (typeof value !== 'boolean') throw new Error('Invalid fullscreen preference.');
     this.writes = this.writes.catch(()=>{}).then(async()=>{

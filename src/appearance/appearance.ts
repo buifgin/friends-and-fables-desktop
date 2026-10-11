@@ -333,6 +333,8 @@ export class AppearanceManager {
     return window;
   }
 
+  async flushSettings(): Promise<void> { await this.dock?.flushSettings(); }
+
   close(): void {
     this.window?.close();
     this.dock?.hide();

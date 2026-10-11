@@ -95,6 +95,7 @@ export class AppearanceDock {
   }
   isOpen(): boolean { return this.opened; }
 
+  async flushSettings(): Promise<void> { await this.generalReady; await this.general.flush(); }
   configureSettings(managers: SettingsManagers): void { this.hub.configure(managers); }
   async toggle(): Promise<void> { if (this.opened) this.hide(); else await this.open(); }
   async open(refresh = false): Promise<void> { await this.openSection('appearance'); if(refresh)await this.manager.refreshPanel(); }
