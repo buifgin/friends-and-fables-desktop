@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const esbuild = require('esbuild');
-const source = esbuild.transformSync(fs.readFileSync(require('node:path').join(__dirname, '../../src/combat/combat-flow.ts'), 'utf8'), { loader: 'ts', format: 'cjs' }).code;
+const source = esbuild.transformSync(fs.readFileSync(process.env.FABLES_FLOW_TEST_SOURCE || require('node:path').join(__dirname, '../../src/combat/combat-flow.ts'), 'utf8'), { loader: 'ts', format: 'cjs' }).code;
 function fixture(saved) {
   class Element {
     constructor(tag = 'div') { this.tagName = tag; this.children = []; this.attributes = new Map(); this.listeners = {}; this.parentElement = null; this.styles = new Map(); this.style = { cssText: '', setProperty: (k, v, priority = '') => this.styles.set(k, { v, priority }), removeProperty: k => this.styles.delete(k), getPropertyValue: k => this.styles.get(k)?.v ?? '', getPropertyPriority: k => this.styles.get(k)?.priority ?? '' }; }
@@ -216,4 +216,37 @@ test('asynchronous native rejection restores instructions and cannot be conceale
   assert.equal(f.card.style.getPropertyValue('display'), ''); assert.equal(f.calls(), 1);
   f.controls().hide.change(false); f.controls().hide.change(true); f.notify();
   assert.equal(f.card.style.getPropertyValue('display'), ''); assert.equal(f.calls(), 1);
+});
+test('waits through empty streamed DM response until native Damage choice arrives', () => {
+  const f = flowFixture(); f.dmEvent.rollChoices = []; f.submit(); f.pending(); assert.equal(f.calls(), 0);
+  f.dmEvent.rollChoices = [f.choice]; f.notify(); assert.equal(f.calls(), 1);
+});
+test('deep native React tree with30 loaded rows resolves under unchanged work budget', () => {
+  const f = flowFixture(); const top = f.root.child;
+  let parent = f.root;
+  for (let n = 0; n < 120; n++) { const wrapper = { memoizedProps: {}, return: parent }; parent.child = wrapper; parent = wrapper; }
+  parent.child = top; f.owner.return = parent;
+  const attackFiber = f.rows[0].__reactFiber$fixture, dmFiber = f.rows[1].__reactFiber$fixture;
+  attackFiber.return = dmFiber.return = parent;
+  const historical = []; let previous = f.owner;
+  for (let n = 0; n < 28; n++) {
+    const row = new f.Element(); row.id = 'event-container-' + (1000 + n);
+    const fiber = { memoizedProps: { event: { id: 1000 + n, campaign_id: 'campaign-a', role: 'dm', request_id: 'historical-' + n, rollChoices: [] }, campaign: f.nativeCampaign }, return: parent };
+    previous.sibling = fiber; previous = fiber; row.__reactFiber$fixture = fiber; historical.push(row);
+  }
+  previous.sibling = attackFiber; attackFiber.sibling = dmFiber;
+  f.rows.unshift(...historical);
+  const alternateRoot = { tag: 3, stateNode: f.root.stateNode, alternate: f.root }; f.root.alternate = alternateRoot;
+  function alternateChildren(currentParent, alternateParent) {
+    let prior;
+    for (let child = currentParent.child; child; child = child.sibling) {
+      const alt = { ...child, child: undefined, sibling: undefined, return: alternateParent, alternate: child }; child.alternate = alt;
+      if (prior) prior.sibling = alt; else alternateParent.child = alt; prior = alt;
+      alternateChildren(child, alt);
+    }
+  }
+  alternateChildren(f.root, alternateRoot);
+  for (const row of f.rows) row.__reactFiber$fixture = row.__reactFiber$fixture.alternate;
+  f.button.__reactFiber$fixture = f.button.__reactFiber$fixture.alternate;
+  f.submit(); f.pending(); assert.equal(f.calls(), 1, 'Current native callback must survive realistic shared ancestry and bounded loaded history');
 });

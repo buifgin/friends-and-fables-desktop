@@ -19,7 +19,7 @@ window.mountRows=(request,attackId)=>{
  const dmId=attackId+1;const choice={id:attackId+2,event_id:dmId,character_id:83026155,type:'Damage',accepted:null,dice_expression:mode==='crit'?'2d10+3':'1d10',fixed_bonus:3};
  const attack={id:attackId,role:'player',request_id:request,campaign_id:'campaign-a',character_id:83026155,command_used:'roll_attack',events_roll:{roll_type:'Spell Attack',dc:10,total_roll:mode==='miss'?9:24,modifier_value:8,proficiency_bonus:8}};
  const dm={id:dmId,role:'dm',request_id:request,campaign_id:'campaign-a',command_used:'encounter_player_turn_action_response',rollChoices:mode==='miss'?[]:[choice]};
- document.querySelector('main').innerHTML='<div id="event-container-undefined">Attack result</div><div id="event-container-'+dmId+'"><div id="event-message-card-'+dmId+'">Intermediate narration</div><div><button type="button" id="damage">Roll Damage</button></div></div>';
+ window.currentDM=dm;window.currentChoice=choice;document.querySelector('main').innerHTML='<div id="event-container-undefined">Attack result</div><div id="event-container-'+dmId+'"><div id="event-message-card-'+dmId+'">Intermediate narration</div><div><button type="button" id="damage">Roll Damage</button></div></div>';
  const rows=document.querySelector('main').children;const attackFiber={memoizedProps:{event:attack,campaign:nativeCampaign},return:root};const dmFiber={memoizedProps:{event:dm,campaign:nativeCampaign},return:root};owner.sibling=attackFiber;attackFiber.sibling=dmFiber;
  rows[0].__reactFiber$fixture=attackFiber;rows[1].__reactFiber$fixture=dmFiber;
  const card=rows[1].querySelector('[id^=event-message-card-]'),cardOwner={type:function NativeNarrativeCard(){return 'event-message-card-'},memoizedProps:{eventId:dmId},return:dmFiber};const cardFiber={memoizedProps:{},return:cardOwner};cardOwner.child=cardFiber;card.__reactFiber$fixture=cardFiber;dmFiber.child=cardOwner;
@@ -27,7 +27,7 @@ window.mountRows=(request,attackId)=>{
  const button=document.querySelector('#damage');const callback=function nativeQuickRoll(event){event.stopPropagation();const dice_expression=choice.dice_expression;calls++;window.lastChoice={...choice,dice_expression};if(mode==='failure')throw Error('Unknown send outcome');choice.accepted=true;window.done=true};
  const buttonFiber={memoizedProps:{onClick:callback,disabled:false},return:t5};button.__reactFiber$fixture=buttonFiber;t5.child=buttonFiber;
 };mountRows('historical',sequence);
-form.addEventListener('submit',event=>{event.preventDefault();submits++;sequence+=10;const request='local-request-'+sequence;mountRows(request,sequence);result={status:'pending',submittedAt:Date.now(),variables:{requestId:request,lastEventId:sequence,isMultiplayer:true}};for(const fn of listeners)fn(result);result={...result,status:'success'}});
+form.addEventListener('submit',event=>{event.preventDefault();submits++;sequence+=10;const request='local-request-'+sequence;mountRows(request,sequence);if(mode!=='miss'){const pendingDM=currentDM,pendingChoice=currentChoice;pendingDM.rollChoices=[];setTimeout(()=>{pendingDM.rollChoices=[pendingChoice];document.querySelector('main').append(document.createElement('span'))},50)}result={status:'pending',submittedAt:Date.now(),variables:{requestId:request,lastEventId:sequence,isMultiplayer:true}};for(const fn of listeners)fn(result);result={...result,status:'success'}});
 </script>`;
 let window;
 const watchdog = setTimeout(() => { console.error('Combat flow fixture timed out'); window?.destroy(); app.exit(1); }, 30000);
