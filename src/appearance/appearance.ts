@@ -382,6 +382,8 @@ export class AppearanceManager {
 
   attach(contents: WebContents): void {
     const website: WebsiteTheme = { contents, ready: false, document: 0, pending: Promise.resolve() };
+    let page = '';
+    const pageKey = (url: string): string => { try { const value = new URL(url); return value.origin + value.pathname + value.search; } catch { return ''; } };
     this.websites.add(website);
     contents.on('did-start-navigation', (details) => {
       if (!details.isMainFrame || details.isSameDocument) return;
@@ -395,10 +397,18 @@ export class AppearanceManager {
       });
     });
     contents.on('dom-ready', () => {
+      page = pageKey(contents.getURL());
       website.ready = true; void this.apply(website).catch(console.error);
     });
     contents.on('did-finish-load', () => {
+      page = pageKey(contents.getURL());
       website.ready = true;
+      void this.apply(website).catch(console.error);
+    });
+    contents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
+      const next = pageKey(url);
+      if (!isMainFrame || !next || next === page) return;
+      page = next; website.document++; website.ready = true;
       void this.apply(website).catch(console.error);
     });
     contents.on('destroyed', () => { this.websites.delete(website); });
