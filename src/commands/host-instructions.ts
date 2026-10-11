@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { configureFullscreenShortcuts } from '../shell/window-shortcuts';
+import { app, BrowserWindow, ipcMain, WebContentsView } from 'electron';
 import type { IpcMainInvokeEvent, WebContents } from 'electron';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -10,6 +11,10 @@ import type { AppearanceSettings } from '../appearance/themes';
 export class HostInstructionsManager {
   private settings=structuredClone(DEFAULT_HOST_INSTRUCTIONS);
   private window:BrowserWindow|null=null;
+  private panel:WebContentsView|null=null;
+  private panelClose?:()=>void;
+  private settingsOpener?:()=>Promise<void>;
+  setSettingsOpener(opener:()=>Promise<void>):void{this.settingsOpener=opener;}
   private loading:Promise<void>|undefined;
   private file:string;
   private writes:Promise<void>=Promise.resolve();
@@ -19,12 +24,12 @@ export class HostInstructionsManager {
   constructor(folder=app.getPath('userData')){this.file=path.join(folder,'host-instructions.json');}
   async initialize():Promise<void>{
     try{const stored=JSON.parse(await readFile(this.file,'utf8'));this.settings=validateHostInstructions(stored,stored.configured===true);}catch{/* Start disabled when preferences are missing or invalid. */}
-    ipcMain.handle('host-instructions:close',event=>{this.assertTrusted(event);this.window?.close();});
+    ipcMain.handle('host-instructions:close',event=>{this.assertTrusted(event);if(event.sender===this.panel?.webContents)this.panelClose?.();else this.window?.close();});
     ipcMain.handle('host-instructions:get',async event=>{this.assertTrusted(event);await this.writes.catch(()=>{});return this.state();});
     ipcMain.handle('host-instructions:save',async(event,value:unknown)=>{this.assertTrusted(event);await this.save(value);return this.state();});
   }
   private assertTrusted(event:IpcMainInvokeEvent):void{
-    if(event.sender!==this.window?.webContents || event.senderFrame!==event.sender.mainFrame || event.senderFrame.url!==HOST_INSTRUCTIONS_URL)throw new Error('Instructions are available only in the app settings window.');
+    if((event.sender!==this.window?.webContents&&event.sender!==this.panel?.webContents) || event.senderFrame!==event.sender.mainFrame || event.senderFrame.origin!=='fables-desktop://settings' || event.senderFrame.url!==HOST_INSTRUCTIONS_URL)throw new Error('Instructions are available only in the app settings window.');
   }
   getSettings():HostInstructions{return structuredClone(this.settings);}
   private state(){return {settings:this.getSettings(),locale:this.locale,theme:{...this.theme}};}
@@ -38,18 +43,27 @@ export class HostInstructionsManager {
   setInterface(settings:AppearanceSettings,locale:'en'|'ru'):void{
     this.theme={preset:settings.preset,customColor:settings.customColor};this.locale=locale;
     if(this.window&&!this.window.isDestroyed()){this.window.setBackgroundColor(themeBackground(this.theme));this.window.webContents.send('host-instructions:interface',this.state());}
+    if(this.panel&&!this.panel.webContents.isDestroyed()){this.panel.setBackgroundColor(themeBackground(this.theme));this.panel.webContents.send('host-instructions:interface',this.state());}
   }
   handleOpenRequest(contents:WebContents,parent:BrowserWindow,url:string):boolean{
     if(url!==HOST_INSTRUCTIONS_URL || new URL(contents.getURL()).origin!=='https://play.fables.gg')return false;
     void this.open(parent).catch(console.error);return true;
   }
+  createPanel(parent:BrowserWindow,close:()=>void):WebContentsView{
+    if(this.panel&&!this.panel.webContents.isDestroyed())return this.panel;
+    const view=new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(__dirname,'host-instructions-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
+    this.panel=view;this.panelClose=close;view.setBackgroundColor(themeBackground(this.theme));
+    view.webContents.on('will-navigate',event=>event.preventDefault());view.webContents.on('will-redirect',event=>event.preventDefault());view.webContents.setWindowOpenHandler(()=>({action:'deny'}));configureFullscreenShortcuts(view.webContents,parent);
+    parent.on('closed',()=>{if(this.panel===view)this.panel=null;});return view;
+  }
   async open(parent:BrowserWindow):Promise<BrowserWindow>{
+    if(this.settingsOpener){await this.settingsOpener();return parent;}
     if(this.window&&!this.window.isDestroyed()){
       const existing=this.window;await this.loading;if(existing.isDestroyed()||this.window!==existing)return this.open(parent);existing.showInactive();return existing;
     }
     const window=new BrowserWindow({parent,show:false,width:650,height:790,minWidth:500,minHeight:600,autoHideMenuBar:true,backgroundColor:themeBackground(this.theme),
       webPreferences:{partition:'fables-appearance',preload:path.join(__dirname,'host-instructions-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
-    this.window=window;window.setMenu(null);
+    this.window=window;configureFullscreenShortcuts(window.webContents,window);window.setMenu(null);
     window.webContents.on('will-navigate',event=>event.preventDefault());window.webContents.on('will-redirect',event=>event.preventDefault());window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
     const closed=()=>{if(this.window===window){this.window=null;this.loading=undefined;}};window.on('close',closed);window.on('closed',closed);
     this.loading=window.loadURL(HOST_INSTRUCTIONS_URL);await this.loading;window.showInactive();return window;

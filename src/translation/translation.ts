@@ -1,5 +1,6 @@
+import { configureFullscreenShortcuts } from '../shell/window-shortcuts';
 import { appPath } from '../shared/app-paths';
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, WebContentsView } from 'electron';
 import type { IpcMainInvokeEvent, WebContents } from 'electron';
 import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -32,6 +33,10 @@ export class TranslationManager {
   private engine = new LocalTranslator(DEFAULT_TRANSLATION.port);
   private websites = new Set<Website>();
   private window: BrowserWindow | null = null;
+  private panel: WebContentsView | null = null;
+  private panelClose?: () => void;
+  private settingsOpener?: () => Promise<void>;
+  setSettingsOpener(opener: () => Promise<void>): void { this.settingsOpener = opener; }
   private writes: Promise<void> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | undefined;
   private busy = false;
@@ -54,7 +59,7 @@ export class TranslationManager {
     catch { /* Translation starts disabled when settings are absent or invalid. */ }
     this.resetEngine();
     await this.cache.initialize();
-    ipcMain.handle('translation:close', event => { this.assertTrusted(event); this.window?.close(); });
+    ipcMain.handle('translation:close', event => { this.assertTrusted(event); if(event.sender === this.panel?.webContents) this.panelClose?.(); else this.window?.close(); });
     ipcMain.handle('translation:get', event => { this.assertTrusted(event); return this.state(); });
     ipcMain.handle('translation:save', (event, value: unknown) => { this.assertTrusted(event); return this.save(value).then(() => this.state()); });
     ipcMain.handle('translation:check', async event => { this.assertTrusted(event); return this.check(); });
@@ -86,6 +91,7 @@ export class TranslationManager {
       this.window.setBackgroundColor(themeBackground(this.theme));
       this.window.webContents.send('translation:theme', this.theme);
     }
+    if(this.panel&&!this.panel.webContents.isDestroyed()){this.panel.setBackgroundColor(themeBackground(this.theme));this.panel.webContents.send('translation:theme',this.theme);}
   }
   async check(): Promise<{ available: boolean; message: string }> {
     try {
@@ -227,10 +233,19 @@ export class TranslationManager {
     finally { this.busy = false; }
   }
   private assertTrusted(event: IpcMainInvokeEvent): void {
-    if (!this.window || event.sender !== this.window.webContents || event.senderFrame !== event.sender.mainFrame
+    if ((event.sender !== this.window?.webContents && event.sender !== this.panel?.webContents) || event.senderFrame !== event.sender.mainFrame
       || event.senderFrame.origin !== 'fables-desktop://settings' || event.senderFrame.url !== TRANSLATION_URL) throw new Error('Translation preferences are available only in the app translation window.');
   }
+  createPanel(parent: BrowserWindow, close: () => void): WebContentsView {
+    if (this.panel && !this.panel.webContents.isDestroyed()) return this.panel;
+    const view = new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(__dirname,'translation-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
+    this.panel=view; this.panelClose=close; view.setBackgroundColor(themeBackground(this.theme));
+    view.webContents.on('will-navigate',event=>event.preventDefault()); view.webContents.on('will-redirect',event=>event.preventDefault()); view.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+    configureFullscreenShortcuts(view.webContents,parent); parent.on('closed',()=>{if(this.panel===view)this.panel=null;});
+    return view;
+  }
   async open(parent: BrowserWindow): Promise<BrowserWindow> {
+    if (this.settingsOpener) { await this.settingsOpener(); return parent; }
     if (this.window && !this.window.isDestroyed()) { this.window.showInactive(); return this.window; }
     const window = this.window = new BrowserWindow({ parent, show: false, title: 'Translation — Friends & Fables Desktop',
       width: 720, height: 750, minWidth: 580, minHeight: 600, backgroundColor: themeBackground(this.theme), autoHideMenuBar: true,
@@ -238,6 +253,7 @@ export class TranslationManager {
       webPreferences: { partition: 'fables-appearance', preload: path.join(__dirname, 'translation-preload.js'),
         sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true },
     });
+    configureFullscreenShortcuts(window.webContents,window);
     window.setMenu(null);
     window.webContents.on('will-navigate', event => event.preventDefault());
     window.webContents.on('will-redirect', event => event.preventDefault());

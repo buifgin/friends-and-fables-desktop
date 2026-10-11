@@ -1,3 +1,9 @@
+import { SettingsHub } from '../settings/settings-hub';
+import type { SettingsManagers } from '../settings/settings-hub';
+import type { SettingsSection } from '../settings/settings-core';
+import { desktopBarVisible, settingsGeometry } from '../settings/settings-core';
+import { GeneralSettings } from '../settings/general-settings';
+import { setQuickBarToggle, setSettingsEscape } from './window-shortcuts';
 import { ipcMain, WebContentsView } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
@@ -12,9 +18,14 @@ export const DOCK_URL = 'fables-desktop://settings/appearance-button.html';
 export class AppearanceDock {
   private launcher: WebContentsView;
   readonly windowControls: WindowControls;
-  private panel: WebContentsView | null = null;
+  private hub: SettingsHub;
+  private general = new GeneralSettings();
+  private generalReady: Promise<void>;
+  private barOverride = false;
+  private barManualHidden = false;
+  onTopBarVisibilityChange?: (visible: boolean) => void;
   private ready: Promise<void>;
-  private panelReady: Promise<void> | null = null;
+
   private opened = false;
   private inset = 0;
   private popup = false;
@@ -24,6 +35,14 @@ export class AppearanceDock {
   constructor(readonly window: BrowserWindow, private website: WebContentsView, private manager: AppearanceManager) {
     this.width = manager.getSettings().appearancePanelWidth;
     this.windowControls = new WindowControls(window, manager);
+    this.generalReady=this.general.initialize().then(()=>this.layout());
+    this.hub=new SettingsHub(window,manager,this.general,()=>this.hide(),()=>{this.barOverride=false;this.barManualHidden=false;this.layout();},section=>this.openSection(section));
+    setSettingsEscape(window,()=>{if(!this.opened)return false;this.hide();return true;});
+    setQuickBarToggle(window,()=>{
+      if(window.isFullScreen()&&this.general.hideDesktopTopbarInFullscreen)this.barOverride=!this.barOverride;
+      else this.barManualHidden=!this.barManualHidden;
+      this.layout();
+    });
     this.launcher = new WebContentsView({ webPreferences: {
       partition: 'fables-appearance', preload: path.join(__dirname, 'appearance-button-preload.js'),
       sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true,
@@ -43,14 +62,13 @@ export class AppearanceDock {
     ipcMain.handle('appearance-dock:popup', (event,open: unknown) => { this.assertTrusted(event); if (typeof open !== 'boolean') throw new Error('Invalid popup state.'); this.popup = open; if (open) window.contentView.addChildView(this.launcher); this.layout(); });
     window.on('blur', () => { this.popup = false; this.layout(); if (!contents.isDestroyed()) contents.send('appearance-dock:popup-close'); });
     window.on('resize', () => this.layout());
-    window.on('enter-full-screen', () => this.layout());
-    window.on('leave-full-screen', () => this.layout());
+    window.on('enter-full-screen', () => {this.barOverride=false;this.barManualHidden=false;this.layout();});
+    window.on('leave-full-screen', () => {this.barOverride=false;this.barManualHidden=false;this.layout();});
     window.on('closed', () => {
       this.revision++;
       for (const name of ['get', 'toggle', 'popup']) ipcMain.removeHandler(`appearance-dock:${name}`);
       if (!contents.isDestroyed()) contents.close();
-      const panelContents = this.panel?.webContents;
-      if (panelContents && !panelContents.isDestroyed()) panelContents.close();
+
     });
     this.sync();
   }
@@ -71,32 +89,26 @@ export class AppearanceDock {
   raiseControls(): void { this.windowControls.raise(); if (!this.window.isDestroyed()) this.window.contentView.addChildView(this.launcher); }
   setInset(inset: number): void { this.inset = inset; this.layout(); }
   sync(): void {
-    if (!this.manager.getSettings().appearancePinned) this.hide();
+
     this.width = this.manager.getSettings().appearancePanelWidth;
     this.layout(); this.update(); this.windowControls.sync();
   }
   isOpen(): boolean { return this.opened; }
 
-  async toggle(): Promise<void> { if (!this.manager.getSettings().appearancePinned) { await this.manager.open(this.window); return; } if (this.opened) this.hide(); else await this.open(); }
-  async open(refresh = false): Promise<void> {
-    if (!this.manager.getSettings().appearancePinned || this.window.isDestroyed()) return;
-    const revision = ++this.revision;
-    if (!this.panel) {
-      this.panel = this.manager.createPanel(this.window);
-      this.panel.setVisible(false);
-      this.window.contentView.addChildView(this.panel);
-      this.panelReady = this.panel.webContents.loadURL('fables-desktop://settings/');
-    }
-    await this.panelReady;
-    if (revision !== this.revision || this.window.isDestroyed() || !this.manager.getSettings().appearancePinned) return;
-    if (refresh) await this.manager.refreshPanel();
-    this.opened = true;
-    this.layout(); this.update();
-    this.panel.webContents.focus();
+  configureSettings(managers: SettingsManagers): void { this.hub.configure(managers); }
+  async toggle(): Promise<void> { if (this.opened) this.hide(); else await this.open(); }
+  async open(refresh = false): Promise<void> { await this.openSection('appearance'); if(refresh)await this.manager.refreshPanel(); }
+  async openSection(section:SettingsSection):Promise<void> {
+    if(this.window.isDestroyed())return;
+    const revision=++this.revision;
+    await this.generalReady;
+    await this.hub.select(section);
+    if(revision!==this.revision||this.window.isDestroyed()){return;}
+    this.opened=true;this.layout();this.update();
   }
   hide(): void {
     this.revision++; this.opened = false;
-    this.panel?.setVisible(false);
+    this.hub.setVisible(false);
     if (!this.window.isDestroyed()) { this.layout(); this.update(); }
     if (!this.website.webContents.isDestroyed()) this.website.webContents.focus();
   }
@@ -105,20 +117,28 @@ export class AppearanceDock {
     return this.width;
   }
   private clamp(width: number): number {
-    return Math.round(Math.max(320, Math.min(900, this.window.getContentSize()[0] - 360, width)));
+    return Math.round(Math.max(460, Math.min(1000, this.window.getContentSize()[0] - 360, width)));
   }
   private layout(): void {
     if (this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
     // Share the menu row, reserving one app-owned row with native menus. The launcher
     // must never cover the website's avatars, navigation, or map controls.
-    const inset = Math.max(this.inset,32);
-    const panelWidth = this.opened ? this.clamp(this.width) : 0;
-    this.website.setBounds({ x: panelWidth, y: inset, width: Math.max(0, width - panelWidth), height: Math.max(0, height - inset) });
-    this.panel?.setBounds({ x: 0, y: inset, width: panelWidth || this.clamp(this.width), height: Math.max(0, height - inset) });
-    this.panel?.setVisible(this.opened);
-    this.windowControls.layout(width, 0);
+    const barVisible=desktopBarVisible(this.window.isFullScreen(),this.general.hideDesktopTopbarInFullscreen,this.barOverride)&&!this.barManualHidden;
+    const inset = barVisible ? Math.max(this.inset,32) : 0;
+    const geometry=settingsGeometry(width,height,this.width,inset);
+    const panelWidth = this.opened ? geometry.panel.width : 0;
+    // Native Campaign settings paint inside the website; its adapter reserves
+    // the content strip, while the hub's own view covers only the navigation.
+    const campaign=this.opened&&this.hub.currentSection()==='campaign';
+    const websiteX=campaign?geometry.navigation.width:panelWidth;
+    this.website.setBounds({x:websiteX,y:inset,width:Math.max(0,width-websiteX),height:Math.max(0,height-inset)});
+    this.hub.layout(geometry.panel);this.hub.setVisible(this.opened);
+    this.windowControls.layout(width, 0);this.windowControls.setVisible(barVisible);
     this.launcher.setBounds({ x: Math.max(0, Math.round((width - 232) / 2)), y: 0, width: 232, height: this.popup ? 166 : 32 });
-    this.launcher.setVisible(true);
+    this.launcher.setVisible(barVisible);
+    this.window.setMenuBarVisibility(barVisible);
+    this.onTopBarVisibilityChange?.(barVisible);
+
   }
 }

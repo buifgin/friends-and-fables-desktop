@@ -8,6 +8,8 @@ export const MENU_URL = 'fables-desktop://settings/menu.html';
 
 export class LinuxMenuBar {
   private black = true;
+  private topBarVisible = true;
+  setTopBarVisible(visible: boolean): void { if(this.topBarVisible===visible)return;this.topBarVisible=visible;this.resize();this.window.setMenuBarVisibility(visible); }
   private overlay: WebContentsView;
   private ready: Promise<void>;
   private active: string | null = null;
@@ -99,7 +101,7 @@ export class LinuxMenuBar {
   resize(): void {
     this.close(false);
     const [width, height] = this.window.getContentSize();
-    const inset = this.black ? MENU_HEIGHT : 0;
+    const inset = this.black && this.topBarVisible ? MENU_HEIGHT : 0;
     if (this.onInsetChange) this.onInsetChange(inset);
     else this.website.setBounds({ x: 0, y: inset, width, height: Math.max(0, height - inset) });
     this.overlay.setBounds({ x: 0, y: 0, width, height });
@@ -128,7 +130,7 @@ export class LinuxMenuBar {
 
   private async open(id: string, x: number): Promise<void> {
     const submenu = this.menu.getMenuItemById(id)?.submenu;
-    if (!this.black || !submenu || this.website.webContents.isDestroyed()) return;
+    if (!this.black || !this.topBarVisible || !submenu || this.website.webContents.isDestroyed()) return;
     if (this.active === id) { this.close(); return; }
     const revision = ++this.revision;
     await this.ready;
