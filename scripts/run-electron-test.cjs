@@ -7,7 +7,8 @@ const os=require('node:os'),path=require('node:path');
  const profile=await mkdtemp(path.join(os.tmpdir(),'fables-electron-test-'));
  let code=1;
  try{
-  const child=spawn(require('electron'),[path.resolve(process.argv[2])],{stdio:'inherit',windowsHide:true,
+  // Native GUI fixtures must remain visible; the hide toggle is for controlled startup diagnostics.
+  const child=spawn(require('electron'),[path.resolve(process.argv[2])],{stdio:'inherit',windowsHide:process.env.FABLES_TEST_WINDOWS_HIDE==='1',
    env:{...process.env,FABLES_TEST_PROFILE_DIR:profile}});
   code=await new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',value=>resolve(value??1));});
  }finally{await rm(profile,{recursive:true,force:true,maxRetries:20,retryDelay:100});}
