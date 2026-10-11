@@ -40,7 +40,7 @@ export interface MessageStyle {
   border: { enabled: boolean; color: string; width: number; radius: number; variant: 'plain' | 'ornate' | 'arcane' | 'runic' };
 }
 export interface ThemeSummary { id: string; name: string; colors: string[]; saved: boolean }
-export interface AppearanceState extends AppearanceSettings { themes: ThemeSummary[]; imagePreview: string | null; platform: string; canUndoReset: boolean; presentation: 'window' | 'panel'; locale: 'en' | 'ru'; localeRevision: number; revision: number }
+export interface AppearanceState extends AppearanceSettings { themes: ThemeSummary[]; imagePreview: string | null; platform: string; canUndoReset: boolean; presentation: 'window' | 'panel'; panelNavigationWidth?: number; locale: 'en' | 'ru'; localeRevision: number; revision: number }
 
 const baseStyle = (color: string, opacity: number): MessageStyle => ({ color, opacity, textColor: null,
   gradient: { enabled: false, color: '#000000', angle: 90, secondOpacity: opacity, balance: 50 },

@@ -224,7 +224,10 @@ export class AppearanceManager {
     const settings = this.settings, revision = this.settingsRevision;
     const imagePreview = await this.picture(settings);
     return { ...settings, themes: this.themeSummaries(), imagePreview, revision, platform: process.platform, canUndoReset: !!this.resetBackup,
-      presentation: (contents ? contents === this.panel?.webContents : this.dock?.isOpen()) ? 'panel' : 'window', locale: this.locale, localeRevision: this.localeRevision };
+      presentation: (contents ? contents === this.panel?.webContents : this.dock?.isOpen()) ? 'panel' : 'window', panelNavigationWidth: this.panelNavigationWidth(contents), locale: this.locale, localeRevision: this.localeRevision };
+  }
+  private panelNavigationWidth(contents?: WebContents): number {
+    return (contents ? contents === this.panel?.webContents : this.dock?.isOpen()) ? this.panel?.getBounds().x ?? 0 : 0;
   }
   private themeSummaries() { return [...BUILT_IN_THEMES.map(theme => themeSummary(theme, false)), ...this.savedThemes.map(theme => themeSummary(theme, true))]; }
   private updateThemes(update: () => Promise<void>): Promise<ReturnType<AppearanceManager['themeSummaries']>> {
@@ -272,7 +275,7 @@ export class AppearanceManager {
   }
   private sendInterface(): void {
     for (const contents of [this.window?.webContents, this.panel?.webContents]) {
-      if (contents && !contents.isDestroyed()) contents.send('appearance:interface', { locale: this.locale, localeRevision: this.localeRevision, width: this.settings.appearancePanelWidth });
+      if (contents && !contents.isDestroyed()) contents.send('appearance:interface', { locale: this.locale, localeRevision: this.localeRevision, width: this.settings.appearancePanelWidth, panelNavigationWidth: this.panelNavigationWidth(contents) });
     }
   }
   attachMain(window: BrowserWindow, website: WebContentsView): AppearanceDock {
