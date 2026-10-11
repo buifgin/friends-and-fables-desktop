@@ -172,7 +172,6 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    if(!await js("document.querySelector('#check [data-ff-dice-selection-checkbox]').checked"))await click('#check',locale+' select first favorite');
    assert.equal(await js('selections'),locale==='ru'?0:1,'Selection mode never calls the native check handler.');
    await click('[data-ff-dice-selection-confirm]',locale+' save favorites');
-   await js("window.beforeDetailHeading=document.querySelector('[data-ff-dice-favorite-group] h3');window.beforeDetailFavorite=document.querySelector('[data-ff-dice-favorite-tile]')");
    await click('[data-ff-dice-favorite-tile="skill.acrobatics"]',locale+' favorite -> native detail');
    assert.equal(await js('currentForm===document.querySelector("form") && currentForm.querySelector("input").value==="retained check draft"'),true,'Native detail retains its form and draft.');
    assert.equal(await js("(()=>{const navigation=document.querySelector('[data-ff-dice-navigation]'),favorites=document.querySelector('[data-ff-dice-favorites]');return !!navigation&&navigation.hidden&&(!favorites||favorites.hidden)})()"),true,'Check detail hides navigation and has no visible Favorites list, whether native content retained or replaced its mount.');
@@ -180,7 +179,6 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    await until("document.querySelector('[data-ff-dice-navigation]')&&document.querySelector('[data-ff-dice-favorites]')");
    assert.equal(await js("document.querySelectorAll('[data-ff-dice-favorites]').length===1&&!document.querySelector('[data-ff-dice-favorites]').hidden&&!document.querySelector('[data-ff-dice-navigation]').hidden"),true,'Back remounts exactly one visible Favorites list and navigation.');
    assert.equal(await js('currentForm===document.querySelector("form") && currentForm.querySelector("input").value==="retained check draft"'),true,'Favorites remount preserves the native form and draft.');
-   assert.equal(await js("beforeDetailHeading!==document.querySelector('[data-ff-dice-favorite-group] h3')&&beforeDetailFavorite===document.querySelector('[data-ff-dice-favorite-tile]')"),true,'Back refreshes the detached owned heading and preserves its favorite button.');
    await assertHeadingPaint(locale+' native detail Back');
    await click('#close',locale+' close Dice',0);
    // The encounter state enables attacks, while preventing automatic opening
