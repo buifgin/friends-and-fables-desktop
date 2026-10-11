@@ -26,7 +26,7 @@ body{margin:0}.hidden{display:none}.grid{display:grid;grid-template-columns:repe
 <script>
 window.backgroundWheels=0;window.opens=0;window.skillSelections=0;window.rememberedSkill=false;window.submits=0;window.mapClicks=0;window.reactFocus=0;window.encounter=true;window.settingsClicks=0;window.sidebarExpandClicks=0;window.originalSettings=document.getElementById('native-settings');window.originalSettings.addEventListener('click',()=>window.settingsClicks++);window.originalSidebarExpand=document.getElementById('sidebar-expand-button');window.originalSidebarExpand.addEventListener('click',()=>window.sidebarExpandClicks++);
 const campaign=document.getElementById('campaign'),editor=document.querySelector('.tiptap'),canvas=document.querySelector('canvas');
-window.originalEditor=editor;window.originalCanvas=canvas;window.originalRightPane=document.getElementById('right-pane');window.mapWheels=0;canvas.addEventListener('wheel',()=>window.mapWheels++);
+window.originalEditor=editor;window.originalCanvas=canvas;window.originalRightPane=document.getElementById('right-pane');window.mapWheels=0;window.nativeWheelTrace=[];document.addEventListener('wheel',event=>{if(!event.isTrusted)return;const node=event.target,canvasRect=canvas.getBoundingClientRect();window.nativeWheelTrace.push({time:Date.now(),timeStamp:event.timeStamp,target:{tag:node?.tagName,id:node?.id||'',className:typeof node?.className==='string'?node.className.slice(0,100):''},x:event.clientX,y:event.clientY,deltaX:event.deltaX,deltaY:event.deltaY,defaultPrevented:event.defaultPrevented,rightScrollTop:window.originalRightPane.scrollTop,mapScrollTop:document.getElementById('map').scrollTop,canvas:{left:canvasRect.left,right:canvasRect.right,top:canvasRect.top,bottom:canvasRect.bottom}});if(window.nativeWheelTrace.length>12)window.nativeWheelTrace.shift()},true);canvas.addEventListener('wheel',()=>window.mapWheels++);
 document.getElementById('composer').__reactFiberFixture={memoizedProps:{encounterActive:true}};
 // Captured native ownership: Zustand stores an immutable React-element snapshot,
 // while a committed composer child receives live, native-derived permission.
@@ -140,6 +140,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    await until(`document.querySelector(${JSON.stringify(selector)}).matches(':hover')`);
    await paint();
    assert.equal(await js(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${point.x},${point.y}))`),true,`Wheel target must remain under the native pointer: ${selector}`);
+   await js('window.lastNativeWheelPoint='+JSON.stringify({selector,x:point.x,y:point.y}));
    window.webContents.sendInputEvent({type:'mouseWheel',x:point.x,y:point.y,deltaY:-180,deltaX:0,canScroll:true});
    await paint();
  };
@@ -289,14 +290,17 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  assert.equal(await js("!!document.querySelector('[data-ff-combat-docked]')"),true,'Outside pointer must not dismiss picker.');
  assert.equal(await js("originalEditor.dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:50}))"),true,'Background wheel keeps its default behavior despite native document scroll lock.');
  assert.equal(await js('backgroundWheels'),1,'Root wheel handlers still run.');
- await js("originalRightPane.scrollTop=0;window.beforeRightScroll={chat:document.getElementById('chat').scrollTop,dock:document.querySelector('[data-ff-combat-docked]').scrollTop};window.rightWheelTrusted=false;originalRightPane.addEventListener('wheel',event=>{rightWheelTrusted=event.isTrusted},{once:true})");
+ await js("originalRightPane.scrollTop=0;window.beforeRightScroll={chat:document.getElementById('chat').scrollTop,dock:document.querySelector('[data-ff-combat-docked]').scrollTop};window.rightWheelTrusted=false;window.rightPaneScrollEnded=false;originalRightPane.addEventListener('wheel',event=>{rightWheelTrusted=event.isTrusted},{once:true});originalRightPane.addEventListener('scrollend',()=>{rightPaneScrollEnded=true},{once:true})");
  await wheelAt('#characters');
  await until('originalRightPane.scrollTop>0');
  assert.equal(await js('rightWheelTrusted'),true,'Right character scrolling uses trusted native wheel input.');
  assert.equal(await js("document.getElementById('chat').scrollTop===beforeRightScroll.chat&&document.querySelector('[data-ff-combat-docked]').scrollTop===beforeRightScroll.dock"),true,'Right scrolling leaves chat and dock scroll positions independent.');
  assert.equal(await js("document.querySelector('#right-pane')===originalRightPane&&document.querySelector('canvas')===originalCanvas"),true,'Native right pane and map node identity are preserved.');
+ await until('rightPaneScrollEnded');
+ assert.equal(await js('rightPaneScrollEnded'),true,'Wait for the trusted character-pane wheel gesture to finish before starting map scrolling.');
  await js('originalRightPane.scrollTop=0');
- await wheelAt('canvas');await until('mapWheels>0');
+ await wheelAt('canvas');
+ try{await until('mapWheels>0')}catch(error){const diagnostic=await js("(()=>{const b=originalCanvas.getBoundingClientRect(),x=lastNativeWheelPoint?.x,y=lastNativeWheelPoint?.y;return {mapWheels,lastNativeWheelPoint,pointHit:Number.isFinite(x)&&Number.isFinite(y)?document.elementFromPoint(x,y)===originalCanvas:null,pointHovered:Number.isFinite(x)&&Number.isFinite(y)?originalCanvas.matches(':hover'):null,canvas:{left:b.left,right:b.right,top:b.top,bottom:b.bottom},rightPane:{scrollTop:originalRightPane.scrollTop,scrollHeight:originalRightPane.scrollHeight,clientHeight:originalRightPane.clientHeight},trace:nativeWheelTrace.slice(-8)}})()");console.error('Native map wheel diagnostic',JSON.stringify(diagnostic));throw error}
  assert.equal(await js("document.getElementById('foreign-content').dispatchEvent(new WheelEvent('wheel',{bubbles:true,cancelable:true,deltaY:50}))"),false,'Unrelated sidebars retain native modal wheel locking.');
  await js('originalRightPane.scrollTop=0');
 
