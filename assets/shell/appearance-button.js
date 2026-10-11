@@ -1,12 +1,12 @@
 (() => {
  const $=id=>document.getElementById(id), bridge=window.appearanceButton;
  let locale='en', status={paused:true,available:false,next:false,loop:false,volume:.5,muted:false,title:''};
- const words={Appearance:'Внешний вид',Music:'Музыка','Music library':'Музыкальная библиотека',Play:'Играть',Pause:'Пауза',Stop:'Стоп','Next track':'Следующий трек','Repeat track':'Повторять трек',Volume:'Громкость',Mute:'Без звука',Unmute:'Включить звук','Choose a track':'Выберите трек','Campaign controls':'Управление кампанией'};
+ const words={Settings:'Настройки',Music:'Музыка','Music library':'Музыкальная библиотека',Play:'Играть',Pause:'Пауза',Stop:'Стоп','Next track':'Следующий трек','Repeat track':'Повторять трек',Volume:'Громкость',Mute:'Без звука',Unmute:'Включить звук','Choose a track':'Выберите трек','Campaign controls':'Управление кампанией'};
  const text=value=>locale==='ru'?words[value]??value:value;
  function label(id,value){$(id).title=text(value);$(id).setAttribute('aria-label',text(value));}
  function render(){
   document.querySelector('nav').setAttribute('aria-label',text('Campaign controls'));$('volume-popup').setAttribute('aria-label',text('Volume'));
-  for(const [id,value] of [['appearance-button','Appearance'],['library','Music'],['open-library','Music library'],['play',status.paused?'Play':'Pause'],['next','Next track'],['repeat','Repeat track'],['volume-button','Volume']])label(id,value);
+  for(const [id,value] of [['appearance-button','Settings'],['library','Music'],['open-library','Music library'],['play',status.paused?'Play':'Pause'],['next','Next track'],['repeat','Repeat track'],['volume-button','Volume']])label(id,value);
   $('play-icon').toggleAttribute('hidden',!status.paused);$('pause-icon').toggleAttribute('hidden',status.paused);$('play').disabled=!status.available;$('next').disabled=!status.next;
   $('repeat').setAttribute('aria-pressed',String(status.loop));
   $('volume-wave').toggleAttribute('hidden',status.muted);$('mute').textContent=text(status.muted?'Unmute':'Mute');$('mute').setAttribute('aria-pressed',String(status.muted));
