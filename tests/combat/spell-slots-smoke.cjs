@@ -32,20 +32,21 @@ for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function
 const output = require('esbuild').transformSync(fs.readFileSync(path.join(root,'src/combat/spell-slots.ts'),'utf8'), {loader:'ts',target:'es2022',format:'cjs'});
 new Function(output.code);
 if(process.argv.includes('--syntax')){console.log('Spell slots serialized fixture syntax PASS');process.exit(0)}
-const {app,BrowserWindow,session}=require('electron');
+const {app,BrowserWindow,session,screen}=require('electron');
 if(!process.env.FABLES_TEST_PROFILE_DIR)throw Error('Use central fixture runner/private profile');
 app.setPath('userData',process.env.FABLES_TEST_PROFILE_DIR);
 let win;const fixtureDeadline=Date.now()+20000;const timer=setTimeout(()=>{console.error('Spell slots fixture timed out');win?.destroy();app.exit(1)},20000);
 app.on('window-all-closed',()=>{});
 (async()=>{
  await app.whenReady();const site=session.fromPartition('spell-slots-'+process.pid);site.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
- win=new BrowserWindow({show:true,width:900,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
+ const {width:workAreaWidth,height:workAreaHeight}=screen.getPrimaryDisplay().workAreaSize;
+ win=new BrowserWindow({show:false,width:Math.min(900,workAreaWidth),height:Math.min(800,workAreaHeight),webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
  let nativeFocusEvents=0;win.on('focus',()=>nativeFocusEvents++);
- await win.loadURL('https://fixture.invalid/campaign/fixture/play');win.focus();win.webContents.focus();
+ await win.loadURL('https://fixture.invalid/campaign/fixture/play');win.show();win.focus();win.webContents.focus();
  const js=source=>win.webContents.executeJavaScript(source);
- const focusDiagnostics=async()=>({bounds:win.getBounds(),visible:win.isVisible(),focused:win.isFocused(),documentHasFocus:await js('document.hasFocus()').catch(()=>false),nativeFocusEvents});
+ const focusDiagnostics=async()=>({bounds:win.getBounds(),workArea:{width:workAreaWidth,height:workAreaHeight},visible:win.isVisible(),focused:win.isFocused(),documentHasFocus:await js('document.hasFocus()').catch(()=>false),nativeFocusEvents});
  let readiness;
- while(Date.now()<fixtureDeadline){
+ while(Date.now()<fixtureDeadline-1500){
   readiness=await focusDiagnostics();
   if(readiness.visible&&readiness.focused&&readiness.documentHasFocus)break;
   await new Promise(r=>setTimeout(r,25));
