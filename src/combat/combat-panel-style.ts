@@ -595,6 +595,16 @@ export function combatPanelAppearanceCss(
       background: color-mix(in srgb, ${hex(settings.buttonBackground ?? '', '#202020')} 80%, ${hex(settings.buttonTextColor ?? '', '#ffffff')}) !important;
     }
   ` : '';
+  const transparentHover = settings.customizeButtons
+    ? `color-mix(in srgb, ${hex(settings.buttonBackground ?? '', '#202020')} 28%, transparent)`
+    : 'color-mix(in srgb, hsl(var(--muted, 0 0% 24%)) 40%, transparent)';
+  const transparentButtonSelectors = [buttons, `${customizedSurface} button[role="checkbox"]`, `${customizedSurface} button[role="switch"]`];
+  const transparentButtons = settings.enabled && settings.transparentButtonBackground ? `
+    ${transparentButtonSelectors.join(',\n')} { background: transparent !important; }
+    ${transparentButtonSelectors.map(selector => `${selector}:hover:not(:disabled)`).join(',\n')} {
+      background: ${transparentHover} !important;
+    }
+  ` : '';
   const bounded = (value: number | undefined, min: number, max: number, fallback: number) =>
     typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : fallback;
   const spacing = settings.enabled && settings.customizeSpacing ? `
@@ -686,6 +696,7 @@ export function combatPanelAppearanceCss(
     }
     ${border}
     ${buttonColors}
+    ${transparentButtons}
     ${spacing}
   `;
 }

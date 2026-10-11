@@ -59,6 +59,7 @@ function selection() {
       customizeBackground: element('combat-panel-customize-background').checked,
       customizeBorder: element('combat-panel-customize-border').checked, borderColor: element('combat-panel-border-color').value,
       customizeButtons: element('combat-panel-customize-buttons').checked,
+      transparentButtonBackground: element('combat-panel-transparent-buttons').checked,
       buttonBackground: element('combat-panel-button-background').value, buttonTextColor: element('combat-panel-button-text-color').value,
       customizeSpacing: element('combat-panel-customize-spacing').checked,
       tileGap: Number(element('combat-panel-tile-gap').value), contentPadding: Number(element('combat-panel-content-padding').value) },
@@ -116,6 +117,7 @@ function showSettings(settings) {
     ['customize-background','customizeBackground',true], ['customize-border','customizeBorder',false],
     ['border-color','borderColor','#555555'], ['customize-buttons','customizeButtons',false],
     ['button-background','buttonBackground','#202020'], ['button-text-color','buttonTextColor','#ffffff'],
+    ['transparent-buttons','transparentButtonBackground',false],
     ['customize-spacing','customizeSpacing',false], ['tile-gap','tileGap',8], ['content-padding','contentPadding',20],
   ]) {
     const control = element(`combat-panel-${id}`);
@@ -226,6 +228,7 @@ function updatePreview() {
   const combatPanel = settings.combatPanel;
   for (const id of ['combat-panel-color','combat-panel-opacity','combat-panel-blur']) element(id).disabled = busy || !combatPanel.enabled || !combatPanel.customizeBackground;
   element('combat-panel-enabled').disabled = busy;
+  element('combat-panel-transparent-buttons').disabled = busy || !combatPanel.enabled;
   for (const [group, key, controls] of [
     ['background','customizeBackground',[]], ['border','customizeBorder',['border-color']],
     ['buttons','customizeButtons',['button-background','button-text-color']],

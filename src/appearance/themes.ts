@@ -28,6 +28,7 @@ export interface CombatPanelSettings {
   enabled: boolean; color: string; opacity: number; blur: number;
   customizeBackground: boolean; customizeBorder: boolean; borderColor: string;
   customizeButtons: boolean; buttonBackground: string; buttonTextColor: string;
+  transparentButtonBackground: boolean;
   customizeSpacing: boolean; tileGap: number; contentPadding: number;
 }
 
@@ -71,7 +72,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   linuxFloatingAppearance: true,
   combatPanel: { enabled: false, color: '#101010', opacity: .92, blur: 12,
     customizeBackground: true, customizeBorder: false, borderColor: '#555555',
-    customizeButtons: false, buttonBackground: '#202020', buttonTextColor: '#ffffff',
+    customizeButtons: false, buttonBackground: '#202020', buttonTextColor: '#ffffff', transparentButtonBackground: false,
     customizeSpacing: false, tileGap: 8, contentPadding: 20 },
 };
 
@@ -182,6 +183,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
       customizeBorder: flag(combatPanel.customizeBorder ?? false), borderColor: hex(combatPanel.borderColor ?? '#555555'),
       customizeButtons: flag(combatPanel.customizeButtons ?? false),
       buttonBackground: hex(combatPanel.buttonBackground ?? '#202020'), buttonTextColor: hex(combatPanel.buttonTextColor ?? '#ffffff'),
+      transparentButtonBackground: flag(combatPanel.transparentButtonBackground ?? false),
       customizeSpacing: flag(combatPanel.customizeSpacing ?? false),
       tileGap: range(combatPanel.tileGap ?? 8, 4, 24), contentPadding: range(combatPanel.contentPadding ?? 20, 8, 32) },
     input: { enabled: flag(composer.enabled), style: messageStyle(composer.style) },
