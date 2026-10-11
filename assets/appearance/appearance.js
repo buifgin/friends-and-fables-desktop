@@ -16,6 +16,7 @@ let previewFrame = 0;
 let activePanel = 'theme-panel';
 let canUndoReset = false;
 let panelWidth = 420;
+let panelNavigationWidth = 0;
 let appliedRevision = -1;
 let appliedLocaleRevision = -1;
 const previousStyles = new Map();
@@ -92,6 +93,7 @@ function showSettings(settings) {
   canUndoReset = settings.canUndoReset;
   if (settings.themes) showThemes(settings.themes);
   panelWidth = settings.appearancePanelWidth;
+  panelNavigationWidth = Number.isFinite(settings.panelNavigationWidth) ? settings.panelNavigationWidth : 0;
   element('pin-appearance').checked = settings.appearancePinned;
   element('resizable-map').checked = settings.resizableMap;
   element('message-commands').checked = settings.messageCommands;
@@ -493,7 +495,7 @@ picker.addEventListener('cancel', event => { event.preventDefault(); closePicker
 window.appearance.get().then(settings => { busy = false; showSettings(settings); notify('Choose your settings, then apply them.'); })
   .catch(error => { notify('Could not load preferences. Close this window and try again.', true); console.error(error); });
 
-window.appearance.onInterface(state => { applyInterfaceLocale(state); panelWidth = state.width; });
+window.appearance.onInterface(state => { applyInterfaceLocale(state); panelWidth = state.width; if (Number.isFinite(state.panelNavigationWidth)) panelNavigationWidth = state.panelNavigationWidth; });
 window.appearance.onSettings(showSettings);
 element('close-panel').addEventListener('click', () => { void window.appearance.closePanel().catch(console.error); });
 const resizer = element('panel-resizer');
@@ -504,12 +506,14 @@ const resizePanel = async (width, finish = false) => {
 };
 resizer.addEventListener('pointerdown', event => {
   if (event.button !== 0) return;
-  event.preventDefault(); drag = { x: event.screenX, width: innerWidth }; desiredWidth = innerWidth;
+  // The renderer viewport omits the dock navigation rail, but resizePanel accepts total width.
+  event.preventDefault(); drag = { x: event.screenX, width: innerWidth + panelNavigationWidth }; desiredWidth = drag.width;
   resizer.setPointerCapture(event.pointerId);
 });
 resizer.addEventListener('pointermove', event => {
   if (!drag) return;
-  desiredWidth = Math.max(320, Math.min(900, drag.width + event.screenX - drag.x));
+  const minimum = panelNavigationWidth ? 460 : 320, maximum = panelNavigationWidth ? 1000 : 900;
+  desiredWidth = Math.max(minimum, Math.min(maximum, drag.width + event.screenX - drag.x));
   if (!resizeFrame) resizeFrame = requestAnimationFrame(() => { resizeFrame = 0; void resizePanel(desiredWidth); });
 });
 const finishResize = () => {
@@ -522,5 +526,7 @@ resizer.addEventListener('lostpointercapture', finishResize);
 resizer.addEventListener('keydown', event => {
   if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
   event.preventDefault();
-  void resizePanel(event.key === 'Home' ? 320 : event.key === 'End' ? 900 : innerWidth + (event.key === 'ArrowLeft' ? -20 : 20), true);
+  const minimum = panelNavigationWidth ? 460 : 320, maximum = panelNavigationWidth ? 1000 : 900;
+  const width = event.key === 'Home' ? minimum : event.key === 'End' ? maximum : innerWidth + panelNavigationWidth + (event.key === 'ArrowLeft' ? -20 : 20);
+  void resizePanel(width, true);
 });
