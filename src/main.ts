@@ -3,6 +3,7 @@ import type { WebContents, MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import type { WindowControls } from './shell/window-controls';
 import type { AppearanceDock } from './shell/appearance-dock';
+import { configureNativeCampaignPanel } from './settings/campaign-panel';
 import { mainWindowChrome } from './shell/window-chrome';
 import { configureZoomShortcuts } from './shell/zoom';
 import { configureFullscreenShortcuts } from './shell/window-shortcuts';
@@ -56,6 +57,17 @@ function configureWebsiteContents(contents: WebContents, window: BrowserWindow, 
   });
 
   contents.setWindowOpenHandler(({ url }) => {
+    if (contents === websiteContents && settingsDock && new URL(contents.getURL()).origin === 'https://play.fables.gg'
+      && /^\/[0-9a-f-]{36}\/play\/?$/i.test(new URL(contents.getURL()).pathname)) {
+      if (url === 'fables-desktop://settings/open-campaign') {
+        void settingsDock.openSection('campaign').catch(console.error);
+        return { action: 'deny' };
+      }
+      if (url === 'fables-desktop://settings/close-campaign') {
+        settingsDock.closeCampaign();
+        return { action: 'deny' };
+      }
+    }
     if (music.handleOpenRequest(contents,window,url)) {
       return { action: 'deny' };
     }
@@ -135,7 +147,20 @@ function createWindow(): void {
   websiteContents = view.webContents;
   const dock = appearance.attachMain(mainWindow, view);
   settingsDock = dock;
-  dock.configureSettings({ translation, instructions: hostInstructions });
+  let campaignUpdates = Promise.resolve();
+  const updateCampaignPanel = (show: boolean, width = 0, height = 0): Promise<void> => {
+    campaignUpdates = campaignUpdates.catch(console.error).then(async () => {
+      if (view.webContents.isDestroyed() || !view.webContents.getURL()) return;
+      const url = new URL(view.webContents.getURL());
+      if (url.origin !== 'https://play.fables.gg' || !/^\/[0-9a-f-]{36}\/play\/?$/i.test(url.pathname)) return;
+      await view.webContents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${show},${width},${height})`);
+    });
+    return campaignUpdates;
+  };
+  dock.configureSettings({ translation, instructions: hostInstructions, campaign: {
+    show: bounds => updateCampaignPanel(true, bounds.width, bounds.height),
+    hide: () => { void updateCampaignPanel(false).catch(console.error); },
+  } });
   windowControls = dock.windowControls;
   music.attachMain(mainWindow,dock.getLauncherContents(),view.webContents);
   music.setSettingsOpener(() => { void dock.openSection('music').catch(console.error); });

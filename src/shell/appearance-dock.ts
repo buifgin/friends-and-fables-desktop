@@ -37,7 +37,7 @@ export class AppearanceDock {
     this.windowControls = new WindowControls(window, manager);
     this.generalReady=this.general.initialize().then(()=>this.layout());
     this.hub=new SettingsHub(window,manager,this.general,()=>this.hide(),()=>{this.barOverride=false;this.barManualHidden=false;this.layout();},section=>this.openSection(section));
-    setSettingsEscape(window,()=>{if(!this.opened)return false;this.hide();return true;});
+    setSettingsEscape(window,()=>{if(!this.opened)return false;if(this.hub.currentSection()==='campaign'&&this.website.webContents.isFocused())return false;this.hide();return true;});
     setQuickBarToggle(window,()=>{
       if(window.isFullScreen()&&this.general.hideDesktopTopbarInFullscreen)this.barOverride=!this.barOverride;
       else this.barManualHidden=!this.barManualHidden;
@@ -94,6 +94,7 @@ export class AppearanceDock {
     this.layout(); this.update(); this.windowControls.sync();
   }
   isOpen(): boolean { return this.opened; }
+  closeCampaign(): void { if (this.opened && this.hub.currentSection() === 'campaign') this.hide(); }
 
   async flushSettings(): Promise<void> { await this.generalReady; await this.general.flush(); }
   configureSettings(managers: SettingsManagers): void { this.hub.configure(managers); }

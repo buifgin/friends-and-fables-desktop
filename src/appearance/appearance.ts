@@ -20,6 +20,7 @@ import { configureCombatWorkspace } from '../combat/combat-workspace';
 import { configureCombatShortcuts } from '../combat/combat-shortcuts';
 import { configureCombatCorrections } from '../combat/combat-corrections';
 import { configureSpellSlots } from '../combat/spell-slots';
+import { configureWebsiteSettings } from '../shell/website-settings';
 import { combatPanelCss, combatPanelAppearanceCss } from '../combat/combat-panel-style';
 import { configureMessageCommands, formatMessageCommand } from '../commands/message-commands';
 import { DEFAULT_HOST_INSTRUCTIONS, instructionDocument } from '../commands/host-instructions-core';
@@ -427,6 +428,8 @@ export class AppearanceManager {
       if (contents.isDestroyed() || document !== website.document) return;
       // No IPC bridge or Node access is added to the remote website.
       await contents.executeJavaScript(`(${configureChatAppearance.toString()})(${JSON.stringify(settings)})`);
+      if (contents.isDestroyed() || document !== website.document) return;
+      await contents.executeJavaScript(`(${configureWebsiteSettings.toString()})(true,${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureCombatPanel.toString()})(true,${JSON.stringify(this.locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(settings.combatPanel, { image, fit: settings.backgroundFit, effects: settings.backgroundEffects }))})`);
       if (contents.isDestroyed() || document !== website.document) return;
