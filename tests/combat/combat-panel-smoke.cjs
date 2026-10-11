@@ -134,8 +134,8 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    // target and wait for native hover before starting a new wheel sequence.
    const paint=()=>js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
    await paint();
-   const point=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e.getBoundingClientRect(),x=Math.round(b.left+Math.min(b.width/2,40)),y=Math.round(b.top+Math.min(b.height/2,40));return {x,y,hit:e.contains(document.elementFromPoint(x,y))}})()`);
-   assert.equal(point.hit,true,`Wheel target must be visible: ${selector} ${JSON.stringify(point)}`);
+   const point=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e.getBoundingClientRect();let left=Math.max(0,b.left),right=Math.min(innerWidth,b.right),top=Math.max(0,b.top),bottom=Math.min(innerHeight,b.bottom);for(let a=e.parentElement;a;a=a.parentElement){const s=getComputedStyle(a),r=a.getBoundingClientRect();if(/(auto|scroll|hidden|clip)/.test(s.overflowX)){left=Math.max(left,r.left);right=Math.min(right,r.right)}if(/(auto|scroll|hidden|clip)/.test(s.overflowY)){top=Math.max(top,r.top);bottom=Math.min(bottom,r.bottom)}}const visible={left,right,top,bottom,width:Math.max(0,right-left),height:Math.max(0,bottom-top)};if(visible.width<1||visible.height<1)return {visible,element:{left:b.left,right:b.right,top:b.top,bottom:b.bottom},hit:false};const x=Math.round((left+right)/2),y=Math.round((top+bottom)/2);return {x,y,visible,element:{left:b.left,right:b.right,top:b.top,bottom:b.bottom},hit:e.contains(document.elementFromPoint(x,y))}})()`);
+   assert.equal(point.hit,true,`Wheel target must have a visible native hit point: ${selector} ${JSON.stringify(point)}`);
    window.webContents.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
    await until(`document.querySelector(${JSON.stringify(selector)}).matches(':hover')`);
    await paint();
