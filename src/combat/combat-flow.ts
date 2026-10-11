@@ -1,6 +1,7 @@
 // Serialized into the website; keep the entire adapter self-contained.
 export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void {
-  type Controller = { update(locale: 'en' | 'ru'): void; dispose(): void };
+  type Snapshot = { campaignId: string; automaticDamage: boolean; hideIntermediateFranz: boolean };
+  type Controller = { update(locale: 'en' | 'ru'): void; dispose(): void; getPreferences(): Snapshot | null; setPreferences(value: unknown): Snapshot };
   type Fiber = { tag?: number; type?: unknown; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
   type Native = Record<string, any>;
   type Observer = { options: { mutationFn: Function }; getCurrentResult(): Native; subscribe(listener: (result: Native) => void): () => void };
@@ -11,17 +12,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   const host = window as unknown as Record<string, Controller | undefined>;
   if (host[key]) { if (enabled) host[key]!.update(locale); else host[key]!.dispose(); return; }
   if (!enabled) return;
-  let language = locale, disposed = false, frame = 0, campaign = '', route = '';
+  let disposed = false, frame = 0, campaign = '', route = '';
   let prefs: Preferences = { automaticDamage: false, hideIntermediateFranz: false };
-  const ui = document.createElement('fieldset');
-  ui.setAttribute('data-ff-combat-flow', ''); ui.setAttribute('data-ff-translation-ignore', 'true');
-  ui.style.cssText = 'margin:12px 0;padding:10px;border:1px solid hsl(var(--border));border-radius:6px;display:grid;gap:8px';
-  const legend = document.createElement('legend'); ui.append(legend);
-  const autoLabel = document.createElement('label'), auto = document.createElement('input'), autoText = document.createElement('span');
-  const hideLabel = document.createElement('label'), hide = document.createElement('input'), hideText = document.createElement('span');
-  auto.type = hide.type = 'checkbox'; auto.setAttribute('data-ff-automatic-damage', ''); hide.setAttribute('data-ff-hide-intermediate-franz', '');
-  autoLabel.append(auto, autoText); hideLabel.append(hide, hideText); ui.append(autoLabel, hideLabel);
-  const note = document.createElement('p'); note.style.cssText = 'margin:0;font-size:12px'; ui.append(note);
   let ticket: Ticket | null = null;
   let traversalBudget = 50000;
   const currentFiberCache = new Map<Fiber, Fiber | null>();
@@ -55,17 +47,33 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       return { automaticDamage: p.automaticDamage === true, hideIntermediateFranz: p.automaticDamage === true && p.hideIntermediateFranz === true };
     } catch { return { automaticDamage: false, hideIntermediateFranz: false }; }
   }
-  function save(): void { try { localStorage.setItem(storageKey(), JSON.stringify(prefs)); } catch { /* Session preferences still work. */ } }
-  function paint(): void {
-    const ru = language === 'ru';
-    legend.textContent = ru ? 'Автоматизация урона' : 'Damage automation';
-    autoText.textContent = ru ? 'Автоматический урон после моего попадания' : 'Automatic damage after my hit';
-    hideText.textContent = ru ? 'Скрывать связанный промежуточный ответ Франца' : "Hide Franz’s linked intermediate response";
-    note.textContent = ru ? 'Для одной атаки и одной цели. Ожидает кнопку урона игры. Скрытие действует только локально; генерация ответа и расходы сохраняются.' : 'For one attack and one target. Waits for the game’s Damage button. Hiding affects local display only; response generation and costs remain.';
-    auto.checked = prefs.automaticDamage; hide.checked = prefs.hideIntermediateFranz; hide.disabled = !prefs.automaticDamage;
+  // Preference reads correlate the current route without touching React fibers.
+  function syncRoute(): void {
+    const path = location.pathname;
+    const match = /^\/([^/]+)\/play(?:\/|$)/.exec(path)?.[1] ?? '';
+    const next = match.length <= 256 && !/[\s?#]/.test(match) ? match : '';
+    if (path !== route || next !== campaign) {
+      cancel(); linked.clear(); restore(); route = path; campaign = next;
+      prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false };
+    }
   }
-  auto.addEventListener('change', () => { prefs.automaticDamage = auto.checked; if (!auto.checked) { prefs.hideIntermediateFranz = false; cancel(); linked.clear(); restore(); } save(); paint(); });
-  hide.addEventListener('change', () => { prefs.hideIntermediateFranz = prefs.automaticDamage && hide.checked; if (!prefs.hideIntermediateFranz) restore(); save(); paint(); schedule(); });
+  function getPreferences(): Snapshot | null {
+    syncRoute();
+    return !disposed && campaign ? { campaignId: campaign, ...prefs } : null;
+  }
+  function setPreferences(value: unknown): Snapshot {
+    syncRoute();
+    if (disposed || !campaign || !value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Combat preferences require the current campaign.');
+    const p = value as Partial<Snapshot>;
+    if (Object.keys(p).length !== 3 || p.campaignId !== campaign || typeof p.automaticDamage !== 'boolean' || typeof p.hideIntermediateFranz !== 'boolean') throw new Error('Invalid or stale combat preferences.');
+    const next = { automaticDamage: p.automaticDamage, hideIntermediateFranz: p.automaticDamage && p.hideIntermediateFranz };
+    // Do not acknowledge a failed persistent write or disturb the active flow.
+    localStorage.setItem(storageKey(), JSON.stringify(next));
+    prefs = next;
+    if (!prefs.automaticDamage) { cancel(); linked.clear(); restore(); }
+    else if (!prefs.hideIntermediateFranz) restore();
+    schedule(); return { campaignId: campaign, ...prefs };
+  }
   function fiberRoot(fiber: Fiber): Fiber | null {
     const path: Fiber[] = [];
     let root = fiber;
@@ -370,37 +378,25 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     frame = 0;
     traversalBudget = 50000; ancestryCache.clear(); currentFiberCache.clear(); rootCache.clear();
     if (disposed) return;
-    const path = location.pathname;
-    const match = /^\/([^/]+)\/play(?:\/|$)/.exec(path);
-    const next = match?.[1] ?? '';
-    if (path !== route || next !== campaign) {
-      cancel(); linked.clear(); restore(); route = path; campaign = next; prefs = read(); ui.remove();
-    }
+    syncRoute();
     if (!campaign) return;
     try { observeOutcomes(); applyFlow(); syncNarration(); } catch { cancel(); restore(); }
-    const dock = document.querySelector<HTMLElement>('[data-ff-combat-docked][data-ff-combat-panel-mode="actions"]');
-    if (!dock || dock.closest('[hidden],[aria-hidden="true"]')) { ui.remove(); return; }
-    const form = dock.querySelector('form');
-    // Never insert extension settings into the native form or its fieldset.
-    // Committed ownership is also the compatibility gate for this surface.
-    if (!form || !committedFiber(form)) { ui.remove(); return; }
-    if (ui.parentElement !== dock) dock.append(ui);
-    paint();
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(sync); }
-  const observer = new MutationObserver(records => { if (records.some(record => !ui.contains(record.target))) schedule(); });
+  const observer = new MutationObserver(() => schedule());
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'data-ff-combat-panel-mode', 'hidden', 'aria-hidden'] });
   function storageChanged(event: StorageEvent): void {
     if (event.storageArea !== localStorage || event.key !== storageKey()) return;
-    cancel(); linked.clear(); restore(); prefs = read(); paint(); schedule();
+    cancel(); linked.clear(); restore(); syncRoute(); prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false }; schedule();
   }
   const timer = window.setInterval(schedule, 500);
   window.addEventListener('storage', storageChanged);
   document.addEventListener('submit', submitted, true);
   window.addEventListener('popstate', schedule);
   host[key] = {
-    update(value) { language = value; schedule(); },
-    dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('submit', submitted, true); window.clearInterval(timer); window.removeEventListener('popstate', schedule); window.removeEventListener('storage', storageChanged); cancel(); restore(); ui.remove(); delete host[key]; }
+    getPreferences, setPreferences,
+    update() { schedule(); },
+    dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('submit', submitted, true); window.clearInterval(timer); window.removeEventListener('popstate', schedule); window.removeEventListener('storage', storageChanged); cancel(); restore(); delete host[key]; }
   };
   schedule();
 }

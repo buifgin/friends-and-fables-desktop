@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { WindowControls } from './shell/window-controls';
 import type { AppearanceDock } from './shell/appearance-dock';
 import { configureNativeCampaignPanel } from './settings/campaign-panel';
+import type { CombatPreferences } from './settings/settings-core';
 import { mainWindowChrome } from './shell/window-chrome';
 import { configureZoomShortcuts } from './shell/zoom';
 import { configureFullscreenShortcuts } from './shell/window-shortcuts';
@@ -157,7 +158,24 @@ function createWindow(): void {
     });
     return campaignUpdates;
   };
-  dock.configureSettings({ translation, instructions: hostInstructions, campaign: {
+  const combatCampaign = (): string | null => {
+    if (view.webContents.isDestroyed()) return null;
+    try {
+      const current = new URL(view.webContents.getURL());
+      return current.origin === 'https://play.fables.gg' && /^\/[0-9a-f-]{36}\/play\/?$/i.test(current.pathname)
+        ? current.pathname.split('/')[1] : null;
+    } catch { return null; }
+  };
+  dock.configureSettings({ translation, instructions: hostInstructions, combat: {
+    get: async () => {
+      if (!combatCampaign()) return null;
+      return view.webContents.executeJavaScript('window.__friendsFablesDesktopCombatFlow?.getPreferences() ?? null');
+    },
+    save: async (value: CombatPreferences) => {
+      if (combatCampaign() !== value.campaignId) throw new Error('The active campaign changed. Reopen Combat settings.');
+      return view.webContents.executeJavaScript(`(()=>{const controller=window.__friendsFablesDesktopCombatFlow;if(!controller)throw new Error('Combat settings are not ready.');return controller.setPreferences(${JSON.stringify(value)});})()`);
+    },
+  }, campaign: {
     show: bounds => updateCampaignPanel(true, bounds.width, bounds.height),
     hide: () => { void updateCampaignPanel(false).catch(console.error); },
   } });

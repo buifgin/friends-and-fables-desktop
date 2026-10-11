@@ -10,3 +10,42 @@ test('navigation IPC rejects website, subframe, wrong route and invalid section'
 test('campaign cannot open without native adapter and music creates no player',async()=>{const f=fixture();await assert.rejects(f.hub.select('campaign'),/not connected/);await f.hub.select('music');assert.equal(f.created.length,0);});
 test('native campaign adapter receives content bounds and host covers nav only',async()=>{const f=fixture(),shown=[],manager={setSettingsOpener(){}};let hidden=0;f.hub.configure({translation:manager,instructions:manager,campaign:{show:b=>shown.push(b),hide:()=>hidden++}});await f.hub.select('campaign');assert.deepEqual(shown.at(-1),{x:126,y:32,width:454,height:700});assert.equal(f.hub.view.bounds.width,126);await f.hub.select('general');assert.ok(hidden>=2);assert.equal(f.hub.view.bounds.width,580);});
 test('hide during pending editor load cancels opening',async()=>{const f=fixture();const opening=f.hub.select('appearance');f.hub.setVisible(false);await opening;assert.equal(f.hub.view.visible,false);});
+
+test('combat IPC exposes campaign preferences only to trusted main settings frame and rejects stale saves',async()=>{
+ const f=fixture(),manager={setSettingsOpener(){}};let current={campaignId:'a',automaticDamage:false,hideIntermediateFranz:false},saved=[];
+ f.hub.configure({translation:manager,instructions:manager,combat:{get:async()=>current,save:async value=>{saved.push(value);current=value;return current;}}});
+ const sender=f.hub.view.webContents,event={sender,senderFrame:sender.mainFrame},get=handlers.get('settings-hub:combat-get'),save=handlers.get('settings-hub:combat-save');
+ await f.hub.select('combat');assert.equal(f.created.length,0);assert.deepEqual(await get(event),current);
+ await save(event,{...current,automaticDamage:true,hideIntermediateFranz:true});assert.equal(saved.length,1);
+ await save(event,{...current,automaticDamage:false});assert.equal(current.hideIntermediateFranz,false);
+ for(const bad of [{...current,automaticDamage:'true'},{...current,campaignId:'b'},{...current,extra:true}])await assert.rejects(save(event,bad));
+ await assert.rejects(get({sender:new Contents(),senderFrame:sender.mainFrame}));
+ await assert.rejects(save({sender,senderFrame:{...sender.mainFrame}},current));
+ current=null;assert.equal(await get(event),null);await assert.rejects(save(event,{campaignId:'a',automaticDamage:true,hideIntermediateFranz:false}));
+ f.window.emit('closed');assert.equal(handlers.has('settings-hub:combat-save'),false);
+});
+test('combat get ignores older in-flight snapshots after campaign switch',async()=>{
+ const f=fixture(),manager={setSettingsOpener(){}};let resolve,reads=0;
+ const current={campaignId:'b',automaticDamage:false,hideIntermediateFranz:false};
+ f.hub.configure({translation:manager,instructions:manager,combat:{get:()=>++reads===1?new Promise(r=>resolve=r):Promise.resolve(current),save:async()=>current}});
+ const sender=f.hub.view.webContents,event={sender,senderFrame:sender.mainFrame},get=handlers.get('settings-hub:combat-get');
+ const old=get(event);assert.deepEqual(await get(event),current);resolve({...current,campaignId:'a'});assert.deepEqual(await old,current);
+});
+
+test('Combat renderer disables off-campaign controls, enforces hide dependency and refreshes campaigns with one pending read',async()=>{
+ const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path'),nodes=new Map();
+ const node=id=>{if(!nodes.has(id))nodes.set(id,{checked:false,disabled:false,hidden:false,textContent:'',setAttribute(){},replaceChildren(...children){this.children=children;}});return nodes.get(id);};
+ let onChange,poll,saves=[],snapshot=null,resolveRead,readCount=0;
+ const state={section:'combat',locale:'ru',theme:{},campaignAvailable:true,hideDesktopTopbarInFullscreen:false,combat:null};
+ const context={window:{settingsTheme:{apply(){}},settingsHub:{get:async()=>state,onChange:fn=>onChange=fn,select:async()=>{},close:async()=>{},saveGeneral:async()=>state,getCombat:async()=>{readCount++;return resolveRead?new Promise(r=>resolveRead=r):snapshot;},saveCombat:async value=>{saves.push(value);return snapshot={...value,hideIntermediateFranz:value.automaticDamage&&value.hideIntermediateFranz};}}},document:{visibilityState:'visible',getElementById:node,querySelector:node,createElement:()=>({setAttribute(){}})},setInterval:fn=>poll=fn};
+ vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../assets/settings/settings-hub.js'),'utf8'),context);
+ const drain=()=>new Promise(r=>setImmediate(r));await drain();
+ assert.equal(node('automatic-damage').disabled,true);assert.equal(node('hide-intermediate-franz').disabled,true);assert.equal(node('#combat h2').textContent,'Бой');
+ snapshot={campaignId:'a',automaticDamage:false,hideIntermediateFranz:false};poll();await drain();
+ assert.equal(node('automatic-damage').disabled,false);assert.equal(node('hide-intermediate-franz').disabled,true);
+ node('automatic-damage').checked=true;await node('automatic-damage').onchange();await drain();assert.equal(saves[0].campaignId,'a');assert.equal(node('hide-intermediate-franz').disabled,false);
+ snapshot={campaignId:'b',automaticDamage:false,hideIntermediateFranz:false};poll();await drain();assert.equal(node('automatic-damage').checked,false);
+ resolveRead=true;const before=readCount;poll();poll();assert.equal(readCount,before+1);resolveRead(snapshot);resolveRead=null;await drain();
+ onChange({...state,section:'general'});const count=readCount;poll();await drain();assert.equal(readCount,count);
+ onChange({...state,section:'combat',combat:snapshot});await drain();context.document.visibilityState='hidden';poll();assert.equal(readCount,count+1);
+});
