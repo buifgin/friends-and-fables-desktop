@@ -1,0 +1,74 @@
+// Coordinator alone schedules this native fixture through the private runner.
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { app, BrowserWindow, session } = require('electron');
+if (!process.env.FABLES_TEST_PROFILE_DIR) throw Error('Use the central private-profile fixture runner.');
+app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
+const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '../..');
+const { configureCombatFlow } = require(path.join(root, 'dist/combat/combat-flow'));
+const html = `<!doctype html><meta charset="utf-8"><style>body{background:#222;color:white}section{width:400px}button{padding:12px}label{display:block}fieldset{max-width:380px}</style>
+<section data-ff-combat-docked data-ff-combat-panel-mode="actions"><form><input value="preserved native draft"><button type="submit" id="submit">Attack</button></form></section><main></main><script>
+window.calls=0;window.submits=0;window.mode='hit';window.sequence=100;window.nativeCharacter={id:83026155};window.nativeCampaign={id:'campaign-a',active_encounter_id:412456};
+const root={tag:3,stateNode:{}};root.stateNode.current=root;
+let result={status:'idle',submittedAt:0};const listeners=new Set();
+const observer={options:{mutationFn:function nativeGM({lastEventId}){return ['ENCOUNTER_GM_RESPONSE','GM_RESPONSE',lastEventId]}},getCurrentResult(){return result},subscribe(fn){listeners.add(fn);return ()=>listeners.delete(fn)}};
+const form=document.querySelector('form');const owner={type:function NativeExecuteActions(){const sendAttackRoll=null;return sendAttackRoll},memoizedProps:{campaignId:'campaign-a',encounterId:412456,isUsersCharacterTurn:true,isMultiplayerCampaign:true},memoizedState:{memoizedState:{data:{usersCharacter:nativeCharacter}},next:{memoizedState:observer}},return:root};
+const provider={memoizedProps:{control:{},getValues(){return [{type:'spell',requires_attack_roll:true,modifier_value:8,proficiency_bonus:8,targets:[{id:2217533,ac:10}]}]}},return:owner};
+const formFiber={memoizedProps:{},return:provider};form.__reactFiber$fixture=formFiber;provider.child=formFiber;owner.child=provider;root.child=owner;
+window.mountRows=(request,attackId)=>{
+ const dmId=attackId+1;const choice={id:attackId+2,event_id:dmId,character_id:83026155,type:'Damage',accepted:null,dice_expression:mode==='crit'?'2d10+3':'1d10',fixed_bonus:3};
+ const attack={id:attackId,role:'player',request_id:request,campaign_id:'campaign-a',character_id:83026155,command_used:'roll_attack',events_roll:{roll_type:'Spell Attack',dc:10,total_roll:mode==='miss'?9:24,modifier_value:8,proficiency_bonus:8}};
+ const dm={id:dmId,role:'dm',request_id:request,campaign_id:'campaign-a',command_used:'encounter_player_turn_action_response',rollChoices:mode==='miss'?[]:[choice]};
+ document.querySelector('main').innerHTML='<div id="event-container-undefined">Attack result</div><div id="event-container-'+dmId+'"><div id="event-message-card-'+dmId+'">Intermediate narration</div><div><button type="button" id="damage">Roll Damage</button></div></div>';
+ const rows=document.querySelector('main').children;const attackFiber={memoizedProps:{event:attack,campaign:nativeCampaign},return:root};const dmFiber={memoizedProps:{event:dm,campaign:nativeCampaign},return:root};owner.sibling=attackFiber;attackFiber.sibling=dmFiber;
+ rows[0].__reactFiber$fixture=attackFiber;rows[1].__reactFiber$fixture=dmFiber;
+ const card=rows[1].querySelector('[id^=event-message-card-]'),cardOwner={type:function NativeNarrativeCard(){return 'event-message-card-'},memoizedProps:{eventId:dmId},return:dmFiber};const cardFiber={memoizedProps:{},return:cardOwner};cardOwner.child=cardFiber;card.__reactFiber$fixture=cardFiber;dmFiber.child=cardOwner;
+ const t5={memoizedProps:{rollChoice:choice,campaignId:'campaign-a',usersCharacter:nativeCharacter},return:dmFiber};cardOwner.sibling=t5;
+ const button=document.querySelector('#damage');const callback=function nativeQuickRoll(event){event.stopPropagation();const dice_expression=choice.dice_expression;calls++;window.lastChoice={...choice,dice_expression};if(mode==='failure')throw Error('Unknown send outcome');choice.accepted=true;window.done=true};
+ const buttonFiber={memoizedProps:{onClick:callback,disabled:false},return:t5};button.__reactFiber$fixture=buttonFiber;t5.child=buttonFiber;
+};mountRows('historical',sequence);
+form.addEventListener('submit',event=>{event.preventDefault();submits++;sequence+=10;const request='local-request-'+sequence;mountRows(request,sequence);result={status:'pending',submittedAt:Date.now(),variables:{requestId:request,lastEventId:sequence,isMultiplayer:true}};for(const fn of listeners)fn(result);result={...result,status:'success'}});
+</script>`;
+let window;
+const watchdog = setTimeout(() => { console.error('Combat flow fixture timed out'); window?.destroy(); app.exit(1); }, 30000);
+app.on('window-all-closed', () => {});
+(async () => {
+  await app.whenReady();
+  const site = session.fromPartition(`combat-flow-${process.pid}`);
+  site.protocol.handle('https', () => new Response(html, { headers: { 'Content-Type': 'text/html' } }));
+  window = new BrowserWindow({ show: false, width: 1000, height: 900, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const js = source => window.webContents.executeJavaScript(source);
+  const until = async expression => { for (let n = 0; n < 100; n++) { if (await js(expression)) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw Error('Timed out: ' + expression); };
+  const configure = (enabled = true) => js(`(${configureCombatFlow.toString()})(${enabled},'en')`);
+  const nativeClick = async selector => {
+    const point = await js(`(()=>{const node=document.querySelector(${JSON.stringify(selector)}),rect=node.getBoundingClientRect();return {x:Math.round(rect.left+rect.width/2),y:Math.round(rect.top+rect.height/2),hit:node.contains(document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2))}})()`);
+    assert.equal(point.hit, true, 'Native target must be visible and unobstructed');
+    window.webContents.sendInputEvent({ type: 'mouseDown', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+    window.webContents.sendInputEvent({ type: 'mouseUp', x: point.x, y: point.y, button: 'left', clickCount: 1 });
+  };
+  await window.loadURL('https://play.fables.gg/campaign-a/play'); window.showInactive(); window.webContents.focus();
+  await until("document.visibilityState==='visible'&&document.hasFocus()");
+  await configure(); await until("!!document.querySelector('[data-ff-combat-flow]')");
+  assert.equal(await js("document.querySelectorAll('[data-ff-combat-flow] input[type=checkbox]').length"), 2);
+  assert.equal(await js("document.querySelector('form [data-ff-combat-flow]')===null"), true);
+  await nativeClick('[data-ff-automatic-damage]'); await until("document.querySelector('[data-ff-automatic-damage]').checked");
+  assert.equal(await js('calls'), 0, 'Historical choice remains manual after enabling');
+  await nativeClick('[data-ff-hide-intermediate-franz]');
+  await nativeClick('#submit'); await until('calls===1');
+  assert.equal(await js("document.querySelector('[id^=event-message-card-]').style.display"), 'none');
+  assert.equal(await js("document.querySelector('#damage').getClientRects().length>0"), true);
+  assert.equal(await js("document.querySelector('[id^=event-container-]').style.display"), '');
+  await js("document.querySelector('main').append(document.createElement('span'))"); await until('done===true'); assert.equal(await js('calls'), 1);
+  await nativeClick('[data-ff-automatic-damage]'); await until("document.querySelector('[data-ff-hide-intermediate-franz]').disabled");
+  assert.equal(await js("document.querySelector('[id^=event-message-card-]').style.display"), '');
+  assert.equal(await js("document.querySelector('[data-ff-hide-intermediate-franz]').checked"), false);
+  await nativeClick('[data-ff-automatic-damage]'); await js("mode='miss';done=false"); await nativeClick('#submit'); await until('submits===2');
+  // A later frame is a readiness boundary; mutation processing must not roll a miss.
+  await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))'); assert.equal(await js('calls'), 1);
+  await js("mode='crit'"); await nativeClick('#submit'); await until('calls===2'); assert.equal(await js('lastChoice.dice_expression'), '2d10+3'); assert.equal(await js('lastChoice.fixed_bonus'), 3);
+  await js("mode='failure'"); await nativeClick('#submit'); await until('calls===3'); await js("document.querySelector('main').append(document.createElement('span'))");
+  await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))'); assert.equal(await js('calls'), 3);
+  await configure(false); assert.equal(await js("document.querySelector('[data-ff-combat-flow]')===null"), true);
+  assert.equal(await js("document.querySelector('form input').value"), 'preserved native draft');
+  console.log('Combat flow native fixture passed'); clearTimeout(watchdog); window.destroy(); app.exit(0);
+})().catch(error => { console.error(error); clearTimeout(watchdog); window?.destroy(); app.exit(1); });

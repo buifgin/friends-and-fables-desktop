@@ -19,6 +19,7 @@ import { configureCombatPanel } from '../combat/combat-panel';
 import { configureCombatWorkspace } from '../combat/combat-workspace';
 import { configureCombatShortcuts } from '../combat/combat-shortcuts';
 import { configureCombatCorrections } from '../combat/combat-corrections';
+import { configureCombatFlow } from '../combat/combat-flow';
 import { configureSpellSlots } from '../combat/spell-slots';
 import { configureWebsiteSettings } from '../shell/website-settings';
 import { combatPanelCss, combatPanelAppearanceCss } from '../combat/combat-panel-style';
@@ -448,6 +449,8 @@ export class AppearanceManager {
       await contents.executeJavaScript(`(${configureCombatShortcuts.toString()})(true,${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureCombatCorrections.toString()})(true,${JSON.stringify(this.locale)})`);
+      if (contents.isDestroyed() || document !== website.document) return;
+      await contents.executeJavaScript(`(${configureCombatFlow.toString()})(true,${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureSpellSlots.toString()})(true,${JSON.stringify(this.locale)})`);
       if (contents.isDestroyed() || document !== website.document) return;
