@@ -28,7 +28,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   const claimHost = window as unknown as { __friendsFablesDesktopCombatFlowClaims?: Set<string>; __friendsFablesDesktopCombatFlowOutcomes?: Map<string, Outcome> };
   const claimed = claimHost.__friendsFablesDesktopCombatFlowClaims ??= new Set<string>();
   const outcomes = claimHost.__friendsFablesDesktopCombatFlowOutcomes ??= new Map<string, Outcome>();
-  const linked = new Map<string | number, { campaign: string; encounter: string | number; request: string }>();
+  const linked = new Map<string | number, { campaign: string; encounter: string | number; request: string; outcomeKey: string }>();
   const hidden = new Map<HTMLElement, { value: string; priority: string }>();
   const storageKey = (): string => `ff-desktop-combat-flow-v1:${campaign}`;
   function cancel(): void { const current = ticket; ticket = null; try { current?.unsubscribe?.(); } catch { /* Native lifecycle may already be disposed. */ } }
@@ -59,7 +59,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     legend.textContent = ru ? 'Автоматизация урона' : 'Damage automation';
     autoText.textContent = ru ? 'Автоматический урон после моего попадания' : 'Automatic damage after my hit';
     hideText.textContent = ru ? 'Скрывать связанный промежуточный ответ Франца' : "Hide Franz’s linked intermediate response";
-    note.textContent = ru ? 'Ожидает кнопку урона игры. Скрытие действует только локально; генерация ответа и расходы сохраняются.' : 'Waits for the game’s Damage button. Hiding affects local display only; response generation and costs remain.';
+    note.textContent = ru ? 'Для одной атаки и одной цели. Ожидает кнопку урона игры. Скрытие действует только локально; генерация ответа и расходы сохраняются.' : 'For one attack and one target. Waits for the game’s Damage button. Hiding affects local display only; response generation and costs remain.';
     auto.checked = prefs.automaticDamage; hide.checked = prefs.hideIntermediateFranz; hide.disabled = !prefs.automaticDamage;
   }
   auto.addEventListener('change', () => { prefs.automaticDamage = auto.checked; if (!auto.checked) { prefs.hideIntermediateFranz = false; cancel(); linked.clear(); restore(); } save(); paint(); });
@@ -235,6 +235,11 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       }
     }
     for (const [eventId, proof] of linked) {
+      const outcome = outcomes.get(proof.outcomeKey);
+      if (outcome?.status === 'failed' || outcome?.status === 'unknown') {
+        for (const node of hidden.keys()) if (node.id === `event-message-card-${eventId}`) restoreNode(node);
+        linked.delete(eventId); continue;
+      }
       const row = document.getElementById(`event-container-${eventId}`);
       if (!row || proof.campaign !== campaign || !encounterMatches(row, proof.encounter)) { for (const node of hidden.keys()) if (node.id === `event-message-card-${eventId}`) restoreNode(node); linked.delete(eventId); continue; }
       const event = eventFor(row);
@@ -323,11 +328,11 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (traversalBudget <= 0) { cancel(); return; }
     const outcome: Outcome = { campaign, character: current.character, eventId: match.event.id, choiceId: match.choice.id, started: Date.now(), status: 'claimed' };
     outcomes.set(key, outcome);
-    claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request }); cancel();
+    claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request, outcomeKey: key }); cancel();
     syncNarration();
     try { const result = candidate.callback({ stopPropagation() {}, preventDefault() {}, currentTarget: candidate.button, target: candidate.button });
-      if (result && typeof (result as PromiseLike<unknown>).then === 'function') void Promise.resolve(result).catch(() => { outcome.status = 'failed'; });
-    } catch { outcome.status = 'failed'; /* Unknown send outcome is terminal. Keep native manual controls. */ }
+      if (result && typeof (result as PromiseLike<unknown>).then === 'function') void Promise.resolve(result).catch(() => { outcome.status = 'failed'; schedule(); });
+    } catch { outcome.status = 'failed'; schedule(); /* Unknown send outcome is terminal. Keep native manual controls. */ }
   }
   function sync(): void {
     frame = 0;

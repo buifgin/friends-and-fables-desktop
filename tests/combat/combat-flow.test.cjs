@@ -89,7 +89,7 @@ function flowFixture(options = {}) {
   const nativeCampaign = { id: 'campaign-a', active_encounter_id: 412456 };
   const rowFiber = { memoizedProps: { event: dmEvent, campaign: nativeCampaign }, return: root };
   const t5 = { memoizedProps: { rollChoice: choice, campaignId: 'campaign-a', usersCharacter: character }, return: rowFiber };
-  const callback = function nativeQuickRoll(event) { event.stopPropagation(); const dice_expression = choice.dice_expression; passedChoice = { ...choice, dice_expression }; calls++; if (options.failure) throw Error('native unknown outcome'); };
+  const callback = function nativeQuickRoll(event) { event.stopPropagation(); const dice_expression = choice.dice_expression; passedChoice = { ...choice, dice_expression }; calls++; if (options.failure) throw Error('native unknown outcome'); if (options.reject) return Promise.reject(Error('native async unknown outcome')); };
   const buttonFiber = { memoizedProps: { onClick: callback }, return: t5 }; t5.child = buttonFiber; rowFiber.child = t5; button.__reactFiber$fixture = buttonFiber;
   dmRow.__reactFiber$fixture = rowFiber; attackRow.__reactFiber$fixture = { memoizedProps: { event: attackEvent, campaign: nativeCampaign }, return: root };
   owner.sibling = attackRow.__reactFiber$fixture; attackRow.__reactFiber$fixture.sibling = rowFiber;
@@ -197,4 +197,23 @@ test('narration reused for mixed native controls restores rather than hiding the
 test('malformed native event and bounded history leave manual control available', () => {
   const malformed = flowFixture(); delete malformed.attackEvent.events_roll.dc; malformed.submit(); malformed.pending(); assert.equal(malformed.calls(), 0);
   const old = flowFixture(); old.submit(); for (let n = 0; n < 31; n++) old.rows.push(new old.Element()); old.pending(); assert.equal(old.calls(), 0);
+});
+test('callback failure restores narration and preserves native manual control without retry', () => {
+  const f = flowFixture({ hide: true, failure: true }); f.submit(); f.pending(); f.notify();
+  assert.equal(f.card.style.getPropertyValue('display'), ''); assert.equal(f.button.style.getPropertyValue('display'), '');
+  assert.equal(f.calls(), 1); f.notify(); assert.equal(f.calls(), 1);
+  assert.equal([...f.context.window.__friendsFablesDesktopCombatFlowOutcomes.values()][0].status, 'failed');
+});
+test('bounded native acceptance timeout restores narration without treating resolved callback as completion', () => {
+  const f = flowFixture({ hide: true }); f.submit(); f.pending(); assert.equal(f.card.style.getPropertyValue('display'), 'none');
+  const outcome = [...f.context.window.__friendsFablesDesktopCombatFlowOutcomes.values()][0]; f.context.Date = class extends Date { static now() { return super.now() + 120001; } }; f.notify();
+  assert.equal(outcome.status, 'unknown'); assert.equal(f.card.style.getPropertyValue('display'), ''); assert.equal(f.button.style.getPropertyValue('display'), '');
+  f.notify(); assert.equal(f.calls(), 1);
+});
+test('asynchronous native rejection restores instructions and cannot be concealed again', async () => {
+  const f = flowFixture({ hide: true, reject: true }); f.submit(); f.pending();
+  await new Promise(resolve => setImmediate(resolve)); f.notify();
+  assert.equal(f.card.style.getPropertyValue('display'), ''); assert.equal(f.calls(), 1);
+  f.controls().hide.change(false); f.controls().hide.change(true); f.notify();
+  assert.equal(f.card.style.getPropertyValue('display'), ''); assert.equal(f.calls(), 1);
 });
