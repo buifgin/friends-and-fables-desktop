@@ -80,7 +80,9 @@ async function save(settings, window) {
   const transparentCss = combatPanelAppearanceCss({ ...customizedPanel, transparentButtonBackground: true });
   assert(transparentCss.includes('button:not([role="checkbox"]):not([role="switch"]),'));
   assert(transparentCss.includes('button[role="checkbox"]'));
-  assert(transparentCss.includes('button:hover:not(:disabled)'));
+  assert(transparentCss.includes('button:not([role="checkbox"]):not([role="switch"]):hover:not(:disabled)'));
+  assert(transparentCss.includes('button[role="checkbox"]:hover:not(:disabled)'));
+  assert(transparentCss.includes('button[role="switch"]:hover:not(:disabled)'));
   assert(transparentCss.includes('background: transparent !important'));
   assert(combatPanelCss.includes(':focus-visible'), 'Existing keyboard focus outlines remain in panel CSS.');
   assert(!nativeCss.includes('--ff-combat-tile-gap:'));

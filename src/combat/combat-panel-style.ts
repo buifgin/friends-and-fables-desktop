@@ -598,10 +598,10 @@ export function combatPanelAppearanceCss(
   const transparentHover = settings.customizeButtons
     ? `color-mix(in srgb, ${hex(settings.buttonBackground ?? '', '#202020')} 28%, transparent)`
     : 'color-mix(in srgb, hsl(var(--muted, 0 0% 24%)) 40%, transparent)';
-  const transparentButtonSelector = `${buttons}, ${customizedSurface} button[role="checkbox"], ${customizedSurface} button[role="switch"]`;
+  const transparentButtonSelectors = [buttons, `${customizedSurface} button[role="checkbox"]`, `${customizedSurface} button[role="switch"]`];
   const transparentButtons = settings.enabled && settings.transparentButtonBackground ? `
-    ${transparentButtonSelector} { background: transparent !important; }
-    ${transparentButtonSelector}:hover:not(:disabled) {
+    ${transparentButtonSelectors.join(',\n')} { background: transparent !important; }
+    ${transparentButtonSelectors.map(selector => `${selector}:hover:not(:disabled)`).join(',\n')} {
       background: ${transparentHover} !important;
     }
   ` : '';
@@ -629,8 +629,6 @@ export function combatPanelAppearanceCss(
     }
   ` : '';
   return `
-    ${buttonColors}
-    ${transparentButtons}
     ${surface} {
       background: ${fill} !important;
       color: hsl(var(--foreground, 0 0% 96%)) !important;
@@ -698,6 +696,7 @@ export function combatPanelAppearanceCss(
     }
     ${border}
     ${buttonColors}
+    ${transparentButtons}
     ${spacing}
   `;
 }
