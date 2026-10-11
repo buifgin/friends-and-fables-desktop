@@ -4,7 +4,7 @@ An unofficial desktop wrapper for [Friends & Fables](https://play.fables.gg/), t
 
 The app opens the existing website and adds local themes, campaign chat pictures, and message styling. Optional local English-to-Russian translation is available from the Translation menu.
 
-The current release is [0.7.0](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.7.0), with a native combat workspace, campaign-local favorite checks, and fixes for translation and Windows window controls. See [release notes](docs/releases/v0.7.0.md).
+The current release is [0.7.2.7](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.7.2-7). Its package and tag version is `0.7.2-7`; the public release title is `0.7.2.7`. See [release notes](docs/releases/v0.7.2.7.md).
 
 ## Current features
 
@@ -41,11 +41,11 @@ Download the Linux AppImage or Windows portable EXE from [GitHub Releases](https
 On Arch/Linux, make the AppImage executable and run it:
 
 ```sh
-chmod +x friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage
-./friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage
+chmod +x friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage
+./friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage
 ```
 
-On Windows, run `friends-and-fables-desktop-0.7.0-windows-x64.exe`. The build is unsigned. The Windows package includes the English–Russian translator and model.
+On Windows, run `friends-and-fables-desktop-0.7.2-7-windows-x64.exe`. The build is unsigned. The Windows package includes the English–Russian translator and model.
 
 The [AUR guide](docs/AUR.md) includes a prepared binary-package recipe and submission steps. AUR publication requires an AUR account and SSH key.
 
@@ -131,7 +131,7 @@ In **Sharing**, click **Export theme…** to save the current preview as a `.fab
 
 The Appearance editor follows the selected app theme, including light and custom colors. In **App**, enable **Pin Appearance to the main interface** and apply. A button opens the settings in a resizable panel on the left of the game, including in fullscreen. Drag its right edge to resize, or focus the separator and use the arrow keys. Closing the panel preserves its draft; disabling the pin restores the separate window. The panel width is saved locally and stays out of shared themes.
 
-The application menus, centered round Appearance/music controls and right window controls share one toolbar row. Windows starts without a native title bar or border; **App → Show native Windows title bar and border** restores it after restarting. **Show extra expand-input button** is off by default. Command hints stay below the native input border, and opening working context applies its palette to that input. Event styles apply to event cards, while character dialogs follow the app theme. These changes are included in release 0.7.0.
+The application menus and right window controls share one desktop toolbar row. Appearance and music controls sit in the website header alongside its background and grouping controls. Windows starts without a native title bar or border; **App → Show native Windows title bar and border** restores it after restarting. **Show extra expand-input button** is off by default. Command hints stay below the native input border, and opening working context applies its palette to that input. Event styles apply to event cards, while character dialogs follow the app theme. These changes are included in release 0.7.0.
 
 Appearance and Translation settings both follow the saved app theme. Changing the theme keeps unsaved translation choices intact.
 
