@@ -138,7 +138,6 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
   }
   let signature = '';
   let previousOptions = new Map<Item, HTMLButtonElement>();
-  let favoritesMounted = false, previousFavoriteCommon: HTMLElement | null = null;
   function sync(): void {
     queued = false; if (disposed) return;
     const nextRoute = location.pathname + location.search;
@@ -166,16 +165,6 @@ export function configureCombatShortcuts(enabled: boolean, locale: 'en' | 'ru'):
     signature = nextSignature; previousOptions = options; restore();
     owned.hidden = favorites.hidden = confirm.hidden = !active;
     if (!active) { if (view === 'selection') { view = 'favorites'; draft = new Set(pinned); signature = ''; } return; }
-    // Retained headings can stop painting after their native list mount is replaced.
-    // Refresh only these owned elements at that lifecycle boundary; keep native
-    // controls and favorite buttons intact, and leave unchanged scans untouched.
-    if (favoritesMounted && (!favorites.isConnected || previousFavoriteCommon !== common)) {
-      for (const group of favoriteGroups.values()) {
-        const heading = group.heading.cloneNode(true) as HTMLHeadingElement;
-        group.heading.replaceWith(heading); group.heading = heading;
-      }
-    }
-    favoritesMounted = true; previousFavoriteCommon = common;
     if (owned.parentElement !== slot) slot!.append(owned);
     favorites.toggleAttribute('data-ff-dice-favorites-inline', inline);
     if (inline) {
