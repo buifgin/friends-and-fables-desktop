@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, Menu, nativeTheme, session, shell, webConte
 import type { WebContents, MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import type { WindowControls } from './shell/window-controls';
+import type { AppearanceDock } from './shell/appearance-dock';
 import { mainWindowChrome } from './shell/window-chrome';
 import { configureZoomShortcuts } from './shell/zoom';
 import { configureFullscreenShortcuts } from './shell/window-shortcuts';
@@ -28,6 +29,7 @@ let hostInstructions:HostInstructionsManager;
 let websiteContents: WebContents | null = null;
 let applicationMenu: Menu;
 let linuxMenu: LinuxMenuBar | undefined;
+let settingsDock: AppearanceDock | undefined;
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -132,13 +134,23 @@ function createWindow(): void {
   mainWindow.contentView.addChildView(view);
   websiteContents = view.webContents;
   const dock = appearance.attachMain(mainWindow, view);
+  settingsDock = dock;
+  dock.configureSettings({ translation, instructions: hostInstructions });
   windowControls = dock.windowControls;
   music.attachMain(mainWindow,dock.getLauncherContents(),view.webContents);
+  music.setSettingsOpener(() => { void dock.openSection('music').catch(console.error); });
+  let topBarVisible = true;
+  dock.onTopBarVisibilityChange = visible => {
+    topBarVisible = visible;
+    linuxMenu?.setTopBarVisible(visible);
+    music.setInset(visible ? 32 : 0);
+  };
   if (customMenu) {
-    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => { dock.setInset(inset); music.setInset(Math.max(32,inset)); }, () => dock.raiseControls());
+    linuxMenu = new LinuxMenuBar(mainWindow, view, applicationMenu, inset => { dock.setInset(inset); music.setInset(topBarVisible ? Math.max(32,inset) : 0); }, () => dock.raiseControls());
     linuxMenu.setMenu(applicationMenu, appearance.getLocale());
     linuxMenu.setBlack(!linux || appearance.getSettings().linuxBlackMenu);
   }
+  dock.sync();
   mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
   mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -151,6 +163,7 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
     windowControls = undefined;
+    settingsDock = undefined;
     appearance.close();
     translation.closeWindow();
     linuxMenu = undefined;
@@ -200,13 +213,14 @@ function createMenu(): void {
     },
     { id: 'edit', label: 'Edit', submenu: editItems },
     {
-      id: 'appearance', label: 'Appearance',
+      id: 'appearance', label: 'Settings',
       submenu: [{
-        label: 'Customize Appearance…',
+        label: 'Settings…',
         click: () => {
           if (mainWindow) void appearance.open(mainWindow).catch(console.error);
         },
-      },{id:'sp-settings',label:'Saved /sp Instructions…',accelerator:'CmdOrCtrl+Shift+P',click:()=>{if(mainWindow)void hostInstructions.open(mainWindow).catch(console.error);}}],
+      },{id:'general-settings',label:'General settings',click:()=>{void settingsDock?.openSection('general').catch(console.error);}},
+      {id:'sp-settings',label:'Saved /sp Instructions…',accelerator:'CmdOrCtrl+Shift+P',click:()=>{if(mainWindow)void hostInstructions.open(mainWindow).catch(console.error);}}],
     },
     {
       id: 'translation', label: 'Translation',
@@ -308,6 +322,6 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', event => {
     if (!translation || quitting) return;
     event.preventDefault(); quitting = true;
-    void Promise.allSettled([translation.shutdown(),music?.shutdown(),hostInstructions?.shutdown()]).finally(() => app.quit());
+    void Promise.allSettled([translation.shutdown(),music?.shutdown(),hostInstructions?.shutdown(),appearance?.flushSettings()]).finally(() => app.quit());
   });
 }
