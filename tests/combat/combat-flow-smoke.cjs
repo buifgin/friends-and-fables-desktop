@@ -11,7 +11,11 @@ const html = `<!doctype html><meta charset="utf-8"><style>body{background:#222;c
 window.calls=0;window.submits=0;window.mode='hit';window.sequence=100;window.nativeCharacter={id:83026155};window.nativeCampaign={id:'campaign-a',active_encounter_id:412456};
 const root={tag:3,stateNode:{}};root.stateNode.current=root;
 let result={status:'idle',submittedAt:0};const listeners=new Set();
-const observer={options:{mutationFn:function nativeGM({lastEventId}){return ['ENCOUNTER_GM_RESPONSE','GM_RESPONSE',lastEventId]}},getCurrentResult(){return result},subscribe(fn){listeners.add(fn);return ()=>listeners.delete(fn)}};
+// Keep bounded fixture-owned evidence; do not expose or alter the adapter's state.
+const trace=[];const record=(kind,detail={})=>{trace.push({kind,at:Date.now(),...detail});if(trace.length>16)trace.shift()};
+for(const type of ['mousedown','mouseup','click','submit'])document.addEventListener(type,event=>record(type,{trusted:event.isTrusted,target:event.target.id||event.target.tagName}),true);
+window.flowFixtureState=()=>({calls,submits,mode,sequence,result,subscriptions:listeners.size,trace,choice:window.currentChoice,choices:window.currentDM?.rollChoices,visibility:document.visibilityState,focused:document.hasFocus(),activeElement:document.activeElement?.id||document.activeElement?.tagName,controller:!!window.__friendsFablesDesktopCombatFlow,preferences:window.__friendsFablesDesktopCombatFlow?.getPreferences(),claims:[...(window.__friendsFablesDesktopCombatFlowClaims||[])],outcomes:[...(window.__friendsFablesDesktopCombatFlowOutcomes||new Map())]});
+const observer={options:{mutationFn:function nativeGM({lastEventId}){return ['ENCOUNTER_GM_RESPONSE','GM_RESPONSE',lastEventId]}},getCurrentResult(){return result},subscribe(fn){listeners.add(fn);record('subscribe');return ()=>{record('unsubscribe');listeners.delete(fn)}}};
 const form=document.querySelector('form');const owner={type:function NativeExecuteActions(){const sendAttackRoll=null;return sendAttackRoll},memoizedProps:{campaignId:'campaign-a',encounterId:412456,isUsersCharacterTurn:true,isMultiplayerCampaign:true},memoizedState:{memoizedState:{data:{usersCharacter:nativeCharacter}},next:{memoizedState:observer}},return:root};
 const provider={memoizedProps:{control:{},getValues(){return [{type:'spell',requires_attack_roll:true,modifier_value:8,proficiency_bonus:8,targets:[{id:2217533,ac:10}]}]}},return:owner};
 const formFiber={memoizedProps:{},return:provider};form.__reactFiber$fixture=formFiber;provider.child=formFiber;owner.child=provider;root.child=owner;
@@ -27,7 +31,7 @@ window.mountRows=(request,attackId)=>{
  const button=document.querySelector('#damage');const callback=function nativeQuickRoll(event){event.stopPropagation();const dice_expression=choice.dice_expression;calls++;window.lastChoice={...choice,dice_expression};if(mode==='failure')throw Error('Unknown send outcome');choice.accepted=true;window.done=true};
  const buttonFiber={memoizedProps:{onClick:callback,disabled:false},return:t5};button.__reactFiber$fixture=buttonFiber;t5.child=buttonFiber;
 };mountRows('historical',sequence);
-form.addEventListener('submit',event=>{event.preventDefault();submits++;sequence+=10;const request='local-request-'+sequence;mountRows(request,sequence);if(mode!=='miss'){const pendingDM=currentDM,pendingChoice=currentChoice;pendingDM.rollChoices=[];setTimeout(()=>{pendingDM.rollChoices=[pendingChoice];document.querySelector('main').append(document.createElement('span'))},50)}result={status:'pending',submittedAt:Date.now(),variables:{requestId:request,lastEventId:sequence,isMultiplayer:true}};for(const fn of listeners)fn(result);result={...result,status:'success'}});
+form.addEventListener('submit',event=>{event.preventDefault();submits++;sequence+=10;const request='local-request-'+sequence;mountRows(request,sequence);if(mode!=='miss'){const pendingDM=currentDM,pendingChoice=currentChoice;pendingDM.rollChoices=[];setTimeout(()=>{pendingDM.rollChoices=[pendingChoice];document.querySelector('main').append(document.createElement('span'))},50)}result={status:'pending',submittedAt:Date.now(),variables:{requestId:request,lastEventId:sequence,isMultiplayer:true}};record('pending',{subscriptions:listeners.size,submittedAt:result.submittedAt});for(const fn of listeners)fn(result);result={...result,status:'success'}});
 </script>`;
 let window;
 const watchdog = setTimeout(() => { console.error('Combat flow fixture timed out'); window?.destroy(); app.exit(1); }, 30000);
@@ -38,7 +42,11 @@ app.on('window-all-closed', () => {});
   site.protocol.handle('https', () => new Response(html, { headers: { 'Content-Type': 'text/html' } }));
   window = new BrowserWindow({ show: false, width: 1000, height: 900, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
   const js = source => window.webContents.executeJavaScript(source);
-  const until = async expression => { for (let n = 0; n < 100; n++) { if (await js(expression)) return; await new Promise(resolve => setTimeout(resolve, 20)); } throw Error('Timed out: ' + expression); };
+  const diagnose = async expression => {
+    const renderer = await js('window.flowFixtureState?.()').catch(error => ({ error: String(error) }));
+    console.error('Combat flow fixture state:', JSON.stringify({ expression, root, native: { visible: window.isVisible(), focused: window.isFocused(), contentsFocused: window.webContents.isFocused(), bounds: window.getContentBounds() }, renderer }));
+  };
+  const until = async expression => { for (let n = 0; n < 100; n++) { if (await js(expression)) return; await new Promise(resolve => setTimeout(resolve, 20)); } await diagnose(expression); throw Error('Timed out: ' + expression); };
   const configure = (enabled = true) => js(`(${configureCombatFlow.toString()})(${enabled},'en')`);
   const nativeClick = async selector => {
     const point = await js(`(()=>{const node=document.querySelector(${JSON.stringify(selector)}),rect=node.getBoundingClientRect();return {x:Math.round(rect.left+rect.width/2),y:Math.round(rect.top+rect.height/2),hit:node.contains(document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2))}})()`);
