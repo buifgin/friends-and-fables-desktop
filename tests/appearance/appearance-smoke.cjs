@@ -6,7 +6,7 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, WebCont
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance/appearance'));
 const { DEFAULT_APPEARANCE, validateAppearance } = require(path.join(appRoot, 'dist/appearance/themes'));
-const { combatPanelAppearanceCss } = require(path.join(appRoot, 'dist/combat/combat-panel-style'));
+const { combatPanelAppearanceCss, combatPanelCss } = require(path.join(appRoot, 'dist/combat/combat-panel-style'));
 const { configureZoomShortcuts } = require(path.join(appRoot, 'dist/shell/zoom'));
 const { configureFullscreenShortcuts } = require(path.join(appRoot, 'dist/shell/window-shortcuts'));
 const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/shell/linux-menu'));
@@ -51,7 +51,7 @@ async function save(settings, window) {
   assert.deepEqual(validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: oldPanel }).combatPanel,
     { ...DEFAULT_APPEARANCE.combatPanel, ...oldPanel }, 'Legacy background settings keep native borders, buttons and spacing.');
   for (const patch of [{tileGap:3}, {tileGap:25}, {contentPadding:7}, {contentPadding:33},
-    {tileGap:NaN}, {customizeButtons:'true'}, {borderColor:'red'}, {buttonBackground:'red'}, {buttonTextColor:'red'}]) {
+    {tileGap:NaN}, {customizeButtons:'true'}, {transparentButtonBackground:'true'}, {borderColor:'red'}, {buttonBackground:'red'}, {buttonTextColor:'red'}]) {
     assert.throws(() => validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: { ...DEFAULT_APPEARANCE.combatPanel, ...patch } }));
   }
   const legacyAppearance = structuredClone(DEFAULT_APPEARANCE);
@@ -75,6 +75,14 @@ async function save(settings, window) {
   assert(initialSpacingCss.includes('--ff-combat-tile-gap: 8px'));
   assert(initialSpacingCss.includes('--ff-combat-content-padding: 20px'));
   const nativeCss = combatPanelAppearanceCss(DEFAULT_APPEARANCE.combatPanel);
+  assert.equal(DEFAULT_APPEARANCE.combatPanel.transparentButtonBackground, false);
+  assert(!nativeCss.includes('button:not([role="checkbox"]):not([role="switch"]) { background: transparent'), 'Native panel button fills remain the default.');
+  const transparentCss = combatPanelAppearanceCss({ ...customizedPanel, transparentButtonBackground: true });
+  assert(transparentCss.includes('button:not([role="checkbox"]):not([role="switch"]),'));
+  assert(transparentCss.includes('button[role="checkbox"]'));
+  assert(transparentCss.includes('button:hover:not(:disabled)'));
+  assert(transparentCss.includes('background: transparent !important'));
+  assert(combatPanelCss.includes(':focus-visible'), 'Existing keyboard focus outlines remain in panel CSS.');
   assert(!nativeCss.includes('--ff-combat-tile-gap:'));
   assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('#123456'));
   assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('#234567'));
@@ -95,10 +103,10 @@ async function save(settings, window) {
   </style><style id="panel-style"></style><div data-ff-combat-docked>
     <div data-ff-combat-body><div class="p-6"><div class="flex-1 w-full overflow-y-auto p-4 space-y-6"><div id="standard" class="grid gap-4"><button id="standard-button" class="group"><div><svg class="lucide"></svg></div><span>Standard</span></button></div></div></div></div>
     <div data-ff-dice-favorites><div data-ff-dice-favorite-tiles><div data-ff-dice-favorite-group-tiles class="grid"><button id="favorite-button" class="group"><div><svg class="lucide"></svg></div><span>Favorite</span></button></div></div></div>
-    <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button></form>
+    <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button><button id="checkbox-button" role="checkbox" aria-checked="true">Checked</button><button id="menu-button" aria-haspopup="menu">⋯</button></form>
   </div><button id="outside">Outside</button><input id="outside-field" value="keep">`));
   const styleSnapshot = () => styleWindow.webContents.executeJavaScript(`({
-    buttons:['standard-button','favorite-button','action-button','outside'].map(id=>{
+    buttons:['standard-button','favorite-button','action-button','checkbox-button','menu-button','outside'].map(id=>{
       const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderColor,s.opacity,n.disabled];}),
     gaps:[document.getElementById('standard'),document.querySelector('[data-ff-dice-favorite-group-tiles]')].map(n=>getComputedStyle(n).gap),
     padding:[document.querySelector('.p-6'),document.querySelector('[data-ff-dice-favorites]')].map(n=>getComputedStyle(n).padding),
@@ -110,7 +118,7 @@ async function save(settings, window) {
   await setPanelCss(customizedPanel);
   const customPanelStyle = await styleSnapshot();
   for (const button of customPanelStyle.buttons.slice(0,3)) assert.deepEqual(button.slice(0,3),['rgb(35, 69, 103)','rgb(254, 220, 186)','rgb(18, 52, 86)']);
-  assert.deepEqual(customPanelStyle.buttons[3],nativePanelStyle.buttons[3],'Customization stays within the dock.');
+  assert.deepEqual(customPanelStyle.buttons[5],nativePanelStyle.buttons[5],'Customization stays within the dock.');
   assert.equal(customPanelStyle.buttons[2][4],true,'Disabled action state is preserved.');
   assert.deepEqual(customPanelStyle.gaps,['24px','24px']);
   assert.deepEqual(customPanelStyle.padding,['32px','32px']);
@@ -119,6 +127,21 @@ async function save(settings, window) {
     document.querySelector('[data-ff-combat-body]'),document.querySelector('[data-ff-dice-favorite-tiles]')
   ].map(n=>getComputedStyle(n).padding)`),['0px','0px'],'Body wrappers and Favorites inner lists do not double custom padding.');
   assert.deepEqual(customPanelStyle.fields,nativePanelStyle.fields,'Drafts and native field fills remain intact.');
+  const blackMenuSettings = { ...customizedPanel, buttonBackground: '#000000' };
+  await setPanelCss(blackMenuSettings);
+  assert.equal((await styleSnapshot()).buttons[4][0], 'rgb(0, 0, 0)', 'A menu-like button follows the selected opaque panel button color when transparency is off.');
+  const transparentSettings = { ...blackMenuSettings, transparentButtonBackground: true };
+  await setPanelCss(transparentSettings);
+  const transparentPanelStyle = await styleSnapshot();
+  for (const button of transparentPanelStyle.buttons.slice(0,5)) {
+    assert.equal(button[0], 'rgba(0, 0, 0, 0)', 'Dock action, correction, and checkbox buttons have transparent resting fills.');
+    assert.equal(button[2], 'rgb(18, 52, 86)', 'Button borders remain intact.');
+  }
+  assert.deepEqual(transparentPanelStyle.buttons[5], nativePanelStyle.buttons[5], 'Outside buttons are not affected.');
+  assert.equal(transparentPanelStyle.buttons[2][3], '0.5', 'Disabled state opacity is preserved.');
+  assert.deepEqual(transparentPanelStyle.fields, nativePanelStyle.fields, 'Checkbox inputs, text and drafts are not restyled.');
+  assert(combatPanelAppearanceCss({ ...blackMenuSettings, transparentButtonBackground:true })
+    .includes('background: color-mix(in srgb, #000000 28%, transparent) !important'), 'Hover feedback uses a translucent customized fill.');
   await setPanelCss({ ...customizedPanel, enabled:false });
   assert.deepEqual(await styleSnapshot(),nativePanelStyle,'Disabling customization restores inherited geometry and controls.');
   await setPanelCss({ ...customizedPanel, customizeBorder:false, customizeButtons:false, customizeSpacing:false });
@@ -260,6 +283,7 @@ async function save(settings, window) {
     { ...DEFAULT_APPEARANCE.combatPanel, enabled: true, color: '#234567', opacity: 0, blur: 30 }, 'The selected combat-panel settings reach disk.');
   await settingsContents.executeJavaScript(`
     for(const id of ['border','buttons','spacing'])document.getElementById('combat-panel-customize-'+id).checked=true;
+    document.getElementById('combat-panel-transparent-buttons').checked=true;
     document.getElementById('combat-panel-customize-background').checked=false;
     document.getElementById('combat-panel-border-color').value='#123456';
     document.getElementById('combat-panel-button-background').value='#234567';
@@ -269,7 +293,9 @@ async function save(settings, window) {
     document.getElementById('appearance-form').requestSubmit();`);
   await until(settingsContents, "!document.querySelector('#apply').disabled");
   assert.deepEqual(await settingsContents.executeJavaScript('window.appearance.get().then(s=>s.combatPanel)'),
-    { ...customizedPanel, color:'#234567', opacity:0, blur:30 });
+    { ...customizedPanel, color:'#234567', opacity:0, blur:30, transparentButtonBackground:true });
+  assert.equal(await settingsContents.executeJavaScript("document.getElementById('combat-panel-transparent-buttons').checked"), true,
+    'The transparent button preference is restored in the Appearance form.');
   await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
   assert.deepEqual(await settingsContents.executeJavaScript(`['tile-gap','content-padding'].map(id=>document.getElementById('combat-panel-'+id).value)`),['24','32']);
 
@@ -479,13 +505,13 @@ async function save(settings, window) {
   const selectedTheme = await settingsContents.executeJavaScript(`window.appearance.previewTheme('builtin-forest', ${JSON.stringify({...chatSettings,messageCommands:true})})`);
   assert.equal(selectedTheme.customColor, '#0b1712'); assert.equal(selectedTheme.messageCommands, true);
   assert.equal(selectedTheme.backgroundImage, imported.id);
-  const themed = {...selectedTheme,combatPanel:{...customizedPanel,color:'#345678',opacity:.35,blur:7},input:{...selectedTheme.input,style:{...selectedTheme.input.style,color:'#273a52'}}};
+  const themed = {...selectedTheme,combatPanel:{...customizedPanel,color:'#345678',opacity:.35,blur:7,transparentButtonBackground:true},input:{...selectedTheme.input,style:{...selectedTheme.input.style,color:'#273a52'}}};
   const savedThemes = await settingsContents.executeJavaScript(`window.appearance.saveTheme('My forest', ${JSON.stringify(themed)})`);
   const named = savedThemes.find(theme => theme.name === 'My forest'); assert(named?.saved);
   assert.equal(JSON.parse(await readFile(path.join(userData,'themes.json'),'utf8'))[0].appearance.input.style.color, '#273a52');
   const restoredTheme = await settingsContents.executeJavaScript(`window.appearance.previewTheme(${JSON.stringify(named.id)}, ${JSON.stringify(chatSettings)})`);
   assert.equal(restoredTheme.input.style.color,'#273a52');
-  assert.deepEqual(restoredTheme.combatPanel,{...customizedPanel,color:'#345678',opacity:.35,blur:7},'Saved themes carry combat-panel appearance settings.');
+  assert.deepEqual(restoredTheme.combatPanel,{...customizedPanel,color:'#345678',opacity:.35,blur:7,transparentButtonBackground:true},'Saved themes carry combat-panel appearance settings.');
   assert.equal(restoredTheme.messages.player.color,'#183c2b');
   await assert.rejects(settingsContents.executeJavaScript(`window.appearance.saveTheme('', ${JSON.stringify(chatSettings)})`), /theme name/);
   await assert.rejects(settingsContents.executeJavaScript(`window.appearance.previewTheme('../../private', ${JSON.stringify(chatSettings)})`), /library/);

@@ -27,6 +27,7 @@
     'Customize panel background': 'Настроить фон панели', 'Customize panel borders': 'Настроить рамки панели',
     'Customize panel buttons': 'Настроить кнопки панели', 'Customize panel spacing': 'Настроить отступы панели',
     'Button background': 'Фон кнопок', 'Button text color': 'Цвет текста кнопок',
+    'Transparent button backgrounds': 'Прозрачный фон кнопок',
     'Tile spacing': 'Промежуток между плитками', 'Panel content padding': 'Внутренние отступы панели',
     'Side panel': 'Боковая панель', 'Customize side panel': 'Настроить боковую панель',
     'By default, the side panel inherits the current theme and chat background. Customize background, borders, buttons, and spacing independently for checks, actions, and selected roll details. Text and controls stay fully opaque.': 'По умолчанию боковая панель наследует текущую тему и фон чата. Настройте отдельно фон, рамки, кнопки и отступы для проверок, действий и форм выбранных бросков. Текст и элементы управления остаются полностью непрозрачными.',
