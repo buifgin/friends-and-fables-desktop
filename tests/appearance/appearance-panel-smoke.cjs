@@ -176,7 +176,6 @@ const { app, BrowserWindow, ipcMain, Menu, screen, session, WebContentsView } = 
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance/appearance'));
 const { TranslationManager } = require(path.join(appRoot, 'dist/translation/translation'));
-const { floatSettingsWindow } = require(path.join(appRoot, 'dist/shell/floating-appearance'));
 const {localizeMenu}=require(path.join(appRoot,'dist/shell/app-menu-locale'));
 const { LinuxMenuBar, MENU_URL } = require(path.join(appRoot, 'dist/shell/linux-menu'));
 registerAppearanceScheme(); app.on('window-all-closed', () => {});
@@ -196,10 +195,9 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   });
   translation = new TranslationManager(); await translation.initialize();
   let bar; let chosen=0;
-  const template=['File','Edit','Appearance','Translation','Music','View','Window'].map(label=>({id:label.toLowerCase(),label,submenu:[{label:label==='Appearance'?'Customize Appearance…':'Copy',click(){chosen++;}}]}));
+  const template=['File','Edit','Settings','Translation','View','Window'].map(label=>({id:label==='Settings'?'appearance':label.toLowerCase(),label,submenu:[{label:label==='Settings'?'Settings…':'Copy',click(){chosen++;}}]}));
   template[2].submenu.push({id:'sp-settings',label:'Saved /sp Instructions…',accelerator:'CmdOrCtrl+Shift+P',click(){chosen++;}});
   template[3].submenu=[{id:'translate-ru',label:'Translate into Russian',type:'checkbox',checked:false}];
-  template[4].submenu=[{id:'music-player',label:'Music Player…',accelerator:'CmdOrCtrl+Shift+M',click(){chosen++;}}];
   translation.onChange = settings => {const locale=settings.enabled&&!settings.showOriginal?'ru':'en';manager.setLocale(locale);const translated=localizeMenu(template,locale);translated[3].submenu[0].checked=settings.enabled;bar?.setMenu(Menu.buildFromTemplate(translated),locale);};
   const host = new BrowserWindow({ show: false, frame: process.platform !== 'win32', useContentSize: process.platform === 'win32', type: process.platform==='linux'?'dialog':undefined, width: 960, height: 680, webPreferences: {
     partition: 'fables-appearance', preload: path.join(appRoot, 'dist/shell/menu-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false,
@@ -212,14 +210,12 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const menu = Menu.buildFromTemplate(template);
   bar = new LinuxMenuBar(host, website, menu, inset => dock.setInset(inset), () => dock.raiseControls()); bar.setBlack(true);
   await host.loadURL(MENU_URL); await website.webContents.loadURL('https://play.fables.gg/');
-  const separate = await manager.open(host); separate.hide();
-  await until(() => separate.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
-  assert.equal(await separate.webContents.executeJavaScript('document.documentElement.lang'), 'en');
-  // Pin through the actual editor: apply moves settings into the main window.
-  await separate.webContents.executeJavaScript("document.getElementById('pin-appearance').checked=true;document.getElementById('appearance-form').requestSubmit()");
-  await until(() => separate.isDestroyed() && dock.isOpen());
-  assert.equal(BrowserWindow.getAllWindows().length, 1, 'Pinned Appearance must not require a second window.');
-  const panel = dock.panel, contents = panel.webContents;
+  const opened = await manager.open(host);
+  assert.equal(opened, host, 'Settings open in the existing host window.');
+  await until(() => dock.isOpen() && manager.panel && manager.panel.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
+  assert.equal(await manager.panel.webContents.executeJavaScript('document.documentElement.lang'), 'en');
+  assert.equal(BrowserWindow.getAllWindows().length, 1, 'Opening Settings does not create a separate window.');
+  const panel = dock.hub.view, editor = manager.panel, contents = editor.webContents;
   for (const checked of [contents,host.webContents,dock.launcher.webContents,bar.overlay.webContents]) {
     const execute = checked.executeJavaScript.bind(checked);
     checked.executeJavaScript = (script, ...args) => execute(script, ...args).catch(error => { console.error('Failed test renderer script:', script); throw error; });
@@ -227,6 +223,8 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await until(() => contents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await contents.executeJavaScript("document.body.classList.contains('docked')"), true);
   assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32, 'Menus and centered controls share one row above the game.');
+  assert.equal(editor.getBounds().x, 126, 'The Appearance editor follows the Settings navigation rail.');
+  assert.equal(editor.getBounds().width, panel.getBounds().width - 126, 'Editor width excludes the navigation rail.');
   const centered=dock.launcher.getBounds();assert.equal(centered.y,0,'Toolbar shares menu baseline.');assert(Math.abs(centered.x+centered.width/2-host.getContentSize()[0]/2)<=1, 'Toolbar is centered in the main window.');
   async function assertToolbarHitMasks(contents, width, label) {
     try { await until(() => contents.executeJavaScript(`innerWidth === ${width}`)); }
@@ -245,21 +243,16 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
     assert.equal(host.isFullScreen(), false, 'Caption regression uses the normal frameless product window.');
     const [width] = host.getContentSize();
     const samples = [];
-    // Expand the real music group so every top-row icon has a visible center.
-    const launcherContents = dock.launcher.webContents;
-    const wasExpanded = await launcherContents.executeJavaScript("document.getElementById('library').getAttribute('aria-expanded')==='true'");
-    if (!wasExpanded) await launcherContents.executeJavaScript("document.getElementById('library').click()");
-    try {
-      await until(() => launcherContents.executeJavaScript("document.getElementById('music-controls').getBoundingClientRect().width >= 155"));
-      for (const [view, prefix, count] of [[dock.launcher, 'launcher', 7], [dock.windowControls.view, 'window', 3]]) {
-        const bounds = view.getBounds();
-        const centers = await view.webContents.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).map(button=>{const r=button.getBoundingClientRect();return {name:button.id,x:r.x+r.width/2,y:r.y+r.height/2}})`);
-        assert.equal(centers.length, count, `${label}: all ${prefix} icons are sampled.`);
-        for (const center of centers) {
-          assert(center.x > 0 && center.x < bounds.width && center.y > 0 && center.y < 32, `${label}: ${center.name} has a visible toolbar center.`);
-          samples.push({ name: `${prefix}/${center.name}`, x: bounds.x + center.x, y: bounds.y + center.y, expected: 1 });
-        }
+    for (const [view, prefix, count] of [[dock.launcher, 'launcher', 1], [dock.windowControls.view, 'window', 3]]) {
+      const bounds = view.getBounds();
+      const centers = await view.webContents.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).filter(button=>{const r=button.getBoundingClientRect(),s=getComputedStyle(button);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}).map(button=>{const r=button.getBoundingClientRect();return {name:button.id,x:r.x+r.width/2,y:r.y+r.height/2}})`);
+      assert.equal(centers.length, count, `${label}: only visible ${prefix} buttons are sampled.`);
+      for (const center of centers) {
+        assert(center.x > 0 && center.x < bounds.width && center.y > 0 && center.y < 32, `${label}: ${center.name} has a visible toolbar center.`);
+        samples.push({ name: `${prefix}/${center.name}`, x: bounds.x + center.x, y: bounds.y + center.y, expected: 1 });
       }
+    }
+    {
       const centerRight = dock.launcher.getBounds().x + dock.launcher.getBounds().width;
       const rightLeft = dock.windowControls.view.getBounds().x;
       assert(rightLeft - centerRight > 32, `${label}: a blank safe drag gap exists.`);
@@ -269,8 +262,6 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
       const rows = await readWindowsHitTests({ hwnd, pid: process.pid, width, samples });
       console.log('Windows toolbar native hit tests', label, JSON.stringify(rows));
       assertWindowsHitTests(samples, rows, label);
-    } finally {
-      if (!wasExpanded) await launcherContents.executeJavaScript("document.getElementById('library').click()");
     }
   }
   await assertToolbarHitMasks(host.webContents, 960, 'Main menu');
@@ -280,7 +271,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert(centeredWindowIcons.every(value=>value.x<=.5&&value.y<=.5),'Window icons stay geometrically centered in their circles.');
   const right=dock.windowControls.view.getBounds();assert.equal(right.x+right.width,host.getContentSize()[0]);assert.equal(right.y,0);
   await until(()=>dock.launcher.webContents.executeJavaScript("getComputedStyle(document.getElementById('appearance-button')).borderRadius==='50%'"));
-  assert.equal(await dock.launcher.webContents.executeJavaScript("getComputedStyle(document.getElementById('appearance-button')).borderRadius===getComputedStyle(document.getElementById('library')).borderRadius"),true);
+  assert.equal(await dock.launcher.webContents.executeJavaScript("getComputedStyle(document.getElementById('appearance-button')).borderRadius"),'50%');
 
   assert.equal(website.getBounds().x, panel.getBounds().width);
   assert.equal(await website.webContents.executeJavaScript('typeof window.appearance'), 'undefined');
@@ -288,20 +279,19 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(await website.webContents.executeJavaScript('typeof window.require'), 'undefined');
   await assert.rejects(contents.executeJavaScript('window.appearance.resizePanel("wide",true)'), /Invalid panel resize/);
   assert.equal(await contents.executeJavaScript('window.appearance.resizePanel(560,true)'), 560);
-  assert.equal(panel.getBounds().width, 560); assert.equal(website.getBounds().x, 560);
+  assert.equal(panel.getBounds().width, 560); assert.equal(editor.getBounds().width, 434); assert.equal(website.getBounds().x, 560);
   assert.equal(JSON.parse(await readFile(path.join(profile, 'appearance.json'), 'utf8')).appearancePanelWidth, 560);
   host.setTitle('Fables Appearance Panel Test');host.show();host.focus();
-  await floatSettingsWindow(host,'Fables Appearance Panel Test',true);
   await sleep(150);
   await assertNativeToolbarHitTests('Initial frameless toolbar');
-  await until(() => contents.executeJavaScript('innerWidth === 560'));
+  await until(() => contents.executeJavaScript('innerWidth === 434'));
   await contents.executeJavaScript("document.getElementById('panel-resizer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
   await until(() => panel.getBounds().width === 540);
   // A small viewport clamps the panel while remembering the requested width.
   host.setContentSize(820, 680); await until(() => host.getContentSize()[0] === 820);
   await assertToolbarHitMasks(host.webContents, 820, 'Resized main menu');
   await assertNativeToolbarHitTests('Resized frameless toolbar');
-  assert.equal(panel.getBounds().width, 460); assert.equal(website.getBounds().width, 360);
+  assert.equal(panel.getBounds().width, 460); assert.equal(editor.getBounds().width, 334); assert.equal(website.getBounds().width, 360);
   const narrow=dock.launcher.getBounds();assert(Math.abs(narrow.x+narrow.width/2-host.getContentSize()[0]/2)<=1);assert(narrow.y+narrow.height<=website.getBounds().y);assert.equal(dock.windowControls.view.getBounds().x+108,host.getContentSize()[0]);
   host.setContentSize(960, 680); await until(() => host.getContentSize()[0] === 960); await assertToolbarHitMasks(host.webContents, 960, 'Restored main menu'); assert.equal(panel.getBounds().width, 540);
   await assertNativeToolbarHitTests('Restored frameless toolbar');
@@ -325,12 +315,12 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(website.getBounds().width + panel.getBounds().width, host.getContentSize()[0]);
   // Actual pointer events exercise the resize handle and persist the result.
   const startWidth = panel.getBounds().width;
-  await until(() => contents.executeJavaScript(`innerWidth === ${startWidth}`));
+  await until(() => contents.executeJavaScript(`innerWidth === ${startWidth - 126}`));
   contents.focus();
   // Classic Windows scrollbars shift the fixed handle away from innerWidth.
   const handle=await contents.executeJavaScript(`(()=>{const r=document.getElementById('panel-resizer').getBoundingClientRect();return {x:Math.round(r.left+r.width/2),y:Math.min(100,Math.round(r.top+r.height/2))};})()`);
   assert.equal(await contents.executeJavaScript(`document.elementFromPoint(${handle.x},${handle.y})?.id`),'panel-resizer');
-  const point=host.getContentBounds(),bounds=panel.getBounds();
+  const point=host.getContentBounds(),bounds=editor.getBounds();
   const screenX=point.x+bounds.x+handle.x,screenY=point.y+bounds.y+handle.y;
   await contents.executeJavaScript(`window.resizeTrace=[];for(const type of ['pointerdown','pointermove','pointerup','lostpointercapture'])document.addEventListener(type,event=>window.resizeTrace.push({type,x:event.screenX,client:event.clientX,target:event.target.id,buttons:event.buttons}),true)`);
   contents.sendInputEvent({type:'mouseMove',globalX:screenX,globalY:screenY,x:handle.x,y:handle.y});
@@ -340,7 +330,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   contents.sendInputEvent({type:'mouseMove',globalX:screenX-40,globalY:screenY,modifiers:['leftButtonDown'],x:handle.x-40,y:handle.y,movementX:-40,movementY:0});
   try { await until(() => panel.getBounds().width < startWidth); }
   catch(error){console.error('Resize diagnostic',JSON.stringify({startWidth,handle,focused:host.isFocused(),trace:await contents.executeJavaScript('window.resizeTrace')}));throw error;}
-  await until(()=>contents.executeJavaScript(`innerWidth===${panel.getBounds().width}`));
+  await until(()=>contents.executeJavaScript(`innerWidth===${editor.getBounds().width}`));
   await contents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>resolve(true)))');
   contents.sendInputEvent({type:'mouseUp',globalX:screenX-40,globalY:screenY,x:handle.x-40,y:handle.y,button:'left',clickCount:1});
   try { await until(() => manager.getSettings().appearancePanelWidth < startWidth); }
@@ -358,19 +348,13 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.deepEqual(await host.webContents.executeJavaScript("[...document.querySelectorAll('[data-menu]')].map(b=>b.textContent)"),['Файл','Правка','Перевод','Вид','Окно']);
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
   await assertToolbarHitMasks(bar.overlay.webContents, host.getContentSize()[0], 'Open fullscreen menu overlay');
-  await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Настроить оформление…'"));
+  await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Настройки…'"));
   assert(await bar.overlay.webContents.executeJavaScript("document.getElementById('dropdown').scrollHeight<=document.getElementById('dropdown').clientHeight"),'The settings dropdown must fit without scrolling.');
   assert.equal(await bar.overlay.webContents.executeJavaScript("document.querySelectorAll('#dropdown .label')[1].textContent"),'Сохранённые инструкции /sp…');
   await bar.overlay.webContents.executeJavaScript("window.desktopMenu.choose(0)");assert.equal(chosen,1,'Localized callbacks retain their actions.');
-  await host.webContents.executeJavaScript("window.desktopMenu.open('music',100)");
-  await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='Музыкальный проигрыватель…'"));
-  await bar.overlay.webContents.executeJavaScript("window.desktopMenu.choose(0)");assert.equal(chosen,2);
   let prevented=false;
-  website.webContents.emit('before-input-event',{preventDefault(){prevented=true}},{type:'keyDown',code:'KeyM',control:true,shift:true,alt:false});
-  assert(prevented);assert.equal(chosen,3,'The custom Linux toolbar dispatches the music shortcut.');
-  prevented=false;
   website.webContents.emit('before-input-event',{preventDefault(){prevented=true}},{type:'keyDown',code:'KeyP',control:true,shift:true,alt:false});
-  assert(prevented);assert.equal(chosen,4,'The custom Linux toolbar dispatches the instruction shortcut.');
+  assert(prevented);assert.equal(chosen,2,'The custom Linux toolbar dispatches the instruction shortcut.');
   await host.webContents.executeJavaScript("window.desktopMenu.open('translation',100)");
   await until(()=>bar.overlay.webContents.executeJavaScript("document.querySelector('#dropdown .label')?.textContent==='✓ Переводить на русский'"));
   await host.webContents.executeJavaScript('window.desktopMenu.close()');
@@ -383,10 +367,10 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(await contents.executeJavaScript("(()=>{const b=document.getElementById('close-panel').getBoundingClientRect(),g=document.querySelector('#close-panel svg').getBoundingClientRect();return Math.abs(b.x+b.width/2-g.x-g.width/2)<=.5&&Math.abs(b.y+b.height/2-g.y-g.height/2)<=.5})()"),true);
   assert.equal(await contents.executeJavaScript("document.getElementById('custom-hex').value"), '#abcdef');
   assert.equal(await contents.executeJavaScript("document.getElementById('player-gradient-second-opacity').closest('fieldset').querySelector('[data-label=gradient-second-opacity]').firstChild.textContent.trim()"), 'Непрозрачность второго цвета');
-  await until(() => dock.launcher.webContents.executeJavaScript('document.getElementById("appearance-button").getAttribute("aria-label") === "Внешний вид"'));
+  await until(() => dock.launcher.webContents.executeJavaScript('document.getElementById("appearance-button").getAttribute("aria-label") === "Настройки"'));
   assert.equal(await contents.executeJavaScript("document.getElementById('panel-resizer').getAttribute('aria-label')"), 'Изменить ширину панели оформления');
-  await contents.executeJavaScript('window.appearance.resizePanel(320,false)');
-  await until(()=>contents.executeJavaScript('innerWidth===320'));
+  await contents.executeJavaScript('window.appearance.resizePanel(460,false)');
+  await until(()=>contents.executeJavaScript('innerWidth===334'));
   for(const category of ['theme','picture','messages','context','events','dice','sharing','app']) {
     await contents.executeJavaScript(`document.querySelector('[data-panel=${category}-panel]').click();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))`);
     assert(await contents.executeJavaScript('document.documentElement.scrollWidth <= innerWidth'),`Russian ${category} controls must fit the narrow panel.`);
@@ -419,7 +403,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await assert.rejects(impostor.webContents.executeJavaScript('window.appearance.get()'), /only in the app settings window/); impostor.destroy();
   // Menus appear above the dock, without moving the website back over it.
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
-  assert.equal(host.contentView.children.at(-1), dock.launcher, 'Music/appearance controls remain above an open menu.');
+  assert.equal(host.contentView.children.at(-1), dock.launcher, 'Settings launcher remains above an open menu.');
   assert(host.contentView.children.indexOf(dock.windowControls.view)>host.contentView.children.indexOf(bar.overlay), 'Window controls stay above menu overlays.');
   await until(()=>bar.overlay.webContents.executeJavaScript("getComputedStyle(document.getElementById('dropdown')).top==='32px'"));
   assert(host.contentView.children.indexOf(bar.overlay)>host.contentView.children.indexOf(panel), 'Dropdown remains above the settings panel.');
@@ -436,23 +420,12 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
     }
   }
   host.setFullScreen(false); await until(() => !host.isFullScreen());bar.setBlack(false);
-  // Disabling the pin restores the standalone editor and full game width.
-  await contents.executeJavaScript("document.getElementById('pin-appearance').checked=false;document.getElementById('appearance-form').requestSubmit()");
-  await until(() => !manager.getSettings().appearancePinned && BrowserWindow.getAllWindows().length === 2);
-  assert.equal(dock.isOpen(), false); assert.equal(website.getBounds().x, 0);assert.equal(website.getBounds().y,32,'The centered controls retain their row above the website with native menus after unpinning.');
-  const reopened = manager.window;
-  await until(() => reopened.webContents.executeJavaScript('!document.getElementById("apply").disabled'));
-  assert.equal(await reopened.webContents.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor'), 'rgb(35, 69, 103)');
-  const savedWidth = manager.getSettings().appearancePanelWidth;
-  assert(savedWidth < startWidth);
-  // A fresh theme selected in the standalone editor replaces stale panel state.
-  await reopened.webContents.executeJavaScript("document.querySelector('[name=preset][value=black]').checked=true;document.getElementById('pin-appearance').checked=true;document.getElementById('appearance-form').requestSubmit()");
-  await until(() => reopened.isDestroyed() && dock.isOpen());
-  assert.equal(await contents.executeJavaScript('document.getElementById("pin-appearance").checked'),true);
-  assert.equal(await contents.executeJavaScript('document.getElementById("appearance-form").elements.preset.value'),'black');
-  assert.equal(await contents.executeJavaScript('getComputedStyle(document.documentElement).backgroundColor'),'rgb(16, 16, 16)');
+  await manager.save({ ...manager.getSettings(), appearancePinned: true, linuxFloatingAppearance: true });
+  await manager.save({ ...manager.getSettings(), appearancePinned: false, linuxFloatingAppearance: false });
   const persisted=JSON.parse(await readFile(path.join(profile,'appearance.json'),'utf8'));
-  assert.equal(persisted.appearancePinned,true);assert.equal(persisted.appearancePanelWidth,savedWidth);
+  assert.equal(persisted.appearancePinned,false,'Legacy pin preference remains serializable for backward compatibility.');
+  assert.equal(persisted.linuxFloatingAppearance,false,'Legacy floating preference remains serializable for backward compatibility.');
+  const savedWidth = manager.getSettings().appearancePanelWidth;
   await translation.save({...translation.getSettings(),showOriginal:false});
   // Only the registered sandboxed toolbar may control the native window.
   const forgedControls=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/shell/window-controls-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});
@@ -475,14 +448,14 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   session.fromPartition('fables-appearance').protocol.unhandle('fables-desktop');
   const restarted=new AppearanceManager();await restarted.initialize();
   restarted.setLocale(translation.getSettings().enabled&&!translation.getSettings().showOriginal?'ru':'en');
-  assert.equal(restarted.getSettings().appearancePinned,true);assert.equal(restarted.getSettings().appearancePanelWidth,savedWidth);
+  assert.equal(restarted.getSettings().appearancePinned,false);assert.equal(restarted.getSettings().appearancePanelWidth,savedWidth);
   const freshHost=new BrowserWindow({show:false,width:1100,height:820,webPreferences:{partition:'fables-appearance',sandbox:true,contextIsolation:true,nodeIntegration:false}});
   const freshSite=new WebContentsView({webPreferences:{session:websiteSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});freshHost.contentView.addChildView(freshSite);
   const freshDock=restarted.attachMain(freshHost,freshSite);await freshDock.ready;
   assert.equal(freshDock.isOpen(),false);assert.equal(freshSite.getBounds().x,0);assert.equal(freshSite.getBounds().y,32);assert(freshDock.launcher.getBounds().height<=freshSite.getBounds().y);
   await freshDock.launcher.webContents.executeJavaScript("document.getElementById('appearance-button').click()");await until(()=>freshDock.isOpen());
-  assert.equal(freshDock.panel.getBounds().width,savedWidth);assert.equal(BrowserWindow.getAllWindows().length,1);
-  await until(()=>freshDock.panel.webContents.executeJavaScript('document.documentElement.lang==="ru"'));
-  console.log('PASS: themed settings, built-in Russian labels, preserved drafts, pin/unpin, button, mouse/keyboard resizing, persisted width, viewport clamping, fullscreen, localized menus/actions/checkboxes, native menu mode, non-overlapping Windows launcher, menu overlay ordering, website isolation, and restricted editor IPC.');
+  assert.equal(restarted.panel.getBounds().width,savedWidth - 126);assert.equal(BrowserWindow.getAllWindows().length,1);
+  await until(()=>restarted.panel.webContents.executeJavaScript('document.documentElement.lang==="ru"'));
+  console.log('PASS: unified SettingsHub appearance editor, built-in Russian labels, preserved drafts, visible-toolbar native hit testing, mouse/keyboard resizing, persisted total hub width, viewport clamping, fullscreen, localized Settings menu callbacks/actions/checkboxes, native menu mode, non-overlapping launcher, menu overlay ordering, website isolation, legacy preference persistence, and restricted editor IPC.');
 })().then(async () => { clearTimeout(timer); await translation?.shutdown(); for (const window of BrowserWindow.getAllWindows()) window.destroy(); if (profile && !process.env.FABLES_TEST_PROFILE_DIR) await rm(profile, { recursive: true, force: true }); app.exit(0); })
   .catch(async error => { console.error(error); clearTimeout(timer); await translation?.shutdown(); for (const window of BrowserWindow.getAllWindows()) window.destroy(); if (profile && !process.env.FABLES_TEST_PROFILE_DIR) await rm(profile, { recursive: true, force: true }); app.exit(1); });
