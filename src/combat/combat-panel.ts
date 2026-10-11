@@ -127,9 +127,25 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   let modalUndo: (() => void)[] = [], layoutUndo: (() => void)[] = [];
   let modalActive = false;
   const hiddenBefore = new Map<HTMLElement, string | null>();
+  function rightWorkspacePanes(): HTMLElement[] {
+    if (!chat) return [];
+    const panes = new Set<HTMLElement>();
+    for (const canvas of document.querySelectorAll<HTMLElement>('canvas.touch-none')) {
+      const pane = canvas.closest<HTMLElement>('aside');
+      if (!pane || pane.closest('form,[role="dialog"],[role="alertdialog"]') || pane.contains(chat)) continue;
+      // The native play split groups chat and the map/character pane. Do not
+      // grant modeless interaction to unrelated navigation or modal canvases.
+      for (let workspace = chat.parentElement; workspace && workspace !== document.body; workspace = workspace.parentElement) {
+        if (workspace.matches('[data-panel-group],.flex.h-full.w-full') && workspace.contains(pane)) {
+          panes.add(pane); break;
+        }
+      }
+    }
+    return Array.from(panes);
+  }
   function rememberBackground(): void {
     hiddenBefore.clear();
-    for (const root of [chat, ...document.querySelectorAll<HTMLElement>('canvas.touch-none')]) {
+    for (const root of [chat, ...rightWorkspacePanes(), ...document.querySelectorAll<HTMLElement>('canvas.touch-none')]) {
       if (!root || root.closest('form,[role="dialog"]')) continue;
       for (let node: HTMLElement | null = root; node && node !== document.body; node = node.parentElement) hiddenBefore.set(node, node.getAttribute('aria-hidden'));
     }
@@ -177,7 +193,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   function background(target: EventTarget | null): boolean {
     if (!(target instanceof Node) || picker?.contains(target)) return false;
-    return controls.contains(target) || !!chat?.contains(target) || Array.from(document.querySelectorAll('canvas.touch-none')).some(canvas => !canvas.closest('form,[role="dialog"]') && (canvas === target || canvas.parentElement?.contains(target)));
+    return controls.contains(target) || !!chat?.contains(target) || rightWorkspacePanes().some(pane => pane.contains(target)) || Array.from(document.querySelectorAll('canvas.touch-none')).some(canvas => !canvas.closest('form,[role="dialog"]') && (canvas === target || canvas.parentElement?.contains(target)));
   }
   function live(): boolean { return modalActive && !!picker?.isConnected && picker.hasAttribute('data-ff-combat-docked') && !otherLayer(); }
   function cancelOutside(event: Event): void {
@@ -258,7 +274,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     // layers inherit restored modal state before any interaction is allowed.
     if (document.body.style.pointerEvents === 'none') property(document.body, 'pointer-events', 'auto');
     if (document.body.style.overflow === 'hidden') property(document.body, 'overflow', 'auto');
-    for (const root of [chat, ...document.querySelectorAll<HTMLElement>('canvas.touch-none')]) {
+    for (const root of [chat, ...rightWorkspacePanes(), ...document.querySelectorAll<HTMLElement>('canvas.touch-none')]) {
       if (!root || root.closest('form,[role="dialog"]')) continue;
       for (let node: HTMLElement | null = root; node && node !== document.body; node = node.parentElement) {
         if (node.getAttribute('aria-hidden') === 'true' && hiddenBefore.has(node) && hiddenBefore.get(node) !== 'true') attribute(node, 'aria-hidden', null);

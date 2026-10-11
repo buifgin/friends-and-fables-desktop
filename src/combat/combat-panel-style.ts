@@ -436,7 +436,7 @@ export const combatPanelCss = `
   }
 
   main:has([data-ff-combat-chat]) {
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
   }
 
   [data-ff-combat-heading],
