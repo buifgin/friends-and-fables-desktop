@@ -24,6 +24,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   const note = document.createElement('p'); note.style.cssText = 'margin:0;font-size:12px'; ui.append(note);
   let ticket: Ticket | null = null;
   let traversalBudget = 50000;
+  const currentFiberCache = new Map<Fiber, Fiber | null>();
+  const rootCache = new Map<Fiber, Fiber | null>();
   const ancestryCache = new Map<Element, { depth: number; fibers: Fiber[] }>();
   const claimHost = window as unknown as { __friendsFablesDesktopCombatFlowClaims?: Set<string>; __friendsFablesDesktopCombatFlowOutcomes?: Map<string, Outcome> };
   const claimed = claimHost.__friendsFablesDesktopCombatFlowClaims ??= new Set<string>();
@@ -65,12 +67,33 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   auto.addEventListener('change', () => { prefs.automaticDamage = auto.checked; if (!auto.checked) { prefs.hideIntermediateFranz = false; cancel(); linked.clear(); restore(); } save(); paint(); });
   hide.addEventListener('change', () => { prefs.hideIntermediateFranz = prefs.automaticDamage && hide.checked; if (!prefs.hideIntermediateFranz) restore(); save(); paint(); schedule(); });
   function fiberRoot(fiber: Fiber): Fiber | null {
+    const path: Fiber[] = [];
     let root = fiber;
-    for (let depth = 0; root.return && depth < 256 && traversalBudget-- > 0; depth++) root = root.return;
-    return root.return || root.tag !== 3 ? null : root;
+    for (let depth = 0; depth < 256 && traversalBudget-- > 0; depth++) {
+      if (rootCache.has(root)) { const cached = rootCache.get(root)!; for (const item of path) rootCache.set(item, cached); return cached; }
+      path.push(root);
+      if (!root.return) { const result = root.tag === 3 ? root : null; for (const item of path) rootCache.set(item, result); return result; }
+      root = root.return;
+    }
+    return null;
   }
   function currentFiber(fiber: Fiber | null | undefined): Fiber | null {
     if (!fiber || traversalBudget-- <= 0) return null;
+    if (currentFiberCache.has(fiber)) return currentFiberCache.get(fiber)!;
+    const result = resolveCurrentFiber(fiber);
+    currentFiberCache.set(fiber, result);
+    return result;
+  }
+  function resolveCurrentFiber(fiber: Fiber): Fiber | null {
+    const pairs: [Fiber, Fiber][] = [];
+    const finish = (result: Fiber | null): Fiber | null => {
+      if (result) for (const [a, b] of pairs) {
+        if (a.alternate !== b || b.alternate !== a) continue;
+        const current = result === fiber ? a : b;
+        currentFiberCache.set(a, current); currentFiberCache.set(b, current);
+      }
+      return result;
+    };
     const alternate = fiber.alternate;
     if (!alternate) {
       const root = fiberRoot(fiber);
@@ -99,11 +122,19 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     // current-fiber slow path does; a root-only return walk is insufficient.
     let a = fiber, b = alternate;
     for (let depth = 0; depth < 256 && traversalBudget-- > 0; depth++) {
+      if (a.alternate === b && b.alternate === a) {
+        if (currentFiberCache.has(a)) {
+          const current = currentFiberCache.get(a);
+          if (current === a || current === b) return finish(current === a ? fiber : alternate);
+          return null;
+        }
+        pairs.push([a, b]);
+      }
       const parentA = a.return;
       if (!parentA) {
         if (a.tag !== 3) return null;
         const current = a.stateNode?.current;
-        return current === a ? fiber : current === b ? alternate : null;
+        return finish(current === a ? fiber : current === b ? alternate : null);
       }
       const parentB = parentA.alternate;
       if (!parentB) {
@@ -116,8 +147,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
         if (!root || !current || (current !== root && current !== root.alternate)) return null;
         let child = parentA.child;
         for (let count = 0; child && count < 350 && traversalBudget-- > 0; count++, child = child.sibling) {
-          if (child === a) return fiber;
-          if (child === b) return alternate;
+          if (child === a) return finish(fiber);
+          if (child === b) return finish(alternate);
         }
         return null;
       }
@@ -185,7 +216,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     current.request = variables.requestId; current.attackId = variables.lastEventId; schedule();
   }
   function submitted(event: Event): void {
-    traversalBudget = 50000; ancestryCache.clear();
+    traversalBudget = 50000; ancestryCache.clear(); currentFiberCache.clear(); rootCache.clear();
     if (!event.isTrusted || !(event.target instanceof HTMLFormElement) || !event.target.closest('[data-ff-combat-docked]')) return;
     // A second own submission cancels rather than batching or guessing ownership.
     if (ticket) { cancel(); return; }
@@ -273,7 +304,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (!current) return;
     if (Date.now() - current.started > 120000 || campaign !== current.campaign || location.pathname !== route) { cancel(); return; }
     if (!current.request || !current.attackId || !prefs.automaticDamage) return;
-    const rows = Array.from(document.querySelectorAll('[id^="event-container-"]')).slice(-30);
+    const rows = Array.from(document.querySelectorAll('[id^="event-container-"]')).slice(-30).reverse();
     const entries = rows.map(row => ({ row, event: eventFor(row) }));
     if (traversalBudget <= 0) { cancel(); return; }
     const attacks = entries.filter(entry => entry.event?.id === current.attackId);
@@ -296,6 +327,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       if (event?.role !== 'dm' || event.campaign_id !== campaign || event.request_id !== current.request) continue;
       if (event.command_used !== 'encounter_player_turn_action_response' || !Array.isArray(event.rollChoices)) { cancel(); return; }
       const choices = event.rollChoices.filter((choice: Native) => choice?.type === 'Damage' && choice.character_id === current.character);
+      if (choices.length === 0) continue; // A streamed DM event may precede its native roll choice.
       if (choices.length !== 1 || !id(choices[0].id) || choices[0].event_id !== event.id || choices[0].accepted !== null || typeof choices[0].dice_expression !== 'string') { cancel(); return; }
       matches.push({ row, event, choice: choices[0] });
     }
@@ -319,7 +351,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (candidates.length !== 1) return;
     const candidate = candidates[0], key = `${campaign}:${attack.id}:${match.choice.id}`;
     if (claimed.has(key)) { cancel(); return; }
-    ancestryCache.delete(candidate.button);
+    ancestryCache.delete(candidate.button); currentFiberCache.clear(); rootCache.clear();
     const latestChain = ancestry(candidate.button, 16), latest = latestChain[0]?.memoizedProps;
     const latestOwner = latestChain.find(fiber => (fiber.memoizedProps?.rollChoice as Native)?.id === match.choice.id)?.memoizedProps;
     if (!candidate.button.isConnected || candidate.button.disabled || candidate.button.matches(':disabled') || latest?.disabled === true || latest?.['aria-disabled'] === true
@@ -336,7 +368,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   }
   function sync(): void {
     frame = 0;
-    traversalBudget = 50000; ancestryCache.clear();
+    traversalBudget = 50000; ancestryCache.clear(); currentFiberCache.clear(); rootCache.clear();
     if (disposed) return;
     const path = location.pathname;
     const match = /^\/([^/]+)\/play(?:\/|$)/.exec(path);
