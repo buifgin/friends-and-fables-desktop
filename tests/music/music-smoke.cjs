@@ -6,6 +6,7 @@ const {registerAppearanceScheme}=require(path.join(appRoot,'dist/appearance/appe
 const {MusicManager,MUSIC_URL}=require(path.join(appRoot,'dist/music/music'));
 const {DEFAULT_APPEARANCE}=require(path.join(appRoot,'dist/appearance/themes'));
 const {MUSIC_CATALOG}=require(path.join(appRoot,'dist/music/music-catalog'));
+const {configureWebsiteSettings}=require(path.join(appRoot,'dist/shell/website-settings'));
 registerAppearanceScheme();app.on('window-all-closed',()=>{});
 // Prevent Electron's default fatal-error dialog from hiding teardown failures.
 for(const event of ['uncaughtException','unhandledRejection'])process.on(event,error=>{console.error(`Music smoke ${event}:`,error);app.exit(1)});
@@ -18,7 +19,8 @@ clipboard.writeText=value=>{copied=value;writeClipboard(value)};
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const wav=Buffer.alloc(44+8000*2*8);
 wav.write('RIFF',0);wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(8000,24);wav.writeUInt32LE(16000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(wav.length-44,40);
-const html=`<!doctype html><html><body><div class="grid relative" id="composer"><div id="working-context-bar-spacer"></div><div class="tiptap" contenteditable="true">Draft unchanged</div><button aria-label="Roll dice" id="dice">Dice</button></div><form><button aria-label="Roll dice">Form dice</button></form><div role="dialog"><button aria-label="Roll dice">Dialog dice</button></div></body></html>`;
+const nativeHeader=`<header><div id="native-header-actions" style="display:flex;align-items:center;width:480px;height:40px"><button id="native-invite" type="button"><svg class="lucide-user-plus" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg></button><div class="ml-1 flex flex-row space-x-1" id="native-avatar-container" style="display:flex;gap:4px;margin-left:4px">${Array.from({length:6},(_,i)=>`<button type="button" class="native-avatar" data-avatar="${i}" style="width:28px;height:28px;border-radius:50%"><img alt="Player ${i+1}" width="24" height="24"></button>`).join('')}</div></div></header>`;
+const html=`<!doctype html><html><body>${nativeHeader}<div class="grid relative" id="composer"><div id="working-context-bar-spacer"></div><div class="tiptap" contenteditable="true">Draft unchanged</div><button aria-label="Roll dice" id="dice">Dice</button></div><form><button aria-label="Roll dice">Form dice</button></form><div role="dialog"><button aria-label="Roll dice">Dialog dice</button></div></body></html>`;
 (async()=>{
  profile=process.env.FABLES_TEST_PROFILE_DIR||await mkdtemp(path.join(os.tmpdir(),'fables-music-test-'));app.setPath('userData',profile);await app.whenReady();
  manager=new MusicManager();await manager.initialize();let settingsOpens=0;manager.setSettingsOpener(()=>settingsOpens++);
@@ -32,21 +34,26 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  const website=session.fromPartition('music-test-site');website.protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
  parent=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{session:website,sandbox:true,contextIsolation:true,nodeIntegration:false}});
  const {WindowMinimizer}=require(path.join(appRoot,'dist/shell/window-minimizer'));const minimizer=new WindowMinimizer(parent,()=> 'en');
- manager.attach(parent.webContents);let opened=0;
- parent.webContents.setWindowOpenHandler(({url})=>{if(manager.handleOpenRequest(parent.webContents,parent,url))opened++;return {action:'deny'}});
- await parent.loadURL('https://play.fables.gg/campaign/play');
+ manager.attach(parent.webContents);let opened=0;const openedUrls=[];
+ parent.webContents.setWindowOpenHandler(({url})=>{if(manager.handleOpenRequest(parent.webContents,parent,url)){opened++;openedUrls.push(url)}return {action:'deny'}});
+ const campaignUrl='https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play';
+ await parent.loadURL(campaignUrl);
  const siteJs=source=>parent.webContents.executeJavaScript(source);
+ const injectWebsiteSettings=locale=>siteJs(`(${configureWebsiteSettings.toString()})(true,${JSON.stringify(locale)})`);
+ const clickWebsiteButton=async selector=>{const point=await siteJs(`(()=>{const r=document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()`);parent.webContents.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});parent.webContents.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:'left',clickCount:1});parent.webContents.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:'left',clickCount:1});};
  const until=async predicate=>{for(let i=0;i<250;i++){if(await predicate())return;await sleep(20)}throw Error('Timed out waiting for music state')};
  await sleep(250);
- assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),0,'The app does not inject a Music shortcut into the website composer.');
+ assert.equal(await siteJs("document.querySelectorAll('#composer [data-ff-desktop-music-launcher]').length"),0,'Website settings never inject a Music shortcut into the composer.');
  assert.equal(await siteJs('typeof window.music'),'undefined');assert.equal(await siteJs('typeof window.require'),'undefined');
  assert.equal(await siteJs("document.querySelector('.tiptap').textContent"),'Draft unchanged');
- await siteJs(`(()=>{const header=document.createElement('header');header.id='fixture-website-header';header.style.cssText='display:flex;align-items:center;gap:8px;height:40px';const button=document.createElement('button');button.id='fixture-music-settings';button.type='button';button.textContent='Music';button.addEventListener('click',()=>window.open('fables-desktop://music/','_blank'));header.append(button);for(let i=0;i<6;i++){const avatar=document.createElement('span');avatar.className='fixture-avatar';avatar.dataset.avatar=String(i);avatar.style.cssText='display:inline-block;width:28px;height:28px;border-radius:50%';header.append(avatar)}document.body.prepend(header);return {avatars:header.querySelectorAll('.fixture-avatar').length,button:button.getBoundingClientRect().toJSON(),lastAvatar:header.lastElementChild.getBoundingClientRect().toJSON()}})()`);
- const headerLayout=await siteJs("(()=>{const h=document.getElementById('fixture-website-header'),b=document.getElementById('fixture-music-settings'),a=[...h.querySelectorAll('.fixture-avatar')];return {avatars:a.length,button:b.getBoundingClientRect().toJSON(),last:a.at(-1).getBoundingClientRect().toJSON(),overlap:b.getBoundingClientRect().right>a[0].getBoundingClientRect().left}})()");
- assert.equal(headerLayout.avatars,6,'The website settings header fixture retains its six native avatar nodes.');
- assert.equal(headerLayout.overlap,false,'The settings control occupies its own header space before avatars.');
+ const avatarsBefore=await siteJs("(()=>{window.fixtureAvatarNodes=[...document.querySelectorAll('#native-avatar-container .native-avatar')];return window.fixtureAvatarNodes.length})()");assert.equal(avatarsBefore,6);
+ await siteJs("window.fixtureAvatarNodes=[...document.querySelectorAll('#native-avatar-container .native-avatar')]");await injectWebsiteSettings('en');await until(()=>siteJs("!!document.querySelector('header [data-ff-desktop-music-launcher]')"));
+ const headerLayout=await siteJs("(()=>{const b=document.querySelector('header [data-ff-desktop-music-launcher]'),a=document.getElementById('native-avatar-container'),nodes=[...a.children];return {avatars:nodes.length,beforeAvatar:b.nextElementSibling===a,avatarsUnchanged:nodes.every((node,i)=>node===window.fixtureAvatarNodes[i]),overlap:b.getBoundingClientRect().right>a.getBoundingClientRect().left}})()");
+ assert.equal(headerLayout.avatars,6,'Production injection preserves all six native avatar nodes.');assert.equal(headerLayout.avatarsUnchanged,true,'Production injection retains each captured avatar node identity.');
+ assert.equal(headerLayout.beforeAvatar,true,'The injected button precedes the native avatar container.');assert.equal(headerLayout.overlap,false,'The injected control does not overlap native avatars.');
  assert.equal(await siteJs('typeof window.music'), 'undefined', 'Website header code receives no Music IPC bridge.');
- await siteJs("document.getElementById('fixture-music-settings').click()");await until(()=>opened===1);
+ parent.show();parent.focus();parent.webContents.focus();await clickWebsiteButton('header [data-ff-desktop-music-launcher]');await until(()=>opened===1);
+ assert.deepEqual(openedUrls,[MUSIC_URL],'The production button opens only the exact trusted Music URL.');
  player=await manager.open(parent);manager.hide();const js=source=>player.webContents.executeJavaScript(source);
  await until(()=>js("!document.getElementById('title').disabled"));
  // Settings are published only after the atomic rename succeeds. Polling the file
@@ -89,14 +96,15 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  assert.match(await forged.webContents.executeJavaScript("window.music.openCatalogLink('scott-titan','source').then(()=> 'allowed',error=>error.message)"),/only in the app player/);
  forged.destroy();forged=null;
  assert.equal(manager.handleOpenRequest(parent.webContents,parent,MUSIC_URL+'other'),false);
- await siteJs("history.pushState({},'', '/campaign/play?view=world');document.body.append(document.createElement('div'))");await sleep(100);
- assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),0,'In-page navigation never adds a composer shortcut.');
- await siteJs("history.pushState({},'', '/campaign/play');document.body.append(document.createElement('div'))");await sleep(100);
- assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),0,'Returning to play never adds a composer shortcut.');
+ await siteJs("history.pushState({},'', '/01a0d854-78d5-7064-ae41-f63d561c8e01/play?view=world');document.body.append(document.createElement('div'))");await until(()=>siteJs("!document.querySelector('header [data-ff-desktop-music-launcher]')"));
+ assert.equal(await siteJs("document.querySelectorAll('#composer [data-ff-desktop-music-launcher]').length"),0,'In-page navigation removes the launcher without changing the composer.');
+ await siteJs("history.pushState({},'', '/01a0d854-78d5-7064-ae41-f63d561c8e01/play');document.body.append(document.createElement('div'))");await injectWebsiteSettings('en');await until(()=>siteJs("!!document.querySelector('header [data-ff-desktop-music-launcher]')"));
+ assert.equal(await siteJs("[...document.querySelectorAll('#native-avatar-container .native-avatar')].every((node,i)=>node===window.fixtureAvatarNodes[i])"),true,'Returning to play keeps the six original avatar nodes.');
  assert.equal(await siteJs("document.querySelector('.tiptap').textContent"),'Draft unchanged');
  await js("document.getElementById('play').click()");await until(()=>js("!document.getElementById('audio').paused && document.getElementById('audio').currentTime>0"));
  const beforeReload=requests;parent.webContents.reload();await until(()=>siteJs("document.readyState==='complete' && !!document.querySelector('.tiptap')"));assert.equal(requests,beforeReload,'Website reload does not restart the player.');
- assert.equal(await siteJs("document.querySelectorAll('[data-ff-desktop-music-button]').length"),0,'A page reload never adds a composer shortcut.');
+ await siteJs("window.fixtureAvatarNodes=[...document.querySelectorAll('#native-avatar-container .native-avatar')]");await injectWebsiteSettings('en');await until(()=>siteJs("!!document.querySelector('header [data-ff-desktop-music-launcher]')"));
+ assert.equal(await siteJs("document.querySelectorAll('#composer [data-ff-desktop-music-launcher]').length"),0,'A page reload never adds a composer shortcut.');
  assert.equal(await js("document.getElementById('audio').paused"),false);
  minimizer.minimize();await sleep(120);assert.equal(await js("document.getElementById('audio').paused"),false,'Minimizing keeps main-window playback running.');minimizer.restore();
  const timeBeforeHide=await js("document.getElementById('audio').currentTime");await js("document.getElementById('close-library').click()");await sleep(200);assert.equal(player.getVisible(),false);assert.equal(await js("document.getElementById('audio').paused"),false,'Closing library keeps playback running.');assert((await js("document.getElementById('audio').currentTime"))>timeBeforeHide);await manager.open(parent);
@@ -163,10 +171,10 @@ const html=`<!doctype html><html><body><div class="grid relative" id="composer">
  if(process.env.FABLES_MUSIC_SCREENSHOT){await control("document.getElementById('volume-button').click();new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");await writeFile(process.env.FABLES_MUSIC_SCREENSHOT.replace(/\.png$/,'-toolbar.png'),(await toolbar.webContents.capturePage()).toPNG());await control("document.getElementById('volume-button').click()");}
  const initialTitle=await reopened("document.getElementById('track-title').textContent");await control("document.getElementById('next').click()");await until(async()=>(await reopened("document.getElementById('track-title').textContent"))!==initialTitle);
  const originalPlayer=player.webContents;await reopened("window.fixtureAudio=document.getElementById('audio')");const playbackPaused=await reopened("document.getElementById('audio').paused"),opensBeforeHeader=opened;
- await siteJs("document.getElementById('fixture-music-settings').click()");await until(()=>opened===opensBeforeHeader+1&&player.getVisible());
+ await clickWebsiteButton('header [data-ff-desktop-music-launcher]');await until(()=>opened===opensBeforeHeader+1&&player.getVisible());assert.equal(openedUrls.at(-1),MUSIC_URL);
  assert.equal(player.webContents,originalPlayer,'Opening the website header button reuses the same player.');assert.equal(await reopened("document.getElementById('audio').paused"),playbackPaused,'Opening Settings preserves playback state.');assert.equal(await reopened("window.fixtureAudio===document.getElementById('audio')"),true,'Opening Settings preserves the audio element.');
- parent.webContents.focus();await siteJs("document.getElementById('fixture-music-settings').focus()");parent.webContents.sendInputEvent({type:'keyDown',keyCode:'ENTER'});parent.webContents.sendInputEvent({type:'char',keyCode:'\r'});parent.webContents.sendInputEvent({type:'keyUp',keyCode:'ENTER'});await until(()=>opened===opensBeforeHeader+2);
- assert.equal(await siteJs("document.querySelectorAll('#fixture-website-header .fixture-avatar').length"),6,'Keyboard activation preserves all six website avatar nodes.');
+ parent.webContents.focus();await siteJs("document.querySelector('header [data-ff-desktop-music-launcher]').focus()");parent.webContents.sendInputEvent({type:'keyDown',keyCode:'ENTER'});parent.webContents.sendInputEvent({type:'char',keyCode:'\r'});parent.webContents.sendInputEvent({type:'keyUp',keyCode:'ENTER'});await until(()=>opened===opensBeforeHeader+2);assert.equal(openedUrls.at(-1),MUSIC_URL);
+ assert.equal(await siteJs("[...document.querySelectorAll('#native-avatar-container .native-avatar')].every((node,i)=>node===window.fixtureAvatarNodes[i])"),true,'Keyboard activation preserves all six website avatar nodes and identities.');
  assert.equal(await siteJs("typeof window.music"),'undefined','Website header code cannot access Music IPC.');
  await assert.rejects(control("window.appearanceButton.control('volume',2)"),/Invalid volume/);await assert.rejects(control("window.appearanceButton.control('filesystem')"),/Invalid music control/);
  const toolbarForgery=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/shell/appearance-button-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});await toolbarForgery.loadURL('fables-desktop://settings/appearance-button.html');await assert.rejects(toolbarForgery.webContents.executeJavaScript("window.appearanceButton.control('play')"),/only in the app toolbar/);toolbarForgery.destroy();
