@@ -6,7 +6,8 @@ const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..'
 const fixtureRoot = path.join(__dirname, '..', '..');
 const html = `<!doctype html><meta charset="utf-8"><style>:root{--border:210 10% 30%;--input:210 10% 35%;--foreground:0 0% 90%;--background:210 10% 12%;--primary:41 62% 65%;--primary-focus:41 62% 55%;--primary-foreground:0 0% 13%;--secondary:210 10% 22%;--secondary-foreground:0 0% 90%;--accent:210 10% 26%;--accent-foreground:0 0% 95%;--ring:210 50% 55%}body{background:#222;color:white}section{width:308px}input{max-width:100%}</style>
 <div contenteditable id="draft">preserved draft</div><canvas id="canvas"></canvas><section data-ff-combat-docked></section><script>
-window.submits=[];window.changes=0;window.inputs=0;
+window.submits=[];window.changes=0;window.inputs=0;window.nativeInputTrace=[];
+for(const type of ['mousedown','mouseup','click','keydown','keyup','toggle'])document.addEventListener(type,event=>{nativeInputTrace.push({type,trusted:event.isTrusted,key:event.key,target:event.target.tagName,pending:event.target.closest?.('[data-ff-pending-corrections]')?.getAttribute('data-ff-pending-corrections'),open:event.target.closest?.('details')?.open});if(nativeInputTrace.length>16)nativeInputTrace.shift()},true);
 window.mount=()=>{
  const dock=document.querySelector('section');dock.innerHTML='<form id="native-form"><input id="description" value="attack draft"><label>Modifier<input id="modifier_value" inputmode="decimal" value="0"></label><label>Proficiency<input id="proficiency_bonus" inputmode="decimal" value="2"></label><input id="unrecognised" value="keep"><button id="submit" type="submit">Attack</button></form>';
  window.state={modifier_value:'0',proficiency_bonus:'2'};window.native={form:document.querySelector('form'),submit:document.querySelector('#submit'),modifier:document.querySelector('#modifier_value'),proficiency:document.querySelector('#proficiency_bonus'),description:document.querySelector('#description'),draft:document.querySelector('#draft'),canvas:document.querySelector('#canvas')};
@@ -81,24 +82,42 @@ app.on('window-all-closed', () => {});
   catch (error) { throw new Error(`${phase} failed for: ${source.slice(0, 240)}`, { cause: error }); }
  };
  const mutate = (source, phase = 'fixture mutation') => js(`(()=>{${source};return true;})()`, phase);
- const until = async expression => { for (let n=0;n<100;n++) { if(await js(expression))return; await new Promise(resolve=>setTimeout(resolve,20)); } throw Error('Timed out: '+expression); };
+ let lastNativeTarget=null;
+ const diagnose=async expression=>{
+  const renderer=await js("({visibility:document.visibilityState,focused:document.hasFocus(),activeElement:document.activeElement?.outerHTML?.slice(0,240),trace:nativeInputTrace,details:[...document.querySelectorAll('[data-ff-combat-corrections]')].map(node=>({pending:node.getAttribute('data-ff-pending-corrections'),open:node.open,rect:node.querySelector('summary').getBoundingClientRect().toJSON()})),scroll:document.querySelector('#pending-list')?.scrollTop})").catch(error=>({error:String(error)}));
+  console.error('Combat corrections fixture state:',JSON.stringify({expression,lastNativeTarget,native:{visible:window.isVisible(),focused:window.isFocused(),contentsFocused:window.webContents.isFocused(),bounds:window.getContentBounds()},renderer}));
+ };
+ const until = async (expression,nativeFocus=false) => { for (let n=0;n<100;n++) { if((!nativeFocus||(window.isVisible()&&window.isFocused()&&window.webContents.isFocused()))&&await js(expression))return; await new Promise(resolve=>setTimeout(resolve,20)); } await diagnose(expression);throw Error('Timed out: '+expression); };
+ const nativeReady = async () => {
+  await until("document.visibilityState==='visible'&&document.hasFocus()", true);
+  // DOM layout can lead Chromium's submitted hit-test regions after mount/open.
+  // Cross a painted frame before measuring the native input target.
+  try { await js('new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error("Native input paint readiness timed out")),2000);requestAnimationFrame(()=>requestAnimationFrame(()=>{clearTimeout(timer);resolve()}))})'); }
+  catch(error) { await diagnose('native input paint readiness');throw error; }
+  assert.ok(window.isVisible()&&window.isFocused()&&window.webContents.isFocused(), 'Native input requires a visible, focused fixture');
+ };
+
  const configure = (enabled=true,locale='en') => js(`(${configureCombatCorrections.toString()})(${enabled},${JSON.stringify(locale)})`);
  const click = selector => js(`document.querySelector(${JSON.stringify(selector)}).click()`);
  const testDisclosure=async selector=>{
   for(const side of ['arrow','text']){
+   await nativeReady();
    const point=await js(`(()=>{const summary=document.querySelector(${JSON.stringify(selector)}),rect=summary.getBoundingClientRect();return {x:Math.round(${JSON.stringify(side)}==='arrow'?rect.left+12:rect.right-8),y:Math.round(rect.top+rect.height/2),before:summary.parentElement.open,hit:summary.contains(document.elementFromPoint(${JSON.stringify(side)}==='arrow'?rect.left+12:rect.right-8,rect.top+rect.height/2))}})()`);
+   lastNativeTarget={selector,side,...point};
    assert.equal(point.hit,true,side+' lies in the whole summary hit area.');
    window.webContents.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:'left',clickCount:1});window.webContents.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:'left',clickCount:1});await until(`document.querySelector(${JSON.stringify(selector)}).parentElement.open===${!point.before}`);
   }
   for(const keyCode of ['Enter','Space']){
+   await nativeReady();
+   lastNativeTarget={selector,keyCode};
    const before=await js(`document.querySelector(${JSON.stringify(selector)}).parentElement.open`);await js(`document.querySelector(${JSON.stringify(selector)}).focus()`);
    window.webContents.sendInputEvent({type:'keyDown',keyCode});window.webContents.sendInputEvent({type:'char',keyCode:keyCode==='Enter'?'\r':' '});window.webContents.sendInputEvent({type:'keyUp',keyCode});await until(`document.querySelector(${JSON.stringify(selector)}).parentElement.open===${!before}`);
   }
  };
  const set = (selector,value) => js(`document.querySelector(${JSON.stringify(selector)}).value=${JSON.stringify(value)}`);
  const identity = () => js("native.form===document.querySelector('form')&&native.submit===document.querySelector('#submit')&&native.modifier===document.querySelector('#modifier_value')&&native.proficiency===document.querySelector('#proficiency_bonus')&&native.description.value==='attack draft'&&native.draft.textContent==='preserved draft'&&native.canvas===document.querySelector('canvas')&&document.querySelector('#unrecognised').value==='keep'");
- await window.loadURL('https://play.fables.gg/campaign-one/play'); window.showInactive(); window.webContents.focus();
- await until("document.visibilityState==='visible'&&document.hasFocus()");
+ await window.loadURL('https://play.fables.gg/campaign-one/play'); window.showInactive(); window.focus(); window.webContents.focus();
+ await until("document.visibilityState==='visible'&&document.hasFocus()",true);
  // A direct assignment plus events fools a controlled value tracker. Ensure this fixture detects it.
  await mutate("native.modifier.value='9';native.modifier.dispatchEvent(new Event('input',{bubbles:true}))");
  assert.equal(await js('state.modifier_value'),'0');
