@@ -164,7 +164,7 @@ export class MusicManager {
     parent.once('closed',() => { if (this.parent === parent) { this.visible = false; this.parent = null; this.launcher = null; this.activeWebsite = null; this.player = null; this.loading = undefined; if (!contents.isDestroyed()) contents.close(); } });
     this.loading = player.webContents.loadURL(MUSIC_URL); void this.loading.catch(console.error); this.layout(); this.broadcast();
   }
-  setInset(inset: number): void { this.inset = Math.max(32,inset); this.layout(); }
+  setInset(inset: number): void { if (!Number.isFinite(inset)) return; this.inset = Math.max(0,inset); this.layout(); }
   hide(): void { this.visible = false; this.player?.setVisible(false); if (this.activeWebsite && !this.activeWebsite.isDestroyed()) this.activeWebsite.focus(); this.broadcast(); }
   private layout(): void {
     if (!this.parent || this.parent.isDestroyed() || !this.player) return;
