@@ -3,7 +3,7 @@
   const russian = {
     'Up to 16 folders and 1,000 tracks per folder. MP3, OGG, WAV, FLAC, M4A, OPUS, AAC, and WEBM are supported.':'До 16 папок и 1 000 треков в каждой. Поддерживаются MP3, OGG, WAV, FLAC, M4A, OPUS, AAC и WEBM.',
     'Local file':'Локальный файл','Local folders':'Папки с музыкой','Add folder':'Добавить папку','Refresh':'Обновить','Search local music':'Поиск своей музыки','Track or folder name':'Название трека или папки','Music folder':'Папка с музыкой','All folders':'Все папки','No local tracks found.':'Локальные треки не найдены.','Folder unavailable':'Папка недоступна','Close library':'Закрыть библиотеку','Could not update music folders.':'Не удалось обновить папки с музыкой.','Choose folders containing downloaded music. Removing a folder does not delete its files.':'Выберите папки со скачанной музыкой. Удаление папки из библиотеки не удаляет файлы.','Music continues when this library is closed. Use the toolbar to control playback. Local files stay on this computer. Saved tracks start paused.':'После закрытия библиотеки музыка продолжает играть. Управляйте ею кнопками сверху. Локальные файлы остаются на этом компьютере. Сохранённые треки запускаются с паузы.',
-    'Music':'Музыка','Your campaign soundtrack.':'Музыка для вашей кампании.','Playback':'Воспроизведение','NOW PLAYING':'ТЕКУЩИЙ ТРЕК','Choose a track':'Выберите трек',
+    'Music':'Музыка','Music settings':'Настройки музыки','Your campaign soundtrack.':'Музыка для вашей кампании.','Playback':'Воспроизведение','NOW PLAYING':'ТЕКУЩИЙ ТРЕК','Choose a track':'Выберите трек',
     'Previous':'Назад','Play':'Играть','Pause':'Пауза','Next':'Далее','Stop':'Стоп','Playback position':'Позиция воспроизведения','Mute':'Без звука','Unmute':'Включить звук','Volume':'Громкость','Loop track':'Повторять трек','Copy track link':'Копировать ссылку',
     'Playlist':'Список треков','Add a direct audio link to get started.':'Добавьте прямую ссылку на аудио.','Add a track':'Добавить трек','Track name':'Название трека','Audio link (HTTPS)':'Ссылка на аудио (HTTPS)','Save track':'Сохранить трек','Remove':'Удалить',
     'Use a direct MP3, OGG, WAV, or other supported audio link. YouTube and Spotify pages cannot play here.':'Нужна прямая ссылка на MP3, OGG, WAV или другой поддерживаемый аудиофайл. Страницы YouTube и Spotify здесь не воспроизводятся.',
@@ -180,6 +180,7 @@
   }
   library('playlist');
   $('close-library').addEventListener('click',()=>void window.music.hide().catch(console.error));
+  $('music-settings').addEventListener('click',()=>void window.music.openSettings().catch(console.error));
   $('choose-folder').addEventListener('click',()=>void foldersAction(()=>window.music.chooseFolder()));
   $('refresh-folders').addEventListener('click',()=>void foldersAction(()=>window.music.refreshFolders()));
   for(const id of ['local-search','local-folder-filter'])$(id).addEventListener(id==='local-search'?'input':'change',()=>{localLimit=30;renderLocal();});

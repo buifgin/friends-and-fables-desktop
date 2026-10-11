@@ -3,6 +3,7 @@ import type { MusicSettings } from './music-settings';
 
 contextBridge.exposeInMainWorld('music', {
   hide: (): Promise<void> => ipcRenderer.invoke('music:hide'),
+  openSettings: (): Promise<void> => ipcRenderer.invoke('music:open-settings'),
   chooseFolder: (): Promise<unknown> => ipcRenderer.invoke('music:choose-folder'),
   refreshFolders: (): Promise<unknown> => ipcRenderer.invoke('music:refresh-folders'),
   removeFolder: (id: string): Promise<unknown> => ipcRenderer.invoke('music:remove-folder',id),

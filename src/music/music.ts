@@ -35,6 +35,7 @@ export class MusicManager {
   private library = new MusicLibrary();
   private libraryWrites: Promise<void> = Promise.resolve();
   private playback = {paused:true,title:'',available:false,next:false,volume:.5,muted:false,loop:false};
+  private settingsOpener: (() => void) | null = null;
   constructor(folder = app.getPath('userData')) { this.file = path.join(folder,'music.json'); this.folderFile = path.join(folder,'music-folders.json'); }
   async initialize(): Promise<void> {
     try { this.settings = validateMusic(JSON.parse(await readFile(this.file,'utf8'))); }
@@ -65,6 +66,7 @@ export class MusicManager {
     ipcMain.handle('music:get',event => { this.assertTrusted(event); return this.state(); });
     ipcMain.handle('music:save',async (event,value: unknown) => { this.assertTrusted(event); await this.save(value); return this.state(); });
     ipcMain.handle('music:hide',event => { this.assertTrusted(event); this.hide(); });
+    ipcMain.handle('music:open-settings',event => { this.assertTrusted(event); this.settingsOpener?.(); });
     ipcMain.handle('music:playback',(event,value: unknown) => {
       this.assertTrusted(event);
       if (!value || typeof value !== 'object') throw new Error('Invalid playback status.');
@@ -117,6 +119,7 @@ export class MusicManager {
     if (event.sender !== this.launcher || event.senderFrame !== event.sender.mainFrame || event.senderFrame.url !== DOCK_URL) throw new Error('Music controls are available only in the app toolbar.');
   }
   getSettings(): MusicSettings { return structuredClone(this.settings); }
+  setSettingsOpener(callback: (() => void) | null): void { this.settingsOpener = callback; }
   private state() { return {settings:this.getSettings(),locale:this.locale,theme:{...this.theme},catalog:MUSIC_CATALOG,library:this.library.state()}; }
   private toolbarState() { return {...this.playback,open:this.visible,locale:this.locale}; }
   private broadcast(): void { if (this.launcher && !this.launcher.isDestroyed()) this.launcher.send('music:toolbar-update',this.toolbarState()); }
@@ -183,7 +186,7 @@ export class MusicManager {
     if (this.stopped) return;
     this.stopped = true; if (this.player) { if (this.parent && !this.parent.isDestroyed()) this.parent.contentView.removeChildView(this.player); if (!this.player.webContents.isDestroyed()) this.player.webContents.close(); } this.player = null;
     await Promise.all([this.writes.catch(() => {}),this.libraryWrites.catch(() => {})]);
-    for (const name of ['get','save','hide','playback','toolbar-get','control','choose-folder','refresh-folders','remove-folder','copy-link','copy-attribution','open-catalog-link']) ipcMain.removeHandler(`music:${name}`);
+    for (const name of ['get','save','hide','open-settings','playback','toolbar-get','control','choose-folder','refresh-folders','remove-folder','copy-link','copy-attribution','open-catalog-link']) ipcMain.removeHandler(`music:${name}`);
     session.fromPartition('fables-music').protocol.unhandle('fables-desktop');
   }
 }
