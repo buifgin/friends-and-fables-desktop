@@ -46,16 +46,25 @@ app.on('window-all-closed', () => {});
     const renderer = await js('window.flowFixtureState?.()').catch(error => ({ error: String(error) }));
     console.error('Combat flow fixture state:', JSON.stringify({ expression, root, native: { visible: window.isVisible(), focused: window.isFocused(), contentsFocused: window.webContents.isFocused(), bounds: window.getContentBounds() }, renderer }));
   };
-  const until = async expression => { for (let n = 0; n < 100; n++) { if (await js(expression)) return; await new Promise(resolve => setTimeout(resolve, 20)); } await diagnose(expression); throw Error('Timed out: ' + expression); };
+  const until = async (expression, nativeFocus = false) => { for (let n = 0; n < 100; n++) { if ((!nativeFocus || (window.isVisible() && window.isFocused() && window.webContents.isFocused())) && await js(expression)) return; await new Promise(resolve => setTimeout(resolve, 20)); } await diagnose(expression); throw Error('Timed out: ' + expression); };
+  const nativeReady = async () => {
+   await until("document.visibilityState==='visible'&&document.hasFocus()", true);
+   // DOM layout can lead Chromium's submitted hit-test regions after mount/open.
+   // Cross a painted frame before measuring the native input target.
+   try { await js('new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error("Native input paint readiness timed out")),2000);requestAnimationFrame(()=>requestAnimationFrame(()=>{clearTimeout(timer);resolve()}))})'); }
+   catch(error) { await diagnose('native input paint readiness');throw error; }
+   assert.ok(window.isVisible()&&window.isFocused()&&window.webContents.isFocused(), 'Native input requires a visible, focused fixture');
+  };
   const configure = (enabled = true) => js(`(${configureCombatFlow.toString()})(${enabled},'en')`);
   const nativeClick = async selector => {
+    await nativeReady();
     const point = await js(`(()=>{const node=document.querySelector(${JSON.stringify(selector)}),rect=node.getBoundingClientRect();return {x:Math.round(rect.left+rect.width/2),y:Math.round(rect.top+rect.height/2),hit:node.contains(document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2))}})()`);
     assert.equal(point.hit, true, 'Native target must be visible and unobstructed');
     window.webContents.sendInputEvent({ type: 'mouseDown', x: point.x, y: point.y, button: 'left', clickCount: 1 });
     window.webContents.sendInputEvent({ type: 'mouseUp', x: point.x, y: point.y, button: 'left', clickCount: 1 });
   };
-  await window.loadURL('https://play.fables.gg/campaign-a/play'); window.showInactive(); window.webContents.focus();
-  await until("document.visibilityState==='visible'&&document.hasFocus()");
+  await window.loadURL('https://play.fables.gg/campaign-a/play'); window.showInactive(); window.focus(); window.webContents.focus();
+  await until("document.visibilityState==='visible'&&document.hasFocus()",true);
   await configure(); await until('!!window.__friendsFablesDesktopCombatFlow');
   assert.equal(await js("document.querySelector('[data-ff-combat-flow]')===null"), true);
   const setPreferences = (automaticDamage, hideIntermediateFranz = false) => js(`window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:'campaign-a',automaticDamage:${automaticDamage},hideIntermediateFranz:${hideIntermediateFranz}})`);
