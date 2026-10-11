@@ -6,6 +6,9 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
   const host = window as unknown as Record<string, Controller | undefined>;
   if (host[key]) { if (show) host[key]!.update(width, height); else host[key]!.dispose(); return; }
   if (!show) return;
+  const match = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/play\/?$/i.exec(location.pathname);
+  if (location.origin !== 'https://play.fables.gg' || !match) return;
+  const campaignId = match[1].toLowerCase();
   let disposed = false, queued = false, attempted = false, panel: HTMLElement | null = null;
   let panelWidth = width, panelHeight = height, modalActive = false;
   const route = location.pathname + location.search;
@@ -42,16 +45,16 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
     if (node.parentElement !== document.body || !node.querySelector('button:has(.lucide-x)')) return false;
     // Inspect only this dialog's mounted subtree and its short ancestor chain.
     // A campaign provider elsewhere in the app is not ownership evidence.
-    const start = fiber(node), candidates: Fiber[] = [];
-    for (let current = start, depth = 0; current && depth < 12; current = current.return, depth++) {
-      if (current.memoizedProps?.role === 'dialog' || current === start) candidates.push(current);
-      else if (typeof current.type === 'function' && typeof current.memoizedProps?.campaignId === 'string' && typeof current.memoizedProps.isHost === 'boolean' && String(current.type).includes('Campaign Settings')) return true;
-      if (current.type === 'body' || current.type === 'html' || current.type === 'main') break;
-    }
+    const start = fiber(node);
+    if (!start) return false;
+    const candidates: Fiber[] = [start];
     for (let count = 0; candidates.length && count < 350; count++) {
       const current = candidates.shift()!, props = current.memoizedProps;
-      if (typeof current.type === 'function' && typeof props?.campaignId === 'string' && typeof props.isHost === 'boolean' && String(current.type).includes('Campaign Settings')) return true;
+      if (typeof current.type === 'function' && typeof props?.campaignId === 'string'
+        && props.campaignId.toLowerCase() === campaignId && typeof props.isHost === 'boolean'
+        && String(current.type).includes('Campaign Settings')) return true;
       if (current.child) candidates.push(current.child);
+      // Never follow this dialog root's siblings into another portal/dialog.
       if (current !== start && current.sibling) candidates.push(current.sibling);
     }
     return false;
@@ -84,7 +87,7 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
   function scan(): void {
     queued = false; if (disposed) return;
     if (location.pathname + location.search !== route) { dispose(true); return; }
-    if (panel && (!panel.isConnected || panel.getAttribute('data-state') === 'closed')) { suspend(true); panel = null; dispose(true); return; }
+    if (panel && (!panel.isConnected || panel.getAttribute('data-state') === 'closed')) { suspend(true); panel = null; try { window.open('fables-desktop://settings/close-campaign', '_blank'); } finally { dispose(true); } return; }
     if (!attempted && !otherLayer()) {
       const gear = document.querySelector<HTMLButtonElement>('aside button:has(svg.lucide-settings)');
       if (!gear || gear.disabled) return;
