@@ -205,7 +205,7 @@ export class AppearanceManager {
       const result=await dialog.showOpenDialog(this.dialogParent(event),{title:'Import appearance theme',properties:['openFile'],filters:[{name:'Friends & Fables theme',extensions:['json']}]});
       if (result.canceled || !result.filePaths[0]) return null;
       const imported=await importTheme(result.filePaths[0],this.settings,this.images);
-      return {...imported,themes:this.themeSummaries(),imagePreview:await backgroundPreview(this.images,imported.backgroundImage),platform:process.platform,canUndoReset:!!this.resetBackup,presentation:event.sender===this.panel?.webContents?'panel':'window',locale:this.locale,localeRevision:this.localeRevision,revision:this.settingsRevision};
+      return {...imported,themes:this.themeSummaries(),imagePreview:await backgroundPreview(this.images,imported.backgroundImage),platform:process.platform,canUndoReset:!!this.resetBackup,presentation:event.sender===this.panel?.webContents?'panel':'window',panelNavigationWidth:this.panelNavigationWidth(event.sender),locale:this.locale,localeRevision:this.localeRevision,revision:this.settingsRevision};
     });
   }
 
