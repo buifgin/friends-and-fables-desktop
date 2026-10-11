@@ -129,10 +129,19 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  // Trusted wheel input proves Chromium's real scroll default, rather than
  // merely checking whether a synthetic event was canceled.
  const wheelAt=async selector=>{
+   // Dock disposal changes renderer styles before Chromium commits its native
+   // hit-test/scroll data. Paint first, then move the pointer to the measured
+   // target and wait for native hover before starting a new wheel sequence.
+   const paint=()=>js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+   await paint();
    const point=await js(`(()=>{const e=document.querySelector(${JSON.stringify(selector)}),b=e.getBoundingClientRect(),x=Math.round(b.left+Math.min(b.width/2,40)),y=Math.round(b.top+Math.min(b.height/2,40));return {x,y,hit:e.contains(document.elementFromPoint(x,y))}})()`);
    assert.equal(point.hit,true,`Wheel target must be visible: ${selector} ${JSON.stringify(point)}`);
+   window.webContents.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
+   await until(`document.querySelector(${JSON.stringify(selector)}).matches(':hover')`);
+   await paint();
+   assert.equal(await js(`document.querySelector(${JSON.stringify(selector)}).contains(document.elementFromPoint(${point.x},${point.y}))`),true,`Wheel target must remain under the native pointer: ${selector}`);
    window.webContents.sendInputEvent({type:'mouseWheel',x:point.x,y:point.y,deltaY:-180,deltaX:0,canScroll:true});
-   await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+   await paint();
  };
  const configure=(enabled=true,locale='en',appearance={enabled:false,color:'#101010',opacity:.92,blur:12},ambient)=>js(`(${configureCombatPanel.toString()})(${enabled},${JSON.stringify(locale)},${JSON.stringify(combatPanelCss + combatPanelAppearanceCss(appearance,ambient))})`);
  await window.loadURL('https://play.fables.gg/fixture/play');
