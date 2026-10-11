@@ -94,6 +94,9 @@ export class AppearanceManager {
     settingsSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
     settingsSession.setPermissionCheckHandler(() => false);
     const assets: Record<string, [string, string]> = {
+      '/settings-hub.html':['settings/settings-hub.html','text/html; charset=utf-8'],
+      '/settings-hub.js':['settings/settings-hub.js','text/javascript; charset=utf-8'],
+      '/settings-hub.css':['settings/settings-hub.css','text/css; charset=utf-8'],
       '/': ['appearance/appearance.html', 'text/html; charset=utf-8'],
       '/appearance.css': ['appearance/appearance.css', 'text/css; charset=utf-8'],
       '/appearance.js': ['appearance/appearance.js', 'text/javascript; charset=utf-8'],
@@ -131,14 +134,6 @@ export class AppearanceManager {
       this.assertTrusted(event);
       await this.save(value);
       const result = await this.state(event.sender);
-      if (this.settings.appearancePinned && this.dock && event.sender === this.window?.webContents) {
-        await this.dock.open(true);
-        const oldWindow = this.window;
-        // Let the invoke response reach the old editor before closing it.
-        setTimeout(() => { if (oldWindow && !oldWindow.isDestroyed()) oldWindow.close(); }, 150);
-      } else if (!this.settings.appearancePinned && event.sender === this.panel?.webContents && this.panelParent) {
-        await this.open(this.panelParent);
-      }
       return result;
     });
     ipcMain.handle('appearance:save-theme', (event, name: unknown, value: unknown) => {
@@ -298,7 +293,7 @@ export class AppearanceManager {
   }
 
   async open(parent: BrowserWindow): Promise<BrowserWindow> {
-    if (this.settings.appearancePinned && this.dock?.window === parent) { await this.dock.toggle(); return parent; }
+    if (this.dock?.window === parent) { await this.dock.openSection('appearance'); return parent; }
     if (this.window) {
       this.window.showInactive();
       if (this.settings.linuxFloatingAppearance) await floatAppearance(this.window,true);
@@ -337,6 +332,8 @@ export class AppearanceManager {
     if (this.settings.linuxFloatingAppearance) await floatAppearance(window,true);
     return window;
   }
+
+  async flushSettings(): Promise<void> { await this.dock?.flushSettings(); }
 
   close(): void {
     this.window?.close();

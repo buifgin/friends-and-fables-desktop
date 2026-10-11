@@ -57,6 +57,7 @@ export class WindowControls {
     this.minimizer.sync();
     if (!this.view.webContents.isDestroyed()) this.view.webContents.send('window-controls:update', this.state());
   }
+  setVisible(visible: boolean): void { this.view.setVisible(visible); }
   layout(width: number, top: number): void {
     this.view.setBounds({ x: Math.max(0, width - 108), y: top, width: 108, height: 32 });
   }
