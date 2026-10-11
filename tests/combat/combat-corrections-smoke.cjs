@@ -37,13 +37,13 @@ window.mountCheckMode=()=>{
 };
 // Captured ExecuteActionsForm: FormProvider props, keyed field-array wrapper,
 // AttackCard props and sibling FormField(control, name=attacks.N.targets).
-window.pendingMounts=0;window.pendingCharacterOverride={};window.pendingWeaponOverride={};window.pendingBlocked=false;
+window.pendingMounts=0;window.pendingCharacterOverride={};window.pendingWeaponOverride={};window.pendingSpellOverride={};window.pendingBlocked=false;
 window.mountPending=()=>{
  window.pendingMounts++;
  const dock=document.querySelector('section');dock.innerHTML='<form id="pending-form"><div id="pending-list" style="height:180px;overflow:auto"></div><textarea name="message">pending message</textarea><button type="submit">Submit Actions</button></form>';
  const form=dock.querySelector('form'),list=document.querySelector('#pending-list');
- window.pendingValues={attacks:[{name:'Vicious Weapon',image:'weapon.webp',type:'melee',requires_attack_roll:true,attack_roll_type:'normal',modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,description:'weapon description',targets:[{id:1,name:'Wolf',ac:12}],damage_rolls:[{dice_count:1,dice_size:8,fixed_damage_bonus:0}]},{name:'Spell Attack',image:'spell.webp',type:'spell',requires_attack_roll:true,attack_roll_type:'normal',modifier_stat:'intelligence',modifier_value:2,proficiency_bonus:3,spell_id:4,targets:[{id:2}],damage_rolls:[]},{name:'Save spell',type:'spell',requires_attack_roll:false,targets:[],damage_rolls:[]}],message:'pending message'};
- Object.assign(pendingValues.attacks[0],pendingWeaponOverride);
+ window.pendingValues={attacks:[{name:'Vicious Weapon',image:'weapon.webp',type:'melee',requires_attack_roll:true,attack_roll_type:'normal',modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,description:'weapon description',targets:[{id:1,name:'Wolf',ac:12}],damage_rolls:[{dice_count:1,dice_size:8,fixed_damage_bonus:0}]},{name:'Spell Attack',image:'spell.webp',type:'spell',requires_attack_roll:true,attack_roll_type:'normal',modifier_stat:'intelligence',modifier_value:2,proficiency_bonus:3,spell_id:'spell-catalog-1',targets:[{id:2}],damage_rolls:[]},{name:'Save spell',type:'spell',requires_attack_roll:false,targets:[],damage_rolls:[]}],message:'pending message'};
+ Object.assign(pendingValues.attacks[0],pendingWeaponOverride);Object.assign(pendingValues.attacks[1],pendingSpellOverride);
  window.pendingWrites=[];window.pendingSubmits=0;window.pendingControl={};window.pendingDirty={};
  window.pendingMethods={control:pendingControl,getFieldState(name){return {isDirty:!!pendingDirty[name],isTouched:false}},getValues(name){return name?name.split('.').reduce((v,k)=>v?.[k],pendingValues):pendingValues},setValue(name,value,options){pendingWrites.push({name,value,options});if(options.shouldDirty)pendingDirty[name]=true;const keys=name.split('.'),leaf=keys.pop();keys.reduce((v,k)=>v[k],pendingValues)[leaf]=value}};
  const provider={memoizedProps:pendingMethods,return:null};
@@ -263,6 +263,26 @@ app.on('window-all-closed', () => {});
  assert.equal(await js('pendingValues.attacks[0].modifier_value'),0,'Spell default cannot affect weapon row.');assert.equal(await js('pendingValues.attacks[1].modifier_stat'),'intelligence');assert.equal(await js('pendingValues.attacks[1].modifier_value'),2);
  assert.equal(await js("pendingWrites.length===3&&pendingWrites.every(write=>write.name.startsWith('attacks.1.'))"),true,'Spell catalog default writes only matching spell leaves.');
  await click(spell+' summary');await click(spell+' [data-ff-correction-clear-default]');await mutate('mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");await new Promise(resolve=>setTimeout(resolve,550));assert.equal(await js('pendingWrites.length'),0);
+ // Native Fire Bolt has a known spell_id but no selected-card image;
+ // catalog image alone must not defeat an explicit current-character identity.
+ await mutate("pendingSpellOverride={name:'Fire Bolt',image:undefined,spell_id:'fire-bolt-catalog'};pendingCharacterOverride={spells:[{spell:{id:'fire-bolt-catalog',name:'Fire Bolt',image:'fire-bolt.webp'}}]};mountPending()");await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
+ assert.equal(await js("document.querySelector('[data-ff-pending-corrections=\"1\"] [data-ff-correction-save-here]').disabled"),false,'Known native spell_id enables Fire Bolt Save here without a selected image.');
+ assert.equal(await js("document.querySelector('[data-ff-pending-corrections=\"1\"] [data-ff-correction-clear-default]').disabled"),false,'Known native spell_id enables Delete here.');
+ await mutate('window.fireBoltPayload=JSON.stringify(pendingValues.attacks.map(attack=>({damage_rolls:attack.damage_rolls,targets:attack.targets})))');
+ await click(spell+' summary');await click(spell+' [data-ff-correction-modifier_value-plus]');await click(spell+' [data-ff-correction-save-here]');
+ await set(spell+' [data-ff-correction-value=modifier_value]','5');await click(spell+' [data-ff-correction-apply-modifier_value]');await click(spell+' [data-ff-correction-save-default]');
+ await mutate('mountPending()');await until("pendingValues.attacks[1].modifier_value===3");assert.equal(await js('pendingWrites.length===3&&pendingWrites.every(write=>write.name.startsWith(\"attacks.1.\"))'),true,'Explicit native id applies the spell override ahead of category defaults without changing damage, targets or weapons.');assert.equal(await pendingIdentity(),true);assert.equal(await js('JSON.stringify(pendingValues.attacks.map(attack=>({damage_rolls:attack.damage_rolls,targets:attack.targets})))===fireBoltPayload'),true,'Native damage definitions and selected targets remain unchanged.');assert.equal(await js('pendingSubmits'),0);
+ await click(spell+' summary');await click(spell+' [data-ff-correction-clear-default]');assert.equal(await js('pendingValues.attacks[1].modifier_value'),3,'Delete here leaves current Fire Bolt values intact.');
+ await mutate('mountPending()');await until("pendingValues.attacks[1].modifier_value===5");
+ await mutate('pendingCharacterOverride.id=83026156;mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");assert.equal(await js('pendingWrites.length'),0,'Native spell id does not inherit another character’s defaults.');
+ // Invalid explicit identities never fall back to a matching name, nor save/apply.
+ for(const mutation of ["pendingSpellOverride.spell_id='unknown-spell'","pendingSpellOverride.spell_id={}","pendingSpellOverride.spell_id=0","pendingSpellOverride.name='Foreign name'","pendingSpellOverride.image='foreign.webp'","pendingCharacterOverride.spells.push({spell:{id:'fire-bolt-catalog',name:'Fire Bolt',image:'other.webp'}})","pendingCharacterOverride.spells=[]"]){
+  await mutate("pendingSpellOverride={name:'Fire Bolt',image:undefined,spell_id:'fire-bolt-catalog'};pendingCharacterOverride={spells:[{spell:{id:'fire-bolt-catalog',name:'Fire Bolt',image:'fire-bolt.webp'}}]};"+mutation+';mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
+  assert.equal(await js("document.querySelector('[data-ff-pending-corrections=\"1\"] [data-ff-correction-save-here]').disabled"),true,'Wrong, unknown or conflicting explicit spell identity cannot save.');
+  assert.equal(await js('pendingWrites.length'),0,'Invalid explicit identity cannot auto-apply even a category default.');
+ }
+ await mutate("pendingSpellOverride={spell_id:undefined};pendingCharacterOverride={};mountPending()");await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");assert.equal(await js("document.querySelector('[data-ff-pending-corrections=\"1\"] [data-ff-correction-save-here]').disabled"),false,'Legacy exact name/image fallback remains available without explicit spell_id.');
+ await mutate('pendingSpellOverride={};pendingCharacterOverride={};mountPending()');await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
  // Four scopes: individual overrides take precedence over weapon/spell
  // defaults; destructive overwrite remains within this character/category.
  await mutate("localStorage.setItem('ff-desktop-attack-defaults-v1:/campaign-two',JSON.stringify({version:1,entries:[]}));mountPending()");await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
