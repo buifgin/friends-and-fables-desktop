@@ -8,6 +8,7 @@ import { configureFullscreenShortcuts } from '../shell/window-shortcuts';
 import { settingsSection } from './settings-core';
 import type { SettingsSection } from './settings-core';
 import type { GeneralSettings } from './general-settings';
+import { themeBackground } from '../appearance/themes';
 export const SETTINGS_HUB_URL='fables-desktop://settings/settings-hub.html';
 export interface CampaignSettingsAdapter { show(bounds: Rectangle): void | Promise<void>; hide(): void; }
 export interface SettingsManagers { translation: TranslationManager; instructions: HostInstructionsManager; campaign?: CampaignSettingsAdapter; }
@@ -37,9 +38,9 @@ export class SettingsHub {
  }
  configure(managers:SettingsManagers):void {this.managers=managers; managers.translation.setSettingsOpener(()=>this.navigate('translation'));managers.instructions.setSettingsOpener(()=>this.navigate('instructions'));this.update();}
  private assertTrusted(event:IpcMainInvokeEvent):void {if(event.sender!==this.view.webContents||event.senderFrame!==event.sender.mainFrame||event.senderFrame.origin!=='fables-desktop://settings'||event.senderFrame.url!==SETTINGS_HUB_URL)throw new Error('Settings navigation is available only in the app settings panel.');}
- private state(){return {section:this.section,locale:this.appearance.getLocale(),campaignAvailable:!!this.managers?.campaign,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
+ private state(){const {preset,customColor}=this.appearance.getSettings();return {section:this.section,locale:this.appearance.getLocale(),theme:{preset,customColor},campaignAvailable:!!this.managers?.campaign,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
  currentSection():SettingsSection{return this.section;}
- update():void {if(!this.view.webContents.isDestroyed())this.view.webContents.send('settings-hub:update',this.state());}
+ update():void {if(!this.view.webContents.isDestroyed()){this.view.setBackgroundColor(themeBackground(this.appearance.getSettings()));this.view.webContents.send('settings-hub:update',this.state());}}
  async select(section:SettingsSection):Promise<void> {
   if(section==='campaign'&&!this.managers?.campaign)throw new Error('Campaign settings are not connected.');
   const revision=++this.revision;

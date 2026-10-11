@@ -91,7 +91,7 @@ export class AppearanceDock {
   sync(): void {
 
     this.width = this.manager.getSettings().appearancePanelWidth;
-    this.layout(); this.update(); this.windowControls.sync();
+    this.layout(); this.update(); this.hub.update(); this.windowControls.sync();
   }
   isOpen(): boolean { return this.opened; }
   closeCampaign(): void { if (this.opened && this.hub.currentSection() === 'campaign') this.hide(); }
