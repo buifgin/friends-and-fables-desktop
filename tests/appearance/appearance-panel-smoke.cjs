@@ -285,6 +285,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await sleep(150);
   await assertNativeToolbarHitTests('Initial frameless toolbar');
   await until(() => contents.executeJavaScript('innerWidth === 434'));
+  assert.equal(await contents.executeJavaScript('panelNavigationWidth'), 126, 'The dock interface state reports the navigation rail offset.');
   await contents.executeJavaScript("document.getElementById('panel-resizer').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowLeft',bubbles:true}))");
   await until(() => panel.getBounds().width === 540);
   // A small viewport clamps the panel while remembering the requested width.
