@@ -16,6 +16,12 @@ on:
         required: true
         type: string
 
+      allow_prerelease:
+        description: Explicitly allow the matching package prerelease version
+        required: false
+        type: boolean
+        default: false
+
 permissions:
   actions: read
   contents: write
@@ -39,4 +45,10 @@ jobs:
           RELEASE_RUN_ID: ${{ inputs.run_id }}
           RELEASE_TAG: ${{ inputs.tag }}
           RELEASE_SOURCE: ${{ inputs.source }}
-        run: python3 scripts/stage-release.py --run-id "$RELEASE_RUN_ID" --tag "$RELEASE_TAG" --source "$RELEASE_SOURCE" --directory "$RUNNER_TEMP/verified-release"
+          RELEASE_ALLOW_PRERELEASE: ${{ inputs.allow_prerelease }}
+        run: |
+          flags=()
+          if [ "$RELEASE_ALLOW_PRERELEASE" = "true" ]; then
+            flags+=(--allow-prerelease)
+          fi
+          python3 scripts/stage-release.py --run-id "$RELEASE_RUN_ID" --tag "$RELEASE_TAG" --source "$RELEASE_SOURCE" --directory "$RUNNER_TEMP/verified-release" "${flags[@]}"

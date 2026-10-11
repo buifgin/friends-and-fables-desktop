@@ -30,7 +30,7 @@ class StageError(Exception):
     pass
 
 
-def expected_files(tag: str) -> dict[str, str]:
+def expected_files(tag: str, allow_prerelease: bool = False) -> dict[str, str]:
     match = SEMVER.fullmatch(tag)
     if not match:
         raise StageError("tag must be v-prefixed strict semantic version")
@@ -38,8 +38,10 @@ def expected_files(tag: str) -> dict[str, str]:
     version = package.get("version")
     if not isinstance(version, str) or tag != f"v{version}":
         raise StageError("--tag must exactly match this checkout's package version")
-    if version != ".".join(match.group(index) for index in (1, 2, 3)):
-        raise StageError("package version must be a stable semantic version")
+    stable_version = ".".join(match.group(index) for index in (1, 2, 3))
+    if version != stable_version:
+        if not allow_prerelease or not version.startswith(stable_version + "-") or "+" in version:
+            raise StageError("package version must be a stable semantic version unless prereleases are explicitly allowed")
     return {
         "linux": f"friends-and-fables-desktop-{version}-linux-x86_64.AppImage",
         "windows": f"friends-and-fables-desktop-{version}-windows-x64.exe",
@@ -218,6 +220,7 @@ def main() -> int:
     parser.add_argument("--source", required=True)
     parser.add_argument("--directory", required=True, type=Path)
     parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--allow-prerelease", action="store_true", help="allow a matching SemVer prerelease package version")
     args = parser.parse_args()
 
     try:
@@ -225,7 +228,7 @@ def main() -> int:
             raise StageError("--run-id must be a positive decimal integer")
         if not SHA.fullmatch(args.source):
             raise StageError("--source must be exactly 40 hexadecimal characters")
-        names = expected_files(args.tag)
+        names = expected_files(args.tag, allow_prerelease=args.allow_prerelease)
         repo = repository()
 
         run = gh_json(["api", f"repos/{repo}/actions/runs/{args.run_id}"])

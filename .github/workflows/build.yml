@@ -61,6 +61,8 @@ jobs:
         run: npm test
       - name: Test translator adapter protocol
         run: python -B tests/translation/translator-protocol.test.py
+      - name: Test release staging identity
+        run: python -B tests/shell/stage-release.test.py
       - name: Build package
         run: npm run dist:${{ matrix.target }}
       - name: Verify packaged resources on Linux
