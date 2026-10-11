@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-    <title>Appearance — Friends &amp; Fables Desktop</title>
+    <title>Settings — Friends &amp; Fables Desktop</title>
     <link rel="stylesheet" href="appearance.css">
     <script src="settings-theme.js" defer></script>
     <script src="settings-locale.js" defer></script>
@@ -180,7 +180,7 @@
           <p class="help">Export your current choices to a theme file for friends. Import a file to preview it, then apply. Login and campaign data are never part of a theme.</p>
           <label class="switch-row"><input type="checkbox" id="export-picture" checked> Include the selected chat picture</label>
           <div class="image-actions sharing-actions"><button type="button" id="export-theme">Export theme…</button><button type="button" id="import-theme" class="secondary">Import theme…</button></div>
-          <p class="help">A theme without a picture keeps the recipient’s selected picture. Menu, floating-window, and pinned-panel preferences stay local.</p>
+          <p class="help">A theme without a picture keeps the recipient’s selected picture. Window, menu, and panel preferences stay local.</p>
         </section>
         <section id="app-panel" role="tabpanel" hidden>
           <label class="switch-row"><input type="checkbox" id="message-commands"> Enable /me and /gm commands</label>
@@ -192,12 +192,10 @@
           </div>
           <label class="switch-row"><input type="checkbox" id="resizable-map"> Resizable campaign map</label>
           <p class="help">Drag the battle or world map's lower edge to change its height. Expand it to resize both dimensions, then drag Move map to reposition it. Sizes and positions are remembered separately for each map and campaign.</p>
-          <label class="switch-row"><input type="checkbox" id="pin-appearance"> Pin Appearance to the main interface</label>
-          <p class="help">Add an Appearance button that opens these settings beside the game. Drag the panel’s right edge to resize it, including in fullscreen. Your panel width is remembered.</p>
+          <input type="checkbox" id="pin-appearance" hidden>
           <div id="linux-menu-setting"><label class="switch-row"><input type="checkbox" id="black-menu" checked disabled> Black Linux menu bar</label>
-            <p class="help">Keep File, Edit, Appearance, Translation, View, and Window on a black bar.</p>
-            <label class="switch-row"><input type="checkbox" id="floating-appearance" checked> Floating Appearance window</label>
-            <p class="help">On Hyprland, open Appearance as a floating window. Other Linux desktops use a dialog-window hint.</p>
+            <p class="help">Keep File, Edit, Settings, Translation, View, and Window on a black bar.</p>
+            <input type="checkbox" id="floating-appearance" checked hidden>
           </div>
           <p class="help" id="app-platform-note" hidden>Menu bar customization is available on Linux.</p>
         </section>
