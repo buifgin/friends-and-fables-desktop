@@ -110,7 +110,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   }
   // The selected-action cards have no native numeric inputs. Bind only the
   // captured field-array wrapper and its own FormProvider, never item data.
-  type NativeAttack = { id?: string; name?: string; image?: string; type?: string; requires_attack_roll?: boolean; attack_roll_type?: string; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
+  type NativeAttack = { id?: string; spell_id?: unknown; name?: string; image?: string; type?: string; requires_attack_roll?: boolean; attack_roll_type?: string; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
   type NativeMethods = { control: unknown; getFieldState?(name: string): { isDirty?: boolean; isTouched?: boolean }; getValues(name: string): unknown; setValue(name: string, value: string | number, options: { shouldDirty: boolean; shouldValidate: boolean }): void };
   type NativeProps = { attack?: NativeAttack; usersCharacter?: Record<string, unknown>; children?: unknown; control?: unknown; name?: string; value?: NativeMethods; getValues?: NativeMethods['getValues']; setValue?: NativeMethods['setValue']; showDropdown?: boolean; trigger?: HTMLElement; disabled?: boolean; onEdit?: unknown; selectedVantage?: string; setSelectedVantage?: (value: string) => void; numberOfDice?: number; setNumberOfDice?: unknown; typeOfDie?: string; setTypeOfDie?: unknown; modifierValue?: number; setModifierValue?: unknown; proficiencyBonus?: number; setProficiencyBonus?: unknown; standardDiceNotation?: string; setStandardDiceNotation?: unknown };
   type Fiber = { memoizedProps?: NativeProps; return?: Fiber; alternate?: Fiber; key?: string; stateNode?: { current?: Fiber } };
@@ -270,6 +270,13 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     const image = typeof rawImage === 'string' && rawImage ? rawImage : undefined;
     if (!character || typeof attack.name !== 'string' || !attack.name || attack.name.length > 200
       || image && image.length > 2048 || !['melee', 'ranged', 'spell'].includes(attack.type ?? '')) return null;
+    // The field-array id is ephemeral. Native spell_id identifies a known
+    // catalog spell even when the selected attack omits its catalog image.
+    const rawSpellId = attack.spell_id ?? current.snapshot.spell_id;
+    const explicitSpell = attack.type === 'spell' && rawSpellId != null;
+    const spellId = explicitSpell ? stableId(rawSpellId) : null;
+    if (explicitSpell && (!spellId || attack.spell_id != null && current.snapshot.spell_id != null
+      && stableId(attack.spell_id) !== stableId(current.snapshot.spell_id))) return null;
     const catalog: unknown[] = [];
     if (attack.type === 'spell') {
       const spells = current.character.spells;
@@ -285,14 +292,14 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     for (const candidate of catalog) {
       if (!candidate || typeof candidate !== 'object') continue;
       const item = candidate as { id?: unknown; name?: unknown; image?: unknown }, id = stableId(item.id);
-      if (item.name !== attack.name) continue;
-      if (!id || item.image != null && typeof item.image !== 'string') return null;
+      if (explicitSpell ? id !== spellId : item.name !== attack.name) continue;
+      if (item.name !== attack.name || !id || item.image != null && typeof item.image !== 'string') return null;
       const prior = items.get(id), itemImage = typeof item.image === 'string' && item.image ? item.image : undefined;
       if (prior?.image && itemImage && prior.image !== itemImage) return null;
       items.set(id, { name: attack.name, image: itemImage ?? prior?.image });
     }
     const matches = [...items].filter(([, item]) => image === undefined || !item.image || item.image === image);
-    if (matches.length !== 1 || matches[0][1].image !== image) return null;
+    if (matches.length !== 1 || (explicitSpell ? image !== undefined && matches[0][1].image !== image : matches[0][1].image !== image)) return null;
     return { character, catalog: matches[0][0], type: attack.type! };
   }
   function readDefaults(): { entries: AttackDefault[]; defaults: CategoryDefault[]; valid: boolean; available: boolean } {
