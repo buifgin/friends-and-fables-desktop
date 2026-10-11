@@ -1,0 +1,40 @@
+name: Windows native visibility diagnostics
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visibility:
+    name: Electron GUI windowsHide=${{ matrix.hide_process }}
+    runs-on: windows-2025
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        hide_process: ['0', '1']
+    defaults:
+      run:
+        shell: bash
+    env:
+      FABLES_TEST_WINDOWS_HIDE: ${{ matrix.hide_process }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Download Electron test runtime
+        run: npm run install:electron
+      - name: Build fixture runtime
+        run: npm run build
+      - name: Check fixture syntax
+        run: node tests/combat/spell-slots-smoke.cjs --syntax
+      - name: Test actual window visibility and native slot input
+        run: node scripts/run-electron-test.cjs tests/combat/spell-slots-smoke.cjs
