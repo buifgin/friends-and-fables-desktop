@@ -96,6 +96,13 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await window.loadURL('https://play.fables.gg/fixture/play');
  window.showInactive();window.webContents.focus();
  const js = source => window.webContents.executeJavaScript(source);
+ const assertHeadingPaint = async label => {
+    const rect = await js(`(()=>{const h=document.querySelector('[data-ff-dice-favorite-group] h3');h.scrollIntoView({block:'center'});return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const r=h.getBoundingClientRect();resolve({x:Math.ceil(r.x),y:Math.ceil(r.y),width:Math.floor(r.width)-1,height:Math.floor(r.height)-1})})))})()`);
+    assert.ok(rect.width > 0 && rect.height > 0, label + ' heading has capture geometry');
+    const image = await window.webContents.capturePage(rect), pixels = image.toBitmap(), colors = new Map();
+    for (let i = 0; i < pixels.length; i += 4) { const color = pixels.readUInt32LE(i); colors.set(color, (colors.get(color) || 0) + 1); }
+    assert.ok(pixels.length / 4 - Math.max(...colors.values()) > 20, label + ' heading crop paints glyph pixels against its uniform background');
+  };
  const until = async expression => { for(let n=0;n<100;n++){if(await js('window.rendererErrors?.length'))throw Error('Native renderer error: '+JSON.stringify(await js('window.rendererErrors')));if(await js(expression))return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Timed out: '+expression); };
  await until("document.visibilityState==='visible' && document.hasFocus()");
  await js(`(()=>{const style=document.createElement('style');style.textContent=${JSON.stringify(themeCss(appearance)+chatCss(appearance,null))};document.head.append(style)})()`);
@@ -165,6 +172,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    if(!await js("document.querySelector('#check [data-ff-dice-selection-checkbox]').checked"))await click('#check',locale+' select first favorite');
    assert.equal(await js('selections'),locale==='ru'?0:1,'Selection mode never calls the native check handler.');
    await click('[data-ff-dice-selection-confirm]',locale+' save favorites');
+   await js("window.beforeDetailHeading=document.querySelector('[data-ff-dice-favorite-group] h3');window.beforeDetailFavorite=document.querySelector('[data-ff-dice-favorite-tile]')");
    await click('[data-ff-dice-favorite-tile="skill.acrobatics"]',locale+' favorite -> native detail');
    assert.equal(await js('currentForm===document.querySelector("form") && currentForm.querySelector("input").value==="retained check draft"'),true,'Native detail retains its form and draft.');
    assert.equal(await js("(()=>{const navigation=document.querySelector('[data-ff-dice-navigation]'),favorites=document.querySelector('[data-ff-dice-favorites]');return !!navigation&&navigation.hidden&&(!favorites||favorites.hidden)})()"),true,'Check detail hides navigation and has no visible Favorites list, whether native content retained or replaced its mount.');
@@ -172,6 +180,8 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    await until("document.querySelector('[data-ff-dice-navigation]')&&document.querySelector('[data-ff-dice-favorites]')");
    assert.equal(await js("document.querySelectorAll('[data-ff-dice-favorites]').length===1&&!document.querySelector('[data-ff-dice-favorites]').hidden&&!document.querySelector('[data-ff-dice-navigation]').hidden"),true,'Back remounts exactly one visible Favorites list and navigation.');
    assert.equal(await js('currentForm===document.querySelector("form") && currentForm.querySelector("input").value==="retained check draft"'),true,'Favorites remount preserves the native form and draft.');
+   assert.equal(await js("beforeDetailHeading!==document.querySelector('[data-ff-dice-favorite-group] h3')&&beforeDetailFavorite===document.querySelector('[data-ff-dice-favorite-tile]')"),true,'Back refreshes the detached owned heading and preserves its favorite button.');
+   await assertHeadingPaint(locale+' native detail Back');
    await click('#close',locale+' close Dice',0);
    // The encounter state enables attacks, while preventing automatic opening
    // through the previously attempted explicit Dice launch.
@@ -182,6 +192,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    assert.equal(await js("document.querySelector('[data-ff-combat-docked]').dataset.ffCombatPanelMode"),'actions');
    await click('[data-ff-combat-mode=skills]',locale+' Attacks -> Dice');
    assert.equal(await js("document.querySelector('[data-ff-combat-docked]').dataset.ffCombatPanelMode"),'skills');
+   await assertHeadingPaint(locale+' Actions -> Dice');
    await click('[data-ff-combat-mode=actions]',locale+' Dice -> Attacks');
    assert.equal(await js("document.querySelector('[data-ff-combat-docked]').dataset.ffCombatPanelMode"),'actions');
    assert.equal(await js("document.querySelector('[data-ff-dice-favorites]:not([hidden])')"),null,'No favorites UI leaks into attacks.');

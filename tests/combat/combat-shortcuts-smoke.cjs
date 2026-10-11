@@ -53,6 +53,13 @@ const wait = async (contents, expression) => {
     catch (error) { throw new Error(`Fixture evaluate failed for ${expression.slice(0, 180)}: ${error.message}`); }
   };
   const click = selector => run(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const assertHeadingPaint = async label => {
+    const rect = await run(`(()=>{const h=document.querySelector('[data-ff-dice-favorite-group] h3');h.scrollIntoView({block:'center'});return new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>{const r=h.getBoundingClientRect();resolve({x:Math.ceil(r.x),y:Math.ceil(r.y),width:Math.floor(r.width)-1,height:Math.floor(r.height)-1})})))})()`);
+    assert.ok(rect.width > 0 && rect.height > 0, label + ' heading has capture geometry');
+    const image = await contents.capturePage(rect), pixels = image.toBitmap(), colors = new Map();
+    for (let i = 0; i < pixels.length; i += 4) { const color = pixels.readUInt32LE(i); colors.set(color, (colors.get(color) || 0) + 1); }
+    assert.ok(pixels.length / 4 - Math.max(...colors.values()) > 20, label + ' heading crop paints glyph pixels against its uniform background');
+  };
   await run(`(${configureCombatShortcuts.toString()})(true, 'ru')`);
   await wait(contents, `!!document.querySelector('[data-ff-dice-favorites]')`);
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorites]').hidden`), false, 'Favorites is the initial view; the former manager cannot satisfy this.');
@@ -121,19 +128,25 @@ const wait = async (contents, expression) => {
   }
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorites]').previousElementSibling===document.querySelector('#native-content') && document.querySelector('[data-ff-dice-favorites]').hasAttribute('data-ff-dice-favorites-inline')`),true,'Favorites occupies the actual native list layout slot.');
   await run(`document.getElementById('appearance-spacing').textContent='';document.querySelector('[data-ff-combat-docked]').style.removeProperty('width')`);
-  await run(`window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.querySelectorAll('[data-ff-dice-favorites],[data-ff-combat-shortcuts],[data-ff-dice-selection-confirm]').forEach(node=>node.remove());replacement.removeAttribute('data-ff-dice-native-hidden');replacement.querySelectorAll('[data-ff-dice-native-hidden]').forEach(node=>node.removeAttribute('data-ff-dice-native-hidden'));old.replaceWith(replacement);for(const id of ['check','dex-check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check');true`);
+  await run(`window.ownedHeading=document.querySelector('[data-ff-dice-favorite-group] h3');window.ownedFavorite=document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]');const old=document.querySelector('#native-list');const replacement=old.cloneNode(true);replacement.querySelectorAll('[data-ff-dice-favorites],[data-ff-combat-shortcuts],[data-ff-dice-selection-confirm]').forEach(node=>node.remove());replacement.removeAttribute('data-ff-dice-native-hidden');replacement.querySelectorAll('[data-ff-dice-native-hidden]').forEach(node=>node.removeAttribute('data-ff-dice-native-hidden'));old.replaceWith(replacement);for(const id of ['check','dex-check','save','skill'])document.getElementById(id).onclick=()=>{window.selections++;document.querySelector('#native-list').hidden=true;document.querySelector('#detail').hidden=false};window.originalCheck=document.querySelector('#check');true`);
   await wait(contents, `document.querySelector('#native-content').hasAttribute('data-ff-dice-native-hidden')`);
   assert.equal(await run(`document.querySelector('#native-list').hasAttribute('data-ff-dice-native-hidden')`), false, 'Favorites hides the deepest common native branch after list remount.');
   assert.deepEqual(await run(`[...document.querySelectorAll('[data-ff-dice-native-hidden]')].map(node=>node.id)`), ['native-content'], 'Remount cleanup removes stale hidden markers before Favorites reapplies ownership.');
   assert.equal(await run(`document.querySelectorAll('[data-ff-dice-favorites]').length`),1,'React-shaped native remount does not duplicate the owned Favorites section.');
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorites]').previousElementSibling===document.querySelector('#native-content')`),true,'Native remount moves the existing Favorites section to the replacement list slot.');
   assert.equal(await run(`window.ownedFavorite===document.querySelector('[data-ff-dice-favorite-tile="ability.strength"]')`), true, 'Identical native list remount preserves the owned favorite button.');
+  assert.equal(await run(`window.ownedHeading!==document.querySelector('[data-ff-dice-favorite-group] h3')`), true, 'Native list remount refreshes only the owned heading element for painting.');
+  await assertHeadingPaint('Native list remount');
+  await run(`window.stableHeading=document.querySelector('[data-ff-dice-favorite-group] h3');window.stableText=stableHeading.firstChild;window.__friendsFablesDesktopCombatShortcuts.update('ru');document.body.append(document.createElement('aside'));true`);
+  await run(`new Promise(resolve=>setTimeout(resolve,30))`);
+  assert.equal(await run(`stableHeading===document.querySelector('[data-ff-dice-favorite-group] h3')&&stableText===stableHeading.firstChild`), true, 'Unchanged scans preserve the heading and its text node.');
   await click('[data-ff-dice-favorite-tile="ability.strength"]');
   await wait(contents, `document.querySelector('[data-ff-dice-navigation]').hidden`);
   assert.equal(await run('window.selections'), 1, 'Favorite opens its original native check once.');
   assert.equal(await run('window.rolls'), 0);
   assert.equal(await run(`document.querySelector('[data-ff-dice-favorites]').hidden && document.querySelector('[data-ff-dice-selection-confirm]').hidden`), true, 'Detail hides all owned dice UI.');
   await click('#back'); await wait(contents, `!document.querySelector('[data-ff-dice-favorites]').hidden`);
+  await assertHeadingPaint('Native detail Back');
   await click('[data-ff-dice-standard]');
   assert.equal(await run(`!document.querySelector('#native-content').hasAttribute('data-ff-dice-native-hidden')&&getComputedStyle(document.querySelector('#native-content')).display!=='none'`), true, 'Standard view restores the native content branch after remount.');
   await click('#save');
