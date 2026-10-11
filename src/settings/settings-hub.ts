@@ -5,13 +5,13 @@ import type { AppearanceManager } from '../appearance/appearance';
 import type { TranslationManager } from '../translation/translation';
 import type { HostInstructionsManager } from '../commands/host-instructions';
 import { configureFullscreenShortcuts } from '../shell/window-shortcuts';
-import { settingsSection } from './settings-core';
-import type { SettingsSection } from './settings-core';
+import { settingsSection, combatPreferences } from './settings-core';
+import type { SettingsSection, CombatPreferences, CombatSettingsAdapter } from './settings-core';
 import type { GeneralSettings } from './general-settings';
 import { themeBackground } from '../appearance/themes';
 export const SETTINGS_HUB_URL='fables-desktop://settings/settings-hub.html';
 export interface CampaignSettingsAdapter { show(bounds: Rectangle): void | Promise<void>; hide(): void; }
-export interface SettingsManagers { translation: TranslationManager; instructions: HostInstructionsManager; campaign?: CampaignSettingsAdapter; }
+export interface SettingsManagers { translation: TranslationManager; instructions: HostInstructionsManager; campaign?: CampaignSettingsAdapter; combat?: CombatSettingsAdapter; }
 // Navigation has no feature bridge. Each editor retains its own manager, preload,
 // exact URL and main-frame authorization; hidden editors are never reloaded.
 export class SettingsHub {
@@ -23,6 +23,8 @@ export class SettingsHub {
  private managers?:SettingsManagers;
  private ready:Promise<void>;
  private bounds?:Rectangle;
+ private combat:CombatPreferences|null=null;
+ private combatRevision=0;
  constructor(private window:BrowserWindow,private appearance:AppearanceManager,private general:GeneralSettings,private close:()=>void,private generalChanged:()=>void,private navigate:(section:SettingsSection)=>Promise<void>) {
   this.view=new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(__dirname,'settings-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
   window.contentView.addChildView(this.view);this.view.setVisible(false);
@@ -34,11 +36,28 @@ export class SettingsHub {
   ipcMain.handle('settings-hub:select',(event,section:unknown)=>{this.assertTrusted(event);return this.navigate(settingsSection(section));});
   ipcMain.handle('settings-hub:close',event=>{this.assertTrusted(event);this.close();});
   ipcMain.handle('settings-hub:general',async(event,value:unknown)=>{this.assertTrusted(event);await this.general.save(value);this.generalChanged();this.update();return this.state();});
-  window.on('closed',()=>{this.revision++;for(const method of ['get','select','close','general'])ipcMain.removeHandler(`settings-hub:${method}`);for(const editor of this.editors.values())if(!editor.view.webContents.isDestroyed())editor.view.webContents.close();if(!contents.isDestroyed())contents.close();});
+  ipcMain.handle('settings-hub:combat-get',async event=>{this.assertTrusted(event);return this.refreshCombat();});
+  ipcMain.handle('settings-hub:combat-save',async(event,value:unknown)=>{
+   this.assertTrusted(event);const prefs=combatPreferences(value),adapter=this.managers?.combat;
+   if(!adapter)throw new Error('Combat settings are not connected.');
+   const current=await adapter.get();
+   if(!current||combatPreferences(current).campaignId!==prefs.campaignId)throw new Error('Combat campaign changed. Refresh settings.');
+   const saved=await adapter.save(prefs);
+   if(!saved||combatPreferences(saved).campaignId!==prefs.campaignId)throw new Error('Combat campaign changed. Refresh settings.');
+   return this.refreshCombat();
+  });
+  window.on('closed',()=>{this.revision++;for(const method of ['get','select','close','general','combat-get','combat-save'])ipcMain.removeHandler(`settings-hub:${method}`);for(const editor of this.editors.values())if(!editor.view.webContents.isDestroyed())editor.view.webContents.close();if(!contents.isDestroyed())contents.close();});
  }
  configure(managers:SettingsManagers):void {this.managers=managers; managers.translation.setSettingsOpener(()=>this.navigate('translation'));managers.instructions.setSettingsOpener(()=>this.navigate('instructions'));this.update();}
  private assertTrusted(event:IpcMainInvokeEvent):void {if(event.sender!==this.view.webContents||event.senderFrame!==event.sender.mainFrame||event.senderFrame.origin!=='fables-desktop://settings'||event.senderFrame.url!==SETTINGS_HUB_URL)throw new Error('Settings navigation is available only in the app settings panel.');}
- private state(){const {preset,customColor}=this.appearance.getSettings();return {section:this.section,locale:this.appearance.getLocale(),theme:{preset,customColor},campaignAvailable:!!this.managers?.campaign,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
+ private async refreshCombat():Promise<CombatPreferences|null> {
+  const revision=++this.combatRevision;
+  const value=await this.managers?.combat?.get()??null;
+  const prefs=value===null?null:combatPreferences(value);
+  if(revision===this.combatRevision)this.combat=prefs;
+  return this.combat;
+ }
+ private state(){const {preset,customColor}=this.appearance.getSettings();return {section:this.section,locale:this.appearance.getLocale(),theme:{preset,customColor},campaignAvailable:!!this.managers?.campaign,combat:this.combat,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
  currentSection():SettingsSection{return this.section;}
  update():void {if(!this.view.webContents.isDestroyed()){this.view.setBackgroundColor(themeBackground(this.appearance.getSettings()));this.view.webContents.send('settings-hub:update',this.state());}}
  async select(section:SettingsSection):Promise<void> {
@@ -54,6 +73,7 @@ export class SettingsHub {
    editor={view,ready:view.webContents.loadURL(url)};this.editors.set(section,editor);
   }
   await editor?.ready;
+  if(section==='combat')await this.refreshCombat();
   if(this.window.isDestroyed()||revision!==this.revision)return;
   this.managers?.campaign?.hide();this.section=section;this.visible=true;this.update();
   if(this.bounds)this.layout(this.bounds);

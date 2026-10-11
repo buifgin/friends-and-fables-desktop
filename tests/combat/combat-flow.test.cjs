@@ -32,43 +32,46 @@ function fixture(saved) {
   const install = (enabled = true, locale = 'en') => { context.configure(enabled, locale); flush(); };
   const notify = () => { observer([{ target: form }]); flush(); };
   install();
-  const controls = () => { const ui = dock.children.find(n => n.tagName === 'fieldset'); return { ui, auto: ui?.children[1].children[0], hide: ui?.children[2].children[0] }; };
-  return { context, dock, form, root, formFiber, savedMap, controls, install, notify, Element, documentListeners };
+  const controller = () => context.window.__friendsFablesDesktopCombatFlow;
+  const preferences = () => controller().getPreferences();
+  const setPreferences = patch => controller().setPreferences({ ...preferences(), ...patch });
+  // Existing flow regressions exercise disable/restore through the new narrow API.
+  const controls = () => ({ auto: { change: value => setPreferences({ automaticDamage: value }) }, hide: { change: value => setPreferences({ hideIntermediateFranz: value }) } });
+  return { context, dock, form, root, formFiber, savedMap, controls, preferences, setPreferences, controller, install, notify, Element, documentListeners };
 }
-test('exactly two default-off campaign controls outside native form', () => {
-  const f = fixture(), { ui, auto, hide } = f.controls();
-  assert.equal(ui.parentElement, f.dock); assert.equal(f.form.children.length, 0);
-  assert.equal(auto.type, 'checkbox'); assert.equal(hide.type, 'checkbox');
-  assert.equal(auto.checked, false); assert.equal(hide.checked, false); assert.equal(hide.disabled, true);
+test('default-off preferences create no inline website fieldset', () => {
+  const f = fixture();
+  assert.deepEqual(JSON.parse(JSON.stringify(f.preferences())), {campaignId:'campaign-a',automaticDamage:false,hideIntermediateFranz:false});
+  assert.equal(f.dock.children.length,1);assert.equal(f.form.children.length,0);
 });
 test('saved malformed and dependent settings fail closed', () => {
-  for (const value of [{ automaticDamage: false, hideIntermediateFranz: true }, { automaticDamage: 'true', hideIntermediateFranz: true }, null]) {
-    const { auto, hide } = fixture(value).controls(); assert.equal(auto.checked, false); assert.equal(hide.checked, false); assert.equal(hide.disabled, true);
+  for(const value of [{automaticDamage:false,hideIntermediateFranz:true},{automaticDamage:'true',hideIntermediateFranz:true},null]) {
+    const p=fixture(value).preferences();assert.equal(p.automaticDamage,false);assert.equal(p.hideIntermediateFranz,false);
   }
 });
-test('toggle roundtrip is campaign-local and auto off clears hide', () => {
-  const f = fixture(), c = f.controls(); c.auto.change(true); c.hide.change(true);
-  assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-a')), { automaticDamage: true, hideIntermediateFranz: true });
-  c.auto.change(false); assert.equal(c.hide.checked, false); assert.equal(c.hide.disabled, true);
-  f.context.location.pathname = '/campaign-b/play'; f.notify();
-  assert.equal(f.controls().auto.checked, false); f.controls().auto.change(true);
-  assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-a')), { automaticDamage: false, hideIntermediateFranz: false });
-  assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-b')), { automaticDamage: true, hideIntermediateFranz: false });
+test('preference roundtrip isolates campaigns and auto off clears hide immediately', () => {
+ const f=fixture();f.setPreferences({automaticDamage:true,hideIntermediateFranz:true});f.setPreferences({automaticDamage:false});
+ assert.equal(f.preferences().hideIntermediateFranz,false);
+ f.context.location.pathname='/campaign-b/play'; // No RAF needed for route correlation.
+ assert.equal(f.preferences().automaticDamage,false);f.setPreferences({automaticDamage:true});
+ assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-a')),{automaticDamage:false,hideIntermediateFranz:false});
+ assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-b')),{automaticDamage:true,hideIntermediateFranz:false});
 });
-test('update localization and dispose retain native form identity', () => {
-  const f = fixture(); f.install(true, 'ru'); assert.match(f.controls().ui.children[0].textContent, /Автоматизация/);
-  f.install(false); assert.equal(f.controls().ui, undefined); assert.equal(f.dock.children[0], f.form);
-  assert.equal(f.context.window.__friendsFablesDesktopCombatFlow, undefined);
+test('malformed, stale and off-campaign preference saves reject without writes', () => {
+ const f=fixture(),p=f.preferences();
+ for(const value of [null,[],{...p,automaticDamage:'true'},{...p,hideIntermediateFranz:1},{...p,extra:true}])assert.throws(()=>f.controller().setPreferences(value));
+ f.context.location.pathname='/campaign-b/play';assert.throws(()=>f.controller().setPreferences(p));
+ f.context.location.pathname='/campaign-b/settings';assert.equal(f.preferences(),null);assert.throws(()=>f.controller().setPreferences(p));assert.equal(f.savedMap.size,0);
 });
-test('detached/uncommitted form and noncampaign routes remove controls', () => {
-  const f = fixture(); f.root.stateNode.current = {}; f.notify(); assert.equal(f.controls().ui, undefined);
-  f.root.stateNode.current = f.root; f.notify(); assert.ok(f.controls().ui);
-  f.context.location.pathname = '/campaign-a/settings'; f.notify(); assert.equal(f.controls().ui, undefined);
+test('update and dispose retain native form identity', () => {
+ const f=fixture();f.install(true,'ru');assert.equal(f.dock.children[0],f.form);f.install(false);assert.equal(f.context.window.__friendsFablesDesktopCombatFlow,undefined);
 });
-test('duplicate configuration does not create duplicate controls', () => {
-  const f = fixture({ automaticDamage: true, hideIntermediateFranz: true }); f.install(); f.install(); f.notify();
-  assert.equal(f.dock.children.filter(n => n.tagName === 'fieldset').length, 1); assert.equal(f.controls().hide.checked, true);
+test('preference reads do not scan DOM or React and duplicate config retains state', () => {
+ const f=fixture({automaticDamage:true,hideIntermediateFranz:true});f.install();f.install();
+ f.context.document.querySelector=()=>{throw Error('DOM scan');};f.context.document.querySelectorAll=()=>{throw Error('DOM scan');};
+ assert.equal(f.preferences().hideIntermediateFranz,true);assert.equal(f.dock.children.length,1);
 });
+
 function flowFixture(options = {}) {
   const f = fixture({ automaticDamage: true, hideIntermediateFranz: !!options.hide });
   const { Element, root, form, formFiber, context } = f;
@@ -249,4 +252,15 @@ test('deep native React tree with30 loaded rows resolves under unchanged work bu
   for (const row of f.rows) row.__reactFiber$fixture = row.__reactFiber$fixture.alternate;
   f.button.__reactFiber$fixture = f.button.__reactFiber$fixture.alternate;
   f.submit(); f.pending(); assert.equal(f.calls(), 1, 'Current native callback must survive realistic shared ancestry and bounded loaded history');
+});
+
+test('failed preference persistence and malformed saves preserve current ticket and settings',()=>{
+ const f=flowFixture();f.submit();
+ f.context.localStorage.setItem=()=>{throw Error('quota');};
+ assert.throws(()=>f.setPreferences({automaticDamage:false}),/quota/);
+ assert.throws(()=>f.controller().setPreferences({...f.preferences(),campaignId:'stale'}));
+ assert.throws(()=>f.controller().setPreferences({...f.preferences(),hideIntermediateFranz:'true'}));
+ assert.equal(f.preferences().automaticDamage,true);assert.equal(f.unsubscribed(),0);
+ f.preferences();f.preferences();assert.equal(f.unsubscribed(),0);
+ f.pending();assert.equal(f.calls(),1);
 });
