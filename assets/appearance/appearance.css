@@ -162,7 +162,6 @@ button.settings-close-button > svg { display: block; width: 18px; height: 18px; 
 button.settings-close-button > svg path { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 button.settings-close-button:not(:disabled):hover { border-color: var(--ui-hover,#63656d); background: var(--ui-panel,#191c23); filter: none; }
 button.settings-close-button:focus-visible { outline: 2px solid var(--ui-focus,#f1d9a8); outline-offset: 2px; }
-body.docked .intro { margin-bottom: 16px; }
 body.docked .tabs { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); }
 body.docked .tabs .tab { min-width: 0; overflow-wrap: anywhere; font-size: 11px; }
 body.docked .message-controls { grid-template-columns: 1fr; }
