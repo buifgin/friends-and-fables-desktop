@@ -60,7 +60,7 @@ function selection() {
       customizeBackground: element('combat-panel-customize-background').checked,
       customizeBorder: element('combat-panel-customize-border').checked, borderColor: element('combat-panel-border-color').value,
       customizeButtons: element('combat-panel-customize-buttons').checked,
-      transparentButtonBackground: element('combat-panel-transparent-buttons').checked,
+      buttonBackgroundOpacity: Number(element('combat-panel-button-background-opacity').value) / 100,
       buttonBackground: element('combat-panel-button-background').value, buttonTextColor: element('combat-panel-button-text-color').value,
       customizeSpacing: element('combat-panel-customize-spacing').checked,
       tileGap: Number(element('combat-panel-tile-gap').value), contentPadding: Number(element('combat-panel-content-padding').value) },
@@ -110,7 +110,7 @@ function showSettings(settings) {
   element('image-opacity').value = settings.backgroundEffects.opacity * 100;
   element('image-overlay-color').value = settings.backgroundEffects.overlayColor;
   element('image-overlay-opacity').value = settings.backgroundEffects.overlayOpacity * 100;
-  const combatPanel = settings.combatPanel ?? { enabled: false, color: '#101010', opacity: .92, blur: 12 };
+  const combatPanel = settings.combatPanel ?? { enabled: false, color: '#101010', opacity: .92, blur: 12, buttonBackgroundOpacity: 1 };
   element('combat-panel-enabled').checked = combatPanel.enabled;
   element('combat-panel-color').value = combatPanel.color;
   element('combat-panel-opacity').value = combatPanel.opacity * 100;
@@ -119,11 +119,12 @@ function showSettings(settings) {
     ['customize-background','customizeBackground',true], ['customize-border','customizeBorder',false],
     ['border-color','borderColor','#555555'], ['customize-buttons','customizeButtons',false],
     ['button-background','buttonBackground','#202020'], ['button-text-color','buttonTextColor','#ffffff'],
-    ['transparent-buttons','transparentButtonBackground',false],
+    ['button-background-opacity','buttonBackgroundOpacity',1],
     ['customize-spacing','customizeSpacing',false], ['tile-gap','tileGap',8], ['content-padding','contentPadding',20],
   ]) {
     const control = element(`combat-panel-${id}`);
-    control[control.type === 'checkbox' ? 'checked' : 'value'] = combatPanel[key] ?? fallback;
+    const value = combatPanel[key] ?? fallback;
+    control[control.type === 'checkbox' ? 'checked' : 'value'] = key === 'buttonBackgroundOpacity' ? value * 100 : value;
   }
   element('message-styles').checked = settings.messages.enabled;
   element('input-styles').checked = settings.input.enabled;
@@ -230,7 +231,6 @@ function updatePreview() {
   const combatPanel = settings.combatPanel;
   for (const id of ['combat-panel-color','combat-panel-opacity','combat-panel-blur']) element(id).disabled = busy || !combatPanel.enabled || !combatPanel.customizeBackground;
   element('combat-panel-enabled').disabled = busy;
-  element('combat-panel-transparent-buttons').disabled = busy || !combatPanel.enabled;
   for (const [group, key, controls] of [
     ['background','customizeBackground',[]], ['border','customizeBorder',['border-color']],
     ['buttons','customizeButtons',['button-background','button-text-color']],
@@ -242,6 +242,8 @@ function updatePreview() {
   for (const [id, key] of [['tile-gap','tileGap'],['content-padding','contentPadding']]) {
     element(`combat-panel-${id}-label`).value = `${combatPanel[key]} px`;
   }
+  element('combat-panel-button-background-opacity-label').value = `${Math.round((combatPanel.buttonBackgroundOpacity ?? 1) * 100)}%`;
+  element('combat-panel-button-background-opacity').disabled = busy || !combatPanel.enabled;
   element('combat-panel-opacity-label').value = `${Math.round(combatPanel.opacity * 100)}%`;
   element('combat-panel-blur-label').value = `${combatPanel.blur} px`;
   element('image-blur-label').value = `${settings.backgroundEffects.blur} px`;

@@ -28,7 +28,7 @@ export interface CombatPanelSettings {
   enabled: boolean; color: string; opacity: number; blur: number;
   customizeBackground: boolean; customizeBorder: boolean; borderColor: string;
   customizeButtons: boolean; buttonBackground: string; buttonTextColor: string;
-  transparentButtonBackground: boolean;
+  buttonBackgroundOpacity: number;
   customizeSpacing: boolean; tileGap: number; contentPadding: number;
 }
 
@@ -72,7 +72,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   linuxFloatingAppearance: true,
   combatPanel: { enabled: false, color: '#101010', opacity: .92, blur: 12,
     customizeBackground: true, customizeBorder: false, borderColor: '#555555',
-    customizeButtons: false, buttonBackground: '#202020', buttonTextColor: '#ffffff', transparentButtonBackground: false,
+    customizeButtons: false, buttonBackground: '#202020', buttonTextColor: '#ffffff', buttonBackgroundOpacity: 1,
     customizeSpacing: false, tileGap: 8, contentPadding: 20 },
 };
 
@@ -153,6 +153,7 @@ export function validateAppearance(value: unknown): AppearanceSettings {
   const combatPanel = input.combatPanel === undefined
     ? DEFAULT_APPEARANCE.combatPanel
     : record(input.combatPanel);
+  const legacyTransparentButtons = (combatPanel as Record<string, unknown>).transparentButtonBackground;
   if (typeof combatPanel.enabled !== 'boolean') throw new Error('Invalid combat panel switch.');
   const linuxBlackMenu = input.linuxBlackMenu ?? true;
   if (typeof linuxBlackMenu !== 'boolean') throw new Error('Invalid menu bar preference.');
@@ -183,7 +184,9 @@ export function validateAppearance(value: unknown): AppearanceSettings {
       customizeBorder: flag(combatPanel.customizeBorder ?? false), borderColor: hex(combatPanel.borderColor ?? '#555555'),
       customizeButtons: flag(combatPanel.customizeButtons ?? false),
       buttonBackground: hex(combatPanel.buttonBackground ?? '#202020'), buttonTextColor: hex(combatPanel.buttonTextColor ?? '#ffffff'),
-      transparentButtonBackground: flag(combatPanel.transparentButtonBackground ?? false),
+      buttonBackgroundOpacity: combatPanel.buttonBackgroundOpacity === undefined
+        ? (legacyTransparentButtons === undefined ? DEFAULT_APPEARANCE.combatPanel.buttonBackgroundOpacity : flag(legacyTransparentButtons) ? 0 : 1)
+        : range(combatPanel.buttonBackgroundOpacity, 0, 1),
       customizeSpacing: flag(combatPanel.customizeSpacing ?? false),
       tileGap: range(combatPanel.tileGap ?? 8, 4, 24), contentPadding: range(combatPanel.contentPadding ?? 20, 8, 32) },
     input: { enabled: flag(composer.enabled), style: messageStyle(composer.style) },

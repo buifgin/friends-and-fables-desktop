@@ -559,6 +559,10 @@ export function combatPanelAppearanceCss(
   ambient?: CombatPanelAmbient,
 ): string {
   const hex = (value: string, fallback: string) => /^#[\da-f]{6}$/i.test(value) ? value : fallback;
+  const rgba = (value: string, alpha: number) => {
+    const color = hex(value, '#202020');
+    return `rgba(${parseInt(color.slice(1, 3), 16)}, ${parseInt(color.slice(3, 5), 16)}, ${parseInt(color.slice(5, 7), 16)}, ${alpha})`;
+  };
   const range = (value: number | undefined, max: number, fallback: number) =>
     typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : fallback;
   const backgroundEnabled = settings.enabled && settings.customizeBackground !== false;
@@ -581,6 +585,8 @@ export function combatPanelAppearanceCss(
   const actionBorder = settings.enabled && settings.customizeBorder
     ? hex(settings.borderColor ?? '', '#555555')
     : 'hsl(var(--border, 0 0% 50%))';
+  const buttonOpacity = range(settings.buttonBackgroundOpacity, 1, 1);
+  const buttonHoverOpacity = buttonOpacity === 0 ? .28 : Math.min(1, buttonOpacity + .2);
   const border = settings.enabled && settings.customizeBorder ? `
     ${customizedSurface} { border-right-color: ${hex(settings.borderColor ?? '', '#555555')} !important; }
     ${customizedSurface} :is([data-ff-combat-heading], h2, button, input, select, textarea, [role="combobox"], [class~="border"], [class*="border-"]) {
@@ -589,11 +595,11 @@ export function combatPanelAppearanceCss(
   ` : '';
   const buttonColors = settings.enabled && settings.customizeButtons ? `
     ${buttons} {
-      background: ${hex(settings.buttonBackground ?? '', '#202020')} !important;
+      background: ${rgba(settings.buttonBackground ?? '', buttonOpacity)} !important;
       color: ${hex(settings.buttonTextColor ?? '', '#ffffff')} !important;
     }
     ${actionButtons} {
-      background: ${hex(settings.buttonBackground ?? '', '#202020')} !important;
+      background: ${rgba(settings.buttonBackground ?? '', buttonOpacity)} !important;
       color: ${hex(settings.buttonTextColor ?? '', '#ffffff')} !important;
       box-sizing: border-box !important;
       border: 1px solid ${actionBorder} !important;
@@ -606,18 +612,12 @@ export function combatPanelAppearanceCss(
       box-shadow: inset 0 0 0 2px ${hex(settings.buttonTextColor ?? '', '#ffffff')} !important;
     }
     ${buttons}:hover:not(:disabled) {
-      background: color-mix(in srgb, ${hex(settings.buttonBackground ?? '', '#202020')} 80%, ${hex(settings.buttonTextColor ?? '', '#ffffff')}) !important;
+      background: color-mix(in srgb, ${rgba(settings.buttonBackground ?? '', buttonHoverOpacity)} 80%, ${rgba(settings.buttonTextColor ?? '', buttonHoverOpacity)} 20%) !important;
     }
   ` : '';
-  const transparentHover = settings.customizeButtons
-    ? `color-mix(in srgb, ${hex(settings.buttonBackground ?? '', '#202020')} 28%, transparent)`
-    : 'color-mix(in srgb, hsl(var(--muted, 0 0% 24%)) 40%, transparent)';
-  const transparentButtonSelectors = [buttons];
-  const transparentButtons = settings.enabled && settings.transparentButtonBackground ? `
-    ${transparentButtonSelectors.join(',\n')} { background: transparent !important; }
-    ${transparentButtonSelectors.map(selector => `${selector}:hover:not(:disabled)`).join(',\n')} {
-      background: ${transparentHover} !important;
-    }
+  const buttonOpacityCss = settings.enabled && !settings.customizeButtons && buttonOpacity < 1 ? `
+    ${buttons} { background: ${rgba(settings.buttonBackground ?? '', buttonOpacity)} !important; }
+    ${buttons}:hover:not(:disabled) { background: ${rgba(settings.buttonBackground ?? '', buttonHoverOpacity)} !important; }
   ` : '';
   const bounded = (value: number | undefined, min: number, max: number, fallback: number) =>
     typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max ? value : fallback;
@@ -721,7 +721,7 @@ export function combatPanelAppearanceCss(
     }
     ${border}
     ${buttonColors}
-    ${transparentButtons}
+    ${buttonOpacityCss}
     ${spacing}
   `;
 }
