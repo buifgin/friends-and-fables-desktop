@@ -576,6 +576,11 @@ export function combatPanelAppearanceCss(
   const surface = ':is([data-ff-combat-docked][data-ff-combat-docked][data-ff-combat-docked], [data-ff-combat-panel][data-ff-combat-panel][data-ff-combat-panel])';
   const customizedSurface = `${surface}${surface}`;
   const buttons = `${customizedSurface} button:not([role="checkbox"]):not([role="switch"])`;
+  const actionButtons = `${customizedSurface} :is(button[type="submit"], [data-ff-desktop-message="roll-menu"] .relative:has(> [role="combobox"]) > button:first-child)`;
+  const targetCheckbox = `${customizedSurface} label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) > button[role="checkbox"]`;
+  const actionBorder = settings.enabled && settings.customizeBorder
+    ? hex(settings.borderColor ?? '', '#555555')
+    : 'hsl(var(--border, 0 0% 50%))';
   const border = settings.enabled && settings.customizeBorder ? `
     ${customizedSurface} { border-right-color: ${hex(settings.borderColor ?? '', '#555555')} !important; }
     ${customizedSurface} :is([data-ff-combat-heading], h2, button, input, select, textarea, [role="combobox"], [class~="border"], [class*="border-"]) {
@@ -586,6 +591,15 @@ export function combatPanelAppearanceCss(
     ${buttons} {
       background: ${hex(settings.buttonBackground ?? '', '#202020')} !important;
       color: ${hex(settings.buttonTextColor ?? '', '#ffffff')} !important;
+    }
+    ${actionButtons} {
+      background: ${hex(settings.buttonBackground ?? '', '#202020')} !important;
+      color: ${hex(settings.buttonTextColor ?? '', '#ffffff')} !important;
+      box-sizing: border-box !important;
+      border: 1px solid ${actionBorder} !important;
+      border-radius: 6px !important;
+      min-height: 34px !important;
+      padding: 6px 8px !important;
     }
     ${buttons} :is(span, div) { color: inherit !important; }
     ${buttons}:is([aria-selected="true"], [aria-pressed="true"], [data-state="active"]) {
@@ -598,7 +612,7 @@ export function combatPanelAppearanceCss(
   const transparentHover = settings.customizeButtons
     ? `color-mix(in srgb, ${hex(settings.buttonBackground ?? '', '#202020')} 28%, transparent)`
     : 'color-mix(in srgb, hsl(var(--muted, 0 0% 24%)) 40%, transparent)';
-  const transparentButtonSelectors = [buttons, `${customizedSurface} button[role="checkbox"]`, `${customizedSurface} button[role="switch"]`];
+  const transparentButtonSelectors = [buttons];
   const transparentButtons = settings.enabled && settings.transparentButtonBackground ? `
     ${transparentButtonSelectors.join(',\n')} { background: transparent !important; }
     ${transparentButtonSelectors.map(selector => `${selector}:hover:not(:disabled)`).join(',\n')} {
@@ -629,6 +643,18 @@ export function combatPanelAppearanceCss(
     }
   ` : '';
   return `
+    ${targetCheckbox} {
+      box-sizing: border-box;
+      border: 2px solid hsl(var(--primary, 41 62% 65%)) !important;
+      color: hsl(var(--primary, 41 62% 65%)) !important;
+      background: transparent !important;
+      opacity: 1 !important;
+    }
+    ${targetCheckbox}:is([aria-checked="true"], [data-state="checked"]) {
+      color: hsl(var(--primary-foreground, 0 0% 13%)) !important;
+      background: hsl(var(--primary, 41 62% 65%)) !important;
+    }
+    ${targetCheckbox}:hover:not(:disabled) { filter: brightness(1.08); }
     ${surface} {
       background: ${fill} !important;
       color: hsl(var(--foreground, 0 0% 96%)) !important;
