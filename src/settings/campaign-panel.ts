@@ -15,8 +15,11 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
   let panelWidth = width, panelHeight = height, modalActive = false;
   let desktopPalette=palette;
   const route = location.pathname + location.search;
-  const existing = new Set(document.querySelectorAll('[role="dialog"]'));
-  const bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
+  // Snapshot only after the previous dock has natively unmounted: its temporary
+  // modal locks and accessibility attributes are not Campaign's initial state.
+  let handoffAccepted = false, closingCombat: HTMLElement | null = null;
+  const existing = new Set<Element>();
+  let bodyBefore: string[][] = [];
   const beforeAria = new Map<HTMLElement, string | null>();
   const layoutUndo: (() => void)[] = [], modalUndo: (() => void)[] = [];
   const style = document.createElement('style');
@@ -95,10 +98,21 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
     queued = false; if (disposed) return;
     if (location.pathname + location.search !== route) { dispose(true); return; }
     if (panel && (!panel.isConnected || panel.getAttribute('data-state') === 'closed')) { suspend(true); panel = null; try { window.open('fables-desktop://settings/close-campaign', '_blank'); } finally { dispose(true); } return; }
+    if (!handoffAccepted) {
+      const combat = (window as unknown as { __friendsFablesDesktopCombatPanel?: { closeForSettings?(): HTMLElement | null | false } }).__friendsFablesDesktopCombatPanel;
+      const result = combat?.closeForSettings?.();
+      if (result === false) return;
+      closingCombat = result ?? null;
+      handoffAccepted = true;
+    }
+    if (closingCombat?.isConnected) return;
+    closingCombat = null;
     if (!attempted && !otherLayer()) {
       const gear = document.querySelector<HTMLButtonElement>('aside button:has(svg.lucide-settings)');
       if (!gear || gear.disabled) return;
       attempted = true;
+      for (const node of document.querySelectorAll('[role="dialog"]')) existing.add(node);
+      bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
       for (const node of document.body.children) if (node instanceof HTMLElement) beforeAria.set(node, node.getAttribute('aria-hidden'));
       const old = gear.getAttribute('data-ff-native-campaign-launch');
       gear.setAttribute('data-ff-native-campaign-launch', 'true');
