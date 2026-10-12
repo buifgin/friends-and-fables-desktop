@@ -109,6 +109,7 @@ async function save(settings, window) {
     <div data-ff-dice-favorites><div data-ff-dice-favorite-tiles><div data-ff-dice-favorite-group-tiles class="grid"><button id="favorite-button" class="group"><div><svg class="lucide"></svg></div><span>Favorite</span></button></div></div></div>
     <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button><button id="generic-checkbox" role="checkbox" aria-checked="true">Generic</button><button id="generic-switch" role="switch" aria-checked="true">Generic switch</button><button id="menu-button" aria-haspopup="menu">⋯</button></form>
     <label class="flex items-center space-x-3 rounded border p-4 clickable"><button id="target-checkbox" role="checkbox" aria-checked="true">Checked</button></label>
+    <span id="primary-probe" style="color:hsl(var(--primary, 41 62% 65%))"></span><span id="primary-foreground-probe" style="color:hsl(var(--primary-foreground, 0 0% 13%))"></span>
   </div><button id="outside">Outside</button><input id="outside-field" value="keep">`));
   const styleSnapshot = () => styleWindow.webContents.executeJavaScript(`({
     buttons:['standard-button','favorite-button','action-button','menu-button','outside'].map(id=>{
@@ -121,10 +122,21 @@ async function save(settings, window) {
   const setPanelCss = settings => styleWindow.webContents.executeJavaScript(`document.getElementById('panel-style').textContent=${JSON.stringify(combatPanelAppearanceCss(settings))}`);
   await setPanelCss(DEFAULT_APPEARANCE.combatPanel);
   const nativePanelStyle = await styleSnapshot();
-  assert.deepEqual(nativePanelStyle.nativeControls[0],['rgb(220, 189, 116)','rgb(33, 33, 33)','rgb(220, 189, 116)','2px'],'The concrete native target checkbox uses the gold checked fill and border.');
+  const targetPalette = await styleWindow.webContents.executeJavaScript(`[
+    getComputedStyle(document.getElementById('primary-probe')).color,
+    getComputedStyle(document.getElementById('primary-foreground-probe')).color
+  ]`);
+  assert.deepEqual(nativePanelStyle.nativeControls[0],[targetPalette[0],targetPalette[1],targetPalette[0],'2px'],'The concrete native target checkbox uses the configured gold checked fill and border.');
   await setPanelCss(customizedPanel);
   const customPanelStyle = await styleSnapshot();
-  assert.deepEqual(customPanelStyle.nativeControls,nativePanelStyle.nativeControls,'Button transparency and button color settings exclude native checkbox/switch controls while keeping the gold target checked state.');
+  assert.deepEqual(customPanelStyle.nativeControls[0],nativePanelStyle.nativeControls[0],'Button styling preserves the checked target checkbox state.');
+  for (const control of customPanelStyle.nativeControls.slice(1)) {
+    assert.deepEqual(control,['rgb(51, 68, 85)','rgb(238, 238, 238)','rgb(18, 52, 86)','1px'],'Generic checkbox/switch fills remain native while the selected border color applies.');
+  }
+  await styleWindow.webContents.executeJavaScript("document.getElementById('target-checkbox').setAttribute('aria-checked','false')");
+  const uncheckedTarget = (await styleSnapshot()).nativeControls[0];
+  assert.deepEqual(uncheckedTarget,['rgba(0, 0, 0, 0)',targetPalette[0],targetPalette[0],'2px'],'Unchecked target checkbox keeps the gold border while its fill is transparent.');
+  await styleWindow.webContents.executeJavaScript("document.getElementById('target-checkbox').setAttribute('aria-checked','true')");
   for (const button of customPanelStyle.buttons.slice(0,3)) assert.deepEqual(button.slice(0,3),['rgb(35, 69, 103)','rgb(254, 220, 186)','rgb(18, 52, 86)']);
   assert.deepEqual(customPanelStyle.buttons[4],nativePanelStyle.buttons[4],'Customization stays within the dock.');
   assert.equal(customPanelStyle.buttons[2][4],true,'Disabled action state is preserved.');
@@ -145,7 +157,7 @@ async function save(settings, window) {
     assert.equal(button[0], 'rgba(0, 0, 0, 0)', 'Ordinary dock action, correction, and menu buttons have transparent resting fills.');
     assert.equal(button[2], 'rgb(18, 52, 86)', 'Button borders remain intact.');
   }
-  assert.deepEqual(transparentPanelStyle.nativeControls,customPanelStyle.nativeControls,'Transparent settings preserve the targeted checkbox state and generic checkbox/switch fills.');
+  assert.deepEqual(transparentPanelStyle.nativeControls,customPanelStyle.nativeControls,'Transparent settings preserve the target checkbox and generic checkbox/switch states, including the selected generic border color.');
   assert.deepEqual(transparentPanelStyle.buttons[4], nativePanelStyle.buttons[4], 'Outside buttons are not affected.');
   assert.equal(transparentPanelStyle.buttons[2][3], '0.5', 'Disabled state opacity is preserved.');
   assert.deepEqual(transparentPanelStyle.fields, nativePanelStyle.fields, 'Checkbox inputs, text and drafts are not restyled.');
