@@ -446,10 +446,11 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (matches.length === 0) return;
     if (matches.length !== 1) { cancel(); return; }
     const match = matches[0];
-    // oB passes !1===event.processed to native oM.isEventProcessing. Require
-    // affirmative completion as well as the awaited causal GM success; missing
-    // or malformed state must not interrupt a streamed intermediate reply.
-    if (match.event.processed !== true || match.event.error) return;
+    // The captured causal GM observer already awaited the response and native
+    // typing cleanup. event.processed only drives oM's Thoughts placeholder;
+    // it can remain false while Damage is awaiting acceptance, so gating on it
+    // would deadlock the native flow. Preserve native event-error protection.
+    if (match.event.error) return;
     if (!encounterMatches(match.row, current.encounter)) { cancel(); return; }
     const candidates: { button: HTMLButtonElement; callback: (event: Native) => unknown }[] = [];
     const buttons = Array.from(match.row.querySelectorAll<HTMLButtonElement>('button'));

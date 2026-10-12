@@ -36,7 +36,7 @@ window.mountRows=(request,attackId)=>{
  const button=document.querySelector('#damage');const callback=function nativeQuickRoll(event){event.stopPropagation();const dice_expression=choice.dice_expression;calls++;window.lastChoice={...choice,dice_expression};if(mode==='failure')throw Error('Unknown send outcome');choice.accepted=true;choice.roll_result_id=attackId+3;prompt.innerHTML='<span>Damage</span><span>Rolled</span>';promptFiber.child=undefined;window.done=true};
  const buttonFiber={memoizedProps:{onClick:callback,disabled:false},return:promptFiber};button.__reactFiber$fixture=buttonFiber;promptFiber.child=buttonFiber;
 };mountRows('historical',sequence);
-window.finishGeneration=()=>{currentDM.processed=true;result={...result,status:'success'};record('success');for(const fn of listeners)fn(result);document.querySelector('main').append(document.createElement('span'))};
+window.finishGeneration=()=>{result={...result,status:'success'};record('success');for(const fn of listeners)fn(result);document.querySelector('main').append(document.createElement('span'))};
 form.addEventListener('submit',event=>{event.preventDefault();submits++;sequence+=10;const request='local-request-'+sequence;mountRows(request,sequence);result={status:'pending',submittedAt:Date.now(),variables:{requestId:request,lastEventId:sequence,isMultiplayer:true}};record('pending',{subscriptions:listeners.size,submittedAt:result.submittedAt});for(const fn of listeners)fn(result);if(!holdStreaming)finishGeneration()});
 </script>`;
 let window;
@@ -82,7 +82,7 @@ app.on('window-all-closed', () => {});
   assert.equal(await js("document.querySelector('#native-avatar').getClientRects().length===0&&document.querySelector('#native-actions').getClientRects().length===0&&document.querySelector('[id^=event-message-card-]').getClientRects().length===0"),true,'Causal streaming intermediate is already entirely concealed');
   await js("currentDM.processed=true;document.querySelector('main').append(document.createElement('span'))");
   await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');assert.equal(await js('calls'),0,'Processed event alone cannot bypass pending causal generation');
-  await js('finishGeneration();holdStreaming=false');await until('calls===1');
+  await js('currentDM.processed=false;finishGeneration();holdStreaming=false');await until('calls===1');assert.equal(await js('currentDM.processed'),false,'Thoughts processing flag may remain false after native GM completion');
   assert.equal(await js("document.querySelector('[id^=event-message-card-]').style.display"), 'none');
   assert.equal(await js("document.querySelector('#damage-prompt').getClientRects().length>0"), true);
   assert.equal(await js("document.querySelector('#native-avatar').getClientRects().length===0&&document.querySelector('#native-actions').getClientRects().length===0"),true,'Entire native narration avatar/audio/feedback region must disappear');
