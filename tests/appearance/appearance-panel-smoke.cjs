@@ -289,7 +289,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
       checkboxAccent:checkbox&&getComputedStyle(checkbox).accentColor,scrollbarWidth:getComputedStyle(main).scrollbarWidth,overflowY:getComputedStyle(main).overflowY,
       navigation:[...document.querySelectorAll('#sections button')].map(node=>node.textContent)};
   })()`);
-  const appearanceChrome=await contents.executeJavaScript(`(()=>{const close=document.getElementById('close-panel'),box=close.getBoundingClientRect(),checkbox=document.querySelector('input[type=checkbox]');return {close:{width:box.width,height:box.height,radius:getComputedStyle(close).borderRadius,svg:close.querySelector('svg path').getAttribute('d')},checkboxAccent:getComputedStyle(checkbox).accentColor}})()`);
+  const appearanceChrome=await contents.executeJavaScript(`(()=>{const close=document.getElementById('close-panel'),box=close.getBoundingClientRect(),checkbox=document.querySelector('input[type=checkbox]');return {close:{width:box.width,height:box.height,radius:getComputedStyle(close).borderRadius,right:innerWidth-box.right,svg:close.querySelector('svg path').getAttribute('d')},checkboxAccent:getComputedStyle(checkbox).accentColor}})()`);
   await selectHubSection('music');
   const musicChrome=await hubChrome('music');
   await selectHubSection('general');
