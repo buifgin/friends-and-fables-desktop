@@ -289,15 +289,13 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
       checkboxAccent:checkbox&&getComputedStyle(checkbox).accentColor,scrollbarWidth:getComputedStyle(main).scrollbarWidth,overflowY:getComputedStyle(main).overflowY,
       navigation:[...document.querySelectorAll('#sections button')].map(node=>node.textContent)};
   })()`);
-  const appearanceChrome=await contents.executeJavaScript(`(()=>{const close=document.getElementById('close-panel'),box=close.getBoundingClientRect(),checkbox=document.querySelector('input[type=checkbox]'),main=document.querySelector('main'),brand=document.querySelector('.eyebrow'),heading=document.querySelector('h1');return {brand:brand.textContent.trim(),brandSize:getComputedStyle(brand).fontSize,headingSize:getComputedStyle(heading).fontSize,padding:getComputedStyle(main).padding,scrollbarWidth:getComputedStyle(main).scrollbarWidth,overflowY:getComputedStyle(main).overflowY,bodyOverflowY:getComputedStyle(document.body).overflowY,htmlOverflowY:getComputedStyle(document.documentElement).overflowY,scrollProbe:(()=>{const max=main.scrollHeight-main.clientHeight;main.scrollTop=Math.min(80,max);return {max,main:main.scrollTop,body:document.body.scrollTop,html:document.documentElement.scrollTop}})(),close:{width:box.width,height:box.height,radius:getComputedStyle(close).borderRadius,right:innerWidth-box.right,svg:close.querySelector('svg path').getAttribute('d')},checkboxAccent:getComputedStyle(checkbox).accentColor}})()`);
-  await selectHubSection('appearance');
-  const appearanceHubChrome=await hubChrome('appearance');
+  const appearanceChrome=await contents.executeJavaScript(`(()=>{const close=document.getElementById('close-panel'),box=close.getBoundingClientRect(),checkbox=document.querySelector('input[type=checkbox]'),main=document.querySelector('main'),brand=document.querySelector('.eyebrow'),heading=document.querySelector('h1');return {brand:brand.textContent.trim(),brandSize:getComputedStyle(brand).fontSize,brandVisibility:getComputedStyle(brand).visibility,brandDisplay:getComputedStyle(brand).display,headingSize:getComputedStyle(heading).fontSize,introSize:getComputedStyle(document.querySelector('.intro')).fontSize,padding:getComputedStyle(main).padding,scrollbarWidth:getComputedStyle(main).scrollbarWidth,overflowY:getComputedStyle(main).overflowY,bodyOverflowY:getComputedStyle(document.body).overflowY,htmlOverflowY:getComputedStyle(document.documentElement).overflowY,scrollProbe:(()=>{const max=main.scrollHeight-main.clientHeight;main.scrollTop=Math.min(80,max);return {max,main:main.scrollTop,body:document.body.scrollTop,html:document.documentElement.scrollTop}})(),closeDisplay:getComputedStyle(close).display,closeVisibility:getComputedStyle(close).visibility,close:{width:box.width,height:box.height,radius:getComputedStyle(close).borderRadius,right:innerWidth-box.right,svg:close.querySelector('svg path').getAttribute('d')},checkboxAccent:getComputedStyle(checkbox).accentColor}})()`);
   await selectHubSection('music');
   const musicChrome=await hubChrome('music');
   await selectHubSection('general');
   const generalChrome=await hubChrome('general');
-  for(const chrome of [appearanceHubChrome,musicChrome,generalChrome]){assert.equal(chrome.brand,'FRIENDS & FABLES DESKTOP');assert.equal(chrome.brandSize,'10px');}
-  for(const chrome of [appearanceHubChrome,musicChrome,generalChrome]){
+  for(const chrome of [musicChrome,generalChrome]){assert.equal(chrome.brand,'FRIENDS & FABLES DESKTOP');assert.equal(chrome.brandSize,'10px');}
+  for(const chrome of [musicChrome,generalChrome]){
     assert.equal(chrome.headingSize,'30px');assert.equal(chrome.padding,'28px 32px');assert.equal(chrome.introSize,'13px');
     assert.deepEqual(chrome.close,{width:34,height:34,radius:'50%',right:12,svg:'M4 4 14 14M14 4 4 14'});
     assert.equal(chrome.visibleClose,1,'A plain Settings section exposes one rightmost close button.');
@@ -306,11 +304,12 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   }
   assert.equal((await panel.webContents.executeJavaScript('window.settingsHub.get()')).campaignAvailable,false,'The fixture keeps campaign-only sections unavailable outside a campaign.');
   assert.equal(generalChrome.checkboxAccent,appearanceChrome.checkboxAccent,'General checkboxes use the chosen theme accent used by Appearance.');
-  assert.deepEqual(generalChrome.close,appearanceHubChrome.close,'Appearance and General share one rightmost close button.');
-  assert.deepEqual(generalChrome.close,appearanceChrome.close,'The General and editor close buttons share the same circular size and icon.');
+  assert.deepEqual(generalChrome.close,appearanceChrome.close,'The General and Appearance editor close buttons share the same circular size and icon.');
   assert.equal(appearanceChrome.brand,'FRIENDS & FABLES DESKTOP');assert.equal(appearanceChrome.brandSize,'10px');
-  assert.equal(appearanceChrome.headingSize,'30px');assert.equal(appearanceChrome.padding,'28px 32px');
+  assert.notEqual(appearanceChrome.brandDisplay,'none');assert.notEqual(appearanceChrome.brandVisibility,'hidden','The Appearance editor eyebrow stays visible while docked.');
+  assert.equal(appearanceChrome.headingSize,'30px');assert.equal(appearanceChrome.introSize,'13px');assert.equal(appearanceChrome.padding,'28px 32px');
   assert.equal(appearanceChrome.scrollbarWidth,'thin');assert.equal(appearanceChrome.overflowY,'auto');
+  assert.equal(appearanceChrome.closeDisplay,'grid');assert.equal(appearanceChrome.closeVisibility,'visible');
   assert.equal(appearanceChrome.bodyOverflowY,'hidden');assert.equal(appearanceChrome.htmlOverflowY,'hidden','The editor main is the sole page scroll owner.');
   assert(appearanceChrome.scrollProbe.max>0&&appearanceChrome.scrollProbe.main>0,'Long Appearance content scrolls inside main.');
   assert.equal(appearanceChrome.scrollProbe.body,0);assert.equal(appearanceChrome.scrollProbe.html,0,'Scrolling does not move the outer document.');
