@@ -220,7 +220,8 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   // Settings may dismiss only our live owned dock through its native handler.
   // Return the node so the caller can observe actual unmount, including animations.
   function closeForSettings(): HTMLElement | null | false {
-    if (disposed || otherLayer() || settingsClosing?.isConnected) return false;
+    // Submission is already in flight during the mounted-picker capture phase.
+    if (disposed || pending || launched || requested || otherLayer() || settingsClosing?.isConnected) return false;
     if (picker) {
       if (!picker.isConnected || !reserved || !picker.hasAttribute('data-ff-combat-docked')) return false;
       const nativeClose = picker.querySelector<HTMLButtonElement>('button:has(.lucide-x)');
@@ -230,8 +231,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       close();
       return settingsClosing;
     }
-    // A launch or result still in flight is not an owned dock we can dismiss.
-    if (launched || requested || pending || reserved) return false;
+    if (reserved) return false;
     settingsSuppressed = true;
     return null;
   }

@@ -455,8 +455,13 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('[data-ff-combat-docked]')");
  await js("document.querySelector('[data-ff-combat-mode=skills]').click()");await until("!!document.querySelector('#d20') && !!document.querySelector('[data-ff-combat-docked]')");
  const beforeAsync=await js("({chat:document.getElementById('chat').getBoundingClientRect().width,map:originalCanvas.getBoundingClientRect().x,opens})");
+ // The controller's document capture sees submission before this native form
+ // capture callback. Test the in-flight boundary while the same picker is
+ // still mounted, before its native submit handler performs unmount.
+ await js("window.pendingSettingsCloseCalls=0;window.pendingSettingsDock=document.querySelector('[data-ff-combat-docked]');window.pendingSettingsNativeX=originalNativeX.onclick;originalNativeX.onclick=()=>{pendingSettingsCloseCalls++;pendingSettingsNativeX()};originalForm.addEventListener('submit',()=>{const denied=window.__friendsFablesDesktopCombatPanel.closeForSettings()===false;window.pendingSettingsHandoff={denied,connected:pendingSettingsDock.isConnected,sameDock:document.querySelector('[data-ff-combat-docked]')===pendingSettingsDock,sameForm:document.querySelector('form')===originalForm,closeCalls:pendingSettingsCloseCalls}}, {capture:true,once:true})");
  await js("window.layoutFlips=[];window.layoutObserver=new MutationObserver(records=>{for(const record of records)layoutFlips.push({old:record.oldValue,current:document.documentElement.getAttribute('data-ff-combat-open')})});layoutObserver.observe(document.documentElement,{attributes:true,attributeOldValue:true,attributeFilter:['data-ff-combat-open']});window.asyncSubmit=true;document.querySelector('button[type=submit]').click()");
  await until("submitPhase==='pending' && !!document.querySelector('[data-ff-combat-docked]')");
+ assert.deepEqual(await js('pendingSettingsHandoff'),{denied:true,connected:true,sameDock:true,sameForm:true,closeCalls:0},'Settings refuses an in-flight native check before unmount without invoking close or replacing its owned dock/form.');
  assert.equal(await js("document.documentElement.getAttribute('data-ff-combat-open')"),'true','Pending native unmount retains reservation.');
  await until("submitPhase==='result'");
  assert.equal(await js("document.body.style.pointerEvents"),'none','Native result remains modal.');
