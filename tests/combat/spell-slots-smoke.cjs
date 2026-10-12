@@ -14,12 +14,13 @@ window.mountSidebar=()=>{
  for(let i=0;i<4;i++){const node=document.createElement('div');node.className='w-3 h-3 rounded-full border '+(i<2?'bg-primary/70 border-primary':'bg-muted border-muted-foreground/30');node.__reactFiber$fixture={memoizedProps:{className:node.className},return:row.__reactFiber$fixture};document.querySelector('#circles').append(node)}
  document.querySelector('#open').__reactFiber$fixture={return:owner};document.querySelector('#open').__reactProps$fixture={onClick:()=>{const options={defaultTab:"spells"};window.opens++;window.mountBook(options)}};
 };
+window.mountDock=mode=>{const node=document.createElement('div'),overlay=document.createElement('div');overlay.className='fixed inset-0';overlay.setAttribute('data-state','open');node.id='left-dock';node.setAttribute('role','dialog');node.setAttribute('data-state','open');node.setAttribute('aria-modal','false');if(mode==='campaign')node.setAttribute('data-ff-campaign-panel','');else{node.setAttribute('data-ff-combat-docked','');node.setAttribute('data-ff-combat-panel','');node.setAttribute('data-ff-combat-panel-mode',mode)}node.__reactFiber$fixture={memoizedProps:{},return:null};document.body.append(overlay,node);window.dockNode=node;window.dockOverlay=overlay;return node};
 window.mountBook=()=>{
- const c=window.config;const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.id='book';dialog.setAttribute('data-state','open');const provider={memoizedProps:{contentId:'book',open:true,onOpenChange(value){if(!value){window.closes++;dialog.remove();overlay.remove()}}},return:null};const providerAlternate={memoizedProps:provider.memoizedProps,return:null,alternate:provider};provider.alternate=providerAlternate;const portal={tag:4,stateNode:{containerInfo:document.body},return:provider};const overlayPortal={tag:4,stateNode:{containerInfo:document.body},return:providerAlternate};const overlay=document.createElement('div');overlay.className='fixed inset-0';overlay.setAttribute('data-state','open');overlay.__reactFiber$fixture={return:overlayPortal};dialog.__reactFiber$fixture={return:portal};
+ const c=window.config;const dock=document.querySelector('#left-dock'),beforePointer=document.body.style.pointerEvents,beforeOverflow=document.body.style.overflow;if(dock)dock.setAttribute('aria-modal','true');document.body.style.pointerEvents='none';document.body.style.overflow='hidden';const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.id='book';dialog.setAttribute('data-state','open');const provider={memoizedProps:{contentId:'book',open:true,onOpenChange(value){if(!value){window.closes++;dialog.remove();overlay.remove();document.body.style.pointerEvents=beforePointer;document.body.style.overflow=beforeOverflow;if(dock?.isConnected)dock.setAttribute('aria-modal','false')}}},return:null};const providerAlternate={memoizedProps:provider.memoizedProps,return:null,alternate:provider};provider.alternate=providerAlternate;const portal={tag:4,stateNode:{containerInfo:document.body},return:provider};const overlayPortal={tag:4,stateNode:{containerInfo:document.body},return:providerAlternate};const overlay=document.createElement('div');overlay.className='fixed inset-0';overlay.setAttribute('data-state','open');overlay.__reactFiber$fixture={return:overlayPortal};dialog.__reactFiber$fixture={return:portal};
  const close=document.createElement('button');close.type='button';close.innerHTML='<svg class="lucide-x"></svg>';close.setAttribute('aria-label','Close');close.onclick=()=>{provider.memoizedProps.onOpenChange(false)};
  close.__reactProps$fixture={onClick:close.onclick};close.__reactFiber$fixture={memoizedProps:close.__reactProps$fixture,return:{memoizedProps:{preventClose:undefined,onClose:undefined},return:portal}};dialog.append(close);
  const observer={options:{mutationFn:async function({characterId,campaignId,level,maxSlots,usedSlots}){return {characterId,campaignId,level,maxSlots,usedSlots}},onSuccess(){window.cacheInvalidations++}},getCurrentResult(){return {isPending:window.config.pending,status:window.config.pending?'pending':'idle'}}};
- const owner={memoizedProps:{characterId:c.characterId,campaignId:c.campaignId,phase:c.phase,viewOnly:c.viewOnly},memoizedState:{memoizedState:observer,next:{memoizedState:{options:{queryKey:['spellSlots',c.characterId]},getCurrentResult(){return {status:'success',isPending:false,isLoading:false,isFetching:false,data:[{level:1,max_slots:c.max,used_slots:c.used}]}}},next:null}},return:portal};
+ const owner={memoizedProps:{characterId:c.characterId,campaignId:c.campaignId,phase:c.phase,viewOnly:c.viewOnly},memoizedState:{memoizedState:observer,next:{memoizedState:{options:{queryKey:['spellSlots',c.characterId]},getCurrentResult(){return {status:'success',isPending:false,isLoading:false,isFetching:!!window.config.fetching,data:[{level:1,max_slots:c.max,used_slots:c.used}]}}},next:null}},return:portal};
  const row=document.createElement('div');row.className='flex flex-col gap-1';row.__reactFiber$fixture={key:'1',memoizedProps:{},return:owner};row.innerHTML='<p>Level 1</p><div class="flex flex-row"></div>';dialog.append(row);
  for(let i=0;i<c.max;i++){
   const node=document.createElement('button');node.type='button';node.className='h-4 w-4 rounded-full '+(i<c.max-c.used?'bg-primary':'bg-gray-800');node.disabled=c.viewOnly||c.phase!=='campaign';
@@ -105,7 +106,34 @@ app.on('window-all-closed',()=>{});
  }
  await js('Object.assign(config,{characterId:123,campaignId:"fixture",phase:"campaign",viewOnly:false,pending:false,used:2,max:4});const existing=document.createElement("div");existing.setAttribute("role","dialog");existing.id="existing";document.body.append(existing);document.querySelectorAll("[data-ff-spell-slot]")[2].click()');
  assert.equal(await js('calls.length'),4);assert.equal(await js('document.querySelector("#existing").isConnected'),true);
- await js('document.querySelector("#existing").remove();('+configureSpellSlots.toString()+')(false,"en")');
+ await js('document.querySelector("#existing").remove();Object.assign(config,{fetching:false,pending:false})');
+ for(const mode of ['dice','skills','attack','campaign']){
+  await js('mountDock('+JSON.stringify(mode)+');document.querySelectorAll("#sidebar [data-ff-spell-slot]")[0].focus()');
+  const before=await js('calls.length'),point=await js('(()=>{const r=document.querySelectorAll("#sidebar [data-ff-spell-slot]")[0].getBoundingClientRect();return {x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()');
+  win.webContents.sendInputEvent({type:'mouseDown',...point,button:'left',clickCount:1});win.webContents.sendInputEvent({type:'mouseUp',...point,button:'left',clickCount:1});
+  await wait('calls.length==='+String(before+1));await wait('!document.querySelector("#book")');await new Promise(r=>setTimeout(r,350));
+  assert.equal(await js('dockNode===document.querySelector("#left-dock")&&dockNode.isConnected'),true,mode+' preserves left panel identity');
+  assert.equal(await js('dockNode.getAttribute("aria-modal")'),'false');assert.equal(await js('document.body.style.pointerEvents'),'');assert.equal(await js('document.body.style.overflow'),'');
+  assert.deepEqual(await js('calls.at(-1)'),{characterId:123,campaignId:'fixture',level:1,maxSlots:4,usedSlots:3});
+  await js('document.querySelectorAll("#sidebar [data-ff-spell-slot]")[2].focus()');
+  win.webContents.sendInputEvent({type:'keyDown',keyCode:'Enter'});win.webContents.sendInputEvent({type:'char',keyCode:'Enter'});win.webContents.sendInputEvent({type:'keyUp',keyCode:'Enter'});
+  await wait('calls.length==='+String(before+2));await wait('!document.querySelector("#book")');await new Promise(r=>setTimeout(r,350));
+  assert.deepEqual(await js('calls.at(-1)'),{characterId:123,campaignId:'fixture',level:1,maxSlots:4,usedSlots:1});
+  assert.equal(await js('document.activeElement===document.querySelectorAll("#sidebar [data-ff-spell-slot]")[2]'),true,mode+' restores sidebar focus');
+  assert.equal(await js('cacheInvalidations===calls.length&&toasts===calls.length'),true);
+  await js('dockNode.remove();dockOverlay.remove()');
+ }
+ for(const failure of ['new-modal','replace-owner']){
+  const before=await js('calls.length');
+  await js('mountDock("attack");config.fetching=true;document.querySelectorAll("#sidebar [data-ff-spell-slot]")[2].click()');await wait('!!document.querySelector("#book")&&lastDialog.style.opacity==="0"');
+  assert.equal(await js('dockNode.getAttribute("aria-modal")'),'true','snapshot remains valid through native modal suspension');
+  await js(failure==='new-modal'?'const other=document.createElement("div");other.id="unexpected";other.setAttribute("role","alertdialog");document.body.append(other)':'dockNode.__reactFiber$fixture={memoizedProps:{},return:null}');
+  await wait('!document.querySelector("#book")');assert.equal(await js('calls.length'),before,'unsafe ownership/layers never invoke a callback');
+  if(failure==='new-modal')assert.equal(await js('document.querySelector("#unexpected").isConnected'),true);
+  await js('document.querySelector("#unexpected")?.remove();dockNode.remove();dockOverlay.remove();config.fetching=false');
+ }
+ assert.equal(await js('document.querySelector("#draft").value'),'preserve this draft');
+ await js('('+configureSpellSlots.toString()+')(false,"en")');
  assert.equal(await js('document.querySelectorAll("[data-ff-spell-slot]").length'),0);
  console.log('Spell slots native payload/cache/permission/identity/busy/bounds/lifecycle PASS');clearTimeout(timer);win.destroy();app.exit(0);
 })().catch(error=>{console.error(error);clearTimeout(timer);win?.destroy();app.exit(1)});

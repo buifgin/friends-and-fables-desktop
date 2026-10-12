@@ -39,7 +39,7 @@ function fixture({ unrelated = false, wrongIdentity = false } = {}) {
   const location = {origin:'https://play.fables.gg',pathname:'/01a0d854-78d5-7064-ae41-f63d561c8e01/play',search:''};
   const window = {open:(...args)=>opened.push(args),setInterval:()=>1,addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
   const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block'}),queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
-  const configure = (show,w=400,h=700)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${show},${w},${h})`,context);
+  const configure = (show,w=400,h=700,palette)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${show},${w},${h},${JSON.stringify(palette)})`,context);
   const flush = ()=>{while(microtasks.length) microtasks.shift()();};
   return {configure,flush,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,get clicks(){return clicks;},get closes(){return closes;}};
 }
@@ -71,4 +71,11 @@ test('native dismissal does not reopen on subsequent layout updates',()=>{
 test('wrong origin/route is inert; wrong campaign and another portal sibling never establish ownership',()=>{
   for(const change of [f=>f.location.origin='https://example.com',f=>f.location.pathname='/settings']) {const f=fixture();change(f);f.configure(true);assert.equal(f.clicks,0);assert.equal(f.head.children.length,0);}
   const f=fixture(); f.dialog.__reactFiber$fixture.child.memoizedProps.campaignId='other'; f.dialog.__reactFiber$fixture.sibling={type:function NativeCampaign(){return 'Campaign Settings';},memoizedProps:{campaignId:'01a0d854-78d5-7064-ae41-f63d561c8e01',isHost:true}};f.configure(true);assert.equal(f.dialog.getAttribute('data-ff-campaign-panel'),null);f.configure(false);assert.equal(f.closes,0);assert.deepEqual(f.opened,[]);
+});
+
+test('desktop palette overrides owned Campaign styling and survives layout updates',()=>{
+ const f=fixture(),palette={background:'#202124',foreground:'#f5f5f5',border:'rgb(70, 71, 72)',accent:'#d8bb82',panel:'#17181a',selected:'#383a3e'};
+ f.configure(true,400,700,palette);assert.match(f.head.children[0].textContent,/background:#202124!important/);assert.match(f.head.children[0].textContent,/font:14px system-ui/);
+ f.configure(true,450,650);assert.equal(f.clicks,1);assert.match(f.head.children[0].textContent,/background:#202124!important/);f.configure(false);assert.equal(f.closes,1);
+ const g=fixture();g.configure(true,400,700,{...palette,background:'red;}body{display:none'});assert.doesNotMatch(g.head.children[0].textContent,/body\{|display:none/);
 });
