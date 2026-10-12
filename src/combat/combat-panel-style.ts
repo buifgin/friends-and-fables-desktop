@@ -576,7 +576,7 @@ export function combatPanelAppearanceCss(
   const surface = ':is([data-ff-combat-docked][data-ff-combat-docked][data-ff-combat-docked], [data-ff-combat-panel][data-ff-combat-panel][data-ff-combat-panel])';
   const customizedSurface = `${surface}${surface}`;
   const buttons = `${customizedSurface} button:not([role="checkbox"]):not([role="switch"])`;
-  const actionButtons = `${customizedSurface} :is(button[type="submit"], button:has(.lucide-chevron-left))`;
+  const actionButtons = `${customizedSurface} :is(button[type="submit"], [data-ff-desktop-message="roll-menu"] .relative:has(> [role="combobox"]) > button:first-child)`;
   const targetCheckbox = `${customizedSurface} label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) > button[role="checkbox"]`;
   const actionBorder = settings.enabled && settings.customizeBorder
     ? hex(settings.borderColor ?? '', '#555555')
