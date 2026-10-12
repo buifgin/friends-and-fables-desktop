@@ -123,7 +123,8 @@ function showSettings(settings) {
     ['customize-spacing','customizeSpacing',false], ['tile-gap','tileGap',8], ['content-padding','contentPadding',20],
   ]) {
     const control = element(`combat-panel-${id}`);
-    control[control.type === 'checkbox' ? 'checked' : 'value'] = combatPanel[key] ?? fallback;
+    const value = combatPanel[key] ?? fallback;
+    control[control.type === 'checkbox' ? 'checked' : 'value'] = key === 'buttonBackgroundOpacity' ? value * 100 : value;
   }
   element('message-styles').checked = settings.messages.enabled;
   element('input-styles').checked = settings.input.enabled;

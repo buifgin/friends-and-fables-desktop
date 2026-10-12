@@ -412,10 +412,19 @@ async function save(settings, window) {
   assert.equal(await settingsContents.executeJavaScript("document.getElementById('combat-panel-button-background-opacity-label').value"), '42%',
     'The saved button background alpha is shown in the slider output.');
   await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
+  assert.equal(await settingsContents.executeJavaScript("document.getElementById('combat-panel-button-background-opacity').value"), '42',
+    'Reloading settings maps the saved normalized alpha back to the percentage slider.');
+  assert.equal(await settingsContents.executeJavaScript("document.getElementById('combat-panel-button-background-opacity-label').value"), '42%',
+    'Reloading settings restores the saved percentage output.');
   assert.deepEqual(await settingsContents.executeJavaScript(`['tile-gap','content-padding'].map(id=>document.getElementById('combat-panel-'+id).value)`),['24','32']);
 
   await save({ ...DEFAULT_APPEARANCE }, settingsWindow);
   await until(settingsContents, "!document.querySelector('#apply').disabled");
+  await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
+  assert.equal(await settingsContents.executeJavaScript("document.getElementById('combat-panel-button-background-opacity').value"), '100',
+    'Reloading default appearance restores full button background opacity.');
+  assert.equal(await settingsContents.executeJavaScript("document.getElementById('combat-panel-button-background-opacity-label').value"), '100%',
+    'The default full-opacity label is restored with the form.');
   await save({ preset: 'amoled', customColor: '#161616' }, settingsWindow);
   const amoled = await colors(website.webContents);
   assert.equal(amoled.background, 'rgb(0, 0, 0)');
