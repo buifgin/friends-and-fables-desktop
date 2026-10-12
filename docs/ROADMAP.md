@@ -108,6 +108,21 @@
 - [x] Preserve search-icon padding and theme the sidebar account tile.
 - [x] Center command hints and prepare/check the complete draft before Enter or Send submission; convert № to # outside code.
 
+## Current source UI corrections (unpublished)
+
+The following corrections are present in current source after the published 0.7.2.7 release. They do not change that release, its tag, or its packages. The broad Windows/live coverage items elsewhere in this roadmap remain open where marked.
+
+- [x] Move Music to the first website-header position and retain expandable inline transport, volume, and library controls.
+- [x] Preserve the existing General option for hiding the desktop top bar in fullscreen and its Ctrl+Shift+B toggle.
+- [x] Remove the desktop palette shortcut and add a Settings entry on Home for global sections; keep Campaign and Combat inside a campaign. Reuse the panel for section changes, scroll only on overflow, and keep one close control. Music remains a reserved Settings section.
+- [x] Keep the native desktop Settings appearance consistent; preserve campaign desktop colors and panel-node identity during section changes.
+- [x] Keep native target checkboxes visible and high contrast; preserve their existing selection behavior.
+- [x] Remove the duplicate ordinary-check correction block while preserving native attack/spell corrections and defaults.
+- [x] Translate combat roll mode **Vantage** as **Тип броска** in its roll context.
+- [x] Keep native spell slots usable while a left combat panel is open.
+- [x] Keep pending Franz status dots from shifting the background/gutter; retain resizing for actual pending prose.
+- [x] Add separate campaign-local options, dependent on Automatic Damage, to hide the intermediate Franz response and the linked completed Damage prompt/card. The actual damage-number/dice result, attack result, final Franz response, unrelated events, and text-based attacks remain visible. Local hiding does not prevent server generation, context use, or credits.
+
 ## Next features (unreleased)
 
 - [x] Add a direct audio link player beside the campaign dice button and in the app menu, with a saved playlist, volume/mute, seeking, track navigation, and repeat.
@@ -120,9 +135,17 @@
 - [x] Add a searchable built-in catalog of 266 official CC BY music links, English/Russian mood and genre filters, playlist actions, source/license links, and attribution copying.
 
 
-## Future combat workspace
+## Future music ideas (deferred)
 
-- [ ] Explore the three-column combat workspace with automatic entry and manual toggle, first active player character, and local presets applied to submitted rolls; an optional sheet-update toggle needs supported-field/write-path investigation. See [the plan](COMBAT-WORKSPACE-PLAN.md).
+These ideas are recorded for later consideration only. They are not implemented, and their scope and defaults remain undecided. The current Music Settings section remains reserved.
+
+- [ ] Consider campaign-specific playlists alongside the existing shared local library.
+- [ ] Consider smooth fade-in/fade-out when tracks change.
+- [ ] Consider an optional setting to pause playback when leaving or switching campaigns.
+
+## Future combat workspace changes
+
+The left combat workspace and native action/check docking are implemented. The original three-column proposal was superseded by the left-panel workspace request. Named local presets are already available and loaded manually; saved weapon/spell overrides apply automatically to matching untouched native attack forms. Future work is limited to evaluating stat-derived or role-aware modifier rules and inspecting supported fields/write paths before promising or enabling character-sheet updates. See [the plan](COMBAT-WORKSPACE-PLAN.md).
 
 ## Future character progression improvements
 
