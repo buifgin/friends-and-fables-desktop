@@ -333,7 +333,7 @@ async function save(settings, window) {
   await viewportWindow.webContents.executeJavaScript("document.getElementById('native-panel').removeAttribute('data-panel-size')");
   await until(viewportWindow.webContents,"document.getElementById('native-chat').hasAttribute('data-ff-desktop-chat-background')");
   await viewportWindow.webContents.executeJavaScript("document.getElementById('native-panel').setAttribute('data-panel-size','65');document.getElementById('native-chat').remove()");
-  await until(viewportWindow.webContents,"!document.querySelector('[data-ff-desktop-chat-background]')");
+  await until(viewportWindow.webContents,"!document.querySelector('[data-ff-desktop-chat-background]') && window.viewportNodes.every(n=>!n.hasAttribute('data-ff-desktop-chat-background') && !n.hasAttribute('data-ff-desktop-chat-layer') && !n.hasAttribute('data-ff-desktop-chat'))");
   assert.equal(await viewportWindow.webContents.executeJavaScript("window.viewportNodes.every(n=>!n.hasAttribute('data-ff-desktop-chat-background') && !n.hasAttribute('data-ff-desktop-chat-layer') && !n.hasAttribute('data-ff-desktop-chat'))"),true,'Removed native nodes lose only owned markers.');
   await viewportWindow.webContents.executeJavaScript("document.getElementById('native-main').append(window.viewportNodes[2])");
   await until(viewportWindow.webContents,"document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
