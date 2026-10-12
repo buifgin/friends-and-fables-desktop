@@ -450,6 +450,32 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert.equal(await contents.executeJavaScript('pendingMutations.length'),0,'No transient blanking, placeholder insertion or min-height/style mutation is allowed.');
  assert.equal(await contents.executeJavaScript("document.querySelectorAll('.native-spinner').length"),2,'Spinners are never cloned.');
  assert.equal(await contents.executeJavaScript("document.getElementById('pending-chat').hasAttribute('data-ff-desktop-chat') && document.getElementById('events-list').hasAttribute('data-ff-desktop-chat-layer')"),true);
+ await contents.executeJavaScript(`document.body.insertAdjacentHTML('beforeend',
+  '<main id="footer-scroll-main" style="width:560px;height:180px;overflow-y:auto;overflow-x:hidden;border:0;padding:0">'+
+   '<div id="footer-chat" data-ff-desktop-chat class="flex flex-col flex-1 w-full mx-auto h-full" style="display:flex;flex-direction:column;height:100%;width:100%">'+
+    '<div id="footer-feed" style="flex:1 1 auto;min-height:0;overflow-y:auto"><div style="height:320px">Scrollable native events</div></div>'+
+    '<div class="flex flex-row" style="display:flex"><div class="relative max-w-[950px] w-full mx-auto"><div class="grid relative grid-cols-[40px_1fr_30px]" style="display:grid;grid-template-columns:40px minmax(0,1fr) 30px"><div class="relative">Avatar</div><div class="min-w-0 relative ml-4" style="display:flex;flex-direction:column"><div style="height:100px;flex:none">Native composer and controls</div><div id="notice-footer" class="h-[30px] pl-4 hidden md:flex items-center relative" style="height:30px;min-height:0;display:flex;align-items:center;position:relative;padding-left:16px"><span id="notice-text" class="text-gray-500 text-xs text-center w-full z-0 absolute left-0 right-0" style="position:absolute;left:0;right:0;width:100%;font-size:12px;line-height:16px;text-align:center">Прежде чем продолжить, убедитесь, что вы проверили свои изменения и готовы отправить их в кампанию.</span></div></div><div id="footer-menu" style="position:absolute;right:0;bottom:100%">Native positioned menu</div></div></div></div>'+
+   '</div></main>');`);
+ const footerGeometry=()=>contents.executeJavaScript(`(()=>{const main=document.getElementById('footer-scroll-main'),chat=document.getElementById('footer-chat'),feed=document.getElementById('footer-feed'),footer=document.getElementById('notice-footer'),notice=document.getElementById('notice-text');return {outer:{client:main.clientHeight,scroll:main.scrollHeight},feed:{client:feed.clientHeight,scroll:feed.scrollHeight,overflow:getComputedStyle(feed).overflowY},footer:{height:footer.getBoundingClientRect().height,minHeight:getComputedStyle(footer).minHeight},notice:{height:notice.getBoundingClientRect().height,bottom:notice.getBoundingClientRect().bottom},chatHeight:chat.getBoundingClientRect().height,menuPosition:getComputedStyle(document.getElementById('footer-menu')).position}}})()`);
+ const russianFooter=await footerGeometry();
+ assert(russianFooter.notice.height>30,'The Russian composer notice wraps beyond the native 30px footer height.');
+ assert.equal(russianFooter.outer.scroll,russianFooter.outer.client,'Wrapped Russian composer notice stays inside the fixed native chat viewport.');
+ assert(russianFooter.feed.scroll>russianFooter.feed.client,'The native event feed remains the actual scroll owner.');
+ assert.equal(russianFooter.footer.height,russianFooter.notice.height,'Composer footer grows to the wrapped notice height.');
+ assert.equal(russianFooter.menuPosition,'absolute','Native positioned menus retain their positioning.');
+ await contents.executeJavaScript(`(()=>{document.getElementById('notice-text').textContent='Before sending, make sure that you have carefully reviewed your changes and are ready to submit them to the campaign.'})()`);
+ const englishFooter=await footerGeometry();
+ assert(englishFooter.notice.height>30,'The English composer notice wraps in the fixture viewport.');
+ assert.equal(englishFooter.outer.scroll,englishFooter.outer.client,'English notice wrapping also stays inside the native chat viewport.');
+ assert.equal(englishFooter.footer.height,Math.max(30,englishFooter.notice.height),'Footer retains its 30px minimum when English fits on one line.');
+ await contents.executeJavaScript("document.getElementById('notice-text').textContent='Ready to send.'");
+ const shortFooter=await footerGeometry();
+ assert.equal(shortFooter.notice.height,16);assert.equal(shortFooter.footer.height,30,'A short notice retains the original 30px minimum footer height.');
+ await contents.executeJavaScript("document.getElementById('footer-scroll-main').style.width='300px';document.getElementById('notice-text').textContent='Перед отправкой убедитесь, что вы проверили изменения и готовы продолжить работу в кампании.'");
+ const resizedRussianFooter=await footerGeometry();
+ assert(resizedRussianFooter.notice.height>30,'The Russian composer notice remains wrapped after narrowing the viewport.');
+ assert.equal(resizedRussianFooter.outer.scroll,resizedRussianFooter.outer.client,'Resizing to a narrow Russian layout does not create a second outer scrollbar.');
+ assert(resizedRussianFooter.feed.scroll>resizedRussianFooter.feed.client,'The event feed remains scrollable after resizing.');
  await contents.executeJavaScript("pendingWatch.disconnect();window.__friendsFablesDesktopTranslation.dispose();window.__friendsFablesDesktopChatAppearance.dispose();pendingCss.remove()");
  assert.equal(await contents.executeJavaScript("document.getElementById('roll-vantage').textContent"),'Vantage');
  // Dynamic blank mode uses the same native Text node, but reserves only ready text and dots.
