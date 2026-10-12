@@ -346,6 +346,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await js("window.nestedParent=document.querySelector('[data-ff-combat-docked]');document.getElementById('nested').click()");
  await until("document.body.style.pointerEvents==='none' && document.querySelector('[data-ff-combat-mode=actions]').getAttribute('aria-pressed')==='true'");
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')===nestedParent && document.querySelector('form')===originalForm"),true,'Nested native popup retains original dock and form.');
+ assert.equal(await js('window.__friendsFablesDesktopCombatPanel.closeForSettings()'),false,'Settings handoff cannot close a dock protected by a nested native layer.');
  assert.deepEqual(await panelBounds(),beforeNested,'Opening a nested native popup must keep its parent bounds stable.');
  assert.equal(await js("document.getElementById('chat').getBoundingClientRect().width"),chatBeforeNested,'Chat reservation stays stable under a nested modal.');
  assert.equal(await js("document.getElementById('campaign').getAttribute('aria-hidden')"),'true');
@@ -454,8 +455,13 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('[data-ff-combat-docked]')");
  await js("document.querySelector('[data-ff-combat-mode=skills]').click()");await until("!!document.querySelector('#d20') && !!document.querySelector('[data-ff-combat-docked]')");
  const beforeAsync=await js("({chat:document.getElementById('chat').getBoundingClientRect().width,map:originalCanvas.getBoundingClientRect().x,opens})");
+ // The controller's document capture sees submission before this native form
+ // capture callback. Test the in-flight boundary while the same picker is
+ // still mounted, before its native submit handler performs unmount.
+ await js("window.pendingSettingsCloseCalls=0;window.pendingSettingsDock=document.querySelector('[data-ff-combat-docked]');window.pendingSettingsNativeX=originalNativeX.onclick;originalNativeX.onclick=()=>{pendingSettingsCloseCalls++;pendingSettingsNativeX()};originalForm.addEventListener('submit',()=>{const denied=window.__friendsFablesDesktopCombatPanel.closeForSettings()===false;window.pendingSettingsHandoff={denied,connected:pendingSettingsDock.isConnected,sameDock:document.querySelector('[data-ff-combat-docked]')===pendingSettingsDock,sameForm:document.querySelector('form')===originalForm,closeCalls:pendingSettingsCloseCalls}}, {capture:true,once:true})");
  await js("window.layoutFlips=[];window.layoutObserver=new MutationObserver(records=>{for(const record of records)layoutFlips.push({old:record.oldValue,current:document.documentElement.getAttribute('data-ff-combat-open')})});layoutObserver.observe(document.documentElement,{attributes:true,attributeOldValue:true,attributeFilter:['data-ff-combat-open']});window.asyncSubmit=true;document.querySelector('button[type=submit]').click()");
  await until("submitPhase==='pending' && !!document.querySelector('[data-ff-combat-docked]')");
+ assert.deepEqual(await js('pendingSettingsHandoff'),{denied:true,connected:true,sameDock:true,sameForm:true,closeCalls:0},'Settings refuses an in-flight native check before unmount without invoking close or replacing its owned dock/form.');
  assert.equal(await js("document.documentElement.getAttribute('data-ff-combat-open')"),'true','Pending native unmount retains reservation.');
  await until("submitPhase==='result'");
  assert.equal(await js("document.body.style.pointerEvents"),'none','Native result remains modal.');
@@ -512,10 +518,18 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  assert.equal(await js("modalState.modalStack[0].content.props.children[1].props.role"),'status');
  assert.deepEqual(await js("({same:document.querySelector('form')===initialTrueForm,draft:initialTrueInput.value,focused:document.activeElement===initialTrueInput,unchangedOpens:opens===initialTrueOpens})"),{same:true,draft:'initial true draft',focused:true,unchangedOpens:true});
  await js('setNativePermission(true)');await until("!initialTrueForm.querySelector('button[type=submit]').disabled && !document.querySelector('#native-turn-warning')");
+ // A deferred native close must never be re-adopted or auto-opened by the adapter.
+ await js("window.settingsDock=document.querySelector('[data-ff-combat-docked]');window.settingsCloseCalls=0;window.settingsOpens=opens;originalNativeX.onclick=()=>{settingsCloseCalls++;setTimeout(nativeClose,80)};window.settingsCloseOwned=window.__friendsFablesDesktopCombatPanel.closeForSettings()===settingsDock");
+ assert.equal(await js('settingsCloseOwned'),true,'Settings handoff returns only the exact owned native dock.');
+ await until("!settingsDock.isConnected && !document.documentElement.hasAttribute('data-ff-combat-open')");
+ await js('setNativeEncounter(412457)');await new Promise(resolve=>setTimeout(resolve,600));
+ assert.deepEqual(await js('({closes:settingsCloseCalls,opens:opens===settingsOpens,editor:originalEditor.textContent})'),{closes:1,opens:true,editor:'preserved draft typed'},'Native callback runs once; encounter updates cannot reopen a settings-suspended dock or alter composer draft.');
+ await js("document.querySelector('[data-ff-combat-mode=actions]').click()");await until("!!document.querySelector('[data-ff-combat-docked]')");
  await configure(false);await until("!document.querySelector('[role=dialog]')");
 
  await js("openNative();document.querySelector('input').value='already open draft'");await configure();
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')===null"),true,'Do not adapt preexisting modal with unknown focus-listener ordering.');
+ assert.equal(await js('window.__friendsFablesDesktopCombatPanel.closeForSettings()'),false,'Preexisting unknown native dialog cannot be closed for Settings.');
  assert.equal(await js("document.querySelector('input').value"),'already open draft');await configure(false);await js('nativeClose()');
  await js('window.rememberedSkill=true;openNative(true)');await configure();
  assert.equal(await js("document.querySelector('[data-ff-combat-docked]')===null"),true,'Even native-shaped remembered skill detail must stay modal when it predates the adapter.');

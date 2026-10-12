@@ -41,7 +41,7 @@ function fixture({ unrelated = false, wrongIdentity = false } = {}) {
   const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block'}),queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
   const configure = (show,w=400,h=700,palette)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${show},${w},${h},${JSON.stringify(palette)})`,context);
   const flush = ()=>{while(microtasks.length) microtasks.shift()();};
-  return {configure,flush,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,get clicks(){return clicks;},get closes(){return closes;}};
+  return {configure,flush,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,gear,get clicks(){return clicks;},get closes(){return closes;}};
 }
 test('off is inert; repeated layouts preserve native form and close once',()=>{
   const f=fixture(); f.configure(false); assert.equal(f.head.children.length,0); assert.equal(f.clicks,0);
@@ -78,4 +78,25 @@ test('desktop palette overrides owned Campaign styling and survives layout updat
  f.configure(true,400,700,palette);assert.match(f.head.children[0].textContent,/background:#202124!important/);assert.match(f.head.children[0].textContent,/font:14px system-ui/);
  f.configure(true,450,650);assert.equal(f.clicks,1);assert.match(f.head.children[0].textContent,/background:#202124!important/);f.configure(false);assert.equal(f.closes,1);
  const g=fixture();g.configure(true,400,700,{...palette,background:'red;}body{display:none'});assert.doesNotMatch(g.head.children[0].textContent,/body\{|display:none/);
+});
+
+
+test('Campaign asks the combat owner once and waits for actual native unmount before snapshot/launch',()=>{
+ const f=fixture(),combat=new f.Element();combat.setAttribute('role','dialog');f.body.append(combat);f.dialogs.push(combat);
+ let calls=0;f.window.__friendsFablesDesktopCombatPanel={closeForSettings(){calls++;return combat;}};
+ f.body.style.setProperty('pointer-events','none');f.background.setAttribute('aria-hidden','true');
+ f.configure(true);f.configure(true,420,710);f.flush();assert.equal(calls,1);assert.equal(f.clicks,0);
+ combat.setAttribute('data-state','closed');f.scan();assert.equal(f.clicks,0,'Closing animation still owns native locks.');
+ combat.remove();f.dialogs.splice(f.dialogs.indexOf(combat),1);f.body.style.removeProperty('pointer-events');f.background.removeAttribute('aria-hidden');
+ f.scan();assert.equal(f.clicks,1);assert.equal(calls,1);assert.equal(f.background.getAttribute('aria-hidden'),null);
+ f.configure(false);assert.equal(f.body.style.pointerEvents,'');assert.equal(f.background.getAttribute('aria-hidden'),null);
+});
+test('blocked combat handoff and a layer arriving during unmount prevent Campaign launch',()=>{
+ const f=fixture({unrelated:true});let calls=0;f.window.__friendsFablesDesktopCombatPanel={closeForSettings(){calls++;return false;}};
+ f.configure(true);assert.equal(f.clicks,0);assert.equal(calls,1);f.configure(false);assert.equal(f.closes,0);
+ const g=fixture(),combat=new g.Element();g.body.append(combat);g.dialogs.push(combat);let accepted=0;
+ g.window.__friendsFablesDesktopCombatPanel={closeForSettings(){accepted++;return combat;}};g.configure(true);
+ const nested=new g.Element();nested.setAttribute('role','listbox');g.body.append(nested);g.dialogs.push(nested);
+ combat.remove();g.dialogs.shift();g.scan();assert.equal(g.clicks,0);assert.equal(accepted,1);assert.equal(nested.isConnected,true);
+ nested.remove();g.dialogs.pop();g.scan();assert.equal(g.clicks,1);assert.equal(accepted,1);
 });

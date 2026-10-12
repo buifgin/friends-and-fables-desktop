@@ -1,6 +1,6 @@
 // Serialized into the sandboxed website. Keep this function self-contained.
 export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css: string): void {
-  type Controller = { update(locale: 'en' | 'ru', css: string): void; dispose(): void };
+  type Controller = { update(locale: 'en' | 'ru', css: string): void; dispose(): void; closeForSettings(): HTMLElement | null | false };
   const key = '__friendsFablesDesktopCombatPanel';
   const host = window as unknown as Record<string, Controller | undefined>;
   if (host[key]) { if (enabled) host[key]!.update(locale, css); else host[key]!.dispose(); return; }
@@ -19,12 +19,14 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       ? '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/><circle cx="12" cy="12" r="1"/></svg>'
       : '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" x2="9" y1="14" y2="18"/><line x1="7" x2="4" y1="17" y2="20"/><line x1="3" x2="5" y1="19" y2="21"/></svg>';
     button.addEventListener('click', () => {
-      if (button.disabled || otherLayer()) return;
+      if (button.disabled || otherLayer() || settingsClosing?.isConnected) return;
+      settingsSuppressed = false;
       if (reserved && mode === name) { close(); return; }
       if (reserved || picker) close(); requested = name; schedule();
     }); controls.append(button);
   }
   let reserved = false, pending = false, pendingReopened = false, internalLaunch = false;
+  let settingsSuppressed = false, settingsClosing: HTMLElement | null = null;
   const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top', '--ff-combat-controls-bottom'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
   const railWritten = new Map<string, string>();
   let mountedRail: HTMLElement | null = null, mountedRailAside: HTMLElement | null = null;
@@ -214,6 +216,24 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const current = picker; release(); attempted = true;
     current?.querySelector<HTMLButtonElement>('button:has(.lucide-x)')?.click();
     picker = null; launched = null; requested = null; updateControls();
+  }
+  // Settings may dismiss only our live owned dock through its native handler.
+  // Return the node so the caller can observe actual unmount, including animations.
+  function closeForSettings(): HTMLElement | null | false {
+    // Submission is already in flight during the mounted-picker capture phase.
+    if (disposed || pending || launched || requested || otherLayer() || settingsClosing?.isConnected) return false;
+    if (picker) {
+      if (!picker.isConnected || !reserved || !picker.hasAttribute('data-ff-combat-docked')) return false;
+      const nativeClose = picker.querySelector<HTMLButtonElement>('button:has(.lucide-x)');
+      if (!nativeClose || nativeClose.disabled) return false;
+      settingsClosing = picker;
+      settingsSuppressed = true;
+      close();
+      return settingsClosing;
+    }
+    if (reserved) return false;
+    settingsSuppressed = true;
+    return null;
   }
   function labels(): void {
     for (const [button, label] of [[skillsTab, language === 'ru' ? 'Кости' : 'Dice'], [actionsTab, language === 'ru' ? 'Действия боя' : 'Combat actions']] as const) {
@@ -505,7 +525,8 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     // switch. Wait for the requested native surface instead.
     const awaitingDice = launched === 'skills' || requested === 'skills';
     const found = skills ?? (!awaitingDice ? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? ''))) : undefined);
-    if (found && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
+    if (settingsClosing && !settingsClosing.isConnected) settingsClosing = null;
+    if (found && found !== settingsClosing && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     filterAdventure();
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
     syncNativeTurn();
@@ -517,7 +538,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       // or deferred native capability, and let result/nested layers finish first.
       pendingReopened = true; open(mode);
     }
-    else if (now && !attempted && !reserved && !pending && !found && !otherLayer()) open();
+    else if (!settingsSuppressed && now && !attempted && !reserved && !pending && !found && !otherLayer()) open();
   }
   function schedule(): void { if (!queued && !disposed) { queued = true; queueMicrotask(scan); } }
   const observer = new MutationObserver(schedule); observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', 'aria-expanded'] });
@@ -530,7 +551,8 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (clicked && picker?.contains(clicked) && mode === 'skills' && clicked.querySelector('svg:is(#d4,#d6,#d8,#d10,#d12,#d20,#d100)') && /^(Roll|Бросок)$/i.test(clicked.innerText.trim())) { pending = true; pendingReopened = false; attempted = true; }
     if (picker?.querySelector('button:has(.lucide-x)')?.contains(event.target) && !otherLayer()) pending = false;
     const next = dice?.contains(event.target) ? 'skills' : action?.contains(event.target) ? 'actions' : null;
-    if (!next || internalLaunch || otherLayer()) return;
+    if (!next || internalLaunch || otherLayer() || settingsClosing?.isConnected) return;
+    settingsSuppressed = false;
     // Observe before native handlers; do not cancel or replace their event.
     if (picker || reserved) close();
     mode = next; launched = next; attempted = true; rememberBackground();
@@ -549,6 +571,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   // Native Escape handles picker dismissal, including its own nested layers.
   document.addEventListener('click', schedule, true); window.addEventListener('popstate', schedule);
   host[key] = {
+    closeForSettings,
     update(value, nextCss) { language = value; if (style.textContent !== nextCss) style.textContent = nextCss; labels(); schedule(); },
     dispose() { disposed = true; observer.disconnect(); clearInterval(timer); if (picker || reserved) close();
       document.removeEventListener('wheel', wheelGate);
