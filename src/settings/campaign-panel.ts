@@ -1,16 +1,19 @@
+export interface CampaignPanelPalette { background:string; foreground:string; border:string; accent:string; panel:string; selected:string; }
+
 // Serialized into the website: all runtime dependencies must remain local.
-export function configureNativeCampaignPanel(show: boolean, width: number, height: number): void {
-  type Controller = { update(width: number, height: number): void; dispose(): void };
+export function configureNativeCampaignPanel(show: boolean, width: number, height: number, palette?:CampaignPanelPalette): void {
+  type Controller = { update(width: number, height: number, palette?:CampaignPanelPalette): void; dispose(): void };
   type Fiber = { type?: unknown; memoizedProps?: Record<string, unknown>; return?: Fiber; child?: Fiber; sibling?: Fiber };
   const key = '__friendsFablesDesktopCampaignPanel';
   const host = window as unknown as Record<string, Controller | undefined>;
-  if (host[key]) { if (show) host[key]!.update(width, height); else host[key]!.dispose(); return; }
+  if (host[key]) { if (show) host[key]!.update(width, height, palette); else host[key]!.dispose(); return; }
   if (!show) return;
   const match = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/play\/?$/i.exec(location.pathname);
   if (location.origin !== 'https://play.fables.gg' || !match) return;
   const campaignId = match[1].toLowerCase();
   let disposed = false, queued = false, attempted = false, panel: HTMLElement | null = null;
   let panelWidth = width, panelHeight = height, modalActive = false;
+  let desktopPalette=palette;
   const route = location.pathname + location.search;
   const existing = new Set(document.querySelectorAll('[role="dialog"]'));
   const bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
@@ -22,6 +25,10 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
     panelWidth = Number.isFinite(panelWidth) ? Math.max(0, Math.round(panelWidth)) : 0;
     panelHeight = Number.isFinite(panelHeight) ? Math.max(0, Math.round(panelHeight)) : 0;
     style.textContent = `[data-ff-campaign-panel]{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;transform:none!important;translate:none!important;width:${panelWidth}px!important;height:${panelHeight}px!important;min-width:0!important;max-width:${panelWidth}px!important;max-height:${panelHeight}px!important;box-sizing:border-box!important;border-radius:0!important;overflow:auto!important;animation:none!important;transition:none!important}[data-ff-campaign-workspace]{padding-left:${panelWidth}px!important;box-sizing:border-box!important;min-width:0!important}`;
+    const p=desktopPalette;
+    // Only app-generated CSS colors are accepted; never interpolate arbitrary CSS.
+    const color=(value:unknown):value is string=>typeof value==='string'&&/^(?:#[0-9a-f]{6}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i.test(value);
+    if(p&&[p.background,p.foreground,p.border,p.accent,p.panel,p.selected].every(color))style.textContent+=`[data-ff-campaign-panel]{font:14px system-ui,sans-serif!important;color:${p.foreground}!important;background:${p.background}!important;border-color:${p.border}!important}[data-ff-campaign-panel] *{font-family:inherit!important}[data-ff-campaign-panel] :is(button,input,textarea,[role="combobox"]){font-size:14px!important;color:${p.foreground}!important;background:${p.panel}!important;border:1px solid ${p.border}!important;border-radius:6px!important}[data-ff-campaign-panel] button:hover{background:${p.selected}!important;border-color:${p.accent}!important}[data-ff-campaign-panel] :is(button,input,textarea,[role="combobox"]):focus-visible{outline:2px solid ${p.accent}!important;outline-offset:2px}[data-ff-campaign-panel] :is(input[type="checkbox"],[role="checkbox"],[role="switch"]){accent-color:${p.accent}!important}[data-ff-campaign-panel] :is([role="checkbox"],[role="switch"])[data-state="checked"]{background:${p.accent}!important}`;
   }
   function attr(node: HTMLElement, name: string, value: string | null, undo: (() => void)[]): void {
     const old = node.getAttribute(name);
@@ -127,6 +134,6 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
   document.addEventListener('wheel', wheelGate); document.addEventListener('focusin', focusGate); document.addEventListener('focusout', focusGate);
   document.addEventListener('dismissableLayer.pointerDownOutside', outside, true); document.addEventListener('dismissableLayer.focusOutside', outside, true);
   window.addEventListener('popstate', schedule); window.addEventListener('resize', schedule);
-  host[key] = { update(nextWidth, nextHeight) { if (disposed) return; panelWidth = nextWidth; panelHeight = nextHeight; dimensions(); schedule(); }, dispose };
+  host[key] = { update(nextWidth, nextHeight, nextPalette) { if (disposed) return; panelWidth = nextWidth; panelHeight = nextHeight;if(nextPalette)desktopPalette=nextPalette; dimensions(); schedule(); }, dispose };
   dimensions(); scan();
 }

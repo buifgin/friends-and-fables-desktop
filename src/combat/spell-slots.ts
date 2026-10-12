@@ -97,7 +97,14 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
     if (!entry || !Number.isInteger(entry.max_slots) || !Number.isInteger(entry.used_slots) || entry.max_slots !== b.max || entry.used_slots < 0 || entry.used_slots > entry.max_slots) return false;
     return b.index >= 0 && b.index < entry.max_slots && b.available === (b.index < entry.max_slots - entry.used_slots);
   }
-  type Request = { b: Binding; route: string; focus: Element | null; deadline: number; dialog?: HTMLElement; overlay?: HTMLElement; close?: HTMLButtonElement; styles?: (string | null)[]; injectedStyles?: (string | null)[]; provider?: Fiber; called: boolean; mutation?: NativeObserver };
+  type Docked = { node:HTMLElement; overlay:HTMLElement; owner:Fiber; marker:string; mode:string|null };
+  const dockMarker=(node:HTMLElement):string|undefined=>node.hasAttribute('data-ff-combat-docked')&&node.hasAttribute('data-ff-combat-panel')?'data-ff-combat-docked':node.hasAttribute('data-ff-campaign-panel')?'data-ff-campaign-panel':undefined;
+  function dockOwned(d:Docked):boolean {
+    const current=fiber(d.node);
+    return d.node.isConnected&&d.node.parentElement===document.body&&d.node.getAttribute('role')==='dialog'&&d.node.getAttribute('data-state')!=='closed'&&dockMarker(d.node)===d.marker&&d.node.getAttribute('data-ff-combat-panel-mode')===d.mode&&d.node.previousElementSibling===d.overlay&&d.overlay.isConnected&&d.overlay.parentElement===document.body&&d.overlay.getAttribute('data-state')==='open'&&!!current&&(current===d.owner||current.alternate===d.owner||d.owner.alternate===current);
+  }
+  function layers(docks:Docked[]):HTMLElement[] {return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')).filter(node=>!docks.some(d=>node===d.node&&dockOwned(d)));}
+  type Request = { docks:Docked[]; b: Binding; route: string; focus: Element | null; deadline: number; dialog?: HTMLElement; overlay?: HTMLElement; close?: HTMLButtonElement; styles?: (string | null)[]; injectedStyles?: (string | null)[]; provider?: Fiber; called: boolean; mutation?: NativeObserver };
   let request: Request | undefined;
   function portal(node: HTMLElement): Fiber | undefined { let f = fiber(node); for (let i = 0; f && i < 60; i++, f = f.return) if (f.tag === 4) return f; return; }
   function closeButton(dialog: HTMLElement): HTMLButtonElement | undefined {
@@ -155,14 +162,18 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
         const original = r.styles[index];
         if (original === null) node.removeAttribute('style'); else if (original !== undefined) node.setAttribute('style', original);
       }
-      if (r.focus instanceof HTMLElement && r.focus.isConnected && !document.querySelector('[role="dialog"], [role="alertdialog"]')) r.focus.focus({ preventScroll: true });
+      if (r.focus instanceof HTMLElement && r.focus.isConnected && r.docks.every(d=>dockOwned(d)&&d.node.getAttribute('aria-modal')==='false')&&!layers(r.docks).length) r.focus.focus({ preventScroll: true });
     }, 300);
     attribute(r.b.node, 'aria-busy', null);
   }
   function advance(): void {
     const r = request; if (!r) return;
     if (disposed || campaign() !== r.route || !r.b.node.isConnected || Date.now() > r.deadline) { finish(); return; }
-    const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]'));
+    if(!r.docks.every(dockOwned)){finish();return;}
+    // Docking controllers temporarily restore aria-modal while a nested sheet owns locks.
+    // Only the exact panels captured before opening that sheet may be excluded.
+    const dialogs = layers(r.docks);
+    if(dialogs.some(node=>node.getAttribute('role')==='alertdialog')||dialogs.length>1){finish();return;}
     if (!r.dialog && dialogs.length === 1) {
       const d = dialogs[0]!, overlay = d.previousElementSibling;
       const close = closeButton(d);
@@ -198,7 +209,14 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
     props(b.node)!.onClick!();
   }
   function activate(node: HTMLElement): void {
-    const b = binding(node); if (!b || b.sheet || request || !campaign() || document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+    const b = binding(node); if (!b || b.sheet || request || !campaign()) return;
+    const docks:Docked[]=[];
+    for(const panel of layers([])){
+      const marker=dockMarker(panel),owner=fiber(panel),overlay=panel.previousElementSibling;
+      if(panel.getAttribute('role')!=='dialog'||panel.getAttribute('aria-modal')!=='false'||!marker||!owner||!(overlay instanceof HTMLElement)||!overlay.classList.contains('fixed')||!overlay.classList.contains('inset-0'))return;
+      const dock={node:panel,overlay,owner,marker,mode:panel.getAttribute('data-ff-combat-panel-mode')};
+      if(!dockOwned(dock))return;docks.push(dock);
+    }
     let container: HTMLElement | null = node.parentElement;
     let open: HTMLButtonElement | undefined;
     for (let i = 0; container && i < 10; i++, container = container.parentElement) {
@@ -213,7 +231,7 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
       if (open) break;
     }
     if (!open || open.disabled) return;
-    request = { b, route: campaign(), focus: document.activeElement, deadline: Date.now() + 5000, called: false };
+    request = { docks, b, route: campaign(), focus: document.activeElement, deadline: Date.now() + 5000, called: false };
     attribute(node, 'aria-busy', 'true');
     props(open)!.onClick!(); advance();
   }
