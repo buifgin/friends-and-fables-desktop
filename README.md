@@ -6,6 +6,8 @@ The app opens the existing website and adds local themes, campaign chat pictures
 
 The current release is [0.7.2.7](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.7.2-7). Its package and tag version is `0.7.2-7`; the public release title is `0.7.2.7`. See [release notes](docs/releases/v0.7.2.7.md).
 
+The source tree also contains completed, unpublished UI corrections for the next development version. They are not part of the published 0.7.2.7 packages or tag; see the current-source notes in [Music](docs/MUSIC.md), [the roadmap](docs/ROADMAP.md), and [the combat workspace plan](docs/COMBAT-WORKSPACE-PLAN.md).
+
 ## Current features
 
 - Open the existing website in a native window.
@@ -30,7 +32,7 @@ The current release is [0.7.2.7](https://github.com/buifgin/friends-and-fables-d
 - Use a black application menu bar and dropdowns on Linux, with an option to restore the system menu bar. Open Appearance as a floating window on Hyprland.
 - Build a Linux x86_64 AppImage and Windows x64 portable EXE; keep the development ZIP option.
 
-- Play music from the searchable bundled catalog or local folders, with persistent main-window playback.
+- Play music from the searchable bundled catalog or local folders, with persistent main-window playback and a compact control group in the website header.
 - Save separate adventure/combat `/sp` guidance and named appearance themes.
 - Hide unfinished translations behind animated dots when desired.
 
@@ -119,9 +121,9 @@ In source version 0.4.0, open **App**, enable **Resizable campaign map**, and ap
 
 ### Combat workspace
 
-Release **0.7.0** includes the combat workspace. Open the dice panel with the dice button; the actions panel opens automatically during combat, and its button can close it or reopen it. Both panels sit on the left while chat and the map remain visible. Drag a panel's right edge or focus it and use the arrow keys to resize; hold Shift for larger steps, and press Home or double-click the edge to reset. Panel width is stored per campaign. Appearance → **Side panel** → **Customize side panel appearance** changes panel styling only.
+The source includes the combat workspace. Open the dice panel with the dice button; the actions panel opens automatically during combat, and its button can close it or reopen it. Both panels sit on the left while chat and the map remain visible. Drag a panel's right edge or focus it and use the arrow keys to resize; hold Shift for larger steps, and press Home or double-click the edge to reset. Panel width is stored per campaign. Appearance → **Side panel** → **Customize side panel appearance** changes panel styling only. The published 0.7.2.7 release predates the current UI corrections described below.
 
-The dice panel opens **Favorites** first. Use the top **All checks** and **Favorites** buttons to switch views. **Add** or **Add more** opens the original check tiles with selection checkboxes; the checkbox-style **Confirm** icon saves campaign-local favorites, while **Cancel** discards changes. Favorite tiles open the native check form without rolling. **Corrections** recognizes the native custom-attack modifier and proficiency fields and offers decrement, increment, zero, and apply controls. Named local presets can be saved, loaded, and deleted manually. Presets never apply automatically, and shortcuts do not roll or write to character sheets. Workspace preferences stay local and are excluded from shared themes.
+The dice panel opens **Favorites** first. Use the top **All checks** and **Favorites** buttons to switch views. **Add** or **Add more** opens the original check tiles with selection checkboxes; the checkbox-style **Confirm** icon saves campaign-local favorites, while **Cancel** discards changes. Favorite tiles open the native check form without rolling. Attack and spell correction controls retain their native modifier fields and defaults. Separate saved weapon and spell overrides can be scoped to the current attack for the character and campaign, or saved as a character-and-campaign category default; advantage/disadvantage changes apply only to the current form. The duplicate quick-correction block for ordinary checks has been removed from current source. Named local presets can be saved, loaded, and deleted manually. Presets never apply automatically, and shortcuts do not roll or write to character sheets. Workspace preferences stay local and are excluded from shared themes.
 
 In source version 0.4.0, **App → Enable /me and /gm commands** adds an opt-in draft formatter. `/me I look closer.` becomes italic rich text, while `/gm Keep the party together.` becomes `#Keep the party together.#`. Enter, **Format command**, or the first Send click prepares a command for review; then send normally. Shift+Enter keeps newline behavior. Mentions, links, literal text, and code remain structured. See [message-command behavior](docs/MESSAGE-COMMANDS.md).
 
@@ -129,9 +131,9 @@ Color swatches open an in-app picker. Drag hue, saturation, or lightness, or ent
 
 In **Sharing**, click **Export theme…** to save the current preview as a `.fables-theme.json` file. **Include the selected chat picture** embeds that picture so friends can import the same look without copying a separate file. **Import theme…** loads a theme into the preview; click **Apply changes** to use it. A theme without an embedded picture keeps the recipient's selected picture. Login, campaign data, folder paths, and Linux window/menu preferences are not exported.
 
-The gear on the website’s left side opens unified Settings in a resizable panel. Closing the panel preserves its draft.
+The gear on the website’s left side opens unified Settings in a resizable panel. Home navigation exposes global sections; Campaign and Combat sections are available inside a campaign. Section changes reuse the panel without closing it, navigation scrolls only when needed, and the panel has one close control. Closing the panel preserves its draft. Current-source campaign controls include Automatic Damage and two separate display options: hide the intermediate Franz response, or hide only the completed linked Damage prompt/card. Both display options require Automatic Damage. The resulting damage-number/dice event, attack result, final Franz response, unrelated events, and text-based attacks remain visible. These local display choices do not stop server responses or reduce their context or credit use. These UI corrections are unpublished and are not in release 0.7.2.7.
 
-The application menus and right window controls share one desktop toolbar row. The music shortcut sits in the website header beside its background and grouping controls. Windows starts without a native title bar or border; **App → Show native Windows title bar and border** restores it after restarting. **Show extra expand-input button** is off by default. Command hints stay below the native input border, and opening working context applies its palette to that input. Event styles apply to event cards, while character dialogs follow the app theme.
+The application menus and right window controls share one desktop toolbar row. Music is the first control in the website header, before the existing background and grouping controls. Its compact inline group provides previous, play/pause, next, volume, and library access; expanding the group reveals playback controls without interrupting playback. Windows starts without a native title bar or border; **App → Show native Windows title bar and border** restores it after restarting. **Show extra expand-input button** is off by default. Command hints stay below the native input border, and opening working context applies its palette to that input. Event styles apply to event cards, while character dialogs follow the app theme.
 
 Appearance and Translation settings both follow the saved app theme. Changing the theme keeps unsaved translation choices intact.
 
