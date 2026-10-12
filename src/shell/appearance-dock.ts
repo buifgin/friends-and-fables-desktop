@@ -95,7 +95,10 @@ export class AppearanceDock {
   isOpen(): boolean { return this.opened; }
   async setCampaignAvailable(available:boolean):Promise<void> {
     this.hub.setCampaignAvailable(available);
-    if(!available&&this.opened&&['campaign','combat'].includes(this.hub.currentSection()))await this.openSection('general');
+    if(!available&&this.opened){
+      if(['campaign','combat'].includes(this.hub.currentSection()))await this.openSection('general');
+      else this.layout();
+    }
   }
   refreshCampaign():void { this.hub.refreshCampaign(); }
   closeCampaign(): void { if (this.opened && this.hub.currentSection() === 'campaign') this.hide(); }
@@ -137,8 +140,9 @@ export class AppearanceDock {
     const geometry=settingsGeometry(width,height,this.width,inset);
     const panelWidth = this.opened ? geometry.panel.width : 0;
     // Native Campaign settings paint inside the website; its adapter reserves
-    // the content strip, while the hub's own view covers only the navigation.
-    const campaign=this.opened&&this.hub.currentSection()==='campaign';
+    // the content strip. Keep those website bounds while other editors cover
+    // the retained native form; only closing Settings releases the strip.
+    const campaign=this.opened&&this.hub.hasRetainedCampaign();
     const websiteX=campaign?geometry.navigation.width:panelWidth;
     this.website.setBounds({x:websiteX,y:inset,width:Math.max(0,width-websiteX),height:Math.max(0,height-inset)});
     this.hub.layout(geometry.panel);this.hub.setVisible(this.opened);

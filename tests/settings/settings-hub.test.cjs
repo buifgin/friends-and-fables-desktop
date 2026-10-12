@@ -8,7 +8,7 @@ function fixture(){handlers.clear();const window=new EventEmitter();window.conte
 test('section switches retain editor view identity and unsaved state',async()=>{const f=fixture();await f.hub.select('appearance');const first=f.created[0];first.webContents.unsaved='draft';await f.hub.select('translation');assert.equal(first.visible,false);await f.hub.select('appearance');assert.equal(f.created.length,2);assert.equal(first.visible,true);assert.equal(first.webContents.unsaved,'draft');assert.deepEqual(first.bounds,{x:126,y:32,width:454,height:700});f.hub.setVisible(false);assert.ok(f.created.every(v=>!v.visible));});
 test('navigation IPC rejects website, subframe, wrong route and invalid section',async()=>{const {hub}=fixture(),invoke=handlers.get('settings-hub:get');const sender=hub.view.webContents;const event={sender,senderFrame:sender.mainFrame};assert.equal(invoke(event).section,'appearance');assert.deepEqual(invoke(event).theme,{preset:'custom',customColor:'#234567'},'The hub receives the selected theme for palette rendering.');assert.throws(()=>invoke({sender:new Contents(),senderFrame:sender.mainFrame}));assert.throws(()=>invoke({sender,senderFrame:{...sender.mainFrame}}));const old=sender.mainFrame.url;sender.mainFrame.url=SETTINGS_HUB_URL+'?bypass';assert.throws(()=>invoke(event));sender.mainFrame.url=old;assert.throws(()=>handlers.get('settings-hub:select')(event,'../translation'));assert.throws(()=>invoke({sender,senderFrame:null}));});
 test('campaign cannot open without native adapter and music creates no player',async()=>{const f=fixture();await assert.rejects(f.hub.select('campaign'),/not connected/);await f.hub.select('music');assert.equal(f.created.length,0);});
-test('native campaign adapter receives content bounds and host covers nav only',async()=>{const f=fixture(),shown=[],manager={setSettingsOpener(){}};let hidden=0;f.hub.configure({translation:manager,instructions:manager,campaign:{show:b=>shown.push(b),hide:()=>hidden++}});await f.hub.select('campaign');assert.deepEqual(shown.at(-1),{x:126,y:32,width:454,height:700});assert.equal(f.hub.view.bounds.width,126);assert.equal(hidden,0);await f.hub.select('campaign');f.hub.layout({x:0,y:32,width:580,height:700});assert.equal(hidden,0);assert.equal(shown.length,1,'Repeated selection/layout does not relaunch native Campaign');await f.hub.select('general');assert.equal(hidden,1);assert.equal(f.hub.view.bounds.width,580);});
+test('native campaign adapter receives content bounds and host covers nav only',async()=>{const f=fixture(),shown=[],manager={setSettingsOpener(){}};let hidden=0;f.hub.configure({translation:manager,instructions:manager,campaign:{suspend(){},show:b=>shown.push(b),hide:()=>hidden++}});await f.hub.select('campaign');assert.deepEqual(shown.at(-1),{x:126,y:32,width:454,height:700});assert.equal(f.hub.view.bounds.width,126);assert.equal(hidden,0);await f.hub.select('campaign');f.hub.layout({x:0,y:32,width:580,height:700});assert.equal(hidden,0);assert.equal(shown.length,1,'Repeated selection/layout does not relaunch native Campaign');await f.hub.select('general');assert.equal(hidden,0);assert.equal(f.hub.hasRetainedCampaign(),true);f.hub.setVisible(false);assert.equal(hidden,1);assert.equal(f.hub.view.bounds.width,580);});
 test('hide during pending editor load cancels opening',async()=>{const f=fixture();const opening=f.hub.select('appearance');f.hub.setVisible(false);await opening;assert.equal(f.hub.view.visible,false);});
 
 test('combat IPC exposes campaign preferences only to trusted main settings frame and rejects stale saves',async()=>{
@@ -54,7 +54,7 @@ test('Combat renderer disables off-campaign controls, enforces hide dependency a
 
 test('route availability hides campaign sections and rejects unavailable campaign navigation',async()=>{
  const f=fixture(),manager={setSettingsOpener(){}},shown=[];
- f.hub.configure({translation:manager,instructions:manager,campaign:{show:b=>shown.push(b),hide(){}}});
+ f.hub.configure({translation:manager,instructions:manager,campaign:{suspend(){},show:b=>shown.push(b),hide(){}}});
  f.hub.setCampaignAvailable(false);
  const sender=f.hub.view.webContents,event={sender,senderFrame:sender.mainFrame};
  assert.equal(handlers.get('settings-hub:get')(event).campaignAvailable,false);
@@ -64,10 +64,58 @@ test('route availability hides campaign sections and rejects unavailable campaig
 
 test('outer website geometry commits before Campaign adapter mounts and active theme refresh does not reopen',async()=>{
  const f=fixture(),manager={setSettingsOpener(){}},trace=[];
- f.hub.configure({translation:manager,instructions:manager,campaign:{show:b=>trace.push(['show',b]),hide:()=>trace.push(['hide'])}});
+ f.hub.configure({translation:manager,instructions:manager,campaign:{suspend(){},show:b=>trace.push(['show',b]),hide:()=>trace.push(['hide'])}});
  await f.hub.select('campaign',()=>trace.push(['website-strip-committed']));
  assert.deepEqual(trace.map(x=>x[0]),['website-strip-committed','show']);
  f.hub.refreshCampaign();assert.deepEqual(trace.map(x=>x[0]),['website-strip-committed','show','show']);
  await f.hub.select('campaign');assert.equal(trace.length,3,'Repeated selection preserves mounted native section');
- await f.hub.select('general');f.hub.refreshCampaign();assert.equal(trace.length,4,'Off-section theme update cannot mount Campaign');
+ await f.hub.select('general');f.hub.refreshCampaign();assert.equal(trace.length,3,'Off-section theme update cannot mount Campaign');
+});
+
+
+test('Campaign to Translation/General and back retains adapter and reservation until hub close',async()=>{
+ const f=fixture(),trace=[],manager={createPanel:()=>new View(),setSettingsOpener(){}};
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show:b=>trace.push(['show',b]),suspend:()=>trace.push(['suspend']),hide:()=>trace.push(['dispose'])}});
+ const websiteBounds=[];
+ // The dock reserves native Campaign's strip even when local editors cover it.
+ const commit=()=>websiteBounds.push({x:f.hub.hasRetainedCampaign()?126:580,width:f.hub.hasRetainedCampaign()?1154:700});
+ await f.hub.select('campaign',commit);
+ for(const section of ['translation','general']){await f.hub.select(section,commit);assert.equal(f.hub.view.bounds.width,580);assert.equal(f.hub.hasRetainedCampaign(),true);await f.hub.select('campaign',commit);}
+ assert.ok(websiteBounds.every(b=>b.x===126&&b.width===1154));assert.deepEqual(trace.map(x=>x[0]),['show','suspend','show','suspend','show']);
+ assert.ok(trace.filter(x=>x[0]==='show').every(x=>x[1].width===454));
+ await f.hub.select('general',commit);f.hub.setVisible(false);f.hub.setVisible(false);assert.equal(f.hub.hasRetainedCampaign(),false);assert.equal(trace.filter(x=>x[0]==='dispose').length,1);
+});
+test('route unavailability releases a retained Campaign while a different section is active',async()=>{
+ const f=fixture(),manager={setSettingsOpener(){}},trace=[];
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend:()=>trace.push('suspend'),hide:()=>trace.push('dispose')}});
+ await f.hub.select('campaign');await f.hub.select('general');f.hub.setCampaignAvailable(false);f.hub.setVisible(false);
+ assert.deepEqual(trace,['suspend','dispose']);assert.equal(f.hub.hasRetainedCampaign(),false);await assert.rejects(f.hub.select('campaign'),/not available/);
+});
+
+
+test('actual Settings dock keeps website bounds across native Campaign cross-switches and restores full width on close/departure',async()=>{
+ handlers.clear();
+ class Controls{sync(){}layout(){}setVisible(){}raise(){}}
+ class General{hideDesktopTopbarInFullscreen=false;initialize(){return Promise.resolve();}flush(){return Promise.resolve();}}
+ Module._load=function(name,...args){
+  if(name==='electron')return {WebContentsView:View,ipcMain:{handle:(n,f)=>handlers.set(n,f),removeHandler:n=>handlers.delete(n)}};
+  if(name==='./window-controls')return {WindowControls:Controls};
+  if(name==='../settings/general-settings')return {GeneralSettings:General};
+  return original.call(this,name,...args);
+ };
+ let AppearanceDock;try{({AppearanceDock}=require('../../dist/shell/appearance-dock'));}finally{Module._load=original;}
+ const window=new EventEmitter();window.isDestroyed=()=>false;window.isFullScreen=()=>false;window.getContentSize=()=>[1280,800];window.setMenuBarVisibility=()=>{};window.contentView={addChildView(){}};
+ const website=new View(),history=[];website.setBounds=b=>{website.bounds=b;history.push({...b});};
+ const appearance={getLocale:()=> 'en',getSettings:()=>({preset:'custom',customColor:'#234567',appearancePanelWidth:580}),createPanel:()=>new View()};
+ const dock=new AppearanceDock(window,website,appearance),trace=[],manager={createPanel:()=>new View(),setSettingsOpener(){}};
+ dock.configureSettings({translation:manager,instructions:manager,campaign:{show:b=>trace.push(['show',b]),suspend:b=>trace.push(['suspend',b]),hide:()=>trace.push(['dispose'])}});
+ await dock.openSection('general');assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});
+ await dock.openSection('campaign');const reserved={...website.bounds};assert.deepEqual(reserved,{x:126,y:32,width:1154,height:768});
+ history.length=0;
+ for(const section of ['translation','general']){await dock.openSection(section);await dock.openSection('campaign');}
+ assert.ok(history.length>0);assert.ok(history.every(b=>JSON.stringify(b)===JSON.stringify(reserved)),'Every actual dock layout preserves reserved website bounds');
+ assert.deepEqual(trace.map(x=>x[0]),['show','suspend','show','suspend','show']);assert.ok(trace.filter(x=>x[0]!=='dispose').every(x=>x[1].width===454));
+ await dock.openSection('general');dock.hide();assert.deepEqual(website.bounds,{x:0,y:32,width:1280,height:768});assert.equal(trace.filter(x=>x[0]==='dispose').length,1);
+ await dock.openSection('campaign');await dock.openSection('general');await dock.setCampaignAvailable(false);
+ assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});assert.equal(trace.filter(x=>x[0]==='dispose').length,2);dock.hide();assert.equal(trace.filter(x=>x[0]==='dispose').length,2);
 });

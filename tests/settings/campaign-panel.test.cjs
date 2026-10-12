@@ -39,7 +39,7 @@ function fixture({ unrelated = false, wrongIdentity = false } = {}) {
   const location = {origin:'https://play.fables.gg',pathname:'/01a0d854-78d5-7064-ae41-f63d561c8e01/play',search:''};
   const window = {open:(...args)=>opened.push(args),setInterval:()=>1,addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
   const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block'}),queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
-  const configure = (show,w=400,h=700,palette)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${show},${w},${h},${JSON.stringify(palette)})`,context);
+  const configure = (show,w=400,h=700,palette)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${w},${h},${JSON.stringify(palette)})`,context);
   const flush = ()=>{while(microtasks.length) microtasks.shift()();};
   return {configure,flush,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,gear,get clicks(){return clicks;},get closes(){return closes;}};
 }
@@ -99,4 +99,26 @@ test('blocked combat handoff and a layer arriving during unmount prevent Campaig
  const nested=new g.Element();nested.setAttribute('role','listbox');g.body.append(nested);g.dialogs.push(nested);
  combat.remove();g.dialogs.shift();g.scan();assert.equal(g.clicks,0);assert.equal(accepted,1);assert.equal(nested.isConnected,true);
  nested.remove();g.dialogs.pop();g.scan();assert.equal(g.clicks,1);assert.equal(accepted,1);
+});
+
+
+test('Campaign section suspension retains native form, reserved workspace and unlocked body until full close',()=>{
+ const f=fixture();f.configure(true);f.dialog.unsaved='native draft';const controller=f.window.__friendsFablesDesktopCampaignPanel;
+ const workspaceCSS=f.head.children[0].textContent.match(/\[data-ff-campaign-workspace\][^}]+}/)[0];
+ for(const section of ['translation','general']){
+  f.configure('suspend');f.scan();assert.equal(f.closes,0);assert.equal(f.dialog.isConnected,true);assert.equal(f.dialog.unsaved,'native draft');
+  assert.equal(f.window.__friendsFablesDesktopCampaignPanel,controller);assert.match(f.head.children[0].textContent,/visibility:hidden!important/);
+  assert.ok(f.head.children[0].textContent.includes(workspaceCSS),'Reserved game strip remains during '+section);
+  assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),'');assert.equal(f.body.style.pointerEvents,'auto');assert.equal(f.body.style.overflow,'auto');
+  assert.equal(f.background.getAttribute('aria-hidden'),null);assert.equal(f.dialog.getAttribute('aria-modal'),'false');
+  f.configure(true);f.flush();assert.equal(f.clicks,1);assert.equal(f.closes,0);assert.doesNotMatch(f.head.children[0].textContent,/visibility:hidden/);
+ }
+ f.configure('suspend');f.configure(false);f.configure(false);assert.equal(f.closes,1);assert.equal(f.head.children.length,0);
+ assert.equal(f.window.__friendsFablesDesktopCampaignPanel,undefined);assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),null);
+ assert.equal(f.body.style.pointerEvents,'');assert.equal(f.body.style.overflow,'');assert.equal(f.listeners.size,0);
+});
+test('route departure disposes a suspended native Campaign exactly once',()=>{
+ const f=fixture();f.configure(true);f.configure('suspend');f.location.pathname='/settings';f.scan();
+ assert.equal(f.closes,1);assert.equal(f.head.children.length,0);assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),null);
+ f.configure(false);assert.equal(f.closes,1);
 });

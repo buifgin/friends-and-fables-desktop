@@ -158,13 +158,13 @@ function createWindow(): void {
   let campaignUpdates = Promise.resolve();
   let campaignDocument=0;
   view.webContents.on('did-navigate',()=>{campaignDocument++;});
-  const updateCampaignPanel = (show: boolean, width = 0, height = 0): Promise<void> => {
+  const updateCampaignPanel = (show: boolean | 'suspend', width = 0, height = 0): Promise<void> => {
     const expectedURL=view.webContents.getURL(),expectedDocument=campaignDocument;
     campaignUpdates = campaignUpdates.catch(console.error).then(async () => {
       if (view.webContents.isDestroyed() || view.webContents.getURL()!==expectedURL || campaignDocument!==expectedDocument || !expectedURL) return;
       const url = new URL(view.webContents.getURL());
       if (url.origin !== 'https://play.fables.gg' || !/^\/[0-9a-f-]{36}\/play\/?$/i.test(url.pathname)) return;
-      await view.webContents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${show},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))})`);
+      await view.webContents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))})`);
     });
     return campaignUpdates;
   };
@@ -187,9 +187,22 @@ function createWindow(): void {
     },
   }, campaign: {
     show: bounds => updateCampaignPanel(true, bounds.width, bounds.height),
+    suspend: bounds => { void updateCampaignPanel('suspend',bounds.width,bounds.height).catch(console.error); },
     hide: () => { void updateCampaignPanel(false).catch(console.error); },
   } });
-  const updateSettingsRoute=()=>{void dock.setCampaignAvailable(combatCampaign()!==null).catch(console.error);};
+  let settingsCampaignRoute:string|null=null;
+  const updateSettingsRoute=()=>{
+    const expectedURL=view.webContents.getURL();
+    const route=combatCampaign()!==null?expectedURL:null;
+    const departed=settingsCampaignRoute!==null&&settingsCampaignRoute!==route;
+    settingsCampaignRoute=route;
+    void (async()=>{
+      // A different Campaign is still an available route, but cannot retain the
+      // previous Campaign's form or reserved website strip.
+      if(departed)await dock.setCampaignAvailable(false);
+      if(!view.webContents.isDestroyed()&&view.webContents.getURL()===expectedURL)await dock.setCampaignAvailable(route!==null);
+    })().catch(console.error);
+  };
   view.webContents.on('did-navigate',updateSettingsRoute);
   view.webContents.on('did-navigate-in-page',(_event,_url,isMainFrame)=>{if(isMainFrame)updateSettingsRoute();});
   view.webContents.on('did-finish-load',updateSettingsRoute);

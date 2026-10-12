@@ -10,7 +10,7 @@ import type { SettingsSection, CombatPreferences, CombatSettingsAdapter } from '
 import type { GeneralSettings } from './general-settings';
 import { themeBackground } from '../appearance/themes';
 export const SETTINGS_HUB_URL='fables-desktop://settings/settings-hub.html';
-export interface CampaignSettingsAdapter { show(bounds: Rectangle): void | Promise<void>; hide(): void; }
+export interface CampaignSettingsAdapter { show(bounds: Rectangle): void | Promise<void>; suspend(bounds:Rectangle): void; hide(): void; }
 export interface SettingsManagers { translation: TranslationManager; instructions: HostInstructionsManager; campaign?: CampaignSettingsAdapter; combat?: CombatSettingsAdapter; }
 // Navigation has no feature bridge. Each editor retains its own manager, preload,
 // exact URL and main-frame authorization; hidden editors are never reloaded.
@@ -27,6 +27,7 @@ export class SettingsHub {
  private combatRevision=0;
  private campaignAvailable?:boolean;
  private campaignBounds?:Rectangle;
+ private campaignRetained=false;
  constructor(private window:BrowserWindow,private appearance:AppearanceManager,private general:GeneralSettings,private close:()=>void,private generalChanged:()=>void,private navigate:(section:SettingsSection)=>Promise<void>) {
   this.view=new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(__dirname,'settings-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
   window.contentView.addChildView(this.view);this.view.setVisible(false);
@@ -62,11 +63,13 @@ export class SettingsHub {
  setCampaignAvailable(available:boolean):void {
   if(this.campaignAvailable===available)return;
   this.campaignAvailable=available;this.revision++;
-  if(!available){this.combatRevision++;this.combat=null;}
+  if(!available){this.combatRevision++;this.combat=null;this.releaseCampaign();}
   this.update();
  }
  private state(){const {preset,customColor}=this.appearance.getSettings();return {section:this.section,locale:this.appearance.getLocale(),theme:{preset,customColor},campaignAvailable:!!this.managers?.campaign&&this.campaignAvailable!==false,combat:this.combat,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
  currentSection():SettingsSection{return this.section;}
+ hasRetainedCampaign():boolean{return this.campaignRetained;}
+ private releaseCampaign():void {if(this.campaignRetained)this.managers?.campaign?.hide();this.campaignRetained=false;this.campaignBounds=undefined;}
  update():void {if(!this.view.webContents.isDestroyed()){this.view.setBackgroundColor(themeBackground(this.appearance.getSettings()));this.view.webContents.send('settings-hub:update',this.state());}}
  async select(section:SettingsSection,beforeLayout?:()=>void):Promise<void> {
   if(section==='campaign'&&!this.managers?.campaign)throw new Error('Campaign settings are not connected.');
@@ -84,23 +87,26 @@ export class SettingsHub {
   await editor?.ready;
   if(section==='combat')await this.refreshCombat();
   if(this.window.isDestroyed()||revision!==this.revision)return;
-  if(this.visible&&this.section==='campaign'&&section!=='campaign'){this.managers?.campaign?.hide();this.campaignBounds=undefined;}this.section=section;this.visible=true;this.update();
+  if(this.section!==section&&(this.section==='campaign'||section==='campaign'))this.campaignBounds=undefined;this.section=section;this.visible=true;this.update();
   // The outer dock commits the website strip before the native Campaign
   // adapter measures/mounts its content. Standalone callers need no callback.
+  if(section==='campaign')this.campaignRetained=true;
   beforeLayout?.();
   if(this.bounds)this.layout(this.bounds);
   (editor?.view.webContents??this.view.webContents).focus();
  }
  refreshCampaign():void {if(this.visible&&this.section==='campaign'&&this.bounds){this.campaignBounds=undefined;this.layout(this.bounds);}}
- setVisible(visible:boolean):void {if(!visible){this.revision++;if(this.visible&&this.section==='campaign')this.managers?.campaign?.hide();this.campaignBounds=undefined;}this.visible=visible;this.view.setVisible(visible);for(const [section,editor]of this.editors)editor.view.setVisible(visible&&section===this.section);}
+ setVisible(visible:boolean):void {if(!visible){this.revision++;this.releaseCampaign();}this.visible=visible;this.view.setVisible(visible);for(const [section,editor]of this.editors)editor.view.setVisible(visible&&section===this.section);}
  layout(bounds:Rectangle):void {
   this.bounds=bounds;this.view.setBounds(this.section==='campaign'?{...bounds,width:Math.min(126,bounds.width)}:bounds);this.view.setVisible(this.visible);
   const navWidth=Math.min(126,bounds.width);
   const editorBounds={x:bounds.x+navWidth,y:bounds.y,width:Math.max(0,bounds.width-navWidth),height:bounds.height};
   for(const [section,editor]of this.editors){editor.view.setBounds(editorBounds);editor.view.setVisible(this.visible&&section===this.section);}
-  if(this.visible&&this.section==='campaign'&&(!this.campaignBounds||Object.keys(editorBounds).some(key=>editorBounds[key as keyof Rectangle]!==this.campaignBounds![key as keyof Rectangle]))) {
+  if(this.visible&&this.campaignRetained&&(!this.campaignBounds||Object.keys(editorBounds).some(key=>editorBounds[key as keyof Rectangle]!==this.campaignBounds![key as keyof Rectangle]))) {
+   this.campaignRetained=true;
    this.campaignBounds={...editorBounds};
-   void Promise.resolve(this.managers?.campaign?.show(editorBounds)).catch(error=>{this.campaignBounds=undefined;console.error(error);});
+   const adapter=this.managers?.campaign;
+   void Promise.resolve(this.section==='campaign'?adapter?.show(editorBounds):adapter?.suspend(editorBounds)).catch(error=>{this.campaignBounds=undefined;console.error(error);});
   }
  }
 }
