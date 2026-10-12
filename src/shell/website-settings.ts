@@ -11,12 +11,22 @@ export function configureWebsiteSettings(enabled:boolean, locale:'en'|'ru', acce
   if(!enabled||window!==window.top||location.origin!=='https://play.fables.gg')return;
   const campaign=()=>/^\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/play\/?$/i.test(location.pathname);
   let language=locale,token=access?.token??'',status:State=access?.state??{paused:true,available:false,next:false,volume:.5};
-  let active=true,frame=0,root:HTMLElement|undefined,actions:HTMLElement|undefined,header:HTMLElement|undefined,home:HTMLButtonElement|undefined;
+  let active=true,frame=0,root:HTMLElement|undefined,actions:HTMLElement|undefined,nativeActionsOwner:HTMLElement|undefined,header:HTMLElement|undefined,home:HTMLButtonElement|undefined;
   let expanded=false;
+  const ownedAttributes=new Map<HTMLElement,Map<string,{before:string|null;written:string|null}>>();
+  function writeAttribute(node:HTMLElement,name:string,value:string|null):void {
+    let entries=ownedAttributes.get(node);if(!entries){entries=new Map();ownedAttributes.set(node,entries);}
+    const previous=entries.get(name);entries.set(name,{before:previous?previous.before:node.getAttribute(name),written:value});
+    if(value===null)node.removeAttribute(name);else node.setAttribute(name,value);
+  }
+  function restoreAttributes():void {
+    for(const [node,entries] of ownedAttributes)for(const [name,{before,written}] of entries){if(node.getAttribute(name)!==written)continue;if(before===null)node.removeAttribute(name);else node.setAttribute(name,before);}
+    ownedAttributes.clear();
+  }
   const words:Record<string,string>={'Music':'Музыка','Play':'Играть','Pause':'Пауза','Previous track':'Предыдущий трек','Next track':'Следующий трек','Music library':'Музыкальная библиотека','Volume':'Громкость','Settings':'Настройки'};
   const text=(value:string)=>language==='ru'?words[value]??value:value;
   const style=document.createElement('style');style.dataset.ffMusicHeaderStyle='';
-  style.textContent=`[data-ff-music-actions]{max-width:100%!important;min-width:0!important;flex-wrap:wrap!important;gap:4px!important}[data-ff-music-header-expanded]{height:auto!important;min-height:40px!important}[data-ff-desktop-music-group]{display:flex;align-items:center;flex:0 0 auto;gap:4px;max-width:100%;font:14px system-ui,sans-serif;color:hsl(var(--foreground));box-sizing:border-box}[data-ff-desktop-music-group] button{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;min-width:0;padding:0;border:1px solid hsl(var(--foreground)/.3);border-radius:6px;background:transparent;color:inherit;cursor:pointer}[data-ff-desktop-music-group] button:disabled{opacity:.45;cursor:default}[data-ff-desktop-music-group] button:focus-visible,[data-ff-desktop-music-group] input:focus-visible{outline:2px solid hsl(var(--primary));outline-offset:2px}[data-ff-desktop-music-group] svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}[data-ff-music-inline-controls]{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-width:0}[data-ff-music-inline-controls][hidden]{display:none!important}[data-ff-music-volume]{display:flex;align-items:center;gap:4px}[data-ff-music-volume] input{width:56px;min-width:0;accent-color:hsl(var(--primary))}[data-ff-music-volume] span{font-size:12px}[data-ff-music-actions]>div.ml-1.flex.flex-row.space-x-1{flex-shrink:0!important}`;
+  style.textContent=`[data-ff-music-actions],[data-ff-music-native-actions]{height:auto!important;max-width:100%!important;min-width:0!important;flex-wrap:wrap!important;gap:4px!important}[data-ff-music-native-actions]{flex-basis:min-content!important}[data-ff-music-header-expanded]{height:auto!important;min-height:40px!important}[data-ff-desktop-music-group]{display:flex;align-items:center;flex:0 0 auto;gap:4px;max-width:100%;font:14px system-ui,sans-serif;color:hsl(var(--foreground));box-sizing:border-box}[data-ff-desktop-music-group] button{display:grid;place-items:center;flex:0 0 28px;width:28px;height:28px;min-width:0;padding:0;border:1px solid hsl(var(--foreground)/.3);border-radius:6px;background:transparent;color:inherit;cursor:pointer}[data-ff-desktop-music-group] button:disabled{opacity:.45;cursor:default}[data-ff-desktop-music-group] button:focus-visible,[data-ff-desktop-music-group] input:focus-visible{outline:2px solid hsl(var(--primary));outline-offset:2px}[data-ff-desktop-music-group] svg{display:block;width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}[data-ff-music-inline-controls]{display:flex;align-items:center;flex-wrap:wrap;gap:4px;min-width:0}[data-ff-music-inline-controls][hidden]{display:none!important}[data-ff-music-volume]{display:flex;align-items:center;gap:4px}[data-ff-music-volume] input{width:56px;min-width:0;accent-color:hsl(var(--primary))}[data-ff-music-volume] span{font-size:12px}[data-ff-music-native-actions]>div.ml-1.flex.flex-row.space-x-1{flex-shrink:0!important}`;
   document.head.append(style);
   function icon(paths:string[]):SVGSVGElement {
     const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('aria-hidden','true');
@@ -33,7 +43,7 @@ export function configureWebsiteSettings(enabled:boolean, locale:'en'|'ru', acce
     const controls=root?.querySelector<HTMLElement>('[data-ff-music-inline-controls]'),button=root?.querySelector<HTMLButtonElement>('[data-ff-desktop-music-launcher]');
     if(controls){controls.hidden=!open;controls.inert=!open;}
     button?.setAttribute('aria-expanded',String(open));
-    header?.toggleAttribute('data-ff-music-header-expanded',open);
+    if(header)writeAttribute(header,'data-ff-music-header-expanded',open?'':null);
     if(!open&&restoreFocus)button?.focus();
   }
   function render():void {
@@ -50,15 +60,21 @@ export function configureWebsiteSettings(enabled:boolean, locale:'en'|'ru', acce
     const label=root.querySelector<HTMLElement>('[data-ff-music-volume] span');if(label&&label.textContent!==text('Volume'))label.textContent=text('Volume');
   }
   function unmountMusic():void {
-    root?.remove();root=undefined;actions?.removeAttribute('data-ff-music-actions');actions=undefined;header?.removeAttribute('data-ff-music-header-expanded');header=undefined;expanded=false;
+    root?.remove();root=undefined;restoreAttributes();actions=undefined;nativeActionsOwner=undefined;header=undefined;expanded=false;
   }
   function mountMusic():void {
     const avatars=document.querySelector<HTMLElement>('header div.ml-1.flex.flex-row.space-x-1,[role="banner"] div.ml-1.flex.flex-row.space-x-1');
-    const container=avatars?.parentElement,invite=container?.querySelector<HTMLButtonElement>('button:has(svg.lucide-user-plus)');
-    if(!avatars||!container||!invite||!invite.closest('header,[role="banner"]')){unmountMusic();return;}
-    if(actions!==container||!root?.isConnected){
-      unmountMusic();container.querySelectorAll('[data-ff-desktop-music-group]').forEach(node=>node.remove());actions=container;header=container.closest<HTMLElement>('header,[role="banner"]')??undefined;
-      actions.setAttribute('data-ff-music-actions','');root=document.createElement('div');root.dataset.ffDesktopMusicGroup='';
+    const nativeActions=avatars?.parentElement,invite=nativeActions?.querySelector<HTMLButtonElement>('button:has(svg.lucide-user-plus)');
+    if(!avatars||!nativeActions||!invite||!invite.closest('header,[role="banner"]')){unmountMusic();return;}
+    // Captured native layout: the avatar actions and desktop panel/background
+    // group are adjacent direct children of the header's common flex action row.
+    // Mount outside the hidden desktop group so Music also remains visible mobile.
+    const outer=nativeActions.parentElement;
+    const desktopGroup=outer?.matches('div.flex.flex-row.items-center')?Array.from(outer.children).find((node):node is HTMLElement=>node instanceof HTMLElement&&node.classList.contains('hidden')&&node.classList.contains('md:flex')&&node.classList.contains('items-center')&&node.classList.contains('gap-2')&&!!node.querySelector('button:has(svg.lucide-panel-left)')&&!!node.querySelector('button:has(svg.lucide-image)')):undefined;
+    const container=desktopGroup&&desktopGroup.nextElementSibling===nativeActions?outer!:nativeActions;
+    if(actions!==container||nativeActionsOwner!==nativeActions||!root?.isConnected){
+      unmountMusic();container.querySelectorAll('[data-ff-desktop-music-group]').forEach(node=>node.remove());actions=container;nativeActionsOwner=nativeActions;header=container.closest<HTMLElement>('header,[role="banner"]')??undefined;
+      writeAttribute(actions,'data-ff-music-actions','');writeAttribute(nativeActions,'data-ff-music-native-actions','');root=document.createElement('div');root.dataset.ffDesktopMusicGroup='';
       const button=document.createElement('button');button.type='button';button.dataset.ffDesktopMusicLauncher='';button.setAttribute('aria-expanded','false');button.append(icon(['M9 18V5l12-2v13M9 9l12-2M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6M18 13a3 3 0 1 0 0 6 3 3 0 0 0 0-6']));root.append(button);
       const controls=document.createElement('div');controls.dataset.ffMusicInlineControls='';controls.hidden=true;controls.inert=true;controls.id='ff-desktop-music-controls';button.setAttribute('aria-controls',controls.id);
       for(const [name,path] of [['previous','m19 6-9 6 9 6zM5 6v12'],['play','m8 5 11 7-11 7z'],['next','m5 6 9 6-9 6zM19 6v12'],['library','M4 5h16v14H4zM8 9h8M8 13h8']]){
