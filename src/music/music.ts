@@ -1,3 +1,5 @@
+import { randomBytes } from 'node:crypto';
+import { configureWebsiteSettings, updateWebsiteMusicState } from '../shell/website-settings';
 import { appPath } from '../shared/app-paths';
 import { app, clipboard, dialog, ipcMain, net, session, shell, WebContentsView } from 'electron';
 import type { BrowserWindow, IpcMainInvokeEvent, WebContents } from 'electron';
@@ -14,7 +16,7 @@ import type { MusicFolder } from './music-library';
 import { DOCK_URL } from '../shell/appearance-dock';
 
 export const MUSIC_URL = 'fables-desktop://music/';
-export type MusicControl = 'play' | 'stop' | 'next' | 'repeat' | 'mute' | 'volume' | 'library';
+export type MusicControl = 'play' | 'stop' | 'previous' | 'next' | 'repeat' | 'mute' | 'volume' | 'library';
 export class MusicManager {
   private settings = structuredClone(DEFAULT_MUSIC);
   private player: WebContentsView | null = null;
@@ -35,7 +37,8 @@ export class MusicManager {
   private library = new MusicLibrary();
   private libraryWrites: Promise<void> = Promise.resolve();
   private playback = {paused:true,title:'',available:false,next:false,volume:.5,muted:false,loop:false};
-  private settingsOpener: (() => void) | null = null;
+  private siteToken='';
+ private settingsOpener: (() => void) | null = null;
   constructor(folder = app.getPath('userData')) { this.file = path.join(folder,'music.json'); this.folderFile = path.join(folder,'music-folders.json'); }
   async initialize(): Promise<void> {
     try { this.settings = validateMusic(JSON.parse(await readFile(this.file,'utf8'))); }
@@ -78,7 +81,7 @@ export class MusicManager {
     ipcMain.handle('music:toolbar-get',event => { this.assertToolbar(event); return this.toolbarState(); });
     ipcMain.handle('music:control',async(event,command: unknown,value: unknown) => {
       this.assertToolbar(event);
-      if (!['play','stop','next','repeat','mute','volume','library'].includes(String(command))) throw new Error('Invalid music control.');
+      if (!['play','stop','previous','next','repeat','mute','volume','library'].includes(String(command))) throw new Error('Invalid music control.');
       if (command === 'volume' && (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 1)) throw new Error('Invalid volume.');
       if (command === 'library') { if (this.visible) this.hide(); else if (this.parent) await this.open(this.parent); return; }
       await this.loading;
@@ -122,7 +125,25 @@ export class MusicManager {
   setSettingsOpener(callback: (() => void) | null): void { this.settingsOpener = callback; }
   private state() { return {settings:this.getSettings(),locale:this.locale,theme:{...this.theme},catalog:MUSIC_CATALOG,library:this.library.state()}; }
   private toolbarState() { return {...this.playback,open:this.visible,locale:this.locale}; }
-  private broadcast(): void { if (this.launcher && !this.launcher.isDestroyed()) this.launcher.send('music:toolbar-update',this.toolbarState()); }
+  private websiteState(){return {paused:this.playback.paused,available:this.playback.available,next:this.playback.next,volume:this.playback.volume};}
+  private trustedWebsite(contents:WebContents,parent:BrowserWindow):boolean {
+    if(this.stopped||contents.isDestroyed()||parent.isDestroyed()||contents!==this.activeWebsite||parent!==this.parent||!this.websites.has(contents))return false;
+    try{const url=new URL(contents.getURL());return url.origin==='https://play.fables.gg'&&/^\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\/play\/?$/i.test(url.pathname);}catch{return false;}
+  }
+  private refreshWebsiteControls(rotate=false):void {
+    const contents=this.activeWebsite;if(!contents||contents.isDestroyed()||this.stopped)return;
+    try{if(new URL(contents.getURL()).origin!=='https://play.fables.gg')return;}catch{return;}
+    if(rotate||!this.siteToken)this.siteToken=randomBytes(24).toString('hex');
+    const access={token:this.siteToken,state:this.websiteState()};
+    void contents.executeJavaScript(`(${configureWebsiteSettings.toString()})(true,${JSON.stringify(this.locale)},${JSON.stringify(access)})`).catch(()=>{});
+  }
+  private broadcast(): void {
+    if (this.launcher && !this.launcher.isDestroyed()) this.launcher.send('music:toolbar-update',this.toolbarState());
+    const contents=this.activeWebsite;if(contents&&!contents.isDestroyed()&&!this.stopped){
+      if(!this.siteToken)this.refreshWebsiteControls();
+      else void contents.executeJavaScript(`(${updateWebsiteMusicState.toString()})(${JSON.stringify(this.websiteState())})`).catch(()=>{});
+    }
+  }
   private updateFolders(mutation: () => Promise<void>): Promise<unknown> {
     const operation = this.libraryWrites.catch(() => {}).then(async() => {
       await mutation(); await this.library.scan(this.folders);
@@ -147,13 +168,27 @@ export class MusicManager {
   setInterface(settings: AppearanceSettings,locale: 'en' | 'ru'): void {
     this.theme = {preset:settings.preset,customColor:settings.customColor}; this.locale = locale;
     if (this.player && !this.player.webContents.isDestroyed()) { this.player.setBackgroundColor(themeBackground(this.theme)); this.player.webContents.send('music:interface',this.state()); }
-    this.broadcast();
+    this.refreshWebsiteControls();this.broadcast();
   }
   attach(contents: WebContents): void {
-    this.websites.add(contents); contents.on('destroyed',() => this.websites.delete(contents));
+    if(this.websites.has(contents))return;
+    this.websites.add(contents);contents.on('destroyed',()=>this.websites.delete(contents));
+    contents.on('will-frame-navigate',details=>{
+      if(!details.url.startsWith('fables-desktop://music/'))return;
+      details.preventDefault();
+      if(!details.isMainFrame||details.frame!==contents.mainFrame||details.initiator!==contents.mainFrame||!this.parent)return;
+      const match=this.websiteCommand(contents,this.parent,details.url);if(!match)return;
+      const parent=this.parent,token=match[2],command=match[1],value=match[3]===undefined?undefined:Number(match[3]);
+      void this.loading?.then(()=>{if(this.trustedWebsite(contents,parent)&&token===this.siteToken&&!this.player?.webContents.isDestroyed())this.player?.webContents.send('music:control',command,value);}).catch(console.error);
+    });
+    // Revoke only after a committed navigation. Prevented command attempts must
+    // keep their current document credential and never recreate the renderer.
+    contents.on('did-navigate',()=>{if(contents===this.activeWebsite)this.siteToken='';});
+    contents.on('did-finish-load',()=>{if(contents===this.activeWebsite)this.refreshWebsiteControls(true);});
+    contents.on('did-navigate-in-page',(_event,_url,isMainFrame)=>{if(isMainFrame&&contents===this.activeWebsite)this.refreshWebsiteControls(true);});
   }
   attachMain(parent: BrowserWindow,launcher?: WebContents,website?: WebContents): void {
-    if (this.parent === parent && this.player) { if (launcher) this.launcher = launcher; if (website) this.activeWebsite = website; return; }
+    if (this.parent === parent && this.player) { if (launcher) this.launcher = launcher; if (website) this.activeWebsite = website;this.refreshWebsiteControls();return; }
     if (this.player) { if (this.parent && !this.parent.isDestroyed()) this.parent.contentView.removeChildView(this.player); if (!this.player.webContents.isDestroyed()) this.player.webContents.close(); }
     this.parent = parent; this.launcher = launcher ?? null; this.activeWebsite = website ?? parent.webContents; this.visible = false;
     const player = new WebContentsView({webPreferences:{partition:'fables-music',preload:path.join(__dirname,'music-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true,backgroundThrottling:false}});
@@ -162,7 +197,7 @@ export class MusicManager {
     player.webContents.on('will-navigate',event => event.preventDefault()); player.webContents.on('will-redirect',event => event.preventDefault()); player.webContents.setWindowOpenHandler(() => ({action:'deny'}));
     parent.on('resize',() => this.layout()); parent.on('enter-full-screen',() => this.layout()); parent.on('leave-full-screen',() => this.layout());
     parent.once('closed',() => { if (this.parent === parent) { this.visible = false; this.parent = null; this.launcher = null; this.activeWebsite = null; this.player = null; this.loading = undefined; if (!contents.isDestroyed()) contents.close(); } });
-    this.loading = player.webContents.loadURL(MUSIC_URL); void this.loading.catch(console.error); this.layout(); this.broadcast();
+    this.loading = player.webContents.loadURL(MUSIC_URL); void this.loading.catch(console.error);this.siteToken='';this.layout();this.refreshWebsiteControls();this.broadcast();
   }
   setInset(inset: number): void { if (!Number.isFinite(inset)) return; this.inset = Math.max(0,inset); this.layout(); }
   hide(): void { this.visible = false; this.player?.setVisible(false); if (this.activeWebsite && !this.activeWebsite.isDestroyed()) this.activeWebsite.focus(); this.broadcast(); }
@@ -171,9 +206,14 @@ export class MusicManager {
     const [width,height] = this.parent.getContentSize(), panelWidth = Math.min(520,Math.max(360,width-320));
     this.player.setBounds({x:Math.max(0,width-panelWidth),y:this.inset,width:panelWidth,height:Math.max(0,height-this.inset)}); this.player.setVisible(this.visible);
   }
+  private websiteCommand(contents:WebContents,parent:BrowserWindow,url:string):RegExpExecArray|null {
+    if(!this.trustedWebsite(contents,parent))return null;
+    const match=/^fables-desktop:\/\/music\/control\?command=(play|previous|next|volume)&token=([a-f0-9]{48})(?:&value=(0(?:\.\d{1,3})?|1(?:\.0{1,3})?))?$/.exec(url);
+    return match&&this.siteToken&&match[2]===this.siteToken&&(match[1]==='volume')===(match[3]!==undefined)?match:null;
+  }
   handleOpenRequest(contents: WebContents,parent: BrowserWindow,url: string): boolean {
-    if (url !== MUSIC_URL || !this.websites.has(contents) || new URL(contents.getURL()).origin !== 'https://play.fables.gg') return false;
-    void this.open(parent).catch(console.error); return true;
+    if(url!==MUSIC_URL||!this.trustedWebsite(contents,parent))return false;
+    void this.open(parent).catch(console.error);return true;
   }
   async open(parent: BrowserWindow): Promise<WebContentsView> {
     if (this.stopped) throw new Error('The music player has stopped.');
@@ -184,7 +224,7 @@ export class MusicManager {
   }
   async shutdown(): Promise<void> {
     if (this.stopped) return;
-    this.stopped = true; if (this.player) { if (this.parent && !this.parent.isDestroyed()) this.parent.contentView.removeChildView(this.player); if (!this.player.webContents.isDestroyed()) this.player.webContents.close(); } this.player = null;
+    this.stopped = true;this.siteToken=''; if (this.player) { if (this.parent && !this.parent.isDestroyed()) this.parent.contentView.removeChildView(this.player); if (!this.player.webContents.isDestroyed()) this.player.webContents.close(); } this.player = null;
     await Promise.all([this.writes.catch(() => {}),this.libraryWrites.catch(() => {})]);
     for (const name of ['get','save','hide','open-settings','playback','toolbar-get','control','choose-folder','refresh-folders','remove-folder','copy-link','copy-attribution','open-catalog-link']) ipcMain.removeHandler(`music:${name}`);
     session.fromPartition('fables-music').protocol.unhandle('fables-desktop');

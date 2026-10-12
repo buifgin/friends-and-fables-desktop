@@ -243,7 +243,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
     assert.equal(host.isFullScreen(), false, 'Caption regression uses the normal frameless product window.');
     const [width] = host.getContentSize();
     const samples = [];
-    for (const [view, prefix, count] of [[dock.launcher, 'launcher', 1], [dock.windowControls.view, 'window', 3]]) {
+    for (const [view, prefix, count] of [[dock.launcher, 'launcher', 0], [dock.windowControls.view, 'window', 3]]) {
       const bounds = view.getBounds();
       const centers = await view.webContents.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).filter(button=>{const r=button.getBoundingClientRect(),s=getComputedStyle(button);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}).map(button=>{const r=button.getBoundingClientRect();return {name:button.id,x:r.x+r.width/2,y:r.y+r.height/2}})`);
       assert.equal(centers.length, count, `${label}: only visible ${prefix} buttons are sampled.`);
@@ -270,8 +270,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const centeredWindowIcons=await windowControls.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).map(button=>{const b=button.getBoundingClientRect(),s=button.querySelector('svg').getBoundingClientRect();return {x:Math.abs(b.x+b.width/2-s.x-s.width/2),y:Math.abs(b.y+b.height/2-s.y-s.height/2)}})`);
   assert(centeredWindowIcons.every(value=>value.x<=.5&&value.y<=.5),'Window icons stay geometrically centered in their circles.');
   const right=dock.windowControls.view.getBounds();assert.equal(right.x+right.width,host.getContentSize()[0]);assert.equal(right.y,0);
-  await until(()=>dock.launcher.webContents.executeJavaScript("getComputedStyle(document.getElementById('appearance-button')).borderRadius==='50%'"));
-  assert.equal(await dock.launcher.webContents.executeJavaScript("getComputedStyle(document.getElementById('appearance-button')).borderRadius"),'50%');
+  assert.equal(await dock.launcher.webContents.executeJavaScript("document.getElementById('appearance-button')"),null,'Desktop palette icon is removed');
 
   assert.equal(website.getBounds().x, panel.getBounds().width);
   assert.equal(await website.webContents.executeJavaScript('typeof window.appearance'), 'undefined');
@@ -368,7 +367,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(await contents.executeJavaScript("(()=>{const b=document.getElementById('close-panel').getBoundingClientRect(),g=document.querySelector('#close-panel svg').getBoundingClientRect();return Math.abs(b.x+b.width/2-g.x-g.width/2)<=.5&&Math.abs(b.y+b.height/2-g.y-g.height/2)<=.5})()"),true);
   assert.equal(await contents.executeJavaScript("document.getElementById('custom-hex').value"), '#abcdef');
   assert.equal(await contents.executeJavaScript("document.getElementById('player-gradient-second-opacity').closest('fieldset').querySelector('[data-label=gradient-second-opacity]').firstChild.textContent.trim()"), 'Непрозрачность второго цвета');
-  await until(() => dock.launcher.webContents.executeJavaScript('document.getElementById("appearance-button").getAttribute("aria-label") === "Настройки"'));
+  assert.equal(await dock.launcher.webContents.executeJavaScript('document.getElementById("appearance-button")'),null);
   assert.equal(await contents.executeJavaScript("document.getElementById('panel-resizer').getAttribute('aria-label')"), 'Изменить ширину панели оформления');
   await contents.executeJavaScript('window.appearance.resizePanel(460,false)');
   await until(()=>contents.executeJavaScript('innerWidth===334'));
@@ -396,7 +395,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   // Closing/reopening preserves the live editor, its active category and drafts.
   await contents.executeJavaScript("document.querySelector('[data-panel=messages-panel]').click();document.getElementById('player-opacity').value=37;document.getElementById('close-panel').click()");
   await until(() => !dock.isOpen()); assert.equal(website.getBounds().x, 0);
-  await dock.launcher.webContents.executeJavaScript("document.getElementById('appearance-button').click()"); await until(() => dock.isOpen());
+  await dock.open(); await until(() => dock.isOpen());
   assert.equal(await contents.executeJavaScript("document.getElementById('player-opacity').value"), '37');
   // A local impostor cannot access either editor IPC or launcher IPC.
   const impostor = new BrowserWindow({ show: false, webPreferences: { partition: 'fables-appearance', preload: path.join(appRoot, 'dist/appearance/appearance-preload.js'), sandbox: true, contextIsolation: true, nodeIntegration: false } });
@@ -454,7 +453,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const freshSite=new WebContentsView({webPreferences:{session:websiteSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});freshHost.contentView.addChildView(freshSite);
   const freshDock=restarted.attachMain(freshHost,freshSite);await freshDock.ready;
   assert.equal(freshDock.isOpen(),false);assert.equal(freshSite.getBounds().x,0);assert.equal(freshSite.getBounds().y,32);assert(freshDock.launcher.getBounds().height<=freshSite.getBounds().y);
-  await freshDock.launcher.webContents.executeJavaScript("document.getElementById('appearance-button').click()");await until(()=>freshDock.isOpen());
+  await freshDock.open();await until(()=>freshDock.isOpen());
   assert.equal(restarted.panel.getBounds().width,savedWidth - 126);assert.equal(BrowserWindow.getAllWindows().length,1);
   await until(()=>restarted.panel.webContents.executeJavaScript('document.documentElement.lang==="ru"'));
   console.log('PASS: unified SettingsHub appearance editor, built-in Russian labels, preserved drafts, visible-toolbar native hit testing, mouse/keyboard resizing, persisted total hub width, viewport clamping, fullscreen, localized Settings menu callbacks/actions/checkboxes, native menu mode, non-overlapping launcher, menu overlay ordering, website isolation, legacy preference persistence, and restricted editor IPC.');
