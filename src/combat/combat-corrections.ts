@@ -112,7 +112,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   // captured field-array wrapper and its own FormProvider, never item data.
   type NativeAttack = { id?: string; spell_id?: unknown; name?: string; image?: string; type?: string; requires_attack_roll?: boolean; attack_roll_type?: string; modifier_stat?: string; modifier_value?: number; proficiency_bonus?: number };
   type NativeMethods = { control: unknown; getFieldState?(name: string): { isDirty?: boolean; isTouched?: boolean }; getValues(name: string): unknown; setValue(name: string, value: string | number, options: { shouldDirty: boolean; shouldValidate: boolean }): void };
-  type NativeProps = { attack?: NativeAttack; usersCharacter?: Record<string, unknown>; children?: unknown; control?: unknown; name?: string; value?: NativeMethods; getValues?: NativeMethods['getValues']; setValue?: NativeMethods['setValue']; showDropdown?: boolean; trigger?: HTMLElement; disabled?: boolean; onEdit?: unknown; selectedVantage?: string; setSelectedVantage?: (value: string) => void; numberOfDice?: number; setNumberOfDice?: unknown; typeOfDie?: string; setTypeOfDie?: unknown; modifierValue?: number; setModifierValue?: unknown; proficiencyBonus?: number; setProficiencyBonus?: unknown; standardDiceNotation?: string; setStandardDiceNotation?: unknown };
+  type NativeProps = { attack?: NativeAttack; usersCharacter?: Record<string, unknown>; children?: unknown; control?: unknown; name?: string; value?: NativeMethods; getValues?: NativeMethods['getValues']; setValue?: NativeMethods['setValue']; showDropdown?: boolean; trigger?: HTMLElement; disabled?: boolean; onEdit?: unknown; modifierValue?: number; setModifierValue?: unknown; proficiencyBonus?: number; setProficiencyBonus?: unknown };
   type Fiber = { memoizedProps?: NativeProps; return?: Fiber; alternate?: Fiber; key?: string; stateNode?: { current?: Fiber } };
   type Binding = { methods: NativeMethods; index: number; id: string; attack: NativeAttack; snapshot: NativeAttack; character: Record<string, unknown>; form: HTMLFormElement; submit: HTMLButtonElement };
   type PendingUI = { node: HTMLDetailsElement; control: unknown; id: string; refresh(): void };
@@ -195,56 +195,6 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     if (!current || !nativeModes.includes(value)) { message('Native roll mode is unavailable.', 'Тип исходного броска недоступен.'); refreshCustomMode(); return; }
     try { current.methods.setValue(current.field, value, { shouldDirty: true, shouldValidate: true }); refreshCustomMode(); message('Applied to this roll only.', 'Применено только к текущему броску.'); }
     catch { message('Native roll mode is unavailable.', 'Тип исходного броска недоступен.'); }
-  });
-  type CheckModeBinding = { trigger: HTMLElement; value: string; set(value: string): void };
-  function checkModeBinding(dock: HTMLElement | null): CheckModeBinding | null {
-    const triggers = dock?.querySelectorAll<HTMLElement>('#vantage[role="combobox"]');
-    if (triggers?.length !== 1) return null;
-    const trigger = triggers[0];
-    if (!trigger.isConnected || trigger.hasAttribute('disabled') || trigger.matches(':disabled')
-      || trigger.closest('[hidden],[aria-hidden="true"],[aria-disabled="true"]') || !trigger.getClientRects().length
-      || getComputedStyle(trigger).visibility !== 'visible') return null;
-    let fiber = Object.entries(trigger).find(([name]) => name.startsWith('__reactFiber$'))?.[1] as Fiber | undefined;
-    let root = fiber; for (let depth = 0; root?.return && depth < 256; depth++) root = root.return;
-    if (root?.return) return null;
-    if (root?.alternate && root.stateNode?.current === root.alternate) fiber = fiber?.alternate ?? fiber;
-    let owner: NativeProps | undefined;
-    for (let depth = 0; fiber && depth < 35; depth++, fiber = fiber.return) {
-      const props = fiber.memoizedProps;
-      if (!props || typeof props.setSelectedVantage !== 'function' || typeof props.selectedVantage !== 'string' || !nativeModes.includes(props.selectedVantage)) continue;
-      if (!owner) { owner = props; continue; }
-      if (props.setSelectedVantage !== owner.setSelectedVantage || props.selectedVantage !== owner.selectedVantage) return null;
-      // The captured renderer mounts tG for automatic dice, tK for
-      // standard notation, and a different tX shape for manual results.
-      const automatic = typeof props.numberOfDice === 'number' && typeof props.typeOfDie === 'string'
-        && typeof props.setNumberOfDice === 'function' && typeof props.setTypeOfDie === 'function';
-      const standard = typeof props.standardDiceNotation === 'string' && typeof props.setStandardDiceNotation === 'function';
-      if ((!automatic && !standard) || typeof props.modifierValue !== 'number' || typeof props.setModifierValue !== 'function'
-        || typeof props.proficiencyBonus !== 'number' || typeof props.setProficiencyBonus !== 'function') return null;
-      return { trigger, value: props.selectedVantage, set: props.setSelectedVantage };
-    }
-    return null;
-  }
-  const checkUI = document.createElement('details'); checkUI.setAttribute('data-ff-combat-corrections', ''); checkUI.setAttribute('data-ff-check-corrections', ''); checkUI.setAttribute('data-ff-translation-ignore', 'true');
-  const checkSummary = document.createElement('summary'), checkLabel = document.createElement('label'), checkText = document.createElement('span'), checkMode = document.createElement('select'), checkStatus = document.createElement('p');
-  checkStatus.setAttribute('role', 'status'); checkStatus.setAttribute('aria-live', 'polite'); checkMode.setAttribute('data-ff-correction-roll-mode', '');
-  for (const value of nativeModes) { const option = document.createElement('option'); option.value = value; checkMode.append(option); }
-  checkLabel.append(checkText, checkMode); checkUI.append(checkSummary, checkLabel, checkStatus);
-  let checkTrigger: HTMLElement | null = null;
-  function refreshCheckMode(dock: HTMLElement | null): void {
-    const current = checkModeBinding(dock);
-    if (!current) { checkUI.remove(); checkTrigger = null; checkUI.open = false; checkStatus.textContent = ''; return; }
-    if (checkTrigger !== current.trigger || !checkUI.isConnected) { checkUI.remove(); checkTrigger = current.trigger; checkUI.open = false; checkStatus.textContent = ''; current.trigger.parentElement?.insertAdjacentElement('afterend', checkUI); }
-    checkSummary.textContent = language === 'ru' ? 'Быстрые поправки' : 'Quick corrections'; checkText.textContent = language === 'ru' ? 'Тип броска' : 'Roll mode';
-    Array.from(checkMode.options).forEach((option, i) => option.textContent = language === 'ru' ? ['Обычный', 'Преимущество', 'Помеха'][i] : ['Normal', 'Advantage', 'Disadvantage'][i]);
-    if (document.activeElement !== checkMode) checkMode.value = current.value;
-  }
-  checkMode.addEventListener('change', () => {
-    const current = checkModeBinding(checkTrigger?.closest<HTMLElement>('[data-ff-combat-docked]') ?? null), value = checkMode.value;
-    if (!current || current.trigger !== checkTrigger || !nativeModes.includes(value)) return;
-    try { current.set(value); checkStatus.textContent = language === 'ru' ? 'Применено только к текущему броску.' : 'Applied to this roll only.'; }
-    catch { checkStatus.textContent = language === 'ru' ? 'Тип исходного броска недоступен.' : 'Native roll mode is unavailable.'; }
-    schedule();
   });
   const pendingWritable = (card: HTMLElement, current: Binding): boolean => !current.submit.disabled && !current.submit.matches(':disabled') && !card.closest('[aria-disabled="true"],[hidden],[aria-hidden="true"]') && card.getClientRects().length > 0 && getComputedStyle(card).visibility === 'visible';
   const pendingNumber = (value: unknown, id: typeof ids[number]): number | null => { const result = number(value); return result !== null && result >= (id === 'modifier_value' ? -10 : 0) && result <= 10 ? result : null; };
@@ -494,7 +444,7 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     const search = new URLSearchParams(location.search);
     const play = /\/play\/?$/.test(location.pathname) && (!search.has('view') || search.get('view') === 'play');
     const dock = play ? document.querySelector<HTMLElement>('[data-ff-combat-docked]') : null;
-    scanPending(dock); refreshCheckMode(dock);
+    scanPending(dock);
     const candidates = ids.map(id => dock?.querySelectorAll<HTMLInputElement>(`input[id="${id}"]`));
     const next = candidates.map(nodes => nodes?.length === 1 ? nodes[0] : null);
     const recognised = next.every(f => f instanceof HTMLInputElement && (f.type === 'text' && f.inputMode === 'decimal' || f.type === 'number') && f.form && !f.closest('[data-ff-combat-corrections]')) && next[0]!.form === next[1]!.form;
@@ -512,6 +462,6 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   const observer = new MutationObserver(records => { if (records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest('[data-ff-combat-corrections]'))) schedule(); });
   observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'disabled', 'readonly', 'id', 'type', 'inputmode', 'aria-disabled', 'data-disabled', 'hidden', 'aria-hidden', 'style', 'class'] });
   const timer = window.setInterval(schedule, 500); window.addEventListener('popstate', schedule);
-  host[key] = { update(value) { language = value; translate(); refreshCustomMode(); for (const item of pending.values()) item.refresh(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); checkUI.remove(); document.removeEventListener('input', editedEvent, true); document.removeEventListener('change', editedEvent, true); unmount(); for (const item of pending.values()) item.node.remove(); pending.clear(); style.remove(); delete host[key]; } };
+  host[key] = { update(value) { language = value; translate(); refreshCustomMode(); for (const item of pending.values()) item.refresh(); schedule(); }, dispose() { disposed = true; observer.disconnect(); clearInterval(timer); cancelAnimationFrame(frame); window.removeEventListener('popstate', schedule); document.removeEventListener('input', editedEvent, true); document.removeEventListener('change', editedEvent, true); unmount(); for (const item of pending.values()) item.node.remove(); pending.clear(); style.remove(); delete host[key]; } };
   translate(); scan();
 }
