@@ -1,5 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const vm = require('node:vm');
 const { configureNativeCampaignPanel } = require('../../dist/settings/campaign-panel');
 function fixture({ unrelated = false, wrongIdentity = false } = {}) {
@@ -76,8 +78,24 @@ test('wrong origin/route is inert; wrong campaign and another portal sibling nev
 test('desktop palette overrides owned Campaign styling and survives layout updates',()=>{
  const f=fixture(),palette={background:'#202124',foreground:'#f5f5f5',border:'rgb(70, 71, 72)',accent:'#d8bb82',panel:'#17181a',selected:'#383a3e'};
  f.configure(true,400,700,palette);assert.match(f.head.children[0].textContent,/background:#202124!important/);assert.match(f.head.children[0].textContent,/font:14px system-ui/);
+ const css=f.head.children[0].textContent;
+ assert.match(css,/border:1px solid!important;border-radius:8px!important;overflow:hidden!important/,'The dock keeps a thin rounded desktop frame without scrolling the outer dialog.');
+ assert.match(css,/div\.flex-1\.items-center\.overflow-y-auto\{overflow:auto!important;scrollbar-width:thin!important/,'Only the captured native content scroller owns overflow and a thin scrollbar.');
+ assert.match(css,/h3\.font-header\{font-size:30px!important/,'The first campaign card title receives the desktop heading size.');
+ assert.match(css,/\[data-ff-desktop-detail-card="true"\]:first-child > div > h3\.font-header::before/,'The branded accent is limited to the verified first header.');
+ assert.doesNotMatch(css,/\[data-ff-campaign-panel\] h3\s*\{/,'Ordinary campaign section headings keep their native size.');
+ assert.match(css,/button:has\(> \.lucide-x\)[^}]*width:34px!important[^}]*height:34px!important[^}]*border-radius:50%!important/,'Only the direct native close button receives the circular 34px target.');
+ assert.match(css,/button:has\(> \.lucide-x\) > \.lucide-x\{display:block!important;width:18px!important;height:18px!important/,'The native close icon uses the shared 18px SVG size.');
+ assert.match(css,/--ff-campaign-accent:#d8bb82/,'The campaign title and close focus state use the player accent.');
  f.configure(true,450,650);assert.equal(f.clicks,1);assert.match(f.head.children[0].textContent,/background:#202124!important/);f.configure(false);assert.equal(f.closes,1);
  const g=fixture();g.configure(true,400,700,{...palette,background:'red;}body{display:none'});assert.doesNotMatch(g.head.children[0].textContent,/body\{|display:none/);
+});
+
+test('Settings Hub centers a 620px content column in the space beside its retained navigation',()=>{
+ const css=fs.readFileSync(path.join(__dirname,'../../assets/settings/settings-hub.css'),'utf8');
+ assert.match(css,/nav\{[^}]*width:126px/);
+ assert.match(css,/main\{[^}]*margin-left:max\(126px,calc\(\(100% - 494px\)\/2\)\);width:min\(620px,calc\(100% - 126px\)\);max-width:620px/);
+ assert.match(css,/main\{[^}]*padding:28px 32px/);
 });
 
 
