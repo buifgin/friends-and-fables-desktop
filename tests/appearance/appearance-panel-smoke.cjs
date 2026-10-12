@@ -222,10 +222,11 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   }
   await until(() => contents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await contents.executeJavaScript("document.body.classList.contains('docked')"), true);
-  assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32, 'Menus and centered controls share one row above the game.');
+  assert.equal(dock.launcher.isVisible(), false, 'The legacy Settings launcher stays hidden while its private renderer remains available.');
+  assert.deepEqual(dock.launcher.getBounds(), { x: 0, y: 0, width: 0, height: 0 }, 'The hidden legacy launcher reserves no native window area.');
+  assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32, 'The application menu and native window controls share one row above the game.');
   assert.equal(editor.getBounds().x, 126, 'The Appearance editor follows the Settings navigation rail.');
   assert.equal(editor.getBounds().width, panel.getBounds().width - 126, 'Editor width excludes the navigation rail.');
-  const centered=dock.launcher.getBounds();assert.equal(centered.y,0,'Toolbar shares menu baseline.');assert(Math.abs(centered.x+centered.width/2-host.getContentSize()[0]/2)<=1, 'Toolbar is centered in the main window.');
   async function assertToolbarHitMasks(contents, width, label) {
     try { await until(() => contents.executeJavaScript(`innerWidth === ${width}`)); }
     catch(error) {
@@ -233,9 +234,9 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
       console.error('Toolbar hit mask viewport diagnostic', JSON.stringify({label,expectedWidth:width,actualInnerWidth,hostContentSize:host.getContentSize(),visible:host.isVisible()}));
       throw error;
     }
-    const masks = await contents.executeJavaScript(`(()=>{const read=id=>{const e=document.getElementById(id),r=e.getBoundingClientRect(),s=getComputedStyle(e);return {x:r.x,width:r.width,height:r.height,region:s.webkitAppRegion,pointerEvents:s.pointerEvents}};return {center:read('appearance-dock-hit-mask'),right:read('window-controls-hit-mask'),viewport:innerWidth}})()`);
+    const masks = await contents.executeJavaScript(`(()=>{const e=document.getElementById('window-controls-hit-mask'),r=e.getBoundingClientRect(),s=getComputedStyle(e);return {centerMask:document.getElementById('appearance-dock-hit-mask'),right:{x:r.x,width:r.width,height:r.height,region:s.webkitAppRegion,pointerEvents:s.pointerEvents},viewport:innerWidth}})()`);
     assert.equal(masks.viewport, width, `${label}: menu document tracks the resized window.`);
-    assert.deepEqual(masks.center, {x:(width-232)/2,width:232,height:32,region:'no-drag',pointerEvents:'none'}, `${label}: centered launcher footprint stays in the native client region and passes pointer input through.`);
+    assert.equal(masks.centerMask, null, `${label}: the removed launcher leaves no center hit mask or dead zone.`);
     assert.deepEqual(masks.right, {x:width-108,width:108,height:32,region:'no-drag',pointerEvents:'none'}, `${label}: right controls footprint stays in the native client region and passes pointer input through.`);
   }
   async function assertNativeToolbarHitTests(label) {
@@ -243,7 +244,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
     assert.equal(host.isFullScreen(), false, 'Caption regression uses the normal frameless product window.');
     const [width] = host.getContentSize();
     const samples = [];
-    for (const [view, prefix, count] of [[dock.launcher, 'launcher', 0], [dock.windowControls.view, 'window', 3]]) {
+    for (const [view, prefix, count] of [[dock.windowControls.view, 'window', 3]]) {
       const bounds = view.getBounds();
       const centers = await view.webContents.executeJavaScript(`Array.from(document.querySelectorAll('nav button')).filter(button=>{const r=button.getBoundingClientRect(),s=getComputedStyle(button);return r.width>0&&r.height>0&&s.display!=='none'&&s.visibility!=='hidden'}).map(button=>{const r=button.getBoundingClientRect();return {name:button.id,x:r.x+r.width/2,y:r.y+r.height/2}})`);
       assert.equal(centers.length, count, `${label}: only visible ${prefix} buttons are sampled.`);
@@ -253,10 +254,9 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
       }
     }
     {
-      const centerRight = dock.launcher.getBounds().x + dock.launcher.getBounds().width;
       const rightLeft = dock.windowControls.view.getBounds().x;
-      assert(rightLeft - centerRight > 32, `${label}: a blank safe drag gap exists.`);
-      samples.push({ name: 'blank safe gap', x: (centerRight + rightLeft) / 2, y: 16, expected: 2 });
+      assert(rightLeft > width / 2, `${label}: the center sample lies outside the right controls area.`);
+      samples.push({ name: 'empty center area', x: Math.floor(width / 2), y: 16, expected: 2 });
       const nativeHandle = host.getNativeWindowHandle();
       const hwnd = (nativeHandle.length === 8 ? nativeHandle.readBigUInt64LE() : BigInt(nativeHandle.readUInt32LE())).toString();
       const rows = await readWindowsHitTests({ hwnd, pid: process.pid, width, samples });
@@ -292,12 +292,12 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await assertToolbarHitMasks(host.webContents, 820, 'Resized main menu');
   await assertNativeToolbarHitTests('Resized frameless toolbar');
   assert.equal(panel.getBounds().width, 460); assert.equal(editor.getBounds().width, 334); assert.equal(website.getBounds().width, 360);
-  const narrow=dock.launcher.getBounds();assert(Math.abs(narrow.x+narrow.width/2-host.getContentSize()[0]/2)<=1);assert(narrow.y+narrow.height<=website.getBounds().y);assert.equal(dock.windowControls.view.getBounds().x+108,host.getContentSize()[0]);
+  assert.deepEqual(dock.launcher.getBounds(), { x: 0, y: 0, width: 0, height: 0 }, 'Resizing does not restore launcher bounds.');assert.equal(dock.windowControls.view.getBounds().x+108,host.getContentSize()[0]);
   host.setContentSize(960, 680); await until(() => host.getContentSize()[0] === 960); await assertToolbarHitMasks(host.webContents, 960, 'Restored main menu'); assert.equal(panel.getBounds().width, 540);
   await assertNativeToolbarHitTests('Restored frameless toolbar');
   // The shared layout also works without the Linux app bar (Windows/fullscreen).
   dock.setInset(0); assert.equal(panel.getBounds().y, 32); assert.equal(website.getBounds().y, 32);
-  const launcher=dock.launcher.getBounds();assert(launcher.y+launcher.height<=website.getBounds().y,'The Windows launcher must not cover website controls.');
+  assert.deepEqual(dock.launcher.getBounds(), { x: 0, y: 0, width: 0, height: 0 }, 'The Windows launcher has no bounds that could cover website controls.');
   dock.hide();assert.equal(website.getBounds().y,32);await dock.open();assert.equal(panel.getBounds().y,32);
   dock.setInset(32);
   if (process.platform === 'win32') {
@@ -403,7 +403,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   await assert.rejects(impostor.webContents.executeJavaScript('window.appearance.get()'), /only in the app settings window/); impostor.destroy();
   // Menus appear above the dock, without moving the website back over it.
   await host.webContents.executeJavaScript("window.desktopMenu.open('appearance',100)");
-  assert.equal(host.contentView.children.at(-1), dock.launcher, 'Settings launcher remains above an open menu.');
+  assert.equal(host.contentView.children.at(-1), dock.launcher, 'The hidden legacy Settings renderer remains attached above an open menu for compatibility.');
   assert(host.contentView.children.indexOf(dock.windowControls.view)>host.contentView.children.indexOf(bar.overlay), 'Window controls stay above menu overlays.');
   await until(()=>bar.overlay.webContents.executeJavaScript("getComputedStyle(document.getElementById('dropdown')).top==='32px'"));
   assert(host.contentView.children.indexOf(bar.overlay)>host.contentView.children.indexOf(panel), 'Dropdown remains above the settings panel.');
@@ -452,7 +452,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const freshHost=new BrowserWindow({show:false,width:1100,height:820,webPreferences:{partition:'fables-appearance',sandbox:true,contextIsolation:true,nodeIntegration:false}});
   const freshSite=new WebContentsView({webPreferences:{session:websiteSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});freshHost.contentView.addChildView(freshSite);
   const freshDock=restarted.attachMain(freshHost,freshSite);await freshDock.ready;
-  assert.equal(freshDock.isOpen(),false);assert.equal(freshSite.getBounds().x,0);assert.equal(freshSite.getBounds().y,32);assert(freshDock.launcher.getBounds().height<=freshSite.getBounds().y);
+  assert.equal(freshDock.isOpen(),false);assert.equal(freshSite.getBounds().x,0);assert.equal(freshSite.getBounds().y,32);assert.equal(freshDock.launcher.isVisible(),false);assert.deepEqual(freshDock.launcher.getBounds(),{x:0,y:0,width:0,height:0});
   await freshDock.open();await until(()=>freshDock.isOpen());
   assert.equal(restarted.panel.getBounds().width,savedWidth - 126);assert.equal(BrowserWindow.getAllWindows().length,1);
   await until(()=>restarted.panel.webContents.executeJavaScript('document.documentElement.lang==="ru"'));
