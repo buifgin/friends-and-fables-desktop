@@ -117,7 +117,9 @@ export class TranslationManager {
       } else if (this.bundled) void this.readyEngine().catch(() => {});
       await Promise.all([...this.websites].map(website => this.configure(website)));
       this.onChange?.(this.getSettings());
-      if (this.window && !this.window.isDestroyed()) this.window.webContents.send('translation:changed', this.state());
+      const state = this.state();
+      if (this.window && !this.window.isDestroyed()) this.window.webContents.send('translation:changed', state);
+      if (this.panel && !this.panel.webContents.isDestroyed()) this.panel.webContents.send('translation:changed', state);
     });
     return this.writes;
   }
