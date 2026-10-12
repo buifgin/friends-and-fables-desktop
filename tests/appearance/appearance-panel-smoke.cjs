@@ -276,6 +276,37 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   assert.equal(await website.webContents.executeJavaScript('typeof window.appearance'), 'undefined');
   assert.equal(await website.webContents.executeJavaScript('typeof window.appearanceButton'), 'undefined');
   assert.equal(await website.webContents.executeJavaScript('typeof window.require'), 'undefined');
+  const selectHubSection=async section=>{
+    await panel.webContents.executeJavaScript(`window.settingsHub.select(${JSON.stringify(section)})`);
+    await until(()=>panel.webContents.executeJavaScript(`window.settingsHub.get().then(value=>value.section===${JSON.stringify(section)})`));
+  };
+  const hubChrome=section=>panel.webContents.executeJavaScript(`(()=>{
+    const main=document.getElementById('content'),part=document.getElementById(${JSON.stringify(section)}),heading=part.querySelector('h1'),close=document.getElementById('close'),box=close.getBoundingClientRect(),style=getComputedStyle(close),checkbox=part.querySelector('input[type=checkbox]');
+    return {brand:document.querySelector('.eyebrow').textContent.trim(),brandSize:getComputedStyle(document.querySelector('.eyebrow')).fontSize,
+      headingSize:getComputedStyle(heading).fontSize,padding:getComputedStyle(main).padding,introSize:getComputedStyle(part.querySelector('.intro')).fontSize,
+      close:{width:box.width,height:box.height,radius:style.borderRadius,right:innerWidth-box.right,svg:close.querySelector('svg path').getAttribute('d')},
+      visibleClose:[...document.querySelectorAll('.settings-close-button')].filter(node=>getComputedStyle(node).display!=='none').length,
+      checkboxAccent:checkbox&&getComputedStyle(checkbox).accentColor,scrollbarWidth:getComputedStyle(main).scrollbarWidth,overflowY:getComputedStyle(main).overflowY,
+      navigation:[...document.querySelectorAll('#sections button')].map(node=>node.textContent)};
+  })()`);
+  const appearanceChrome=await contents.executeJavaScript(`(()=>{const close=document.getElementById('close-panel'),box=close.getBoundingClientRect(),checkbox=document.querySelector('input[type=checkbox]');return {close:{width:box.width,height:box.height,radius:getComputedStyle(close).borderRadius,svg:close.querySelector('svg path').getAttribute('d')},checkboxAccent:getComputedStyle(checkbox).accentColor}})()`);
+  await selectHubSection('music');
+  const musicChrome=await hubChrome('music');
+  await selectHubSection('general');
+  const generalChrome=await hubChrome('general');
+  assert.equal(musicChrome.brand,'FRIENDS & FABLES DESKTOP');assert.equal(musicChrome.brandSize,'10px');
+  for(const chrome of [musicChrome,generalChrome]){
+    assert.equal(chrome.headingSize,'30px');assert.equal(chrome.padding,'28px 32px');assert.equal(chrome.introSize,'13px');
+    assert.deepEqual(chrome.close,{width:34,height:34,radius:'50%',right:12,svg:'M4 4 14 14M14 4 4 14'});
+    assert.equal(chrome.visibleClose,1,'A plain Settings section exposes one rightmost close button.');
+    assert.equal(chrome.scrollbarWidth,'thin');assert.equal(chrome.overflowY,'auto');
+    assert(!chrome.navigation.some(label=>['Campaign','Combat','Кампания','Бой'].includes(label)));
+  }
+  assert.equal((await panel.webContents.executeJavaScript('window.settingsHub.get()')).campaignAvailable,false,'The fixture keeps campaign-only sections unavailable outside a campaign.');
+  assert.equal(generalChrome.checkboxAccent,appearanceChrome.checkboxAccent,'General checkboxes use the chosen theme accent used by Appearance.');
+  assert.deepEqual(generalChrome.close,appearanceChrome.close,'The General and Appearance close buttons share the same circular size and icon.');
+  await selectHubSection('appearance');
+  await until(()=>contents.executeJavaScript("getComputedStyle(document.getElementById('close-panel')).display!=='none'"));
   await assert.rejects(contents.executeJavaScript('window.appearance.resizePanel("wide",true)'), /Invalid panel resize/);
   assert.equal(await contents.executeJavaScript('window.appearance.resizePanel(560,true)'), 560);
   assert.equal(panel.getBounds().width, 560); assert.equal(editor.getBounds().width, 434); assert.equal(website.getBounds().x, 560);

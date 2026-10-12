@@ -1,1 +1,43 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>Settings</title><link rel="stylesheet" href="settings-hub.css"><script src="settings-theme.js" defer></script><script src="settings-hub.js" defer></script></head><body><nav aria-label="Settings sections"><h1 id="title">Settings</h1><div id="sections"></div></nav><main id="content"><button id="close" aria-label="Close settings">×</button><section id="music" hidden><h2>Music</h2><p>Music preferences will appear here when available.</p></section><section id="combat" hidden><h2>Combat</h2><p id="combat-unavailable"></p><label><input type="checkbox" id="automatic-damage"><span id="automatic-damage-label"></span></label><label><input type="checkbox" id="hide-intermediate-franz"><span id="hide-intermediate-franz-label"></span></label><label><input type="checkbox" id="hide-damage-prompt"><span id="hide-damage-prompt-label"></span></label><p id="combat-note"></p><p id="combat-error" role="alert"></p></section><section id="general" hidden><h2>General</h2><label><input type="checkbox" id="hide-bar"> <span id="hide-label">Hide desktop top bar in fullscreen</span></label><p id="help">Alt+Enter or F11 enters/exits fullscreen. Ctrl+Shift+B toggles the desktop top bar.</p><p id="error" role="alert"></p></section></main></body></html>
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Settings</title>
+  <link rel="stylesheet" href="settings-hub.css">
+  <script src="settings-theme.js" defer></script>
+  <script src="settings-hub.js" defer></script>
+</head>
+<body>
+  <nav aria-label="Settings sections">
+    <h1 id="title">Settings</h1>
+    <div id="sections"></div>
+  </nav>
+  <main id="content" hidden>
+    <button type="button" id="close" class="settings-close-button" aria-label="Close settings" title="Close settings">
+      <svg viewBox="0 0 18 18" aria-hidden="true" focusable="false"><path d="M4 4 14 14M14 4 4 14"></path></svg>
+    </button>
+    <p class="eyebrow">FRIENDS &amp; FABLES DESKTOP</p>
+    <section id="music" hidden>
+      <h1>Music</h1>
+      <p class="intro">Music preferences will appear here when available.</p>
+    </section>
+    <section id="combat" hidden>
+      <h1>Combat</h1>
+      <p class="intro" id="combat-unavailable"></p>
+      <label><input type="checkbox" id="automatic-damage"><span id="automatic-damage-label"></span></label>
+      <label><input type="checkbox" id="hide-intermediate-franz"><span id="hide-intermediate-franz-label"></span></label>
+      <label><input type="checkbox" id="hide-damage-prompt"><span id="hide-damage-prompt-label"></span></label>
+      <p class="help" id="combat-note"></p>
+      <p id="combat-error" role="alert"></p>
+    </section>
+    <section id="general" hidden>
+      <h1>General</h1>
+      <label><input type="checkbox" id="hide-bar"> <span id="hide-label">Hide desktop top bar in fullscreen</span></label>
+      <p class="intro" id="help">Alt+Enter or F11 enters/exits fullscreen. Ctrl+Shift+B toggles the desktop top bar.</p>
+      <p id="error" role="alert"></p>
+    </section>
+  </main>
+</body>
+</html>
