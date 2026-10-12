@@ -329,24 +329,26 @@ test('late asynchronous rejection restores even a previously confirmed prompt an
  await new Promise(resolve=>setImmediate(resolve));f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.calls(),1);
 });
 
-test('native choice waits for causal GM success and processed event, in either order', () => {
- for (const processedFirst of [true, false]) {
-  const f = flowFixture({ streaming: true, hide: true }); f.submit(); f.pending();
+test('native choice waits for causal GM success regardless of Thoughts processing flag', () => {
+ for (const processed of [true, false, undefined, null, 'true']) {
+  const f = flowFixture({ streaming: true, hide: true }); f.dmEvent.processed=processed;f.submit(); f.pending();
   assert.equal(f.calls(), 0); assert.equal(f.card.style.getPropertyValue('display'), 'none');
-  if (processedFirst) { f.dmEvent.processed = true; f.notify(); assert.equal(f.calls(), 0); f.finish(); }
-  else { f.finish(); assert.equal(f.calls(), 0); f.dmEvent.processed = true; f.notify(); }
-  assert.equal(f.calls(), 1); f.finish(); f.notify(); assert.equal(f.calls(), 1);
+  f.notify();assert.equal(f.calls(),0);f.finish();assert.equal(f.calls(),1);
+  f.finish(); f.notify(); assert.equal(f.calls(), 1);
  }
 });
-test('unknown processing and unrelated/error GM completion leave native choice manual', () => {
- for (const processed of [false, undefined, null, 'true']) {
-  const f = flowFixture({ streaming: true }); f.submit(); f.pending(); f.dmEvent.processed = processed; f.finish(); assert.equal(f.calls(), 0);
- }
+test('unrelated, malformed and error GM completion leave native choice manual', () => {
  for (const extra of [{status:'error'}, {variables:{requestId:'other',lastEventId:107655713}}, {variables:{requestId:'request-new',lastEventId:999}}, {submittedAt:0}]) {
   const f = flowFixture({streaming:true}); f.submit(); f.pending(); f.dmEvent.processed=true; f.finish(extra); f.notify(); assert.equal(f.calls(),0);
  }
+ const error=flowFixture({streaming:true});error.submit();error.pending();error.dmEvent.error='native error';error.finish();assert.equal(error.calls(),0);
 });
-
+test('finished native GM request accepts exact scaled Damage while processed remains false', () => {
+ const f=flowFixture({streaming:true,crit:true,prompt:true,wrapper:true,hide:true});
+ f.choice.dice_expression='6d8+5';f.choice.fixed_bonus=5;f.submit();f.pending();assert.equal(f.calls(),0);
+ f.finish();assert.equal(f.dmEvent.processed,false);assert.equal(f.calls(),1);assert.equal(f.passedChoice().dice_expression,'6d8+5');assert.equal(f.passedChoice().fixed_bonus,5);
+ f.notify();assert.equal(f.calls(),1);assert.equal(f.prompt.style.getPropertyValue('display'),'');
+});
 test('captured native grid hides avatar/audio/actions and collapses columns while outcomes remain functional', () => {
  const f=flowFixture({hide:true,prompt:true,wrapper:true});
  f.avatar.style.setProperty('display','flex','important');f.rows[1].style.setProperty('grid-template-columns','40px 1fr 30px');f.middle.style.setProperty('margin-left','16px','important');
