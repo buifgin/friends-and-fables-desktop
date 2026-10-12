@@ -5,7 +5,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   type Fiber = { tag?: number; type?: unknown; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
   type Native = Record<string, any>;
   type Observer = { options: { mutationFn: Function }; getCurrentResult(): Native; subscribe(listener: (result: Native) => void): () => void };
-  type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; unsubscribe?: () => void };
+  type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; finished?: boolean; unsubscribe?: () => void };
   type Outcome = { campaign: string; character: string | number; eventId: string | number; choiceId: string | number; started: number; status: 'claimed' | 'accepted' | 'failed' | 'unknown'; rollResultId?: string | number };
   type Preferences = { automaticDamage: boolean; hideIntermediateFranz: boolean; hideDamagePrompt: boolean };
   const key = '__friendsFablesDesktopCombatFlow';
@@ -23,10 +23,12 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   const claimed = claimHost.__friendsFablesDesktopCombatFlowClaims ??= new Set<string>();
   const outcomes = claimHost.__friendsFablesDesktopCombatFlowOutcomes ??= new Map<string, Outcome>();
   const linked = new Map<string | number, { campaign: string; encounter: string | number; request: string; outcomeKey: string; choiceOwner: Fiber }>();
+  const narrating = new Map<string | number, { campaign: string; encounter: string | number; request: string }>();
   const hidden = new Map<HTMLElement, { value: string; priority: string }>();
   const hiddenPrompts = new Map<HTMLElement, { value: string; priority: string }>();
+  const narrationLayout = new Map<HTMLElement, Map<string, { value: string; priority: string }>>();
   const storageKey = (): string => `ff-desktop-combat-flow-v1:${campaign}`;
-  function cancel(): void { const current = ticket; ticket = null; try { current?.unsubscribe?.(); } catch { /* Native lifecycle may already be disposed. */ } }
+  function cancel(): void { const current = ticket; ticket = null; if (narrating.size) { narrating.clear(); schedule(); } try { current?.unsubscribe?.(); } catch { /* Native lifecycle may already be disposed. */ } }
   function restoreNode(node: HTMLElement): void {
     const previous = hidden.get(node); if (!previous) return;
     if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
@@ -37,6 +39,10 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
     }
     hidden.clear();
+    for (const [node, properties] of narrationLayout) for (const [property, previous] of properties) {
+      if (previous.value) node.style.setProperty(property, previous.value, previous.priority); else node.style.removeProperty(property);
+    }
+    narrationLayout.clear();
   }
   function restorePrompts(): void {
     for (const [node, previous] of hiddenPrompts) {
@@ -227,13 +233,19 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   function localResult(current: Ticket, result: Native): void {
     if (ticket !== current || disposed || !prefs.automaticDamage || location.pathname !== route || campaign !== current.campaign) return;
     if (result.status === 'error') { cancel(); return; }
-    if (result.status !== 'pending') return;
+    if (result.status !== 'pending' && result.status !== 'success') return;
     const variables = result.variables;
     if (result === current.baseline || result.variables === current.baseline.variables || !Number.isFinite(result.submittedAt)
       || result.submittedAt <= (current.baseline.submittedAt ?? 0) || result.submittedAt < current.started
       || typeof variables?.requestId !== 'string' || !variables.requestId || !id(variables.lastEventId) || variables.isRewrite === true) { cancel(); return; }
     if (current.request && (current.request !== variables.requestId || current.attackId !== variables.lastEventId)) { cancel(); return; }
-    current.request = variables.requestId; current.attackId = variables.lastEventId; schedule();
+    // Captured native GM mutation awaits GM_RESPONSE/ENCOUNTER_GM_RESPONSE;
+    // onSuccess clears Franz's typing state before the observer reports success.
+    // Success must belong to the same invocation, never an idle per-row observer.
+    if (result.status === 'success' && (!current.request || !current.attackId)) { cancel(); return; }
+    const changed = current.request !== variables.requestId || current.attackId !== variables.lastEventId || current.finished !== (result.status === 'success');
+    current.request = variables.requestId; current.attackId = variables.lastEventId;
+    current.finished = result.status === 'success'; if (changed) schedule();
   }
   function submitted(event: Event): void {
     traversalBudget = 50000; ancestryCache.clear(); currentFiberCache.clear(); rootCache.clear();
@@ -279,22 +291,17 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   }
   function syncNarration(): void {
     if (!prefs.automaticDamage || !prefs.hideIntermediateFranz) { restore(); return; }
-    for (const [node, previous] of hidden) {
-      const eventId = ancestry(node)[1]?.memoizedProps?.eventId;
-      if (!id(eventId) || !linked.has(eventId) || node.id !== `event-message-card-${eventId}`) {
-        if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display'); hidden.delete(node);
-      }
-    }
-    for (const [eventId, proof] of linked) {
-      const outcome = outcomes.get(proof.outcomeKey);
-      if (outcome?.status === 'failed' || outcome?.status === 'unknown') {
-        for (const node of hidden.keys()) if (node.id === `event-message-card-${eventId}`) restoreNode(node);
-        linked.delete(eventId); continue;
-      }
+    const desired = new Set<HTMLElement>();
+    const layouts = new Map<HTMLElement, Record<string, string>>();
+    const narration = new Map<string | number, { campaign: string; encounter: string | number; request: string; outcomeKey?: string }>(narrating);
+    for (const [eventId, proof] of linked) narration.set(eventId, proof);
+    for (const [eventId, proof] of narration) {
+      const outcome = outcomes.get(proof.outcomeKey ?? '');
+      if (outcome?.status === 'failed' || outcome?.status === 'unknown') { linked.delete(eventId); continue; }
       const row = document.getElementById(`event-container-${eventId}`);
-      if (!row || proof.campaign !== campaign || !encounterMatches(row, proof.encounter)) { for (const node of hidden.keys()) if (node.id === `event-message-card-${eventId}`) restoreNode(node); linked.delete(eventId); continue; }
+      if (!row || proof.campaign !== campaign || !encounterMatches(row, proof.encounter)) { linked.delete(eventId); continue; }
       const event = eventFor(row);
-      if (event?.role !== 'dm' || event.request_id !== proof.request || event.campaign_id !== campaign) { for (const node of hidden.keys()) if (node.id === `event-message-card-${eventId}`) restoreNode(node); linked.delete(eventId); continue; }
+      if (event?.role !== 'dm' || event.request_id !== proof.request || event.campaign_id !== campaign) { linked.delete(eventId); continue; }
       const cards = Array.from(row.querySelectorAll<HTMLElement>('[id^="event-message-card-"]')).filter(card => card.id === `event-message-card-${eventId}`);
       if (cards.length !== 1) continue;
       const card = cards[0], chain = ancestry(card, 8);
@@ -304,9 +311,48 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       if (owner?.eventId !== eventId || typeof chain[1]?.type !== 'function' || !String(chain[1].type).includes('event-message-card-')
         || !chain.some(fiber => (fiber.memoizedProps?.event as Native)?.id === eventId)
         || card.querySelector('[data-ff-combat-flow],form,input,select,textarea')
-        || Array.from(card.querySelectorAll('button')).some(button => ancestry(button, 16).some(fiber => fiber.memoizedProps?.rollChoice)) || traversalBudget <= 0) { restoreNode(card); continue; }
-      if (!hidden.has(card)) hidden.set(card, { value: card.style.getPropertyValue('display'), priority: card.style.getPropertyPriority('display') });
-      card.style.setProperty('display', 'none', 'important');
+        || Array.from(card.querySelectorAll('button')).some(button => ancestry(button, 16).some(fiber => fiber.memoizedProps?.rollChoice)) || traversalBudget <= 0) { continue; }
+      desired.add(card);
+      // Captured ej owns a three-column desktop grid: avatar/audio, middle
+      // (eC narration + nT outcomes), and X feedback. Validate committed host
+      // ownership and that exact shape before collapsing those visual regions.
+      // Never hide the shared event container or the middle native outcomes.
+      const rowHost = committedFiber(row), shell = currentFiber(rowHost?.return);
+      const shellSource = typeof shell?.type === 'function' ? String(shell.type) : '';
+      const children = Array.from(row.children);
+      if (rowHost?.tag !== 5 || rowHost.type !== 'div' || (shell?.memoizedProps?.event as Native)?.id !== eventId
+        || !['event-container-', 'grid-cols-[40px_1fr_30px]', 'avatarVariant', 'showFeedbackButtons'].every(marker => shellSource.includes(marker))
+        || children.length !== 3 || !children.every(node => node instanceof HTMLElement)) continue;
+      const [avatar, middle, actions] = children as HTMLElement[];
+      if (!middle.contains(card) || avatar.contains(card) || actions.contains(card)) continue;
+      const hosts = children.map(node => committedFiber(node));
+      if (hosts.some((fiber, index) => !fiber || fiber.tag !== 5 || fiber.type !== 'div' || (fiber.stateNode as unknown) !== children[index]
+        || currentFiber(fiber.return) !== rowHost)) continue;
+      const unsafe = [avatar, actions].some(node => node.querySelector('[id^="event-message-card-"], [id^="event-container-"], form, input, select, textarea')
+        || Array.from(node.querySelectorAll('button')).some(button => ancestry(button, 16).some(fiber => fiber.memoizedProps?.rollChoice)));
+      if (unsafe || traversalBudget <= 0) continue;
+      desired.add(avatar); desired.add(actions);
+      layouts.set(row as HTMLElement, { 'grid-template-columns': 'minmax(0, 1fr)', 'column-gap': '0px' });
+      layouts.set(middle, { 'margin-left': '0px' });
+    }
+    for (const node of hidden.keys()) if (!desired.has(node)) restoreNode(node);
+    for (const node of desired) {
+      if (!hidden.has(node)) hidden.set(node, { value: node.style.getPropertyValue('display'), priority: node.style.getPropertyPriority('display') });
+      if (node.style.getPropertyValue('display') !== 'none' || node.style.getPropertyPriority('display') !== 'important') node.style.setProperty('display', 'none', 'important');
+    }
+    for (const [node, properties] of narrationLayout) if (!layouts.has(node)) {
+      for (const [property, previous] of properties) {
+        if (previous.value) node.style.setProperty(property, previous.value, previous.priority); else node.style.removeProperty(property);
+      }
+      narrationLayout.delete(node);
+    }
+    for (const [node, properties] of layouts) {
+      let previous = narrationLayout.get(node);
+      if (!previous) narrationLayout.set(node, previous = new Map());
+      for (const [property, value] of Object.entries(properties)) {
+        if (!previous.has(property)) previous.set(property, { value: node.style.getPropertyValue(property), priority: node.style.getPropertyPriority(property) });
+        if (node.style.getPropertyValue(property) !== value || node.style.getPropertyPriority(property) !== 'important') node.style.setProperty(property, value, 'important');
+      }
     }
   }
   function syncPrompts(): void {
@@ -357,6 +403,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (!current) return;
     if (Date.now() - current.started > 120000 || campaign !== current.campaign || location.pathname !== route) { cancel(); return; }
     if (!current.request || !current.attackId || !prefs.automaticDamage) return;
+    localResult(current, current.observer.getCurrentResult());
+    if (ticket !== current) return;
     const rows = Array.from(document.querySelectorAll('[id^="event-container-"]')).slice(-30).reverse();
     const entries = rows.map(row => ({ row, event: eventFor(row) }));
     if (traversalBudget <= 0) { cancel(); return; }
@@ -375,6 +423,17 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     // This is the native eJ hit rule captured in its submit function. Critical
     // dice remain entirely owned by the following native Damage callback.
     if (roll.total_roll < roll.dc) { cancel(); return; }
+    // The local observer + validated hit own this causal intermediate already
+    // while it streams. Conceal its narration without claiming or accepting a
+    // choice; cancellation restores it. A competing DM event is ambiguous.
+    const intermediate = entries.filter(({ event }) => event?.role === 'dm' && event.campaign_id === campaign && event.request_id === current.request);
+    if (intermediate.length > 1) { cancel(); return; }
+    if (intermediate.length === 1) {
+      const entry = intermediate[0];
+      if (entry.event?.command_used !== 'encounter_player_turn_action_response' || !encounterMatches(entry.row, current.encounter)) { cancel(); return; }
+      if (id(entry.event.id)) narrating.set(entry.event.id, { campaign, encounter: current.encounter, request: current.request });
+    }
+    if (!current.finished) return;
     const matches: { row: Element; event: Native; choice: Native }[] = [];
     for (const { row, event } of entries) {
       if (event?.role !== 'dm' || event.campaign_id !== campaign || event.request_id !== current.request) continue;
@@ -387,6 +446,10 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (matches.length === 0) return;
     if (matches.length !== 1) { cancel(); return; }
     const match = matches[0];
+    // oB passes !1===event.processed to native oM.isEventProcessing. Require
+    // affirmative completion as well as the awaited causal GM success; missing
+    // or malformed state must not interrupt a streamed intermediate reply.
+    if (match.event.processed !== true || match.event.error) return;
     if (!encounterMatches(match.row, current.encounter)) { cancel(); return; }
     const candidates: { button: HTMLButtonElement; callback: (event: Native) => unknown }[] = [];
     const buttons = Array.from(match.row.querySelectorAll<HTMLButtonElement>('button'));

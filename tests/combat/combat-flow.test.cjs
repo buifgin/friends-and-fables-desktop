@@ -85,7 +85,7 @@ function flowFixture(options = {}) {
   form.closest = () => f.dock;
   const request = 'request-new', attackEvent = { id: 107655713, role: 'player', request_id: request, campaign_id: 'campaign-a', character_id: 83026155, command_used: 'roll_attack', events_roll: { dc: 10, total_roll: options.miss ? 9 : 24, roll_type: 'Spell Attack', modifier_value: 8, proficiency_bonus: 8 } };
   const choice = { id: 6840826, event_id: 107655722, character_id: 83026155, type: 'Damage', accepted: options.accepted ?? null, dice_expression: options.crit ? '2d10+3' : '1d10', fixed_bonus: 3 };
-  const dmEvent = { id: 107655722, role: 'dm', request_id: options.unrelated ? 'request-other' : request, campaign_id: 'campaign-a', command_used: 'encounter_player_turn_action_response', rollChoices: [choice] };
+  const dmEvent = { id: 107655722, role: 'dm', request_id: options.unrelated ? 'request-other' : request, campaign_id: 'campaign-a', command_used: 'encounter_player_turn_action_response', processed: !options.streaming, rollChoices: [choice] };
   const attackRow = new Element(), dmRow = new Element(), button = new Element('button');
   attackRow.id = 'event-container-undefined'; dmRow.id = 'event-container-107655722'; dmRow.append(button);
   button.isConnected = true; button.disabled = false; button.matches = () => false; button.getClientRects = () => [{}];
@@ -106,13 +106,26 @@ function flowFixture(options = {}) {
     const host = { tag: 5, type: 'div', stateNode: prompt, memoizedProps: {}, return: t5, child: buttonFiber };
     t5.child = host; buttonFiber.return = host; prompt.__reactFiber$fixture = host;
   }
+  let avatar, middle, actions, shell, rowHost;
+  if (options.wrapper) {
+    avatar = new Element(); middle = new Element(); actions = new Element();
+    const audio = new Element('button'), feedback = new Element('button'); avatar.append(audio); actions.append(feedback);
+    avatar.querySelectorAll = () => [audio]; actions.querySelectorAll = () => [feedback];
+    dmRow.append(avatar, middle, actions); middle.append(card, ...(options.prompt ? [prompt, damageResult, finalReply] : [button]));
+    shell = { type: function NativeEventShell() { return ['event-container-', 'grid-cols-[40px_1fr_30px]', 'avatarVariant', 'showFeedbackButtons']; }, memoizedProps: {event:dmEvent}, return:rowFiber };
+    rowHost = {tag:5,type:'div',stateNode:dmRow,memoizedProps:{},return:shell}; shell.child=rowHost; rowFiber.child=shell; dmRow.__reactFiber$fixture=rowHost;
+    const hosts=[avatar,middle,actions].map(node=>({tag:5,type:'div',stateNode:node,memoizedProps:{},return:rowHost}));
+    hosts.forEach((host,index)=>{[avatar,middle,actions][index].__reactFiber$fixture=host;if(index<2)host.sibling=hosts[index+1]});rowHost.child=hosts[0];
+    hosts[1].child=cardOwner;cardOwner.return=hosts[1];cardOwner.sibling=t5;t5.return=hosts[1];t5.sibling=undefined;
+  }
   card.querySelectorAll = () => [];
   dmRow.querySelectorAll = selector => selector === 'button' ? [button] : selector === '[id^="event-message-card-"]' ? [card] : [];
   context.document.getElementById = value => value === dmRow.id ? dmRow : null;
   const rows = [attackRow, dmRow]; context.document.querySelectorAll = () => rows;
-  return { ...f, observer, owner, character, attack, choice, dmEvent, attackEvent, button, t5, rows, card, prompt, damageResult, finalReply, nativeCampaign, result: () => result, calls: () => calls, passedChoice: () => passedChoice, unsubscribed: () => unsubscribed,
+  return { ...f, observer, owner, character, attack, choice, dmEvent, attackEvent, button, t5, rows, card, prompt, damageResult, finalReply, nativeCampaign, avatar, middle, actions, shell, rowHost, result: () => result, calls: () => calls, passedChoice: () => passedChoice, unsubscribed: () => unsubscribed,
     submit(trusted = true) { f.documentListeners.submit({ isTrusted: trusted, target: form }); },
-    pending(extra = {}) { result = { status: 'pending', submittedAt: Date.now() + 1, variables: { requestId: request, lastEventId: attackEvent.id, isMultiplayer: true }, ...extra }; listener?.(result); f.notify(); },
+    pending(extra = {}) { result = { status: 'pending', submittedAt: Date.now() + 1, variables: { requestId: request, lastEventId: attackEvent.id, isMultiplayer: true }, ...extra }; listener?.(result); if (!options.streaming) { result = { ...result, status: 'success' }; listener?.(result); } f.notify(); },
+    finish(extra = {}) { result = { ...result, status: 'success', ...extra }; listener?.(result); f.notify(); },
   };
 }
 test('trusted native submit + local pending result activates linked Damage exactly once', () => {
@@ -314,4 +327,56 @@ test('accepted prompt resolves a replacement committed t5 host and restores deta
 test('late asynchronous rejection restores even a previously confirmed prompt and never retries',async()=>{
  const f=flowFixture({prompt:true,hidePrompt:true,reject:true});f.submit();f.pending();f.choice.accepted=true;f.choice.roll_result_id=107655730;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'none');
  await new Promise(resolve=>setImmediate(resolve));f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.calls(),1);
+});
+
+test('native choice waits for causal GM success and processed event, in either order', () => {
+ for (const processedFirst of [true, false]) {
+  const f = flowFixture({ streaming: true, hide: true }); f.submit(); f.pending();
+  assert.equal(f.calls(), 0); assert.equal(f.card.style.getPropertyValue('display'), 'none');
+  if (processedFirst) { f.dmEvent.processed = true; f.notify(); assert.equal(f.calls(), 0); f.finish(); }
+  else { f.finish(); assert.equal(f.calls(), 0); f.dmEvent.processed = true; f.notify(); }
+  assert.equal(f.calls(), 1); f.finish(); f.notify(); assert.equal(f.calls(), 1);
+ }
+});
+test('unknown processing and unrelated/error GM completion leave native choice manual', () => {
+ for (const processed of [false, undefined, null, 'true']) {
+  const f = flowFixture({ streaming: true }); f.submit(); f.pending(); f.dmEvent.processed = processed; f.finish(); assert.equal(f.calls(), 0);
+ }
+ for (const extra of [{status:'error'}, {variables:{requestId:'other',lastEventId:107655713}}, {variables:{requestId:'request-new',lastEventId:999}}, {submittedAt:0}]) {
+  const f = flowFixture({streaming:true}); f.submit(); f.pending(); f.dmEvent.processed=true; f.finish(extra); f.notify(); assert.equal(f.calls(),0);
+ }
+});
+
+test('captured native grid hides avatar/audio/actions and collapses columns while outcomes remain functional', () => {
+ const f=flowFixture({hide:true,prompt:true,wrapper:true});
+ f.avatar.style.setProperty('display','flex','important');f.rows[1].style.setProperty('grid-template-columns','40px 1fr 30px');f.middle.style.setProperty('margin-left','16px','important');
+ f.submit();f.pending();assert.equal(f.calls(),1);
+ for(const node of [f.card,f.avatar,f.actions])assert.equal(node.style.getPropertyValue('display'),'none');
+ assert.equal(f.rows[1].style.getPropertyValue('display'),'');assert.equal(f.prompt.style.getPropertyValue('display'),'');
+ assert.equal(f.rows[1].style.getPropertyValue('grid-template-columns'),'minmax(0, 1fr)');assert.equal(f.middle.style.getPropertyValue('margin-left'),'0px');
+ for(const node of [f.rows[0],f.damageResult,f.finalReply])assert.equal(node.style.getPropertyValue('display'),'');
+ f.controls().hide.change(false);assert.equal(f.avatar.style.getPropertyValue('display'),'flex');assert.equal(f.avatar.style.getPropertyPriority('display'),'important');
+ assert.equal(f.rows[1].style.getPropertyValue('grid-template-columns'),'40px 1fr 30px');assert.equal(f.middle.style.getPropertyValue('margin-left'),'16px');assert.equal(f.middle.style.getPropertyPriority('margin-left'),'important');
+});
+test('native grid concealment restores on failure, disposal, encounter switch and host reuse', () => {
+ for(const action of [f=>f.install(false),f=>{f.nativeCampaign.active_encounter_id=999;f.notify()},f=>{f.shell.memoizedProps.event={...f.dmEvent,id:999};f.notify()},f=>{f.rowHost.child.return=f.root;f.notify()}]) {
+  const f=flowFixture({hide:true,prompt:true,wrapper:true});f.submit();f.pending();assert.equal(f.avatar.style.getPropertyValue('display'),'none');action(f);
+  assert.equal(f.avatar.style.getPropertyValue('display'),'');assert.equal(f.actions.style.getPropertyValue('display'),'');assert.equal(f.rows[1].style.getPropertyValue('grid-template-columns'),'');assert.equal(f.middle.style.getPropertyValue('margin-left'),'');
+ }
+ const f=flowFixture({hide:true,prompt:true,wrapper:true,failure:true});f.submit();f.pending();f.notify();assert.equal(f.avatar.style.getPropertyValue('display'),'');assert.equal(f.card.style.getPropertyValue('display'),'');
+});
+test('ambiguous wrapper or mixed native choice region never hides avatar/actions', () => {
+ for(const change of [f=>{f.shell.type=function Unknown(){return 'event-container-'}},f=>{f.avatar.querySelectorAll=()=>[f.button]},f=>{f.actions.querySelector=()=>f.prompt}]) {
+  const f=flowFixture({hide:true,prompt:true,wrapper:true});change(f);f.submit();f.pending();assert.equal(f.calls(),1);
+  assert.equal(f.avatar.style.getPropertyValue('display'),'');assert.equal(f.actions.style.getPropertyValue('display'),'');assert.equal(f.rows[1].style.getPropertyValue('grid-template-columns'),'');
+ }
+});
+
+test('causal streaming narration hides before choice arrival, errors and cancellations restore', () => {
+ for(const action of [f=>f.finish({status:'error'}),f=>f.submit(),f=>f.controls().auto.change(false),f=>{f.context.location.pathname='/campaign-b/play';f.notify()}]) {
+  const f=flowFixture({streaming:true,hide:true,prompt:true,wrapper:true});f.dmEvent.rollChoices=[];f.submit();f.pending();
+  for(const node of [f.card,f.avatar,f.actions])assert.equal(node.style.getPropertyValue('display'),'none');assert.equal(f.calls(),0);assert.equal(f.prompt.style.getPropertyValue('display'),'');
+  action(f);f.notify();for(const node of [f.card,f.avatar,f.actions])assert.equal(node.style.getPropertyValue('display'),'');assert.equal(f.calls(),0);
+ }
+ const f=flowFixture({streaming:true,hide:true,prompt:true,wrapper:true,unrelated:true});f.submit();f.pending();assert.equal(f.card.style.getPropertyValue('display'),'');assert.equal(f.avatar.style.getPropertyValue('display'),'');
 });
