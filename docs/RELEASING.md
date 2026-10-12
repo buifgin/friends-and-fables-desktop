@@ -134,3 +134,13 @@ Release source: `b4f7c736080ff1e75a2051451c72380b9987dff5` (`v0.7.0`). [Native w
 | friends-and-fables-desktop-0.7.0-linux-x86_64.AppImage | 117274978 | `d94ccdb8e59de25c56919b643c408f6ede4f4ca4a81742972d4294a3a8e0f871` |
 | friends-and-fables-desktop-0.7.0-windows-x64.exe | 324205070 | `5d00a49a30621ebf1895552828c808e33331602d7942095495215fab6a03deda` |
 | SHA256SUMS | 236 | `6d5933556ba145e2d7befc0bfa7c4938765f03459daa2cf6b35c6c05590a100b` |
+
+## 0.7.2.7 verification
+
+Release source: `6c1451d4373fc138fc281ec365a11a76fdc8eb93` (`v0.7.2-7`). [Build workflow 38178138822](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/38178138822) passed Linux and Windows source and packaged-resource gates; Windows also passed the bundled model gate. [Staging workflow 38178684719](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/38178684719) verified and staged the exact CI artifacts to the unpublished `v0.7.2-7` draft release. Public title: `0.7.2.7`; internal package/tag version: `0.7.2-7`/`v0.7.2-7`. AUR source verification remains pending.
+
+| File | Bytes | SHA-256 |
+| --- | ---: | --- |
+| friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage | 117336594 | `caa9995158a8bed4c1b77b42c22dfecba3dba701d78c08c856ed45521e8ab22c` |
+| friends-and-fables-desktop-0.7.2-7-windows-x64.exe | 324253527 | `83822ffab658e99f58e3613a67f0b8914c424a401844f736cf9735b136a8a1cb` |
+| SHA256SUMS | 240 | `0b4e33007ffa80deffa2f5fa30639adaca6a10b0b1102892b79d92c2b3dd8aae` |
