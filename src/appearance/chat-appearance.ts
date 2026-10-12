@@ -327,7 +327,7 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
     :is(${loading}) > :is(img,[class~="absolute"][class~="inset-0"]) { display:none !important; }`;
   if (image && settings.backgroundImage) {
     css += `[data-ff-desktop-chat-background] { position: relative !important; isolation: isolate; background-color: transparent !important; background-image: none !important; }
-      [data-ff-desktop-chat] { background-color: transparent !important; }
+      [data-ff-desktop-chat] { position: relative !important; isolation: isolate; background-color: transparent !important; }
       [data-ff-desktop-chat-background]::before { content: ""; position: absolute; inset: 0; z-index: -1;
         pointer-events: none; background-image: url("${image}"); background-position: center;
         background-size: ${settings.backgroundFit}; background-repeat: no-repeat;

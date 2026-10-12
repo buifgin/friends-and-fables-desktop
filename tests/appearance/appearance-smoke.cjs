@@ -292,13 +292,14 @@ async function save(settings, window) {
     return {owner:owner.id, bounds:[rect.x,rect.y,rect.width,rect.height],size:[before.width,before.height],position:before.backgroundPosition,
       image:before.backgroundImage, gutters:[main.offsetWidth-main.clientWidth,main.offsetHeight-main.clientHeight],
       overflow:getComputedStyle(main).overflowY, layers:document.querySelectorAll('[data-ff-desktop-chat-background]').length,
-      innerImage:getComputedStyle(chat,'::before').backgroundImage,sidebar:getComputedStyle(document.getElementById('adjacent-pane')).backgroundColor,
+      innerImage:getComputedStyle(chat,'::before').backgroundImage,chatPosition:getComputedStyle(chat).position,chatIsolation:getComputedStyle(chat).isolation,sidebar:getComputedStyle(document.getElementById('adjacent-pane')).backgroundColor,
       identity:window.viewportNodes.every(n=>document.getElementById(n.id)===n)};
   })()`);
   await until(viewportWindow.webContents,"document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
   const baselineViewport = await viewportState();
   assert.equal(baselineViewport.owner,'native-panel');assert.equal(baselineViewport.innerImage,'none');
   assert.equal(baselineViewport.layers,1);assert.equal(baselineViewport.overflow,'auto');
+  assert.equal(baselineViewport.chatPosition,'relative');assert.equal(baselineViewport.chatIsolation,'isolate','Inner chat retains its existing positioning and stacking context.');
   const paintSamples = async () => {
     await viewportWindow.webContents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
     const shot=await viewportWindow.webContents.capturePage({x:20,y:20,width:400,height:300});
