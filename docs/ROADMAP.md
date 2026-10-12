@@ -110,10 +110,11 @@
 
 ## Current source UI corrections (unpublished)
 
-The following corrections are present in current source after the published 0.7.2.7 release. They do not change that release, its tag, or its packages. The completed implementation and verification evidence are recorded in the local `ui-corrections-0-8-0` task report; the broad Windows/live coverage items elsewhere in this roadmap remain open where marked.
+The following corrections are present in current source after the published 0.7.2.7 release. They do not change that release, its tag, or its packages. The broad Windows/live coverage items elsewhere in this roadmap remain open where marked.
 
 - [x] Move Music to the first website-header position and retain expandable inline transport, volume, and library controls.
-- [x] Use unified Settings navigation: global sections at Home, Campaign and Combat inside a campaign; reuse the panel for section changes, scroll only on overflow, and keep one close control. Music remains a reserved Settings section.
+- [x] Remove the desktop palette shortcut and add a Settings entry on Home for global sections; keep Campaign and Combat inside a campaign. Reuse the panel for section changes, scroll only on overflow, and keep one close control. Music remains a reserved Settings section.
+- [x] Add the General option to hide the desktop top bar in fullscreen; preserve Alt+Enter/F11 fullscreen and Ctrl+Shift+B top-bar toggle behavior.
 - [x] Keep the native desktop Settings appearance consistent; preserve campaign desktop colors and panel-node identity during section changes.
 - [x] Keep native target checkboxes visible and high contrast; preserve their existing selection behavior.
 - [x] Remove the duplicate ordinary-check correction block while preserving native attack/spell corrections and defaults.
@@ -136,7 +137,7 @@ The following corrections are present in current source after the published 0.7.
 
 ## Future combat workspace changes
 
-The left combat workspace and native action/check docking are implemented. The original proposal for a three-column workspace remains an unapproved design idea. Saved modifier presets and character-sheet writes remain future work; inspect supported fields and write paths before promising or enabling sheet updates. See [the plan](COMBAT-WORKSPACE-PLAN.md).
+The left combat workspace and native action/check docking are implemented. The original three-column proposal was superseded by the left-panel workspace request. Named local presets are already available and loaded manually; saved weapon/spell overrides apply automatically to matching untouched native attack forms. Future work is limited to evaluating stat-derived or role-aware modifier rules and inspecting supported fields/write paths before promising or enabling character-sheet updates. See [the plan](COMBAT-WORKSPACE-PLAN.md).
 
 ## Future character progression improvements
 
