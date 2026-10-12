@@ -1,19 +1,19 @@
 export interface CampaignPanelPalette { background:string; foreground:string; border:string; accent:string; panel:string; selected:string; }
 
 // Serialized into the website: all runtime dependencies must remain local.
-export function configureNativeCampaignPanel(show: boolean, width: number, height: number, palette?:CampaignPanelPalette): void {
-  type Controller = { update(width: number, height: number, palette?:CampaignPanelPalette): void; dispose(): void };
+export function configureNativeCampaignPanel(show: boolean | 'suspend', width: number, height: number, palette?:CampaignPanelPalette): void {
+  type Controller = { update(width: number, height: number, palette?:CampaignPanelPalette): void; suspend(width: number,height: number,palette?:CampaignPanelPalette): void; dispose(): void };
   type Fiber = { type?: unknown; memoizedProps?: Record<string, unknown>; return?: Fiber; child?: Fiber; sibling?: Fiber };
   const key = '__friendsFablesDesktopCampaignPanel';
   const host = window as unknown as Record<string, Controller | undefined>;
-  if (host[key]) { if (show) host[key]!.update(width, height, palette); else host[key]!.dispose(); return; }
-  if (!show) return;
+  if (host[key]) { if (show === 'suspend') host[key]!.suspend(width,height,palette); else if (show) host[key]!.update(width, height, palette); else host[key]!.dispose(); return; }
+  if (show !== true) return;
   const match = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/play\/?$/i.exec(location.pathname);
   if (location.origin !== 'https://play.fables.gg' || !match) return;
   const campaignId = match[1].toLowerCase();
   let disposed = false, queued = false, attempted = false, panel: HTMLElement | null = null;
   let panelWidth = width, panelHeight = height, modalActive = false;
-  let desktopPalette=palette;
+  let desktopPalette=palette, sectionSuspended=false;
   const route = location.pathname + location.search;
   // Snapshot only after the previous dock has natively unmounted: its temporary
   // modal locks and accessibility attributes are not Campaign's initial state.
@@ -28,6 +28,7 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
     panelWidth = Number.isFinite(panelWidth) ? Math.max(0, Math.round(panelWidth)) : 0;
     panelHeight = Number.isFinite(panelHeight) ? Math.max(0, Math.round(panelHeight)) : 0;
     style.textContent = `[data-ff-campaign-panel]{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;transform:none!important;translate:none!important;width:${panelWidth}px!important;height:${panelHeight}px!important;min-width:0!important;max-width:${panelWidth}px!important;max-height:${panelHeight}px!important;box-sizing:border-box!important;border-radius:0!important;overflow:auto!important;animation:none!important;transition:none!important}[data-ff-campaign-workspace]{padding-left:${panelWidth}px!important;box-sizing:border-box!important;min-width:0!important}`;
+    if(sectionSuspended)style.textContent+='[data-ff-campaign-panel]{visibility:hidden!important;pointer-events:none!important}';
     const p=desktopPalette;
     // Only app-generated CSS colors are accepted; never interpolate arbitrary CSS.
     const color=(value:unknown):value is string=>typeof value==='string'&&/^(?:#[0-9a-f]{6}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i.test(value);
@@ -107,7 +108,7 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
     }
     if (closingCombat?.isConnected) return;
     closingCombat = null;
-    if (!attempted && !otherLayer()) {
+    if (!attempted && !sectionSuspended && !otherLayer()) {
       const gear = document.querySelector<HTMLButtonElement>('aside button:has(svg.lucide-settings)');
       if (!gear || gear.disabled) return;
       attempted = true;
@@ -148,6 +149,6 @@ export function configureNativeCampaignPanel(show: boolean, width: number, heigh
   document.addEventListener('wheel', wheelGate); document.addEventListener('focusin', focusGate); document.addEventListener('focusout', focusGate);
   document.addEventListener('dismissableLayer.pointerDownOutside', outside, true); document.addEventListener('dismissableLayer.focusOutside', outside, true);
   window.addEventListener('popstate', schedule); window.addEventListener('resize', schedule);
-  host[key] = { update(nextWidth, nextHeight, nextPalette) { if (disposed) return; panelWidth = nextWidth; panelHeight = nextHeight;if(nextPalette)desktopPalette=nextPalette; dimensions(); schedule(); }, dispose };
+  host[key] = { update(nextWidth, nextHeight, nextPalette) { if (disposed) return; sectionSuspended=false; panelWidth = nextWidth; panelHeight = nextHeight;if(nextPalette)desktopPalette=nextPalette; dimensions(); schedule(); }, suspend(nextWidth,nextHeight,nextPalette) { if(disposed)return; sectionSuspended=true; panelWidth=nextWidth;panelHeight=nextHeight;if(nextPalette)desktopPalette=nextPalette;dimensions(); }, dispose };
   dimensions(); scan();
 }
