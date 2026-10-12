@@ -198,14 +198,38 @@ const html=`<!doctype html><html><body style="margin:0;padding-top:32px">${nativ
  await clickWebsiteButton('[data-ff-music-control=previous]');await until(()=>committed().selected===beforeNext);assert.equal(sent.at(-1)[0],'previous');
  const volumeBefore=committed().volume;await siteJs('document.querySelector("[data-ff-music-volume] input").focus()');parent.webContents.sendInputEvent({type:'keyDown',keyCode:'Right'});parent.webContents.sendInputEvent({type:'keyUp',keyCode:'Right'});await until(()=>committed().volume!==volumeBefore);assert.equal(sent.at(-1)[0],'volume');
  const token=manager.siteToken,commandURL='fables-desktop://music/control?command=next&token='+token;
- const invalid=[commandURL+'&value=1',commandURL+'&extra=x',commandURL+'#hash',commandURL.replace('next','filesystem'),commandURL.replace(token,'0'.repeat(48)),commandURL.replace('next','volume')+'&value=NaN',commandURL.replace('next','volume')+'&value=1.001',commandURL.replace('next','volume')+'&value=-.1',commandURL.replace('music/','user@music/')];
+ const invalid=[commandURL+'&value=1',commandURL+'&extra=x',commandURL+'#hash',commandURL.replace('next','filesystem'),commandURL.replace(token,'0'.repeat(48)),commandURL.replace('next','volume')+'&value=NaN',commandURL.replace('next','volume')+'&value=1.001',commandURL.replace('next','volume')+'&value=-.1'];
  const beforeInvalid=sent.length;
  for(const url of invalid){assert.equal(manager.handleOpenRequest(parent.webContents,parent,url),false,'Commands never accepted through popup handler');await siteJs('location.assign('+JSON.stringify(url)+')');}
  await siteJs('new Promise(resolve=>setTimeout(resolve,100))');assert.equal(sent.length,beforeInvalid,'Malformed requests are inert');
- const untrusted=new BrowserWindow({show:false,webPreferences:{session:website,sandbox:true,contextIsolation:true,nodeIntegration:false}});await untrusted.loadURL(campaignUrl);manager.attach(untrusted.webContents);assert.equal(manager.handleOpenRequest(untrusted.webContents,parent,MUSIC_URL),false,'Attached non-main view cannot open player');untrusted.destroy();
+ // Chromium strips userinfo before will-frame-navigate. The product validates
+ // the event's canonical URI, not an unavailable original location.assign input.
+ const credentialInput=commandURL.replace('music/','user@music/');
+ assert.equal(manager.websiteCommand(parent.webContents,parent,credentialInput),null,'Raw credential-bearing input fails the strict parser');
+ const normalized=[];const recordNormalization=details=>normalized.push({url:details.url,isMainFrame:details.isMainFrame,targetMain:details.frame===parent.webContents.mainFrame,initiatorMain:details.initiator===parent.webContents.mainFrame});
+ parent.webContents.on('will-frame-navigate',recordNormalization);
+ const selectedBeforeNormalization=committed().selected;
+ try{
+  await siteJs('location.assign('+JSON.stringify(credentialInput)+')');await until(()=>sent.length===beforeInvalid+1);await until(()=>committed().selected!==selectedBeforeNormalization);
+  assert.equal(normalized.length,1,'One source attempt emits one frame-navigation request');
+  assert.deepEqual(normalized[0],{url:commandURL,isMainFrame:true,targetMain:true,initiatorMain:true},'Normalization retains the same active main-frame authority');
+  assert.deepEqual(sent.at(-1),['next',undefined],'Only the canonical allowlisted command is dispatched');
+  const wrongTokenInput=credentialInput.replace(token,'0'.repeat(48));
+  assert.equal(manager.websiteCommand(parent.webContents,parent,wrongTokenInput),null);
+  await siteJs('location.assign('+JSON.stringify(wrongTokenInput)+')');await siteJs('new Promise(resolve=>setTimeout(resolve,100))');
+  assert.equal(sent.length,beforeInvalid+1,'Userinfo normalization cannot bypass a wrong document credential');
+  assert.equal(normalized.length,2);assert.equal(normalized[1].url,commandURL.replace(token,'0'.repeat(48)),'Wrong credential is retained in the canonical request');
+ }finally{parent.webContents.removeListener('will-frame-navigate',recordNormalization);}
+ const afterNormalization=sent.length;
+
+ const untrusted=new BrowserWindow({show:false,webPreferences:{session:website,sandbox:true,contextIsolation:true,nodeIntegration:false}});await untrusted.loadURL(campaignUrl);manager.attach(untrusted.webContents);assert.equal(manager.handleOpenRequest(untrusted.webContents,parent,MUSIC_URL),false,'Attached non-main view cannot open player');await untrusted.webContents.executeJavaScript('location.assign('+JSON.stringify(credentialInput)+')');await siteJs('new Promise(resolve=>setTimeout(resolve,100))');assert.equal(sent.length,afterNormalization,'Normalized credential request from an attached non-main view remains inert');untrusted.destroy();
  await siteJs('const iframe=document.createElement("iframe");iframe.id="command-frame";iframe.srcdoc="<html><body>other frame</body></html>";document.body.append(iframe)');await until(()=>parent.webContents.mainFrame.frames.length>0);const child=parent.webContents.mainFrame.frames.find(frame=>frame!==parent.webContents.mainFrame);
- assert(child,'Native child frame exists for source validation');await child.executeJavaScript('location.assign('+JSON.stringify(commandURL)+')');await siteJs('new Promise(resolve=>setTimeout(resolve,100))');assert.equal(sent.length,beforeInvalid,'Child-frame command target rejected');
- await child.executeJavaScript('top.location.assign('+JSON.stringify(commandURL)+')');await siteJs('new Promise(resolve=>setTimeout(resolve,100))');assert.equal(sent.length,beforeInvalid,'Child initiating a top-frame command rejected');await siteJs('document.getElementById("command-frame").remove()');
+ assert(child,'Native child frame exists for source validation');
+ for(const url of [commandURL,credentialInput]){
+  await child.executeJavaScript('location.assign('+JSON.stringify(url)+')');await siteJs('new Promise(resolve=>setTimeout(resolve,100))');assert.equal(sent.length,afterNormalization,'Child-frame command target rejected, including normalized userinfo');
+  await child.executeJavaScript('top.location.assign('+JSON.stringify(url)+')');await siteJs('new Promise(resolve=>setTimeout(resolve,100))');assert.equal(sent.length,afterNormalization,'Child initiating a top-frame command rejected, including normalized userinfo');
+ }
+ await siteJs('document.getElementById("command-frame").remove()');
  assert.equal(parent.webContents.getURL(),campaignUrl,'Music commands never navigate the main document');assert.equal(await siteJs('window.fixtureComposer===document.querySelector(".tiptap")'),true);assert.equal(await reopened('window.fixtureInlineAudio===document.getElementById("audio")'),true);assert.equal(player.webContents,originalPlayer);
  for(const width of [480,320]){
   await siteJs('document.getElementById("native-header-actions").style.width='+JSON.stringify(String(width)+'px'));

@@ -208,6 +208,9 @@ export class MusicManager {
   }
   private websiteCommand(contents:WebContents,parent:BrowserWindow,url:string):RegExpExecArray|null {
     if(!this.trustedWebsite(contents,parent))return null;
+    // Chromium canonicalizes a navigation URI before this boundary (including
+    // stripping userinfo). Validate the received URI and frame/document authority;
+    // original pre-normalization renderer input is not available here.
     const match=/^fables-desktop:\/\/music\/control\?command=(play|previous|next|volume)&token=([a-f0-9]{48})(?:&value=(0(?:\.\d{1,3})?|1(?:\.0{1,3})?))?$/.exec(url);
     return match&&this.siteToken&&match[2]===this.siteToken&&(match[1]==='volume')===(match[3]!==undefined)?match:null;
   }
