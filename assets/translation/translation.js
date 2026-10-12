@@ -1,28 +1,45 @@
 const form = document.getElementById('translation-form');
 const element = id => document.getElementById(id);
 let busy = false;
+let dirty = false;
+let syncing = false;
+let savedSettings;
 element('close-translation').addEventListener('click', () => { void window.translation.close().catch(console.error); });
-window.translation.onChange(settings => { if (!busy) show(settings); });
+window.translation.onChange(settings => {
+  syncSavedState(settings);
+  if (!busy && !dirty) syncForm(settings);
+});
 window.translation.onTheme(theme => window.settingsTheme.apply(theme));
-function show(settings) {
+function syncSavedState(settings) {
+  savedSettings = settings;
   window.settingsTheme.apply(settings.theme);
   window.settingsLocale.set(settings.enabled && !settings.showOriginal ? 'ru' : 'en');
-  element('enabled').checked = settings.enabled;
-  element('show-original').checked = settings.showOriginal;
-  element('descriptions').checked = settings.translateDescriptions;
-  element('hide-untranslated').checked = settings.hideUntranslated;
-  element('dynamic-layout').checked = settings.dynamicTranslationLayout;
-  element('port').value = settings.port;
   element('port-row').hidden = settings.bundled;
   element('service-help').textContent = settings.bundled
     ? 'The translator and English → Russian model are included. They start automatically on this computer; no separate install or download is needed.'
     : 'The app connects only to 127.0.0.1 on this computer. Translation starts disabled. The model is a separate service; ordinary app use does not need it.';
   element('model-help').textContent = 'Interface labels and D&D terms use the built-in glossary immediately. Longer text uses the local model and cache. Turn descriptions off for glossary-only translation.';
-  element('preserved-names').value = settings.preservedNames.join('\n');
   element('cache-count').textContent = `${settings.cacheEntries} cached translation fragments.`;
-  element('translation-options').disabled = false;
-  element('apply').disabled = false;
-  element('show-original').disabled = !settings.enabled;
+}
+function syncForm(settings) {
+  syncing = true;
+  try {
+    element('enabled').checked = settings.enabled;
+    element('show-original').checked = settings.showOriginal;
+    element('descriptions').checked = settings.translateDescriptions;
+    element('hide-untranslated').checked = settings.hideUntranslated;
+    element('dynamic-layout').checked = settings.dynamicTranslationLayout;
+    element('port').value = settings.port;
+    element('preserved-names').value = settings.preservedNames.join('\n');
+    element('translation-options').disabled = false;
+    element('apply').disabled = false;
+    element('show-original').disabled = !settings.enabled;
+    dirty = false;
+  } finally { syncing = false; }
+}
+function show(settings) {
+  syncSavedState(settings);
+  syncForm(settings);
 }
 function selection() {
   return { enabled: element('enabled').checked, showOriginal: element('enabled').checked && element('show-original').checked,
@@ -32,11 +49,13 @@ function selection() {
 async function check() {
   element('check').disabled = true;
   element('service-status').textContent = 'Checking local service…';
+  delete element('service-status').dataset.ready;
   try { const result = await window.translation.check(); element('service-status').textContent = result.message;
     element('service-status').dataset.ready = result.available; }
   catch { element('service-status').textContent = 'Unable to check the local service.'; }
   finally { element('check').disabled = false; }
 }
+for (const eventName of ['input', 'change']) form.addEventListener(eventName, () => { if (!syncing) dirty = true; });
 element('enabled').addEventListener('change', () => {
   element('show-original').disabled = !element('enabled').checked;
   if (!element('enabled').checked) element('show-original').checked = false;
@@ -50,10 +69,15 @@ form.addEventListener('submit', async event => {
   catch (error) { element('status').textContent = error.message; }
   finally { busy = false; element('apply').disabled = false; }
 });
-element('check').addEventListener('click', () => { if (settings.enabled || !settings.bundled) void check(); else element('service-status').textContent = 'The included translator starts when translation is enabled.'; });
+element('check').addEventListener('click', () => {
+  const settings = savedSettings;
+  if (!settings) return;
+  if (settings.enabled || !settings.bundled) void check();
+  else element('service-status').textContent = 'The included translator starts when translation is enabled.';
+});
 element('clear-cache').addEventListener('click', async () => {
   element('clear-cache').disabled = true;
-  try { const state = await window.translation.clearCache(); element('cache-count').textContent = `${state.cacheEntries} cached translation fragments.`;
+  try { const state = await window.translation.clearCache(); syncSavedState(state); element('cache-count').textContent = `${state.cacheEntries} cached translation fragments.`;
     element('status').textContent = 'Translation cache cleared.'; }
   catch (error) { element('status').textContent = error.message; }
   finally { element('clear-cache').disabled = false; }
