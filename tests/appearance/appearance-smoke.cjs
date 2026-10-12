@@ -6,6 +6,7 @@ const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, WebCont
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const { AppearanceManager, registerAppearanceScheme } = require(path.join(appRoot, 'dist/appearance/appearance'));
 const { DEFAULT_APPEARANCE, validateAppearance } = require(path.join(appRoot, 'dist/appearance/themes'));
+const { configureChatAppearance, chatCss } = require(path.join(appRoot, 'dist/appearance/chat-appearance'));
 const { combatPanelAppearanceCss, combatPanelCss } = require(path.join(appRoot, 'dist/combat/combat-panel-style'));
 const { configureZoomShortcuts } = require(path.join(appRoot, 'dist/shell/zoom'));
 const { configureFullscreenShortcuts } = require(path.join(appRoot, 'dist/shell/window-shortcuts'));
@@ -268,6 +269,77 @@ async function save(settings, window) {
     </script></body></html>`, {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   }));
+  // Match the live native resizable hierarchy. The main's client box shrinks
+  // by 10px as real scrollbar gutters appear; the panel itself stays stable.
+  const viewportWindow = new BrowserWindow({ show:true, width:720, height:560, webPreferences: {
+    session:testSession, sandbox:true, contextIsolation:true, nodeIntegration:false,
+  } });
+  await viewportWindow.loadURL('https://play.fables.gg/viewport/play');
+  const viewportSettings = validateAppearance({...DEFAULT_APPEARANCE,backgroundImage:'a'.repeat(64)+'.png',backgroundFit:'cover',
+    backgroundEffects:{blur:0,opacity:1,overlayColor:'#000000',overlayOpacity:0}});
+  const wallpaper = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><defs><linearGradient id="g"><stop stop-color="#1250bd"/><stop offset="1" stop-color="#74c9fa"/></linearGradient></defs><rect width="400" height="300" fill="url(#g)"/></svg>');
+  await viewportWindow.webContents.executeJavaScript(`
+    document.head.innerHTML='<style>body{margin:0;background:#fff} #native-group{display:flex;width:620px;height:360px;margin:20px} #native-panel{width:400px;height:300px;background:#d4af37} #adjacent-pane{width:200px;background:#d4af37} main{width:100%;height:100%;overflow-y:auto;background:linear-gradient(#d4af37,#d4af37)} #native-chat{width:100%;height:100%;display:flex;flex-direction:column} #events-list{flex:none} ::-webkit-scrollbar{width:10px;height:10px} ::-webkit-scrollbar-track,::-webkit-scrollbar-thumb,::-webkit-scrollbar-corner{background:transparent}</style>';
+    document.body.innerHTML='<button title="Hide background image" hidden></button><div id="native-group" data-panel-group data-panel-group-id="native"><div id="native-panel" data-panel data-panel-group-id="native" data-panel-id="chat" data-panel-size="65"><main id="native-main" class="w-full h-full overflow-y-auto"><div id="native-chat" class="flex flex-col flex-1 w-full mx-auto h-full"><div id="events-list"><div class="prose">Real translatable prose</div></div></div></main></div><aside id="adjacent-pane" data-panel data-panel-group-id="native" data-panel-id="combat" data-panel-size="35">Native sidebar</aside></div>';
+    window.viewportNodes=['native-panel','native-main','native-chat','events-list'].map(id=>document.getElementById(id));
+    const style=document.createElement('style');style.id='viewport-appearance';style.textContent=${JSON.stringify(chatCss(viewportSettings,wallpaper))};document.head.append(style);
+    (${configureChatAppearance.toString()})(${JSON.stringify(viewportSettings)});
+  `);
+  viewportWindow.focus();viewportWindow.webContents.focus();
+  const viewportState = () => viewportWindow.webContents.executeJavaScript(`(() => {
+    const [panel,main,chat,events]=window.viewportNodes, owner=document.querySelector('[data-ff-desktop-chat-background]');
+    const rect=panel.getBoundingClientRect(), before=getComputedStyle(owner,'::before');
+    return {owner:owner.id, bounds:[rect.x,rect.y,rect.width,rect.height],size:[before.width,before.height],position:before.backgroundPosition,
+      image:before.backgroundImage, gutters:[main.offsetWidth-main.clientWidth,main.offsetHeight-main.clientHeight],
+      overflow:getComputedStyle(main).overflowY, layers:document.querySelectorAll('[data-ff-desktop-chat-background]').length,
+      innerImage:getComputedStyle(chat,'::before').backgroundImage,chatPosition:getComputedStyle(chat).position,chatIsolation:getComputedStyle(chat).isolation,sidebar:getComputedStyle(document.getElementById('adjacent-pane')).backgroundColor,
+      identity:window.viewportNodes.every(n=>document.getElementById(n.id)===n)};
+  })()`);
+  await until(viewportWindow.webContents,"document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
+  const baselineViewport = await viewportState();
+  assert.equal(baselineViewport.owner,'native-panel');assert.equal(baselineViewport.innerImage,'none');
+  assert.equal(baselineViewport.layers,1);assert.equal(baselineViewport.overflow,'auto');
+  assert.equal(baselineViewport.chatPosition,'relative');assert.equal(baselineViewport.chatIsolation,'isolate','Inner chat retains its existing positioning and stacking context.');
+  const paintSamples = async () => {
+    await viewportWindow.webContents.executeJavaScript('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    const shot=await viewportWindow.webContents.capturePage({x:20,y:20,width:400,height:300});
+    const bytes=shot.toBitmap(),width=shot.getSize().width,height=shot.getSize().height;
+    return [[.5,.5],[.99,.5],[.5,.99],[.99,.99]].map(([x,y])=>Array.from(bytes.subarray((Math.floor(y*height)*width+Math.floor(x*width))*4,(Math.floor(y*height)*width+Math.floor(x*width))*4+3)));
+  };
+  const baselinePaint=await paintSamples();
+  assert(baselinePaint.every(pixel=>pixel[0]>pixel[2]),'Chosen blue wallpaper covers right/bottom strips instead of native gold.');
+  for (const [width,height,gutters] of [[390,800,[10,0]],[800,200,[0,10]],[800,800,[10,10]],[200,100,[0,0]],[800,800,[10,10]],[200,100,[0,0]]]) {
+    await viewportWindow.webContents.executeJavaScript(`document.getElementById('events-list').style.cssText='width:${width}px;height:${height}px'`);
+    await until(viewportWindow.webContents,`document.getElementById('native-main').offsetWidth-document.getElementById('native-main').clientWidth===${gutters[0]} && document.getElementById('native-main').offsetHeight-document.getElementById('native-main').clientHeight===${gutters[1]}`);
+    const state=await viewportState();
+    assert.deepEqual(state.gutters,gutters);assert.deepEqual(state.bounds,baselineViewport.bounds);
+    assert.deepEqual(state.size,baselineViewport.size);assert.equal(state.position,baselineViewport.position);
+    assert.equal(state.image,baselineViewport.image);assert.equal(state.layers,1);assert(state.identity);
+    assert.equal(state.sidebar,'rgb(212, 175, 55)');assert.deepEqual(await paintSamples(),baselinePaint,'Scrollbar changes keep cover image paint and gutters stable.');
+  }
+  await viewportWindow.webContents.executeJavaScript("history.pushState({},'', '/viewport/play?view=editor');dispatchEvent(new PopStateEvent('popstate'))");
+  await until(viewportWindow.webContents,"!document.querySelector('[data-ff-desktop-chat-background]')");
+  await viewportWindow.webContents.executeJavaScript("history.pushState({},'', '/viewport/play');dispatchEvent(new PopStateEvent('popstate'))");
+  await until(viewportWindow.webContents,"document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
+  await viewportWindow.webContents.executeJavaScript("document.getElementById('native-panel').insertAdjacentHTML('beforeend','<header id=unrelated-header style=background:gold>Other surface</header>')");
+  await until(viewportWindow.webContents,"document.getElementById('native-chat').hasAttribute('data-ff-desktop-chat-background') && !document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
+  assert.equal(await viewportWindow.webContents.executeJavaScript("document.getElementById('unrelated-header').hasAttribute('data-ff-desktop-chat-layer')"),false,'A shared pane or header is never widened into the background.');
+  await viewportWindow.webContents.executeJavaScript("document.getElementById('unrelated-header').remove()");
+  await until(viewportWindow.webContents,"document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
+  await viewportWindow.webContents.executeJavaScript("document.body.append(document.getElementById('native-chat'))");
+  await until(viewportWindow.webContents,"document.getElementById('native-chat').hasAttribute('data-ff-desktop-chat-background') && !document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
+  await viewportWindow.webContents.executeJavaScript("document.getElementById('native-main').append(document.getElementById('native-chat'))");
+  await until(viewportWindow.webContents,"document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
+  await viewportWindow.webContents.executeJavaScript("document.getElementById('native-panel').removeAttribute('data-panel-size')");
+  await until(viewportWindow.webContents,"document.getElementById('native-chat').hasAttribute('data-ff-desktop-chat-background')");
+  await viewportWindow.webContents.executeJavaScript("document.getElementById('native-panel').setAttribute('data-panel-size','65');document.getElementById('native-chat').remove()");
+  await until(viewportWindow.webContents,"!document.querySelector('[data-ff-desktop-chat-background]')");
+  assert.equal(await viewportWindow.webContents.executeJavaScript("window.viewportNodes.every(n=>!n.hasAttribute('data-ff-desktop-chat-background') && !n.hasAttribute('data-ff-desktop-chat-layer') && !n.hasAttribute('data-ff-desktop-chat'))"),true,'Removed native nodes lose only owned markers.');
+  await viewportWindow.webContents.executeJavaScript("document.getElementById('native-main').append(window.viewportNodes[2])");
+  await until(viewportWindow.webContents,"document.getElementById('native-panel').hasAttribute('data-ff-desktop-chat-background')");
+  await viewportWindow.webContents.executeJavaScript(`(${configureChatAppearance.toString()})(${JSON.stringify({...viewportSettings,backgroundImage:null})});document.getElementById('viewport-appearance').textContent=${JSON.stringify(chatCss({...viewportSettings,backgroundImage:null},null))}`);
+  assert.equal(await viewportWindow.webContents.executeJavaScript("!document.querySelector('[data-ff-desktop-chat-background],[data-ff-desktop-chat-layer],[data-ff-desktop-chat]') && window.viewportNodes.every(n=>document.getElementById(n.id)===n) && getComputedStyle(document.getElementById('native-main')).backgroundImage.includes('linear-gradient')"),true,'Disabling restores native styling and preserves native identity.');
+  viewportWindow.destroy();
   const website = new BrowserWindow({ show: false, webPreferences: {
     session: testSession, sandbox: true, contextIsolation: true, nodeIntegration: false,
   } });
