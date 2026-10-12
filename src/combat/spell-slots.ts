@@ -85,18 +85,23 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
     }
     return result;
   }
-  function ready(b: Binding): boolean {
+  function readiness(b: Binding): 'ready' | 'waiting' | 'refused' {
     const p = b.owner.memoizedProps;
-    if (p?.phase !== 'campaign' || p.viewOnly !== false || p.campaignId !== campaign()) return false;
+    if (p?.phase !== 'campaign' || p.viewOnly !== false || p.campaignId !== campaign()) return 'refused';
     const values = observers(b.owner);
     const mutation = values.find(value => value.options?.mutationFn && /maxSlots/.test(String(value.options.mutationFn)) && /usedSlots/.test(String(value.options.mutationFn)));
     const query = values.find(value => value.options?.queryKey?.[0] === 'spellSlots' && String(value.options.queryKey[1]) === b.character);
     const m = mutation?.getCurrentResult?.(), q = query?.getCurrentResult?.();
-    if (!m || m.isPending || m.status === 'pending' || !q || q.status !== 'success' || q.isPending || q.isLoading || q.isFetching) return false;
+    if (!m || m.isPending || m.status === 'pending' || !q) return 'refused';
+    // A fetching query may still expose stale successful data. Wait for its fresh
+    // result within the request deadline, then validate that result against the DOM.
+    if (q.isPending || q.isLoading || q.isFetching) return 'waiting';
+    if (q.status !== 'success') return 'refused';
     const entry = q.data?.find(value => value.level === b.level);
-    if (!entry || !Number.isInteger(entry.max_slots) || !Number.isInteger(entry.used_slots) || entry.max_slots !== b.max || entry.used_slots < 0 || entry.used_slots > entry.max_slots) return false;
-    return b.index >= 0 && b.index < entry.max_slots && b.available === (b.index < entry.max_slots - entry.used_slots);
+    if (!entry || !Number.isInteger(entry.max_slots) || !Number.isInteger(entry.used_slots) || entry.max_slots !== b.max || entry.used_slots < 0 || entry.used_slots > entry.max_slots) return 'refused';
+    return b.index >= 0 && b.index < entry.max_slots && b.available === (b.index < entry.max_slots - entry.used_slots) ? 'ready' : 'refused';
   }
+  const ready = (b: Binding): boolean => readiness(b) === 'ready';
   type Docked = { node:HTMLElement; overlay:HTMLElement; owner:Fiber; marker:string; mode:string|null };
   const dockMarker=(node:HTMLElement):string|undefined=>node.hasAttribute('data-ff-combat-docked')&&node.hasAttribute('data-ff-combat-panel')?'data-ff-combat-docked':node.hasAttribute('data-ff-campaign-panel')?'data-ff-campaign-panel':undefined;
   function dockOwned(d:Docked):boolean {
@@ -202,7 +207,10 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
       return;
     }
     const original = binding(r.b.node);
-    if (!original || original.character !== r.b.character || original.level !== r.b.level || original.index !== r.b.index || original.available !== r.b.available || b.max !== r.b.max || b.available !== r.b.available || !ready(b) || props(b.node)?.disabled || typeof props(b.node)?.onClick !== 'function') { finish(); return; }
+    if (!original || original.character !== r.b.character || original.level !== r.b.level || original.index !== r.b.index || original.available !== r.b.available || b.max !== r.b.max || b.available !== r.b.available || props(b.node)?.disabled || typeof props(b.node)?.onClick !== 'function') { finish(); return; }
+    const state = readiness(b);
+    if (state === 'waiting') return;
+    if (state !== 'ready') { finish(); return; }
     r.mutation = observers(b.owner).find(value => value.options?.mutationFn && /maxSlots/.test(String(value.options.mutationFn)) && /usedSlots/.test(String(value.options.mutationFn)));
     r.called = true;
     // The native callback owns payload, error handling, toast and query invalidation.

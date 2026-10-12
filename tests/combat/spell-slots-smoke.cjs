@@ -5,7 +5,7 @@ const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
 const runtimeRoot = process.env.FABLES_TEST_APP_ROOT || root;
 const html = `<!doctype html><html><head><style>:root{--foreground:220 10% 90%;--primary:45 100% 50%}body{background:#080808;color:#eee}.flex{display:flex}.flex-col{flex-direction:column}.gap-1{gap:4px}.h-3{height:12px}.w-3{width:12px}.h-4{height:16px}.w-4{width:16px}.rounded-full{border-radius:999px;box-sizing:border-box}.border{border:1px solid #999}[class~="bg-primary/70"]{background:hsl(var(--primary)/.7)}.bg-primary{background:hsl(var(--primary))}.bg-muted,.bg-gray-800{background:#222}[role=dialog]{position:fixed;inset:100px;background:#080808}.fixed{position:fixed}.inset-0{inset:0}#sidebar{position:fixed;top:16px;right:16px;width:180px}#left-dock{inset:0 auto 0 0;width:260px;max-width:40vw}</style></head><body><aside id="sidebar"><div class="container-[size]"><div id="rows"></div><button id="open" type="button">Open Spellbook</button></div></aside><textarea id="draft">preserve this draft</textarea><script>
-window.keydowns=[];document.addEventListener('keydown',event=>window.keydowns.push({key:event.key,repeat:event.repeat}),true);window.calls=[];window.opens=0;window.closes=0;window.cacheInvalidations=0;window.toasts=0;
+window.keydowns=[];document.addEventListener('keydown',event=>window.keydowns.push({key:event.key,repeat:event.repeat}),true);window.calls=[];window.opens=0;window.closes=0;window.cacheInvalidations=0;window.toasts=0;window.queryReads=0;
 window.config={characterId:123,campaignId:'fixture',phase:'campaign',viewOnly:false,pending:false,used:2,max:4};
 window.mountSidebar=()=>{
  const rows=document.querySelector('#rows');rows.innerHTML='<div class="flex flex-col items-center"><span>Level 1</span><div class="flex gap-1 mt-1" id="circles"></div></div><div><span>Cantrips</span><svg id="infinity"></svg></div>';
@@ -20,7 +20,7 @@ window.mountBook=()=>{
  const close=document.createElement('button');close.type='button';close.innerHTML='<svg class="lucide-x"></svg>';close.setAttribute('aria-label','Close');close.onclick=()=>{provider.memoizedProps.onOpenChange(false)};
  close.__reactProps$fixture={onClick:close.onclick};close.__reactFiber$fixture={memoizedProps:close.__reactProps$fixture,return:{memoizedProps:{preventClose:undefined,onClose:undefined},return:portal}};dialog.append(close);
  const observer={options:{mutationFn:async function({characterId,campaignId,level,maxSlots,usedSlots}){return {characterId,campaignId,level,maxSlots,usedSlots}},onSuccess(){window.cacheInvalidations++}},getCurrentResult(){return {isPending:window.config.pending,status:window.config.pending?'pending':'idle'}}};
- const owner={memoizedProps:{characterId:c.characterId,campaignId:c.campaignId,phase:c.phase,viewOnly:c.viewOnly},memoizedState:{memoizedState:observer,next:{memoizedState:{options:{queryKey:['spellSlots',c.characterId]},getCurrentResult(){return {status:'success',isPending:false,isLoading:false,isFetching:!!window.config.fetching,data:[{level:1,max_slots:c.max,used_slots:c.used}]}}},next:null}},return:portal};
+ const owner={memoizedProps:{characterId:c.characterId,campaignId:c.campaignId,phase:c.phase,viewOnly:c.viewOnly},memoizedState:{memoizedState:observer,next:{memoizedState:{options:{queryKey:['spellSlots',c.characterId]},getCurrentResult(){window.queryReads++;return {status:'success',isPending:false,isLoading:false,isFetching:!!window.config.fetching,data:[{level:1,max_slots:c.max,used_slots:window.config.queryUsed??c.used}]}}},next:null}},return:portal};
  const row=document.createElement('div');row.className='flex flex-col gap-1';row.__reactFiber$fixture={key:'1',memoizedProps:{},return:owner};row.innerHTML='<p>Level 1</p><div class="flex flex-row"></div>';dialog.append(row);
  for(let i=0;i<c.max;i++){
   const node=document.createElement('button');node.type='button';node.className='h-4 w-4 rounded-full '+(i<c.max-c.used?'bg-primary':'bg-gray-800');node.disabled=c.viewOnly||c.phase!=='campaign';
@@ -131,9 +131,27 @@ app.on('window-all-closed',()=>{});
   assert.equal(await js('cacheInvalidations===calls.length&&toasts===calls.length'),true);
   await js('dockNode.remove();dockOverlay.remove()');
  }
+ // Successful-but-fetching data is stale: no native action until the fresh
+ // result agrees with the rendered slot. Observe repeated query reads, not a sleep.
+ const beforeRefresh=await js('calls.length');
+ await js('mountDock("attack");Object.assign(config,{fetching:true,queryUsed:1});document.querySelectorAll("#sidebar [data-ff-spell-slot]")[2].click();window.refreshReads=queryReads');
+ await wait('!!document.querySelector("#book")&&lastDialog.style.opacity==="0"&&queryReads>=refreshReads+2');
+ assert.equal(await js('calls.length'),beforeRefresh,'stale fetching query cannot invoke a native callback');
+ assert.equal(await js('!!document.querySelector("[aria-busy=true]")'),true);
+ await js('Object.assign(config,{fetching:false,queryUsed:2})');
+ await wait('calls.length==='+String(beforeRefresh+1));await wait('!document.querySelector("#book")');
+ assert.deepEqual(await js('calls.at(-1)'),{characterId:123,campaignId:'fixture',level:1,maxSlots:4,usedSlots:1});
+ assert.equal(await js('cacheInvalidations===calls.length&&toasts===calls.length'),true);
+ await js('config.queryUsed=1;document.querySelectorAll("#sidebar [data-ff-spell-slot]")[2].click()');
+ await wait('!document.querySelector("[aria-busy=true]")');
+ assert.equal(await js('calls.length'),beforeRefresh+1,'ready query inconsistent with rendered availability refuses');
+ assert.equal(await js('document.querySelector("#book")'),null);
+ await js('delete config.queryUsed;dockNode.remove();dockOverlay.remove()');
  for(const failure of ['new-modal','replace-owner']){
   const before=await js('calls.length');
   await js('mountDock("attack");config.fetching=true;document.querySelectorAll("#sidebar [data-ff-spell-slot]")[2].click()');await wait('!!document.querySelector("#book")&&lastDialog.style.opacity==="0"');
+  await js('window.waitingReads=queryReads');await wait('queryReads>=waitingReads+2&&!!document.querySelector("#book")');
+  assert.equal(await js('calls.length'),before,'unresolved query does not invoke a callback before cancellation');
   assert.equal(await js('dockNode.getAttribute("aria-modal")'),'true','snapshot remains valid through native modal suspension');
   await js(failure==='new-modal'?'const other=document.createElement("div");other.id="unexpected";other.setAttribute("role","alertdialog");document.body.append(other)':'dockNode.__reactFiber$fixture={memoizedProps:{},return:null}');
   await wait('!document.querySelector("#book")');assert.equal(await js('calls.length'),before,'unsafe ownership/layers never invoke a callback');
