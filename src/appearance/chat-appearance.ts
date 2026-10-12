@@ -105,6 +105,20 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     try { return !!campaign && localStorage.getItem(`play-show-poi-background-${campaign}`) === 'true'; }
     catch { return false; }
   }
+  function backgroundOwner(chat: Element): Element {
+    // The native scroll main loses client width/height when its scrollbars
+    // appear. Its dedicated resizable panel keeps the wallpaper's viewport
+    // stable, including both scrollbar gutters. Reject broader/shared panes.
+    const main = chat.parentElement;
+    const panel = main?.parentElement;
+    if (chat.matches('div.flex.flex-col.flex-1.w-full.mx-auto.h-full')
+      && main?.matches('main.w-full.h-full.overflow-y-auto')
+      && main.children.length === 1 && main.firstElementChild === chat
+      && panel?.matches('div[data-panel][data-panel-group-id][data-panel-id][data-panel-size]')
+      && panel.children.length === 1 && panel.firstElementChild === main
+      && !panel.closest('form,[role="dialog"],aside,[data-sidebar]')) return panel;
+    return chat;
+  }
   function inCharacterForm(element: Element): boolean {
     // Character forms are app surfaces; their fields must follow the app theme
     // even if campaign messages use a different color or transparent background.
@@ -172,8 +186,10 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
 
     if (chat && settings.backgroundImage && backgroundEnabled()) {
       mark(chat, 'data-ff-desktop-chat', 'true');
+      const owner = backgroundOwner(chat);
+      mark(owner, 'data-ff-desktop-chat-background', 'true');
       let layer: Element | null | undefined = anchor;
-      while (layer && layer !== chat) {
+      while (layer && layer !== owner) {
         if (!layer.id.startsWith('event-message-card-')) mark(layer, 'data-ff-desktop-chat-layer', 'true');
         layer = layer.parentElement;
       }
@@ -268,7 +284,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   });
   observer.observe(document.documentElement, {
     childList: true, subtree: true, attributes: true, characterData: true,
-    attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state'],
+    attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state', 'data-panel', 'data-panel-group-id', 'data-panel-id', 'data-panel-size'],
   });
   function translationReady(): void { for (const snapshot of snapshots.values()) snapshot.overlay?.remove(); snapshots.clear(); queueMicrotask(() => queueMicrotask(snapshotMessages)); }
   document.addEventListener('ff-desktop-translation-ready', translationReady);
@@ -310,12 +326,13 @@ export function chatCss(settings: AppearanceSettings, image: string | null): str
     background-position:center !important; background-size:${settings.backgroundFit} !important; background-repeat:no-repeat !important; isolation:isolate; }
     :is(${loading}) > :is(img,[class~="absolute"][class~="inset-0"]) { display:none !important; }`;
   if (image && settings.backgroundImage) {
-    css += `[data-ff-desktop-chat] { position: relative !important; isolation: isolate; background-color: transparent !important; }
-      [data-ff-desktop-chat]::before { content: ""; position: absolute; inset: 0; z-index: -1;
+    css += `[data-ff-desktop-chat-background] { position: relative !important; isolation: isolate; background-color: transparent !important; background-image: none !important; }
+      [data-ff-desktop-chat] { background-color: transparent !important; }
+      [data-ff-desktop-chat-background]::before { content: ""; position: absolute; inset: 0; z-index: -1;
         pointer-events: none; background-image: url("${image}"); background-position: center;
         background-size: ${settings.backgroundFit}; background-repeat: no-repeat;
         opacity: ${settings.backgroundEffects.opacity}; filter: blur(${settings.backgroundEffects.blur}px); clip-path: inset(0); }
-      [data-ff-desktop-chat]::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+      [data-ff-desktop-chat-background]::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none;
         background: ${rgba(settings.backgroundEffects.overlayColor, settings.backgroundEffects.overlayOpacity)}; }
       [data-ff-desktop-chat-layer] { background-color: transparent !important; background-image: none !important; }`;
   }
