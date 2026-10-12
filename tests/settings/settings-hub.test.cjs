@@ -15,10 +15,10 @@ test('combat IPC exposes campaign preferences only to trusted main settings fram
  const f=fixture(),manager={setSettingsOpener(){}};let current={campaignId:'a',automaticDamage:false,hideIntermediateFranz:false},saved=[];
  f.hub.configure({translation:manager,instructions:manager,combat:{get:async()=>current,save:async value=>{saved.push(value);current=value;return current;}}});
  const sender=f.hub.view.webContents,event={sender,senderFrame:sender.mainFrame},get=handlers.get('settings-hub:combat-get'),save=handlers.get('settings-hub:combat-save');
- await f.hub.select('combat');assert.equal(f.created.length,0);assert.deepEqual(await get(event),current);
- await save(event,{...current,automaticDamage:true,hideIntermediateFranz:true});assert.equal(saved.length,1);
- await save(event,{...current,automaticDamage:false});assert.equal(current.hideIntermediateFranz,false);
- for(const bad of [{...current,automaticDamage:'true'},{...current,campaignId:'b'},{...current,extra:true}])await assert.rejects(save(event,bad));
+ await f.hub.select('combat');assert.equal(f.created.length,0);assert.deepEqual(await get(event),{...current,hideDamagePrompt:current.hideDamagePrompt??false});
+ await save(event,{...current,automaticDamage:true,hideIntermediateFranz:true,hideDamagePrompt:true});assert.equal(saved.length,1);assert.equal(current.hideDamagePrompt,true);
+ await save(event,{...current,automaticDamage:false});assert.equal(current.hideIntermediateFranz,false);assert.equal(current.hideDamagePrompt,false);
+ for(const bad of [{...current,automaticDamage:'true'},{...current,campaignId:'b'},{...current,hideDamagePrompt:'true'},{...current,extra:true}])await assert.rejects(save(event,bad));
  await assert.rejects(get({sender:new Contents(),senderFrame:sender.mainFrame}));
  await assert.rejects(save({sender,senderFrame:{...sender.mainFrame}},current));
  current=null;assert.equal(await get(event),null);await assert.rejects(save(event,{campaignId:'a',automaticDamage:true,hideIntermediateFranz:false}));
@@ -29,7 +29,7 @@ test('combat get ignores older in-flight snapshots after campaign switch',async(
  const current={campaignId:'b',automaticDamage:false,hideIntermediateFranz:false};
  f.hub.configure({translation:manager,instructions:manager,combat:{get:()=>++reads===1?new Promise(r=>resolve=r):Promise.resolve(current),save:async()=>current}});
  const sender=f.hub.view.webContents,event={sender,senderFrame:sender.mainFrame},get=handlers.get('settings-hub:combat-get');
- const old=get(event);assert.deepEqual(await get(event),current);resolve({...current,campaignId:'a'});assert.deepEqual(await old,current);
+ const old=get(event);assert.deepEqual(await get(event),{...current,hideDamagePrompt:current.hideDamagePrompt??false});resolve({...current,campaignId:'a'});assert.deepEqual(await old,{...current,hideDamagePrompt:false});
 });
 
 test('Combat renderer disables off-campaign controls, enforces hide dependency and refreshes campaigns with one pending read',async()=>{
@@ -37,13 +37,15 @@ test('Combat renderer disables off-campaign controls, enforces hide dependency a
  const node=id=>{if(!nodes.has(id))nodes.set(id,{checked:false,disabled:false,hidden:false,textContent:'',setAttribute(){},toggleAttribute(name,value){this[name]=value;},replaceChildren(...children){this.children=children;}});return nodes.get(id);};
  let onChange,poll,saves=[],snapshot=null,resolveRead,readCount=0;
  const state={section:'combat',locale:'ru',theme:{},campaignAvailable:true,hideDesktopTopbarInFullscreen:false,combat:null};
- const context={window:{settingsTheme:{apply(){}},settingsHub:{get:async()=>state,onChange:fn=>onChange=fn,select:async()=>{},close:async()=>{},saveGeneral:async()=>state,getCombat:async()=>{readCount++;return resolveRead?new Promise(r=>resolveRead=r):snapshot;},saveCombat:async value=>{saves.push(value);return snapshot={...value,hideIntermediateFranz:value.automaticDamage&&value.hideIntermediateFranz};}}},document:{visibilityState:'visible',getElementById:node,querySelector:node,createElement:()=>({setAttribute(){}})},setInterval:fn=>poll=fn};
+ const context={window:{settingsTheme:{apply(){}},settingsHub:{get:async()=>state,onChange:fn=>onChange=fn,select:async()=>{},close:async()=>{},saveGeneral:async()=>state,getCombat:async()=>{readCount++;return resolveRead?new Promise(r=>resolveRead=r):snapshot;},saveCombat:async value=>{saves.push(value);return snapshot={...value,hideIntermediateFranz:value.automaticDamage&&value.hideIntermediateFranz,hideDamagePrompt:value.automaticDamage&&value.hideDamagePrompt};}}},document:{visibilityState:'visible',getElementById:node,querySelector:node,createElement:()=>({setAttribute(){}})},setInterval:fn=>poll=fn};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../assets/settings/settings-hub.js'),'utf8'),context);
  const drain=()=>new Promise(r=>setImmediate(r));await drain();
- assert.equal(node('close').hidden,false,'Inline section owns right-edge close');assert.equal(node('#content').hidden,false);assert.equal(node('automatic-damage').disabled,true);assert.equal(node('hide-intermediate-franz').disabled,true);assert.equal(node('#combat h2').textContent,'Бой');
+ assert.equal(node('close').hidden,false,'Inline section owns right-edge close');assert.equal(node('#content').hidden,false);assert.equal(node('automatic-damage').disabled,true);assert.equal(node('hide-intermediate-franz').disabled,true);assert.equal(node('hide-damage-prompt').disabled,true);assert.equal(node('#combat h2').textContent,'Бой');
  snapshot={campaignId:'a',automaticDamage:false,hideIntermediateFranz:false};poll();await drain();
- assert.equal(node('automatic-damage').disabled,false);assert.equal(node('hide-intermediate-franz').disabled,true);
- node('automatic-damage').checked=true;await node('automatic-damage').onchange();await drain();assert.equal(saves[0].campaignId,'a');assert.equal(node('hide-intermediate-franz').disabled,false);
+ assert.equal(node('automatic-damage').disabled,false);assert.equal(node('hide-intermediate-franz').disabled,true);assert.equal(node('hide-damage-prompt').disabled,true);
+ node('automatic-damage').checked=true;await node('automatic-damage').onchange();await drain();assert.equal(saves[0].campaignId,'a');assert.equal(node('hide-intermediate-franz').disabled,false);assert.equal(node('hide-damage-prompt').disabled,false);assert.equal(node('hide-damage-prompt').checked,false);
+ node('hide-damage-prompt').checked=true;await node('hide-damage-prompt').onchange();await drain();assert.equal(saves.at(-1).hideDamagePrompt,true);assert.equal(saves.at(-1).hideIntermediateFranz,false);
+ node('automatic-damage').checked=false;await node('automatic-damage').onchange();await drain();assert.equal(node('hide-damage-prompt').checked,false);assert.equal(node('hide-damage-prompt').disabled,true);
  snapshot={campaignId:'b',automaticDamage:false,hideIntermediateFranz:false};poll();await drain();assert.equal(node('automatic-damage').checked,false);
  resolveRead=true;const before=readCount;poll();poll();assert.equal(readCount,before+1);resolveRead(snapshot);resolveRead=null;await drain();
  onChange({...state,section:'campaign'});assert.equal(node('close').hidden,true);assert.equal(node('#content').hidden,true);onChange({...state,section:'general',campaignAvailable:false});assert.equal(node('close').hidden,false);assert.equal(node('#content').hidden,false);assert.equal(node('sections').children.length,5);const count=readCount;poll();await drain();assert.equal(readCount,count);

@@ -14,7 +14,7 @@ export function settingsGeometry(width: number, height: number, requested: numbe
     website:{x:panelWidth,y,width:Math.max(0,width-panelWidth),height:h}};
 }
 
-export interface CombatPreferences { campaignId: string; automaticDamage: boolean; hideIntermediateFranz: boolean; }
+export interface CombatPreferences { campaignId: string; automaticDamage: boolean; hideIntermediateFranz: boolean; hideDamagePrompt: boolean; }
 export interface CombatSettingsAdapter {
   get(): Promise<CombatPreferences | null>;
   save(value: CombatPreferences): Promise<CombatPreferences | null>;
@@ -22,7 +22,8 @@ export interface CombatSettingsAdapter {
 export function combatPreferences(value: unknown): CombatPreferences {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid combat preferences.');
   const p = value as Partial<CombatPreferences>;
-  if (Object.keys(p).length !== 3 || typeof p.campaignId !== 'string' || !p.campaignId || p.campaignId.length > 256 || /[\/\s?#]/.test(p.campaignId)
-    || typeof p.automaticDamage !== 'boolean' || typeof p.hideIntermediateFranz !== 'boolean') throw new Error('Invalid combat preferences.');
-  return { campaignId: p.campaignId, automaticDamage: p.automaticDamage, hideIntermediateFranz: p.automaticDamage && p.hideIntermediateFranz };
+  const keys = Object.keys(p), hasPrompt = Object.prototype.hasOwnProperty.call(p, 'hideDamagePrompt');
+  if (keys.length !== (hasPrompt ? 4 : 3) || keys.some(key => !['campaignId','automaticDamage','hideIntermediateFranz','hideDamagePrompt'].includes(key)) || typeof p.campaignId !== 'string' || !p.campaignId || p.campaignId.length > 256 || /[\/\s?#]/.test(p.campaignId)
+    || typeof p.automaticDamage !== 'boolean' || typeof p.hideIntermediateFranz !== 'boolean' || hasPrompt && typeof p.hideDamagePrompt !== 'boolean') throw new Error('Invalid combat preferences.');
+  return { campaignId: p.campaignId, automaticDamage: p.automaticDamage, hideIntermediateFranz: p.automaticDamage && p.hideIntermediateFranz, hideDamagePrompt: p.automaticDamage && p.hideDamagePrompt === true };
 }

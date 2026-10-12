@@ -5,7 +5,13 @@ test('left geometry shares inset and preserves nonnegative website viewport',()=
 test('fullscreen preference hides only while fullscreen and quick toggle recovers',()=>{assert.equal(desktopBarVisible(false,true,false),true);assert.equal(desktopBarVisible(true,true,false),false);assert.equal(desktopBarVisible(true,true,true),true);assert.equal(desktopBarVisible(true,false,false),true);});
 
 test('combat payload validates booleans, campaign and dependency',()=>{
- const p={campaignId:'campaign-a',automaticDamage:true,hideIntermediateFranz:true};assert.deepEqual(combatPreferences(p),p);
+ const p={campaignId:'campaign-a',automaticDamage:true,hideIntermediateFranz:true,hideDamagePrompt:true};assert.deepEqual(combatPreferences(p),p);
  assert.equal(combatPreferences({...p,automaticDamage:false}).hideIntermediateFranz,false);
- for(const v of [null,[],{...p,campaignId:''},{...p,campaignId:'a/play'},{...p,automaticDamage:'true'},{...p,hideIntermediateFranz:1},{...p,extra:1}])assert.throws(()=>combatPreferences(v));
+ for(const v of [null,[],{...p,campaignId:''},{...p,campaignId:'a/play'},{...p,automaticDamage:'true'},{...p,hideIntermediateFranz:1},{...p,hideDamagePrompt:1},{...p,extra:1}])assert.throws(()=>combatPreferences(v));
+});
+
+test('legacy three-key combat snapshot migrates prompt flag off, auto off clears both',()=>{
+ assert.deepEqual(combatPreferences({campaignId:'legacy',automaticDamage:true,hideIntermediateFranz:true}),{campaignId:'legacy',automaticDamage:true,hideIntermediateFranz:true,hideDamagePrompt:false});
+ assert.deepEqual(combatPreferences({campaignId:'legacy',automaticDamage:false,hideIntermediateFranz:true,hideDamagePrompt:true}),{campaignId:'legacy',automaticDamage:false,hideIntermediateFranz:false,hideDamagePrompt:false});
+ assert.throws(()=>combatPreferences({campaignId:'legacy',automaticDamage:true,hideIntermediateFranz:true,hideDamagePrompt:undefined}));
 });

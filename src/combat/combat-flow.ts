@@ -1,19 +1,19 @@
 // Serialized into the website; keep the entire adapter self-contained.
 export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void {
-  type Snapshot = { campaignId: string; automaticDamage: boolean; hideIntermediateFranz: boolean };
+  type Snapshot = { campaignId: string; automaticDamage: boolean; hideIntermediateFranz: boolean; hideDamagePrompt: boolean };
   type Controller = { update(locale: 'en' | 'ru'): void; dispose(): void; getPreferences(): Snapshot | null; setPreferences(value: unknown): Snapshot };
   type Fiber = { tag?: number; type?: unknown; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
   type Native = Record<string, any>;
   type Observer = { options: { mutationFn: Function }; getCurrentResult(): Native; subscribe(listener: (result: Native) => void): () => void };
   type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; unsubscribe?: () => void };
   type Outcome = { campaign: string; character: string | number; eventId: string | number; choiceId: string | number; started: number; status: 'claimed' | 'accepted' | 'failed' | 'unknown'; rollResultId?: string | number };
-  type Preferences = { automaticDamage: boolean; hideIntermediateFranz: boolean };
+  type Preferences = { automaticDamage: boolean; hideIntermediateFranz: boolean; hideDamagePrompt: boolean };
   const key = '__friendsFablesDesktopCombatFlow';
   const host = window as unknown as Record<string, Controller | undefined>;
   if (host[key]) { if (enabled) host[key]!.update(locale); else host[key]!.dispose(); return; }
   if (!enabled) return;
   let disposed = false, frame = 0, campaign = '', route = '';
-  let prefs: Preferences = { automaticDamage: false, hideIntermediateFranz: false };
+  let prefs: Preferences = { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false };
   let ticket: Ticket | null = null;
   let traversalBudget = 50000;
   const currentFiberCache = new Map<Fiber, Fiber | null>();
@@ -22,8 +22,9 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   const claimHost = window as unknown as { __friendsFablesDesktopCombatFlowClaims?: Set<string>; __friendsFablesDesktopCombatFlowOutcomes?: Map<string, Outcome> };
   const claimed = claimHost.__friendsFablesDesktopCombatFlowClaims ??= new Set<string>();
   const outcomes = claimHost.__friendsFablesDesktopCombatFlowOutcomes ??= new Map<string, Outcome>();
-  const linked = new Map<string | number, { campaign: string; encounter: string | number; request: string; outcomeKey: string }>();
+  const linked = new Map<string | number, { campaign: string; encounter: string | number; request: string; outcomeKey: string; choiceOwner: Fiber }>();
   const hidden = new Map<HTMLElement, { value: string; priority: string }>();
+  const hiddenPrompts = new Map<HTMLElement, { value: string; priority: string }>();
   const storageKey = (): string => `ff-desktop-combat-flow-v1:${campaign}`;
   function cancel(): void { const current = ticket; ticket = null; try { current?.unsubscribe?.(); } catch { /* Native lifecycle may already be disposed. */ } }
   function restoreNode(node: HTMLElement): void {
@@ -37,15 +38,25 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     hidden.clear();
   }
+  function restorePrompts(): void {
+    for (const [node, previous] of hiddenPrompts) {
+      if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
+    }
+    hiddenPrompts.clear();
+  }
+  function restoreAll(): void { restore(); restorePrompts(); }
   function read(): Preferences {
     try {
       const raw = localStorage.getItem(storageKey());
-      if (!raw || raw.length > 1024) return { automaticDamage: false, hideIntermediateFranz: false };
+      if (!raw || raw.length > 1024) return { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false };
       const value: unknown = JSON.parse(raw);
-      if (!value || typeof value !== 'object') return { automaticDamage: false, hideIntermediateFranz: false };
-      const p = value as Partial<Preferences>;
-      return { automaticDamage: p.automaticDamage === true, hideIntermediateFranz: p.automaticDamage === true && p.hideIntermediateFranz === true };
-    } catch { return { automaticDamage: false, hideIntermediateFranz: false }; }
+      if (!value || typeof value !== 'object') return { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false };
+      const p = value as Partial<Preferences>, keys = Object.keys(p);
+      const hasPrompt = Object.prototype.hasOwnProperty.call(p, 'hideDamagePrompt');
+      if (Array.isArray(p) || keys.length !== (hasPrompt ? 3 : 2) || keys.some(key => !['automaticDamage','hideIntermediateFranz','hideDamagePrompt'].includes(key))
+        || typeof p.automaticDamage !== 'boolean' || typeof p.hideIntermediateFranz !== 'boolean' || hasPrompt && typeof p.hideDamagePrompt !== 'boolean') return { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false };
+      return { automaticDamage: p.automaticDamage === true, hideIntermediateFranz: p.automaticDamage === true && p.hideIntermediateFranz === true, hideDamagePrompt: p.automaticDamage === true && p.hideDamagePrompt === true };
+    } catch { return { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false }; }
   }
   // Preference reads correlate the current route without touching React fibers.
   function syncRoute(): void {
@@ -53,8 +64,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     const match = /^\/([^/]+)\/play(?:\/|$)/.exec(path)?.[1] ?? '';
     const next = match.length <= 256 && !/[\s?#]/.test(match) ? match : '';
     if (path !== route || next !== campaign) {
-      cancel(); linked.clear(); restore(); route = path; campaign = next;
-      prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false };
+      cancel(); linked.clear(); restoreAll(); route = path; campaign = next;
+      prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false };
     }
   }
   function getPreferences(): Snapshot | null {
@@ -65,13 +76,14 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     syncRoute();
     if (disposed || !campaign || !value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Combat preferences require the current campaign.');
     const p = value as Partial<Snapshot>;
-    if (Object.keys(p).length !== 3 || p.campaignId !== campaign || typeof p.automaticDamage !== 'boolean' || typeof p.hideIntermediateFranz !== 'boolean') throw new Error('Invalid or stale combat preferences.');
-    const next = { automaticDamage: p.automaticDamage, hideIntermediateFranz: p.automaticDamage && p.hideIntermediateFranz };
+    const keys = Object.keys(p), hasPrompt = Object.prototype.hasOwnProperty.call(p, 'hideDamagePrompt');
+    if (keys.length !== (hasPrompt ? 4 : 3) || keys.some(key => !['campaignId','automaticDamage','hideIntermediateFranz','hideDamagePrompt'].includes(key)) || p.campaignId !== campaign || typeof p.automaticDamage !== 'boolean' || typeof p.hideIntermediateFranz !== 'boolean' || hasPrompt && typeof p.hideDamagePrompt !== 'boolean') throw new Error('Invalid or stale combat preferences.');
+    const next = { automaticDamage: p.automaticDamage, hideIntermediateFranz: p.automaticDamage && p.hideIntermediateFranz, hideDamagePrompt: p.automaticDamage && p.hideDamagePrompt === true };
     // Do not acknowledge a failed persistent write or disturb the active flow.
     localStorage.setItem(storageKey(), JSON.stringify(next));
     prefs = next;
-    if (!prefs.automaticDamage) { cancel(); linked.clear(); restore(); }
-    else if (!prefs.hideIntermediateFranz) restore();
+    if (!prefs.automaticDamage) { cancel(); linked.clear(); restoreAll(); }
+    else { if (!prefs.hideIntermediateFranz) restore(); if (!prefs.hideDamagePrompt) restorePrompts(); }
     schedule(); return { campaignId: campaign, ...prefs };
   }
   function fiberRoot(fiber: Fiber): Fiber | null {
@@ -297,9 +309,42 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       card.style.setProperty('display', 'none', 'important');
     }
   }
+  function syncPrompts(): void {
+    const desired = new Set<HTMLElement>();
+    if (prefs.automaticDamage && prefs.hideDamagePrompt) for (const [eventId, proof] of linked) {
+      const outcome = outcomes.get(proof.outcomeKey);
+      if (outcome?.status !== 'accepted' || outcome.campaign !== campaign || outcome.eventId !== eventId || proof.campaign !== campaign) continue;
+      const row = document.getElementById(`event-container-${eventId}`), event = row && eventFor(row);
+      if (!row || !encounterMatches(row, proof.encounter) || event?.role !== 'dm' || event.campaign_id !== campaign || event.request_id !== proof.request) continue;
+      const owner = currentFiber(proof.choiceOwner), props = owner?.memoizedProps, choice = props?.rollChoice as Native | undefined;
+      const choices = Array.isArray(event.rollChoices) ? event.rollChoices.filter((value: Native) => value?.id === outcome.choiceId) : [];
+      if (choices.length !== 1 || choices[0].accepted !== true || choices[0].type !== 'Damage' || choices[0].roll_result_id !== outcome.rollResultId
+        || choices[0].character_id !== outcome.character || choices[0].event_id !== eventId
+        || props?.campaignId !== campaign || (props.usersCharacter as Native)?.id !== outcome.character
+        || choice?.id !== outcome.choiceId || choice.event_id !== eventId || choice.character_id !== outcome.character
+        || choice.type !== 'Damage' || choice.accepted !== true || choice.roll_result_id !== outcome.rollResultId) continue;
+      // Captured t5 returns a single outer div for the choice label/avatar and
+      // pending/completed badge. Resolve that committed direct host child, never
+      // a nearest DOM row; actual dice results and narration are sibling owners.
+      const fiber = currentFiber(owner?.child), node = fiber?.stateNode as unknown;
+      if (!owner || !fiber || fiber.tag !== 5 || fiber.type !== 'div' || currentFiber(fiber.return) !== owner
+        || !(node instanceof HTMLElement) || !node.isConnected || node === row || !row.contains(node)
+        || committedFiber(node) !== fiber || node.id.startsWith('event-message-card-')
+        || node.querySelector('[id^="event-message-card-"], [id^="event-container-"], form, input, select, textarea') || traversalBudget <= 0) continue;
+      desired.add(node);
+    }
+    for (const [node, previous] of hiddenPrompts) if (!desired.has(node)) {
+      if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
+      hiddenPrompts.delete(node);
+    }
+    for (const node of desired) {
+      if (!hiddenPrompts.has(node)) hiddenPrompts.set(node, { value: node.style.getPropertyValue('display'), priority: node.style.getPropertyPriority('display') });
+      if (node.style.getPropertyValue('display') !== 'none' || node.style.getPropertyPriority('display') !== 'important') node.style.setProperty('display', 'none', 'important');
+    }
+  }
   function observeOutcomes(): void {
     for (const outcome of outcomes.values()) {
-      if (outcome.campaign !== campaign || outcome.status === 'accepted') continue;
+      if (outcome.campaign !== campaign || outcome.status !== 'claimed') continue;
       const row = document.getElementById(`event-container-${outcome.eventId}`), event = row && eventFor(row);
       const choice = Array.isArray(event?.rollChoices) && event.rollChoices.find((value: Native) => value?.id === outcome.choiceId);
       if (choice?.accepted === true && choice.character_id === outcome.character && id(choice.roll_result_id)) {
@@ -361,14 +406,15 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (claimed.has(key)) { cancel(); return; }
     ancestryCache.delete(candidate.button); currentFiberCache.clear(); rootCache.clear();
     const latestChain = ancestry(candidate.button, 16), latest = latestChain[0]?.memoizedProps;
-    const latestOwner = latestChain.find(fiber => (fiber.memoizedProps?.rollChoice as Native)?.id === match.choice.id)?.memoizedProps;
+    const choiceOwner = latestChain.find(fiber => (fiber.memoizedProps?.rollChoice as Native)?.id === match.choice.id);
+    const latestOwner = choiceOwner?.memoizedProps;
     if (!candidate.button.isConnected || candidate.button.disabled || candidate.button.matches(':disabled') || latest?.disabled === true || latest?.['aria-disabled'] === true
       || latest?.onClick !== candidate.callback || (latestOwner?.rollChoice as Native)?.accepted !== null || (latestOwner?.usersCharacter as Native)?.id !== current.character
       || latestOwner?.campaignId !== campaign || !encounterMatches(candidate.button, current.encounter)) { cancel(); return; }
-    if (traversalBudget <= 0) { cancel(); return; }
+    if (traversalBudget <= 0 || !choiceOwner) { cancel(); return; }
     const outcome: Outcome = { campaign, character: current.character, eventId: match.event.id, choiceId: match.choice.id, started: Date.now(), status: 'claimed' };
     outcomes.set(key, outcome);
-    claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request, outcomeKey: key }); cancel();
+    claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request, outcomeKey: key, choiceOwner }); cancel();
     syncNarration();
     try { const result = candidate.callback({ stopPropagation() {}, preventDefault() {}, currentTarget: candidate.button, target: candidate.button });
       if (result && typeof (result as PromiseLike<unknown>).then === 'function') void Promise.resolve(result).catch(() => { outcome.status = 'failed'; schedule(); });
@@ -380,14 +426,14 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (disposed) return;
     syncRoute();
     if (!campaign) return;
-    try { observeOutcomes(); applyFlow(); syncNarration(); } catch { cancel(); restore(); }
+    try { observeOutcomes(); applyFlow(); syncNarration(); syncPrompts(); } catch { cancel(); restoreAll(); }
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(sync); }
   const observer = new MutationObserver(() => schedule());
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'data-ff-combat-panel-mode', 'hidden', 'aria-hidden'] });
   function storageChanged(event: StorageEvent): void {
     if (event.storageArea !== localStorage || event.key !== storageKey()) return;
-    cancel(); linked.clear(); restore(); syncRoute(); prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false }; schedule();
+    cancel(); linked.clear(); restoreAll(); syncRoute(); prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false }; schedule();
   }
   const timer = window.setInterval(schedule, 500);
   window.addEventListener('storage', storageChanged);
@@ -396,7 +442,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   host[key] = {
     getPreferences, setPreferences,
     update() { schedule(); },
-    dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('submit', submitted, true); window.clearInterval(timer); window.removeEventListener('popstate', schedule); window.removeEventListener('storage', storageChanged); cancel(); restore(); delete host[key]; }
+    dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('submit', submitted, true); window.clearInterval(timer); window.removeEventListener('popstate', schedule); window.removeEventListener('storage', storageChanged); cancel(); restoreAll(); delete host[key]; }
   };
   schedule();
 }
