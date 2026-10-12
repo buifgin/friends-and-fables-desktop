@@ -2,8 +2,40 @@
 (() => {
   const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
   const mix = (color, target, amount) => `rgb(${color.map((c, i) => Math.round(c + (target[i] - c) * amount)).join(',')})`;
+  const scope = ':root[data-ff-settings-controls]';
+  const buttonExclusions = ':not([aria-current]):not([role="tab"]):not(.tab):not(.track):not(.remove):not(.settings-close-button):not(.close-library):not(#close):not(.theme-circle):not(.remove-saved-theme):not(.picture-choice)';
+  const rules = [
+    `${scope} body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }`,
+    `${scope} body :is(button, input, select, textarea) { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }`,
+    `${scope} body button${buttonExclusions} { color: var(--ui-accent-text); background-color: var(--ui-accent); border: 1px solid var(--ui-accent); border-radius: 8px; }`,
+    `${scope} body button.secondary${buttonExclusions} { color: var(--ui-fg); background-color: transparent; border-color: var(--ui-border); }`,
+    `${scope} body button${buttonExclusions}:not(:disabled):hover { background-color: var(--ui-hover); border-color: var(--ui-hover); filter: none; }`,
+    `${scope} body button.secondary${buttonExclusions}:not(:disabled):hover { color: var(--ui-fg); background-color: var(--ui-selected); border-color: var(--ui-hover); }`,
+    `${scope} body :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="file"]) { color: var(--ui-fg); background-color: var(--ui-panel); border: 1px solid var(--ui-border); border-radius: 6px; }`,
+    `${scope} body input[type="text"]:invalid { border-color: var(--ui-error); }`,
+    `${scope} body :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }`,
+  ];
+
+  function installControlsStyle() {
+    const root = document.documentElement;
+    root.setAttribute('data-ff-settings-controls', '');
+    const owner = document.querySelector('link[rel="stylesheet"]');
+    const sheet = owner?.sheet;
+    if (!owner || !sheet || owner.hasAttribute('data-ff-settings-controls-sheet')) return;
+    const firstRule = sheet.cssRules.length;
+    try {
+      for (const rule of rules) sheet.insertRule(rule, sheet.cssRules.length);
+      owner.setAttribute('data-ff-settings-controls-sheet', '');
+    } catch (error) {
+      while (sheet.cssRules.length > firstRule) sheet.deleteRule(firstRule);
+      root.removeAttribute('data-ff-settings-controls');
+      throw error;
+    }
+  }
+
   window.settingsTheme = {
     apply(settings) {
+      installControlsStyle();
       const base = { website: '#010b0e', amoled: '#000000', black: '#101010', light: '#f5f5f5' }[settings.preset] ?? settings.customColor;
       const color = rgb(base);
       const l = color.map(c => { const n = c / 255; return n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4; });
