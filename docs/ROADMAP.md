@@ -113,8 +113,8 @@
 The following corrections are present in current source after the published 0.7.2.7 release. They do not change that release, its tag, or its packages. The broad Windows/live coverage items elsewhere in this roadmap remain open where marked.
 
 - [x] Move Music to the first website-header position and retain expandable inline transport, volume, and library controls.
+- [x] Preserve the existing General option for hiding the desktop top bar in fullscreen and its Ctrl+Shift+B toggle.
 - [x] Remove the desktop palette shortcut and add a Settings entry on Home for global sections; keep Campaign and Combat inside a campaign. Reuse the panel for section changes, scroll only on overflow, and keep one close control. Music remains a reserved Settings section.
-- [x] Add the General option to hide the desktop top bar in fullscreen; preserve Alt+Enter/F11 fullscreen and Ctrl+Shift+B top-bar toggle behavior.
 - [x] Keep the native desktop Settings appearance consistent; preserve campaign desktop colors and panel-node identity during section changes.
 - [x] Keep native target checkboxes visible and high contrast; preserve their existing selection behavior.
 - [x] Remove the duplicate ordinary-check correction block while preserving native attack/spell corrections and defaults.
@@ -134,6 +134,14 @@ The following corrections are present in current source after the published 0.7.
 
 - [x] Add a searchable built-in catalog of 266 official CC BY music links, English/Russian mood and genre filters, playlist actions, source/license links, and attribution copying.
 
+
+## Future music ideas (deferred)
+
+These ideas are recorded for later consideration only. They are not implemented, and their scope and defaults remain undecided. The current Music Settings section remains reserved.
+
+- [ ] Consider campaign-specific playlists alongside the existing shared local library.
+- [ ] Consider smooth fade-in/fade-out when tracks change.
+- [ ] Consider an optional setting to pause playback when leaving or switching campaigns.
 
 ## Future combat workspace changes
 

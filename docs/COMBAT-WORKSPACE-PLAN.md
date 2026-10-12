@@ -22,11 +22,11 @@ The initial implementation docks the website's native action and skill/check dia
 
 The following are recommendations for a later, explicitly scoped design; they are not implemented requirements or authorization:
 
-- A searchable unified action list with kind filters, inline detail back-navigation, or an action gear button.
+- A searchable unified action list with kind filters and inline detail back-navigation.
 - Displaying attack and damage formulas with ability, proficiency, and other bonuses separated, plus automatic/manual modifier adjustments and reset.
 - Presets keyed by character, action, and mode (main hand, off hand, two-handed), with rules derived from underlying stats and role rather than fixed numeric bonuses.
 - Restoring a prior layout after combat.
-- Applying local presets automatically to submitted rolls.
+- Automatically applying named presets remains a separate possible change; current saved weapon/spell action and category defaults already apply to matching untouched native attack forms.
 - An optional character-sheet update switch. Before considering it, inspect whether the website supports the necessary fields, modifier recalculation, and write path. The suggested default-off behavior is a recommendation, not a user-confirmed decision.
 
 Before any such implementation, verify submitted rolls by their actual result, not only the action label. Preserve existing chat drafts, map state, resource and target controls, and website submission behavior. Avoid cloned interactive DOM or duplicate handlers. Any future roll action must be explicit; do not execute a roll automatically. No campaign updates are authorized here.
