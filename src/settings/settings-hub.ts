@@ -68,7 +68,7 @@ export class SettingsHub {
  private state(){const {preset,customColor}=this.appearance.getSettings();return {section:this.section,locale:this.appearance.getLocale(),theme:{preset,customColor},campaignAvailable:!!this.managers?.campaign&&this.campaignAvailable!==false,combat:this.combat,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
  currentSection():SettingsSection{return this.section;}
  update():void {if(!this.view.webContents.isDestroyed()){this.view.setBackgroundColor(themeBackground(this.appearance.getSettings()));this.view.webContents.send('settings-hub:update',this.state());}}
- async select(section:SettingsSection):Promise<void> {
+ async select(section:SettingsSection,beforeLayout?:()=>void):Promise<void> {
   if(section==='campaign'&&!this.managers?.campaign)throw new Error('Campaign settings are not connected.');
   if((section==='campaign'||section==='combat')&&this.campaignAvailable===false)throw new Error('Campaign settings are not available on this page.');
   const revision=++this.revision;
@@ -85,9 +85,13 @@ export class SettingsHub {
   if(section==='combat')await this.refreshCombat();
   if(this.window.isDestroyed()||revision!==this.revision)return;
   if(this.visible&&this.section==='campaign'&&section!=='campaign'){this.managers?.campaign?.hide();this.campaignBounds=undefined;}this.section=section;this.visible=true;this.update();
+  // The outer dock commits the website strip before the native Campaign
+  // adapter measures/mounts its content. Standalone callers need no callback.
+  beforeLayout?.();
   if(this.bounds)this.layout(this.bounds);
   (editor?.view.webContents??this.view.webContents).focus();
  }
+ refreshCampaign():void {if(this.visible&&this.section==='campaign'&&this.bounds){this.campaignBounds=undefined;this.layout(this.bounds);}}
  setVisible(visible:boolean):void {if(!visible){this.revision++;if(this.visible&&this.section==='campaign')this.managers?.campaign?.hide();this.campaignBounds=undefined;}this.visible=visible;this.view.setVisible(visible);for(const [section,editor]of this.editors)editor.view.setVisible(visible&&section===this.section);}
  layout(bounds:Rectangle):void {
   this.bounds=bounds;this.view.setBounds(this.section==='campaign'?{...bounds,width:Math.min(126,bounds.width)}:bounds);this.view.setVisible(this.visible);

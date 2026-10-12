@@ -4,6 +4,7 @@ import path from 'node:path';
 import type { WindowControls } from './shell/window-controls';
 import type { AppearanceDock } from './shell/appearance-dock';
 import { configureNativeCampaignPanel } from './settings/campaign-panel';
+import { settingsPalette } from './settings/settings-palette';
 import type { CombatPreferences } from './settings/settings-core';
 import { mainWindowChrome } from './shell/window-chrome';
 import { configureZoomShortcuts } from './shell/zoom';
@@ -58,8 +59,14 @@ function configureWebsiteContents(contents: WebContents, window: BrowserWindow, 
   });
 
   contents.setWindowOpenHandler(({ url }) => {
-    if (contents === websiteContents && settingsDock && new URL(contents.getURL()).origin === 'https://play.fables.gg'
-      && /^\/[0-9a-f-]{36}\/play\/?$/i.test(new URL(contents.getURL()).pathname)) {
+    const current=new URL(contents.getURL()||'about:blank');
+    if(contents===websiteContents&&settingsDock&&current.origin==='https://play.fables.gg'
+      &&url==='fables-desktop://settings/open-global'){
+      void settingsDock.openSection('general').catch(console.error);
+      return {action:'deny'};
+    }
+    if (contents === websiteContents && settingsDock && current.origin === 'https://play.fables.gg'
+      && /^\/[0-9a-f-]{36}\/play\/?$/i.test(current.pathname)) {
       if (url === 'fables-desktop://settings/open-campaign') {
         void settingsDock.openSection('campaign').catch(console.error);
         return { action: 'deny' };
@@ -149,12 +156,15 @@ function createWindow(): void {
   const dock = appearance.attachMain(mainWindow, view);
   settingsDock = dock;
   let campaignUpdates = Promise.resolve();
+  let campaignDocument=0;
+  view.webContents.on('did-navigate',()=>{campaignDocument++;});
   const updateCampaignPanel = (show: boolean, width = 0, height = 0): Promise<void> => {
+    const expectedURL=view.webContents.getURL(),expectedDocument=campaignDocument;
     campaignUpdates = campaignUpdates.catch(console.error).then(async () => {
-      if (view.webContents.isDestroyed() || !view.webContents.getURL()) return;
+      if (view.webContents.isDestroyed() || view.webContents.getURL()!==expectedURL || campaignDocument!==expectedDocument || !expectedURL) return;
       const url = new URL(view.webContents.getURL());
       if (url.origin !== 'https://play.fables.gg' || !/^\/[0-9a-f-]{36}\/play\/?$/i.test(url.pathname)) return;
-      await view.webContents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${show},${width},${height})`);
+      await view.webContents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${show},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))})`);
     });
     return campaignUpdates;
   };
@@ -179,6 +189,11 @@ function createWindow(): void {
     show: bounds => updateCampaignPanel(true, bounds.width, bounds.height),
     hide: () => { void updateCampaignPanel(false).catch(console.error); },
   } });
+  const updateSettingsRoute=()=>{void dock.setCampaignAvailable(combatCampaign()!==null).catch(console.error);};
+  view.webContents.on('did-navigate',updateSettingsRoute);
+  view.webContents.on('did-navigate-in-page',(_event,_url,isMainFrame)=>{if(isMainFrame)updateSettingsRoute();});
+  view.webContents.on('did-finish-load',updateSettingsRoute);
+  updateSettingsRoute();
   windowControls = dock.windowControls;
   music.attachMain(mainWindow,dock.getLauncherContents(),view.webContents);
   music.setSettingsOpener(() => { void dock.openSection('music').catch(console.error); });
@@ -331,6 +346,7 @@ if (!app.requestSingleInstanceLock()) {
       translation.setAppearance(settings);
       music.setInterface(settings,appearance.getLocale());
       hostInstructions.setInterface(settings,appearance.getLocale());
+      settingsDock?.refreshCampaign();
     };
     const websiteSession = session.fromPartition(SESSION_PARTITION);
     // Additional site permissions can be introduced when those features are added.

@@ -61,3 +61,13 @@ test('route availability hides campaign sections and rejects unavailable campaig
  await assert.rejects(f.hub.select('campaign'),/not available/);await assert.rejects(f.hub.select('combat'),/not available/);
  f.hub.setCampaignAvailable(true);await f.hub.select('campaign');assert.equal(shown.length,1);
 });
+
+test('outer website geometry commits before Campaign adapter mounts and active theme refresh does not reopen',async()=>{
+ const f=fixture(),manager={setSettingsOpener(){}},trace=[];
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show:b=>trace.push(['show',b]),hide:()=>trace.push(['hide'])}});
+ await f.hub.select('campaign',()=>trace.push(['website-strip-committed']));
+ assert.deepEqual(trace.map(x=>x[0]),['website-strip-committed','show']);
+ f.hub.refreshCampaign();assert.deepEqual(trace.map(x=>x[0]),['website-strip-committed','show','show']);
+ await f.hub.select('campaign');assert.equal(trace.length,3,'Repeated selection preserves mounted native section');
+ await f.hub.select('general');f.hub.refreshCampaign();assert.equal(trace.length,4,'Off-section theme update cannot mount Campaign');
+});

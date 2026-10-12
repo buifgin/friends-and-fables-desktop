@@ -28,7 +28,6 @@ export class AppearanceDock {
 
   private opened = false;
   private inset = 0;
-  private popup = false;
   private width: number;
   private revision = 0;
 
@@ -59,8 +58,8 @@ export class AppearanceDock {
     void this.ready.catch(console.error);
     ipcMain.handle('appearance-dock:get', event => { this.assertTrusted(event); return this.state(); });
     ipcMain.handle('appearance-dock:toggle', event => { this.assertTrusted(event); return this.toggle(); });
-    ipcMain.handle('appearance-dock:popup', (event,open: unknown) => { this.assertTrusted(event); if (typeof open !== 'boolean') throw new Error('Invalid popup state.'); this.popup = open; if (open) window.contentView.addChildView(this.launcher); this.layout(); });
-    window.on('blur', () => { this.popup = false; this.layout(); if (!contents.isDestroyed()) contents.send('appearance-dock:popup-close'); });
+    ipcMain.handle('appearance-dock:popup', (event,open: unknown) => { this.assertTrusted(event); if (typeof open !== 'boolean') throw new Error('Invalid popup state.'); });
+    window.on('blur', () => { if (!contents.isDestroyed()) contents.send('appearance-dock:popup-close'); });
     window.on('resize', () => this.layout());
     window.on('enter-full-screen', () => {this.barOverride=false;this.barManualHidden=false;this.layout();});
     window.on('leave-full-screen', () => {this.barOverride=false;this.barManualHidden=false;this.layout();});
@@ -94,6 +93,11 @@ export class AppearanceDock {
     this.layout(); this.update(); this.hub.update(); this.windowControls.sync();
   }
   isOpen(): boolean { return this.opened; }
+  async setCampaignAvailable(available:boolean):Promise<void> {
+    this.hub.setCampaignAvailable(available);
+    if(!available&&this.opened&&['campaign','combat'].includes(this.hub.currentSection()))await this.openSection('general');
+  }
+  refreshCampaign():void { this.hub.refreshCampaign(); }
   closeCampaign(): void { if (this.opened && this.hub.currentSection() === 'campaign') this.hide(); }
 
   async flushSettings(): Promise<void> { await this.generalReady; await this.general.flush(); }
@@ -104,7 +108,10 @@ export class AppearanceDock {
     if(this.window.isDestroyed())return;
     const revision=++this.revision;
     await this.generalReady;
-    await this.hub.select(section);
+    await this.hub.select(section,()=>{
+      if(revision!==this.revision||this.window.isDestroyed())return;
+      this.opened=true;this.layout();
+    });
     if(revision!==this.revision||this.window.isDestroyed()){return;}
     this.opened=true;this.layout();this.update();
   }
@@ -124,8 +131,7 @@ export class AppearanceDock {
   private layout(): void {
     if (this.window.isDestroyed()) return;
     const [width, height] = this.window.getContentSize();
-    // Share the menu row, reserving one app-owned row with native menus. The launcher
-    // must never cover the website's avatars, navigation, or map controls.
+    // Reserve only the desktop menu row; music now lives in the website header.
     const barVisible=desktopBarVisible(this.window.isFullScreen(),this.general.hideDesktopTopbarInFullscreen,this.barOverride)&&!this.barManualHidden;
     const inset = barVisible ? Math.max(this.inset,32) : 0;
     const geometry=settingsGeometry(width,height,this.width,inset);
@@ -137,8 +143,8 @@ export class AppearanceDock {
     this.website.setBounds({x:websiteX,y:inset,width:Math.max(0,width-websiteX),height:Math.max(0,height-inset)});
     this.hub.layout(geometry.panel);this.hub.setVisible(this.opened);
     this.windowControls.layout(width, 0);this.windowControls.setVisible(barVisible);
-    this.launcher.setBounds({ x: Math.max(0, Math.round((width - 232) / 2)), y: 0, width: 232, height: this.popup ? 166 : 32 });
-    this.launcher.setVisible(barVisible);
+    this.launcher.setBounds({x:0,y:0,width:0,height:0});
+    this.launcher.setVisible(false);
     this.window.setMenuBarVisibility(barVisible);
     this.onTopBarVisibilityChange?.(barVisible);
 
