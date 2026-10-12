@@ -82,7 +82,10 @@ test('desktop palette overrides owned Campaign styling and survives layout updat
  assert.match(css,/border:1px solid!important;border-radius:8px!important;overflow:hidden!important/,'The dock keeps a thin rounded desktop frame without scrolling the outer dialog.');
  assert.match(css,/div\.flex-1\.items-center\.overflow-y-auto\{overflow:auto!important;scrollbar-width:thin!important/,'Only the captured native content scroller owns overflow and a thin scrollbar.');
  assert.match(css,/h3\.font-header\{font-size:30px!important/,'The first campaign card title receives the desktop heading size.');
- assert.match(css,/\[data-ff-desktop-detail-card="true"\]:first-child > div > h3\.font-header::before/,'The branded accent is limited to the verified first header.');
+ assert.match(css,/div\.mx-auto > div:first-child > div > h3\.font-header::before\{content:"FRIENDS & FABLES DESKTOP";display:block;[^}]*font-size:10px;[^}]*letter-spacing:\.15em/,'The exact desktop eyebrow label is limited to the captured first card heading.');
+ assert.doesNotMatch(css,/\[data-ff-desktop-detail-card="true"\]/,'Heading matching follows the captured first-card structure without requiring the optional appearance marker.');
+ assert.match(css,/div\.p-6\.h-full\{padding:0!important\}/,'Captured wrapper padding is reset before applying desktop main spacing.');
+ assert.match(css,/div\.mx-auto\{padding:28px 32px!important\}/,'Native content receives the desktop editor main padding.');
  assert.doesNotMatch(css,/\[data-ff-campaign-panel\] h3\s*\{/,'Ordinary campaign section headings keep their native size.');
  assert.match(css,/button:has\(> \.lucide-x\)[^}]*width:34px!important[^}]*height:34px!important[^}]*border-radius:50%!important/,'Only the direct native close button receives the circular 34px target.');
  assert.match(css,/button:has\(> \.lucide-x\) > \.lucide-x\{display:block!important;width:18px!important;height:18px!important/,'The native close icon uses the shared 18px SVG size.');
