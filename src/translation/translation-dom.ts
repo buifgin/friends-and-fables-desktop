@@ -179,8 +179,12 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       return true;
     });
     const labelSource=labelParts.map(original).join('');
+    // Native pending captions mix React Text/comments, leaf spans and a spinner.
+    // Translate the known status as one interface unit before prose blanking can
+    // collapse its fragments or clone the spinner into a translation preview.
+    const franzStatus=/^\s*(?:Franz|Франц)\s+is\s+(?:thinking|imagining|envisioning|starting (?:an? )?encounter|starting combat|generating)(?:\.\.\.|…)?\s*$/i.test(labelSource);
     const emptyFavoriteLabel=labelSource.replace(/\s+/g,' ').trim().toLowerCase()==='you don\'t have any favorited attacks ready. add an attack in the custom tab and click "favorite attack" to save it as a favorite!';
-    const labelGroup=labelShape && (emptyFavoriteLabel || /^\s*(?:Add to Favorites|Remove from Favorites|Description\s*\(\s*Optional\s*\)|Select (?:a )?weapon(?:\.\.\.|…)?|Add damage roll|Roll attack|Favorite attack)\s*$/i.test(labelSource));
+    const labelGroup=labelShape && (franzStatus || emptyFavoriteLabel || /^\s*(?:Add to Favorites|Remove from Favorites|Description\s*\(\s*Optional\s*\)|Select (?:a )?weapon(?:\.\.\.|…)?|Add damage roll|Roll attack|Favorite attack)\s*$/i.test(labelSource));
     const counterSource = leaves.map(original).join(' ').replace(/\s+/g,' ').trim();
     const counterGroup = /^[\d,]+\s+XP until level\s+\d+$/i.test(counterSource) || /^\d+ (?:Topics? Researched|Blocks? Created|Memor(?:y|ies) Saved)(?: \d+ Blocks? Created)?$/i.test(counterSource);
     const mechanicsGroup=/^(?:(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder) damage|Preview:\s*\d+d\d+(?:\s*[+−-]\s*\d+)?\s+(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)|Bonuses:\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise)(?:[.,]\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*)$/i.test(counterSource);
@@ -230,6 +234,16 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       if (card && [...card.querySelectorAll('h2,h3,h4,.font-semibold.leading-none.tracking-tight')].some(heading => heading.closest('.border,section,[data-equipment]') === card && /^(Equipped Items|Надетые предметы)$/i.test(heading.textContent?.trim() ?? ''))) translated = original.replace(/Back/i,'Спина');
     }
     const actionDialog=parent(node)?.closest('[role=dialog]');
+    // "Vantage" also means image camera angle. Only the native roll field's
+    // associated label in a combat/dice surface uses roll terminology.
+    if(!preserved && core.toLowerCase()==='vantage') {
+      const element=parent(node),label=element?.closest('label');
+      const surface=element?.closest('[data-ff-combat-docked],[data-ff-combat-panel-mode="actions"],[role=dialog]');
+      const rollSurface=surface?.matches('[data-ff-combat-docked],[data-ff-combat-panel-mode="actions"]') || !!surface &&
+        [...surface.querySelectorAll('h2,h3,[role=heading]')].some(title=>/^(?:Choose Action|Roll Attack|Attack Roll|Roll Dice|Выберите действие|Бросок атаки|Бросить кости|Бросок костей)$/i.test(title.textContent?.trim()??''));
+      const control=label?.getAttribute('for') ? document.getElementById(label.getAttribute('for')!) : label?.querySelector('[role=combobox]');
+      if(rollSurface && control?.matches('#vantage[role=combobox]') && surface?.contains(control))translated=original.replace(/vantage/i,'Тип броска');
+    }
     if(!preserved && core.toLowerCase()==='custom' && actionDialog && [...actionDialog.querySelectorAll('h2')].some(title=>/^(?:Choose Action|Выберите действие)$/i.test(title.textContent?.trim()??'')))translated=original.replace(/custom/i,'Своя атака');
     // The dice operator is a presentation label beside native quantity/faces controls.
     // Restrict this to the attack/dice dialog; never rewrite form values or a general letter d.
