@@ -578,6 +578,9 @@ export function combatPanelAppearanceCss(
   const buttons = `${customizedSurface} button:not([role="checkbox"]):not([role="switch"])`;
   const actionButtons = `${customizedSurface} :is(button[type="submit"], button:has(.lucide-chevron-left))`;
   const targetCheckbox = `${customizedSurface} label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]) > button[role="checkbox"]`;
+  const actionBorder = settings.enabled && settings.customizeBorder
+    ? hex(settings.borderColor ?? '', '#555555')
+    : 'hsl(var(--border, 0 0% 50%))';
   const border = settings.enabled && settings.customizeBorder ? `
     ${customizedSurface} { border-right-color: ${hex(settings.borderColor ?? '', '#555555')} !important; }
     ${customizedSurface} :is([data-ff-combat-heading], h2, button, input, select, textarea, [role="combobox"], [class~="border"], [class*="border-"]) {
@@ -592,6 +595,11 @@ export function combatPanelAppearanceCss(
     ${actionButtons} {
       background: ${hex(settings.buttonBackground ?? '', '#202020')} !important;
       color: ${hex(settings.buttonTextColor ?? '', '#ffffff')} !important;
+      box-sizing: border-box !important;
+      border: 1px solid ${actionBorder} !important;
+      border-radius: 6px !important;
+      min-height: 34px !important;
+      padding: 6px 8px !important;
     }
     ${buttons} :is(span, div) { color: inherit !important; }
     ${buttons}:is([aria-selected="true"], [aria-pressed="true"], [data-state="active"]) {
