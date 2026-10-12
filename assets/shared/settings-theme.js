@@ -11,7 +11,7 @@
     `${scope} body button.secondary${buttonExclusions} { color: var(--ui-fg); background-color: transparent; border-color: var(--ui-border); }`,
     `${scope} body button${buttonExclusions}:not(:disabled):hover { background-color: var(--ui-hover); border-color: var(--ui-hover); filter: none; }`,
     `${scope} body button.secondary${buttonExclusions}:not(:disabled):hover { color: var(--ui-fg); background-color: var(--ui-selected); border-color: var(--ui-hover); }`,
-    `${scope} body :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]) { color: var(--ui-fg); background-color: var(--ui-panel); border: 1px solid var(--ui-border); border-radius: 6px; }`,
+    `${scope} body :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="image"]):not([type="file"]) { color: var(--ui-fg); background-color: var(--ui-panel); border: 1px solid var(--ui-border); border-radius: 6px; }`,
     `${scope} body input[type="text"]:invalid { border-color: var(--ui-error); }`,
     `${scope} body :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--ui-focus); outline-offset: 2px; }`,
   ];
