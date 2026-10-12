@@ -137,7 +137,7 @@ Release source: `b4f7c736080ff1e75a2051451c72380b9987dff5` (`v0.7.0`). [Native w
 
 ## 0.7.2.7 verification
 
-Release source: `6c1451d4373fc138fc281ec365a11a76fdc8eb93` (`v0.7.2-7`). [Build workflow 38178138822](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/38178138822) passed Linux and Windows source and packaged-resource gates; Windows also passed the bundled model gate. [Staging workflow 38178684719](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/38178684719) verified and staged the exact CI artifacts to the unpublished `v0.7.2-7` draft release. Public title: `0.7.2.7`; internal package/tag version: `0.7.2-7`/`v0.7.2-7`. AUR source verification remains pending.
+Release source: `6c1451d4373fc138fc281ec365a11a76fdc8eb93` (`v0.7.2-7`). [Build workflow 38178138822](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/38178138822) passed Linux and Windows source and packaged-resource gates; Windows also passed the bundled model gate. [Staging workflow 38178684719](https://github.com/buifgin/friends-and-fables-desktop/actions/runs/38178684719) verified and staged the exact CI artifacts. The release is now [published](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.7.2-7), and the local files match the exact CI hashes. Cached AppImage `makepkg --verifysource` and SRCINFO parity passed; the AUR recipe is prepared but has not been submitted to AUR. Public title: `0.7.2.7`; internal package/tag version: `0.7.2-7`/`v0.7.2-7`.
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
