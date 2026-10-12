@@ -648,7 +648,6 @@ export function combatPanelAppearanceCss(
       border: 2px solid hsl(var(--primary, 41 62% 65%)) !important;
       color: hsl(var(--primary, 41 62% 65%)) !important;
       background: transparent !important;
-      opacity: 1 !important;
     }
     ${targetCheckbox}:is([aria-checked="true"], [data-state="checked"]) {
       color: hsl(var(--primary-foreground, 0 0% 13%)) !important;
