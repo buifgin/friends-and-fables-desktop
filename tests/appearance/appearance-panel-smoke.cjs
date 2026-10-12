@@ -222,7 +222,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   }
   await until(() => contents.executeJavaScript('!document.getElementById("apply").disabled'));
   assert.equal(await contents.executeJavaScript("document.body.classList.contains('docked')"), true);
-  assert.equal(dock.launcher.isVisible(), false, 'The legacy Settings launcher stays hidden while its private renderer remains available.');
+  assert.equal(dock.launcher.getVisible(), false, 'The legacy Settings launcher stays hidden while its private renderer remains available.');
   assert.deepEqual(dock.launcher.getBounds(), { x: 0, y: 0, width: 0, height: 0 }, 'The hidden legacy launcher reserves no native window area.');
   assert.equal(panel.getBounds().x, 0); assert.equal(panel.getBounds().y, 32, 'The application menu and native window controls share one row above the game.');
   assert.equal(editor.getBounds().x, 126, 'The Appearance editor follows the Settings navigation rail.');
@@ -452,7 +452,7 @@ const timer = setTimeout(() => { console.error('Appearance panel test timed out.
   const freshHost=new BrowserWindow({show:false,width:1100,height:820,webPreferences:{partition:'fables-appearance',sandbox:true,contextIsolation:true,nodeIntegration:false}});
   const freshSite=new WebContentsView({webPreferences:{session:websiteSession,sandbox:true,contextIsolation:true,nodeIntegration:false}});freshHost.contentView.addChildView(freshSite);
   const freshDock=restarted.attachMain(freshHost,freshSite);await freshDock.ready;
-  assert.equal(freshDock.isOpen(),false);assert.equal(freshSite.getBounds().x,0);assert.equal(freshSite.getBounds().y,32);assert.equal(freshDock.launcher.isVisible(),false);assert.deepEqual(freshDock.launcher.getBounds(),{x:0,y:0,width:0,height:0});
+  assert.equal(freshDock.isOpen(),false);assert.equal(freshSite.getBounds().x,0);assert.equal(freshSite.getBounds().y,32);assert.equal(freshDock.launcher.getVisible(),false);assert.deepEqual(freshDock.launcher.getBounds(),{x:0,y:0,width:0,height:0});
   await freshDock.open();await until(()=>freshDock.isOpen());
   assert.equal(restarted.panel.getBounds().width,savedWidth - 126);assert.equal(BrowserWindow.getAllWindows().length,1);
   await until(()=>restarted.panel.webContents.executeJavaScript('document.documentElement.lang==="ru"'));
