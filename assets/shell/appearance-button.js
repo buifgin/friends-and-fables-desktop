@@ -6,7 +6,7 @@
  function label(id,value){$(id).title=text(value);$(id).setAttribute('aria-label',text(value));}
  function render(){
   document.querySelector('nav').setAttribute('aria-label',text('Campaign controls'));$('volume-popup').setAttribute('aria-label',text('Volume'));
-  for(const [id,value] of [['appearance-button','Settings'],['library','Music'],['open-library','Music library'],['play',status.paused?'Play':'Pause'],['next','Next track'],['repeat','Repeat track'],['volume-button','Volume']])label(id,value);
+  for(const [id,value] of [['library','Music'],['open-library','Music library'],['play',status.paused?'Play':'Pause'],['next','Next track'],['repeat','Repeat track'],['volume-button','Volume']])label(id,value);
   $('play-icon').toggleAttribute('hidden',!status.paused);$('pause-icon').toggleAttribute('hidden',status.paused);$('play').disabled=!status.available;$('next').disabled=!status.next;
   $('repeat').setAttribute('aria-pressed',String(status.loop));
   $('volume-wave').toggleAttribute('hidden',status.muted);$('mute').textContent=text(status.muted?'Unmute':'Mute');$('mute').setAttribute('aria-pressed',String(status.muted));
@@ -15,14 +15,13 @@
  }
  function popup(open){$('volume-popup').hidden=!open;$('volume-button').setAttribute('aria-expanded',String(open));void bridge.popup(open).catch(console.error);}
  function musicControls(open){const group=$('music-controls');group.inert=!open;group.setAttribute('aria-hidden',String(!open));$('library').setAttribute('aria-expanded',String(open));if(!open){if(group.contains(document.activeElement))$('library').focus();popup(false);}}
- $('appearance-button').addEventListener('click',()=>{popup(false);void bridge.toggle().catch(console.error);});
  $('library').addEventListener('click',()=>musicControls($('library').getAttribute('aria-expanded')!=='true'));
  $('open-library').addEventListener('click',()=>void bridge.control('library').catch(console.error));
  for(const id of ['play','next','repeat','mute'])$(id).addEventListener('click',()=>void bridge.control(id).catch(console.error));
  $('volume-button').addEventListener('click',()=>popup($('volume-popup').hidden));
  $('volume').addEventListener('input',()=>{const value=Number($('volume').value)/100;status.volume=value;$('volume-value').value=`${Math.round(value*100)}%`;void bridge.control('volume',value).catch(console.error);});
  document.addEventListener('keydown',event=>{if(event.key==='Escape')popup(false);});window.addEventListener('blur',()=>popup(false));bridge.onPopupClose(()=>popup(false));
- function appearance(state){window.settingsTheme.apply(state.settings);locale=state.locale;document.documentElement.lang=locale;$('appearance-button').setAttribute('aria-expanded',String(state.open));render();}
+ function appearance(state){window.settingsTheme.apply(state.settings);locale=state.locale;document.documentElement.lang=locale;render();}
  function music(state){status=state;locale=state.locale;render();}
  bridge.onChange(appearance);bridge.onMusic(music);bridge.get().then(appearance).catch(console.error);bridge.getMusic().then(music).catch(console.error);
 })();

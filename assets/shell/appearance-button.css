@@ -5,5 +5,7 @@ nav button svg{-webkit-app-region:no-drag}
 nav svg{width:16px;height:16px;display:block;margin:0;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linejoin:round;stroke-linecap:round}
 @media(prefers-reduced-motion:reduce){#music-controls{transition:none}}
 
-/* Music now launches from the game header; retain the player controls in the DOM for bridge compatibility. */
+/* Desktop launcher is retired; hidden transport stays for trusted bridge compatibility. */
 #library,#music-controls{display:none!important}
+
+body{pointer-events:none}nav{height:0}
