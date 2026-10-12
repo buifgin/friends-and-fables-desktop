@@ -14,10 +14,11 @@ function renderCombat(){
  document.getElementById('combat-unavailable').textContent=combat?'':ru?'Откройте кампанию, чтобы изменить настройки боя.':'Open a campaign to change combat settings.';
  document.getElementById('automatic-damage-label').textContent=ru?'Автоматический урон после моего попадания':'Automatic damage after my hit';
  document.getElementById('hide-intermediate-franz-label').textContent=ru?'Скрывать связанный промежуточный ответ Франца':"Hide Franz’s linked intermediate response";
+ document.getElementById('hide-damage-prompt-label').textContent=ru?'Скрывать связанную карточку запроса урона после автоматического броска':'Hide the linked damage prompt after the automatic roll';
  document.getElementById('combat-note').textContent=ru?'Для одной атаки и одной цели. Ожидает кнопку урона игры. Скрытие действует только локально; генерация ответа и расходы сохраняются.':'For one attack and one target. Waits for the game’s Damage button. Hiding affects local display only; response generation and costs remain.';
- const auto=document.getElementById('automatic-damage'),hide=document.getElementById('hide-intermediate-franz');
- auto.checked=!!combat?.automaticDamage;hide.checked=!!combat?.hideIntermediateFranz;
- auto.disabled=savingCombat||!combat;hide.disabled=savingCombat||!combat?.automaticDamage;
+ const auto=document.getElementById('automatic-damage'),hide=document.getElementById('hide-intermediate-franz'),prompt=document.getElementById('hide-damage-prompt');
+ auto.checked=!!combat?.automaticDamage;hide.checked=!!combat?.hideIntermediateFranz;prompt.checked=!!combat?.hideDamagePrompt;
+ auto.disabled=savingCombat||!combat;hide.disabled=savingCombat||!combat?.automaticDamage;prompt.disabled=savingCombat||!combat?.automaticDamage;
 }
 function combatError(error){document.getElementById('combat-error').textContent=String(error.message||error);}
 async function refreshCombat(){
@@ -27,11 +28,12 @@ async function refreshCombat(){
 }
 async function saveCombat(){
  if(!combat||savingCombat)return;
- const value={campaignId:combat.campaignId,automaticDamage:document.getElementById('automatic-damage').checked,hideIntermediateFranz:document.getElementById('hide-intermediate-franz').checked};
+ const value={campaignId:combat.campaignId,automaticDamage:document.getElementById('automatic-damage').checked,hideIntermediateFranz:document.getElementById('hide-intermediate-franz').checked,hideDamagePrompt:document.getElementById('hide-damage-prompt').checked};
  savingCombat=true;++combatRead;renderCombat();document.getElementById('combat-error').textContent='';
  try{combat=await api.saveCombat(value);}catch(error){combatError(error);combat=null;}finally{savingCombat=false;renderCombat();void refreshCombat();}
 }
 document.getElementById('automatic-damage').onchange=saveCombat;
 document.getElementById('hide-intermediate-franz').onchange=saveCombat;
+document.getElementById('hide-damage-prompt').onchange=saveCombat;
 // Only the active, visible Combat section polls one bounded preference read.
 setInterval(()=>{if(state?.section==='combat'&&document.visibilityState==='visible')void refreshCombat();},1000);

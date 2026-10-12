@@ -22,7 +22,7 @@ function fixture(saved) {
   const savedMap = new Map(saved ? [['ff-desktop-combat-flow-v1:campaign-a', JSON.stringify(saved)]] : []);
   let frame, observer;
   const documentListeners = {};
-  const context = { HTMLFormElement: Element, module: { exports: {} }, Element, window: { setInterval() { return 1; }, clearInterval() {}, addEventListener() {}, removeEventListener() {} }, location: { pathname: '/campaign-a/play' }, localStorage: { getItem(k) { return savedMap.get(k) ?? null; }, setItem(k, v) { savedMap.set(k, v); } }, document: { addEventListener(k, fn) { documentListeners[k] = fn; }, removeEventListener(k) { delete documentListeners[k]; }, querySelectorAll() { return []; }, getElementById() { return null; }, createElement(tag) { return new Element(tag); }, documentElement: new Element(), querySelector() { return dock; } }, requestAnimationFrame(fn) { frame = fn; return 1; }, cancelAnimationFrame() { frame = undefined; }, MutationObserver: class { constructor(fn) { observer = fn; } observe() {} disconnect() {} } };
+  const context = { HTMLFormElement: Element, HTMLElement: Element, module: { exports: {} }, Element, window: { setInterval() { return 1; }, clearInterval() {}, addEventListener() {}, removeEventListener() {} }, location: { pathname: '/campaign-a/play' }, localStorage: { getItem(k) { return savedMap.get(k) ?? null; }, setItem(k, v) { savedMap.set(k, v); } }, document: { addEventListener(k, fn) { documentListeners[k] = fn; }, removeEventListener(k) { delete documentListeners[k]; }, querySelectorAll() { return []; }, getElementById() { return null; }, createElement(tag) { return new Element(tag); }, documentElement: new Element(), querySelector() { return dock; } }, requestAnimationFrame(fn) { frame = fn; return 1; }, cancelAnimationFrame() { frame = undefined; }, MutationObserver: class { constructor(fn) { observer = fn; } observe() {} disconnect() {} } };
   vm.runInNewContext(source, context);
   // Production injects only function.toString(), with no CommonJS helpers.
   const injected = context.module.exports.configureCombatFlow.toString();
@@ -41,7 +41,7 @@ function fixture(saved) {
 }
 test('default-off preferences create no inline website fieldset', () => {
   const f = fixture();
-  assert.deepEqual(JSON.parse(JSON.stringify(f.preferences())), {campaignId:'campaign-a',automaticDamage:false,hideIntermediateFranz:false});
+  assert.deepEqual(JSON.parse(JSON.stringify(f.preferences())), {campaignId:'campaign-a',automaticDamage:false,hideIntermediateFranz:false,hideDamagePrompt:false});
   assert.equal(f.dock.children.length,1);assert.equal(f.form.children.length,0);
 });
 test('saved malformed and dependent settings fail closed', () => {
@@ -54,8 +54,8 @@ test('preference roundtrip isolates campaigns and auto off clears hide immediate
  assert.equal(f.preferences().hideIntermediateFranz,false);
  f.context.location.pathname='/campaign-b/play'; // No RAF needed for route correlation.
  assert.equal(f.preferences().automaticDamage,false);f.setPreferences({automaticDamage:true});
- assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-a')),{automaticDamage:false,hideIntermediateFranz:false});
- assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-b')),{automaticDamage:true,hideIntermediateFranz:false});
+ assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-a')),{automaticDamage:false,hideIntermediateFranz:false,hideDamagePrompt:false});
+ assert.deepEqual(JSON.parse(f.savedMap.get('ff-desktop-combat-flow-v1:campaign-b')),{automaticDamage:true,hideIntermediateFranz:false,hideDamagePrompt:false});
 });
 test('malformed, stale and off-campaign preference saves reject without writes', () => {
  const f=fixture(),p=f.preferences();
@@ -73,7 +73,7 @@ test('preference reads do not scan DOM or React and duplicate config retains sta
 });
 
 function flowFixture(options = {}) {
-  const f = fixture({ automaticDamage: true, hideIntermediateFranz: !!options.hide });
+  const f = fixture({ automaticDamage: true, hideIntermediateFranz: !!options.hide, hideDamagePrompt: !!options.hidePrompt });
   const { Element, root, form, formFiber, context } = f;
   let listener, result = { status: 'idle', submittedAt: 0 }, calls = 0, passedChoice, unsubscribed = 0;
   const observer = { options: { mutationFn: function nativeGM({ lastEventId }) { return ['ENCOUNTER_GM_RESPONSE', 'GM_RESPONSE', lastEventId]; } }, getCurrentResult() { return result; }, subscribe(fn) { listener = fn; return () => { listener = null; unsubscribed++; }; } };
@@ -99,11 +99,18 @@ function flowFixture(options = {}) {
   const card = new Element(); card.id = 'event-message-card-107655722'; dmRow.append(card);
   const cardOwner = { type: function NativeNarrativeCard() { return 'event-message-card-'; }, memoizedProps: { eventId: dmEvent.id }, return: rowFiber };
   card.__reactFiber$fixture = { memoizedProps: { id: card.id }, return: cardOwner }; cardOwner.child = card.__reactFiber$fixture; t5.sibling = cardOwner;
+  const prompt = new Element(), damageResult = new Element(), finalReply = new Element();
+  if (options.prompt) {
+    prompt.id = ''; prompt.isConnected = true; prompt.tagName = 'DIV'; prompt.querySelector = () => null;
+    dmRow.append(prompt, damageResult, finalReply); prompt.append(button);
+    const host = { tag: 5, type: 'div', stateNode: prompt, memoizedProps: {}, return: t5, child: buttonFiber };
+    t5.child = host; buttonFiber.return = host; prompt.__reactFiber$fixture = host;
+  }
   card.querySelectorAll = () => [];
   dmRow.querySelectorAll = selector => selector === 'button' ? [button] : selector === '[id^="event-message-card-"]' ? [card] : [];
   context.document.getElementById = value => value === dmRow.id ? dmRow : null;
   const rows = [attackRow, dmRow]; context.document.querySelectorAll = () => rows;
-  return { ...f, observer, owner, character, attack, choice, dmEvent, attackEvent, button, t5, rows, card, nativeCampaign, result: () => result, calls: () => calls, passedChoice: () => passedChoice, unsubscribed: () => unsubscribed,
+  return { ...f, observer, owner, character, attack, choice, dmEvent, attackEvent, button, t5, rows, card, prompt, damageResult, finalReply, nativeCampaign, result: () => result, calls: () => calls, passedChoice: () => passedChoice, unsubscribed: () => unsubscribed,
     submit(trusted = true) { f.documentListeners.submit({ isTrusted: trusted, target: form }); },
     pending(extra = {}) { result = { status: 'pending', submittedAt: Date.now() + 1, variables: { requestId: request, lastEventId: attackEvent.id, isMultiplayer: true }, ...extra }; listener?.(result); f.notify(); },
   };
@@ -263,4 +270,48 @@ test('failed preference persistence and malformed saves preserve current ticket 
  assert.equal(f.preferences().automaticDamage,true);assert.equal(f.unsubscribed(),0);
  f.preferences();f.preferences();assert.equal(f.unsubscribed(),0);
  f.pending();assert.equal(f.calls(),1);
+});
+
+
+test('legacy preferences migrate the new prompt flag off and invalid storage fails closed',()=>{
+ const legacy=fixture({automaticDamage:true,hideIntermediateFranz:true});assert.equal(legacy.preferences().hideDamagePrompt,false);
+ for(const value of [{automaticDamage:true,hideIntermediateFranz:false,extra:true},{automaticDamage:true,hideIntermediateFranz:false,hideDamagePrompt:'true'}])assert.equal(fixture(value).preferences().automaticDamage,false);
+ const f=fixture();assert.throws(()=>f.controller().setPreferences({...f.preferences(),hideDamagePrompt:1}));
+ f.controller().setPreferences({campaignId:'campaign-a',automaticDamage:true,hideIntermediateFranz:false});assert.equal(f.preferences().hideDamagePrompt,false);
+});
+test('prompt hiding requires local accepted choice plus result identity and preserves actual dice and final reply',()=>{
+ const f=flowFixture({prompt:true,hidePrompt:true});f.prompt.style.setProperty('display','flex','important');f.submit();f.pending();
+ assert.equal(f.prompt.style.getPropertyValue('display'),'flex','Claim alone cannot hide the manual prompt');
+ f.choice.accepted=true;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'flex','Accepted without result identity cannot hide');
+ f.choice.roll_result_id=107655730;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'none');
+ for(const node of [f.card,f.rows[0],f.rows[1],f.damageResult,f.finalReply])assert.equal(node.style.getPropertyValue('display'),'');
+ f.setPreferences({hideIntermediateFranz:true});f.notify();assert.equal(f.card.style.getPropertyValue('display'),'none');assert.equal(f.prompt.style.getPropertyValue('display'),'none');
+ f.setPreferences({hideDamagePrompt:false});f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'flex');assert.equal(f.prompt.style.getPropertyPriority('display'),'important');assert.equal(f.card.style.getPropertyValue('display'),'none');
+});
+test('prompt accepted display restores on auto off, route, encounter, disposal and owner reuse',()=>{
+ for(const action of [f=>f.setPreferences({automaticDamage:false}),f=>{f.context.location.pathname='/campaign-b/play';f.notify();},f=>{f.nativeCampaign.active_encounter_id=999;f.notify();},f=>f.install(false),f=>{f.t5.memoizedProps.rollChoice={...f.choice,id:999};f.notify();}]){
+  const f=flowFixture({prompt:true,hidePrompt:true});f.prompt.style.setProperty('display','grid','important');f.submit();f.pending();f.choice.accepted=true;f.choice.roll_result_id=107655730;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'none');
+  action(f);assert.equal(f.prompt.style.getPropertyValue('display'),'grid');assert.equal(f.prompt.style.getPropertyPriority('display'),'important');
+ }
+});
+test('historical, failed, unknown, text-based and mixed host choices stay visible without callback replay',()=>{
+ for(const options of [{failure:true},{reject:true},{unrelated:true},{accepted:true},{miss:true}]){
+  const f=flowFixture({...options,prompt:true,hidePrompt:true});f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');f.submit();f.pending();f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');
+ }
+ const text=flowFixture({prompt:true,hidePrompt:true});text.attack.requires_attack_roll=false;text.submit();text.pending();assert.equal(text.calls(),0);assert.equal(text.prompt.style.getPropertyValue('display'),'');
+ const failed=flowFixture({prompt:true,hidePrompt:true,failure:true});failed.submit();failed.pending();failed.choice.accepted=true;failed.choice.roll_result_id=107655730;failed.notify();assert.equal(failed.prompt.style.getPropertyValue('display'),'');assert.equal([...failed.context.window.__friendsFablesDesktopCombatFlowOutcomes.values()][0].status,'failed');
+ const unknown=flowFixture({prompt:true,hidePrompt:true});unknown.submit();unknown.pending();unknown.context.Date=class extends Date{static now(){return super.now()+120001}};unknown.notify();unknown.choice.accepted=true;unknown.choice.roll_result_id=107655730;unknown.notify();assert.equal(unknown.prompt.style.getPropertyValue('display'),'');assert.equal(unknown.calls(),1);
+ const mixed=flowFixture({prompt:true,hidePrompt:true});mixed.submit();mixed.pending();mixed.prompt.querySelector=()=>mixed.card;mixed.choice.accepted=true;mixed.choice.roll_result_id=107655730;mixed.notify();assert.equal(mixed.prompt.style.getPropertyValue('display'),'');
+});
+
+test('accepted prompt resolves a replacement committed t5 host and restores detached original',()=>{
+ const f=flowFixture({prompt:true,hidePrompt:true});f.submit();f.pending();f.choice.accepted=true;f.choice.roll_result_id=107655730;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'none');
+ const next=new f.Element();next.id='';next.isConnected=true;next.querySelector=()=>null;f.rows[1].append(next);
+ const host={tag:5,type:'div',stateNode:next,memoizedProps:{},return:f.t5};next.__reactFiber$fixture=host;f.t5.child=host;f.prompt.isConnected=false;f.notify();
+ assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(next.style.getPropertyValue('display'),'none');
+ f.install(false);assert.equal(next.style.getPropertyValue('display'),'');
+});
+test('late asynchronous rejection restores even a previously confirmed prompt and never retries',async()=>{
+ const f=flowFixture({prompt:true,hidePrompt:true,reject:true});f.submit();f.pending();f.choice.accepted=true;f.choice.roll_result_id=107655730;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'none');
+ await new Promise(resolve=>setImmediate(resolve));f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.calls(),1);
 });
