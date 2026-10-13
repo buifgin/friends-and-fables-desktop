@@ -29,7 +29,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   const hiddenPrompts = new Map<HTMLElement, { value: string; priority: string }>();
   const narrationLayout = new Map<HTMLElement, Map<string, { value: string; priority: string }>>();
   const progress = new Map<string | number, { campaign: string; encounter: string | number; request: string; character: string | number; outcomeKey?: string }>();
-  const nativeWatches = new Map<string, { outcome: Outcome; choice: Native; observers: { observer: Observer; baseline: Native; unsubscribe?: () => void }[] }>();
+  type NativeWatch = { outcome: Outcome; choice: Native; anchor: Element; baselineIds: Set<string | number>; observers: { observer: Observer; baseline: Native; unsubscribe?: () => void }[]; publication?: { observer: Observer; variables: Native; submittedAt: number; signature: string } };
+  const nativeWatches = new Map<string, NativeWatch>();
   function clearNativeWatch(key: string): void { const watch = nativeWatches.get(key); nativeWatches.delete(key); for (const item of watch?.observers ?? []) try { item.unsubscribe?.(); } catch { /* Native owner may already be disposed. */ } }
   const statuses = new Map<HTMLElement, HTMLElement>();
   const emptyRows = new Map<HTMLElement, { value: string; priority: string }>();
@@ -445,6 +446,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
           && resultCard.querySelectorAll('div.relative.rounded-2xl.border-2.overflow-hidden').length === 1;
         if (resultEvent || resultMount) { progress.delete(attackId); continue; }
       }
+      if (proof.outcomeKey && pendingNativeDiceMounted(proof.outcomeKey)) { progress.delete(attackId); continue; }
       const panels = Array.from(card.querySelectorAll<HTMLElement>('div')).filter(node => {
         const fiber = committedFiber(node), classes = fiber?.memoizedProps?.className;
         return fiber?.tag === 5 && fiber.type === 'div' && typeof classes === 'string'
@@ -464,6 +466,60 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     for (const [panel, status] of statuses) if (!desired.has(panel)) { status.remove(); statuses.delete(panel); }
   }
+  function eventSnapshots(anchor: Element): Native[] {
+    const snapshots: Native[] = [];
+    for (const row of Array.from(document.querySelectorAll('[id^="event-container-"]')).slice(-30)) { const event = eventFor(row); if (event) snapshots.push(event); }
+    for (const fiber of ancestry(anchor, 48)) {
+      const events = fiber.memoizedProps?.events;
+      if (Array.isArray(events)) snapshots.push(...events.slice(-30));
+    }
+    return snapshots;
+  }
+  function nativeRollSignature(value: Native | undefined, persisted = false): string | null {
+    if (!value) return null;
+    const fields = [['rollType','roll_type'], ['totalRoll','total_roll'], ['baseRoll','base_roll'], ['modifierStat','modifier_stat'], ['modifierValue','modifier_value'], ['proficiencyBonus','proficiency_bonus'], ['vantage','vantage'], ['dice','dice'], ['baseRollsArray','base_rolls_array']];
+    const values = fields.map(pair => value[pair[persisted ? 1 : 0]]);
+    if (values[0] !== 'Damage' || ![1,2,4,5].every(index => typeof values[index] === 'number' && Number.isFinite(values[index]))
+      || values[3] !== null && typeof values[3] !== 'string' || typeof values[6] !== 'string'
+      || ![7,8].every(index => Array.isArray(values[index]) && values[index].length > 0 && values[index].length <= 100 && values[index].every((number: unknown) => typeof number === 'number' && Number.isFinite(number)))
+      || !values[7].every((die: number) => Number.isSafeInteger(die) && die > 0)) return null;
+    return JSON.stringify(values);
+  }
+  function pendingNativeDiceMounted(key: string): boolean {
+    const watch = nativeWatches.get(key), publication = watch?.publication;
+    if (!watch || !publication || watch.outcome.status !== 'claimed') return false;
+    // ee inserts its native event+dice before awaiting the choice link update.
+    // During that interval only this uniquely owned pending invocation knows
+    // the exact roll values. This proof removes UI status ONLY: it does not
+    // accept a choice, record a rollResultId, or invoke any native operation.
+    if ([...nativeWatches.values()].filter(value => value.outcome.campaign === watch.outcome.campaign && value.outcome.character === watch.outcome.character && value.publication).length !== 1) return false;
+    let result: Native;
+    try { result = publication.observer.getCurrentResult(); } catch { return false; }
+    if (result.status !== 'pending' || result.variables !== publication.variables || result.submittedAt !== publication.submittedAt
+      || nativeRollSignature(result.variables.rollResult) !== publication.signature) return false;
+    const groups = new Map<string | number, Native[]>();
+    for (const event of eventSnapshots(watch.anchor)) {
+      if (!id(event?.id) || watch.baselineIds.has(event.id)) continue;
+      const values = groups.get(event.id) ?? []; values.push(event); groups.set(event.id, values);
+    }
+    const fresh = [...groups].filter(([, values]) => values.some(event => event.campaign_id === watch.outcome.campaign && event.character_id === watch.outcome.character && Date.parse(event.created_at) >= watch.outcome.started));
+    // Any other new event for this same character is competing activity. Do
+    // not choose the most recent, or simply pick a matching number among them.
+    if (fresh.length !== 1 || traversalBudget <= 0) return false;
+    const [eventId, snapshots] = fresh[0], proof = linked.get(watch.outcome.eventId);
+    const { variables } = publication;
+    const complete = snapshots.filter(event => event.events_roll);
+    if (!complete.length || snapshots.some(event => event.campaign_id !== watch.outcome.campaign || event.character_id !== watch.outcome.character
+      || event.role !== 'player' || event.command_used !== 'roll' || !id(event.request_id) || event.request_id === proof?.request
+      || !Number.isFinite(Date.parse(event.created_at)) || Date.parse(event.created_at) < watch.outcome.started || variables.rollCharacter.profile_id && event.profile_id !== variables.rollCharacter.profile_id)
+      || complete.some(event => nativeRollSignature(event.events_roll, true) !== publication.signature
+        || event.events_roll.event_id !== undefined && event.events_roll.event_id !== eventId
+        || event.events_roll.campaign_id !== undefined && event.events_roll.campaign_id !== watch.outcome.campaign
+        || (event.events_roll.message ?? null) !== (variables.message || null)
+        || typeof watch.choice.dc === 'number' && watch.choice.dc !== 0 && event.events_roll.dc !== watch.choice.dc)) return false;
+    const card = document.getElementById(`event-message-card-${eventId}`);
+    return !!card?.closest(`[id="event-${eventId}"]`) && card.querySelectorAll('div.relative.rounded-2xl.border-2.overflow-hidden').length === 1;
+  }
   function watchNativeRoll(key: string, outcome: Outcome, owner: Fiber, choice: Native): void {
     const observers = new Map<Observer, { observer: Observer; baseline: Native; unsubscribe?: () => void }>();
     let hook = owner.memoizedState;
@@ -473,7 +529,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       try { const baseline = value.getCurrentResult(); if (baseline?.status !== 'pending') observers.set(value, { observer: value, baseline }); } catch { /* Ignore unknown native hook values. */ }
     }
     if (hook || !observers.size) return;
-    const watch = { outcome, choice, observers: [...observers.values()] };
+    const anchor = document.getElementById(`event-container-${outcome.eventId}`); if (!anchor) return;
+    const watch: NativeWatch = { outcome, choice, anchor, baselineIds: new Set(eventSnapshots(anchor).map(event => event.id).filter(id)), observers: [...observers.values()] };
     nativeWatches.set(key, watch);
     for (const item of watch.observers) try { item.unsubscribe = item.observer.subscribe(() => schedule()); } catch { observers.delete(item.observer); }
     watch.observers = watch.observers.filter(item => observers.has(item.observer));
@@ -483,7 +540,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       const outcome = watch.outcome;
       const proof = linked.get(outcome.eventId), row = document.getElementById(`event-container-${outcome.eventId}`);
       if (!proof || proof.outcomeKey !== key || !row || !encounterMatches(row, proof.encounter) || !prefs.automaticDamage || outcome.campaign !== campaign || outcome.status === 'failed' || outcome.status === 'unknown' || Date.now() - outcome.started > 120000) { clearNativeWatch(key); continue; }
-      const matches: Native[] = [];
+      const matches: { result: Native; observer: Observer }[] = [];
       for (const { observer, baseline } of watch.observers) try {
         const result = observer.getCurrentResult(), variables = result?.variables;
         // t5 passes these exact native arguments to B.mutate (which returns
@@ -494,11 +551,18 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
           && variables?.rollChoice === watch.choice && variables.campaign?.id === outcome.campaign
           && variables.rollCharacter?.id === outcome.character && variables.rollChoice.id === outcome.choiceId
           && variables.rollChoice.event_id === outcome.eventId && variables.rollChoice.type === 'Damage'
-          && variables.rollResult && typeof variables.rollResult === 'object') matches.push(result);
+          && variables.rollResult && typeof variables.rollResult === 'object') matches.push({ result, observer });
       } catch { /* Native observer teardown is not proof of backend failure. */ }
-      if (matches.length !== 1) continue;
-      if (matches[0].status === 'error') { outcome.status = 'failed'; clearNativeWatch(key); }
-      else if (matches[0].status === 'success') clearNativeWatch(key);
+      if (matches.length !== 1) { watch.publication = undefined; continue; }
+      const { result, observer } = matches[0];
+      if (result.status === 'error') { outcome.status = 'failed'; clearNativeWatch(key); }
+      else if (result.status === 'success') clearNativeWatch(key);
+      else if (result.status === 'pending') {
+        const source = String(observer.options.mutationFn), signature = nativeRollSignature(result.variables.rollResult);
+        if (signature && ['rollResult', 'rollChoice', 'events_choices_rolls', 'INSERT_EVENT', 'insertEventIntoQueryData'].every(marker => source.includes(marker))) {
+          if (!watch.publication) watch.publication = { observer, variables: result.variables, submittedAt: result.submittedAt, signature };
+        }
+      }
     }
   }
   function observeOutcomes(): void {

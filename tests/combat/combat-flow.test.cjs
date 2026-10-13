@@ -77,7 +77,7 @@ function flowFixture(options = {}) {
   const f = fixture({ automaticDamage: true, hideIntermediateFranz: !!options.hide, hideDamagePrompt: !!options.hidePrompt });
   const { Element, root, form, formFiber, context } = f;
   let damageListener, damageResultState = {status:'idle',submittedAt:0};
-  const damageObserver={options:{mutationFn:function nativeSendRoll({rollResult,rollChoice,campaign,rollCharacter}){return {rollResult,rollChoice,campaign,rollCharacter}}},getCurrentResult(){return damageResultState},subscribe(fn){damageListener=fn;return()=>{damageListener=null}}};
+  const damageObserver={options:{mutationFn:function nativeSendRoll({rollResult,rollChoice,campaign,rollCharacter}){return ['events_choices_rolls','INSERT_EVENT','insertEventIntoQueryData',{rollResult,rollChoice,campaign,rollCharacter}]}},getCurrentResult(){return damageResultState},subscribe(fn){damageListener=fn;return()=>{damageListener=null}}};
   let listener, result = { status: 'idle', submittedAt: 0 }, calls = 0, passedChoice, unsubscribed = 0;
   const observer = { options: { mutationFn: function nativeGM({ lastEventId }) { return ['ENCOUNTER_GM_RESPONSE', 'GM_RESPONSE', lastEventId]; } }, getCurrentResult() { return result; }, subscribe(fn) { listener = fn; return () => { listener = null; unsubscribed++; }; } };
   const character = { id: 83026155 };
@@ -95,7 +95,7 @@ function flowFixture(options = {}) {
   const nativeCampaign = { id: 'campaign-a', active_encounter_id: 412456 };
   const rowFiber = { memoizedProps: { event: dmEvent, campaign: nativeCampaign }, return: root };
   const t5 = { memoizedProps: { rollChoice: choice, campaignId: 'campaign-a', usersCharacter: character }, memoizedState:{memoizedState:damageObserver}, return: rowFiber };
-  const callback = function nativeQuickRoll(event) { event.stopPropagation(); const dice_expression = choice.dice_expression; passedChoice = { ...choice, dice_expression }; calls++; if(options.voidMutation){damageResultState={status:'pending',submittedAt:Date.now()+1,variables:{rollChoice:choice,campaign:nativeCampaign,rollCharacter:character,rollResult:{}}};damageListener?.(damageResultState);} if (options.failure) throw Error('native unknown outcome'); if (options.reject) return Promise.reject(Error('native async unknown outcome')); };
+  const callback = function nativeQuickRoll(event) { event.stopPropagation(); const dice_expression = choice.dice_expression; passedChoice = { ...choice, dice_expression }; calls++; if(options.voidMutation){damageResultState={status:'pending',submittedAt:Date.now()+1,variables:{rollChoice:choice,campaign:nativeCampaign,rollCharacter:character,rollResult:options.nativeRollResult??{}}};damageListener?.(damageResultState);} if (options.failure) throw Error('native unknown outcome'); if (options.reject) return Promise.reject(Error('native async unknown outcome')); };
   const buttonFiber = { memoizedProps: { onClick: callback }, return: t5 }; t5.child = buttonFiber; rowFiber.child = t5; button.__reactFiber$fixture = buttonFiber;
   dmRow.__reactFiber$fixture = rowFiber; attackRow.__reactFiber$fixture = { memoizedProps: { event: attackEvent, campaign: nativeCampaign }, return: root };
   owner.sibling = attackRow.__reactFiber$fixture; attackRow.__reactFiber$fixture.sibling = rowFiber;
@@ -471,4 +471,27 @@ test('exact result ID still requires native dice card mount and conflicting coll
  const mounted=mountDamageWithLaggingProps(f,107655730);f.notify();assert.equal(f.attackPanel.children.length,1,'Conflicting accepted results cannot establish ownership');
  f.root.memoizedProps.events.pop();mounted.card.querySelectorAll=()=>[];f.notify();assert.equal(f.attackPanel.children.length,1,'Exact ID with no native dice panel retains waiting status');
  mounted.card.querySelectorAll=()=>[mounted.panel];mounted.card.closest=()=>null;f.notify();assert.equal(f.attackPanel.children.length,1,'Unknown outer event wrapper retains waiting status');
+});
+
+const nativeDamageRoll={totalRoll:3,baseRoll:3,rollType:'Damage',modifierStat:'strength',modifierValue:0,baseRollsArray:[3],dice:[8],proficiencyBonus:0,vantage:'normal'};
+function pendingNativeFixture(){const f=flowFixture({voidMutation:true,nativeRollResult:{...nativeDamageRoll},prompt:true,wrapper:true,hide:true,hidePrompt:true});f.choice.dc=12;f.character.profile_id='native-profile';return f;}
+function freshNativeDamage(f,id=107655740){return {id,request_id:'native-damage-request-'+id,role:'player',command_used:'roll',campaign_id:'campaign-a',character_id:f.character.id,profile_id:f.character.profile_id,created_at:new Date(Date.now()+10).toISOString(),events_roll:{event_id:id,campaign_id:'campaign-a',roll_type:'Damage',total_roll:3,base_roll:3,modifier_stat:'strength',modifier_value:0,base_rolls_array:[3],dice:[8],proficiency_bonus:0,vantage:'normal',dc:12,message:null}};}
+function publishNativeDamage(f,events){f.root.memoizedProps={events:[f.attackEvent,f.dmEvent,...events]};for(const event of events)mountDamageWithLaggingProps(f,event.id);f.notify();}
+test('native exact pending roll stops progress at first dice DOM before any choice result-ID publication',()=>{
+ const f=pendingNativeFixture();f.submit();f.pending();assert.equal(f.calls(),1);assert.equal(f.attackPanel.children.length,1);
+ const outcome=[...f.context.window.__friendsFablesDesktopCombatFlowOutcomes.values()][0];publishNativeDamage(f,[freshNativeDamage(f)]);
+ assert.equal(f.choice.accepted,null);assert.equal(f.choice.roll_result_id,undefined);assert.equal(outcome.status,'claimed');assert.equal(outcome.rollResultId,undefined,'UI fingerprint must not forge native result-ID acceptance');
+ assert.equal(f.damageState().status,'pending');assert.equal(f.attackPanel.children.length,0,'First native dice mount removes status before choice/GM completion');assert.equal(f.prompt.style.getPropertyValue('display'),'none');assert.equal(f.calls(),1);
+ f.damageFailure();assert.equal(f.prompt.style.getPropertyValue('display'),'','Late exact backend failure still restores retry after dice start');assert.equal(f.calls(),1);
+});
+test('pending native dice matching rejects unrelated fields, scope, stale identity and malformed results',()=>{
+ const changes=[e=>e.events_roll.total_roll++,e=>e.events_roll.base_roll++,e=>e.events_roll.base_rolls_array=[4],e=>e.events_roll.dice=[10],e=>e.events_roll.modifier_stat='charisma',e=>e.events_roll.modifier_value++,e=>e.events_roll.proficiency_bonus++,e=>e.events_roll.vantage='advantage',e=>e.events_roll.dc++,e=>e.events_roll.message='manual',e=>e.events_roll.roll_type='Heal',e=>e.events_roll.event_id++,e=>e.events_roll.campaign_id='other',e=>e.character_id++,e=>e.campaign_id='other',e=>e.profile_id='other',e=>e.command_used='roll_attack',e=>e.role='dm',e=>e.request_id=fixedAttackRequest,e=>e.created_at='2000-01-01T00:00:00Z'];
+ const fixedAttackRequest='request-new';
+ for(const change of changes){const f=pendingNativeFixture();f.submit();f.pending();const event=freshNativeDamage(f);change(event);publishNativeDamage(f,[event]);assert.equal(f.attackPanel.children.length,1);assert.equal(f.calls(),1);}
+ const stale=pendingNativeFixture();stale.submit();stale.pending();stale.damageState().submittedAt=0;publishNativeDamage(stale,[freshNativeDamage(stale)]);assert.equal(stale.attackPanel.children.length,1);
+});
+test('native pending roll excludes baseline results and refuses competing same-character new events',()=>{
+ const old=pendingNativeFixture(),history=freshNativeDamage(old);publishNativeDamage(old,[history]);old.submit();old.pending();old.notify();assert.equal(old.attackPanel.children.length,1,'Already loaded exact dice are never this invocation');
+ for(const matching of [true,false]){const f=pendingNativeFixture();f.submit();f.pending();const own=freshNativeDamage(f),competing=freshNativeDamage(f,107655741);if(!matching)competing.events_roll.total_roll++;publishNativeDamage(f,[own,competing]);assert.equal(f.attackPanel.children.length,1,'Multiple newly published own-character events are ambiguous');}
+ const multiple=pendingNativeFixture();multiple.t5.memoizedState.next={memoizedState:{...multiple.damageObserver,subscribe(){return()=>{}}}};multiple.submit();multiple.pending();publishNativeDamage(multiple,[freshNativeDamage(multiple)]);assert.equal(multiple.attackPanel.children.length,1,'Two pending native observers are ambiguous');
 });
