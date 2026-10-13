@@ -217,8 +217,10 @@ async function save(settings, window) {
   assert(styleWindow.isVisible() && styleWindow.isFocused(),'The isolated style fixture is visible and focused before keyboard input.');
   await styleWindow.webContents.executeJavaScript(`document.querySelectorAll('input,button,textarea,[tabindex]').forEach(element=>element.tabIndex=-1);
     document.body.tabIndex=0;document.getElementById('attack-message-field').tabIndex=0;document.body.focus();`);
+  styleWindow.webContents.focus();
   styleWindow.webContents.sendInputEvent({ type:'keyDown', keyCode:'TAB' });
   styleWindow.webContents.sendInputEvent({ type:'keyUp', keyCode:'TAB' });
+  await styleWindow.webContents.executeJavaScript(`new Promise(resolve=>requestAnimationFrame(()=>resolve()))`);
   assert.equal(await styleWindow.webContents.executeJavaScript("document.activeElement.id"),'attack-message-field','A native Tab key reaches the Attack message field in the isolated fixture.');
   assert.deepEqual(await styleWindow.webContents.executeJavaScript("(()=>{const s=getComputedStyle(document.getElementById('attack-message-field'));return [document.activeElement.matches(':focus-visible'),s.outlineWidth,s.outlineStyle]})()"),[true,'2px','solid'],'The Attack message field keeps a visible keyboard focus outline.');
   await styleWindow.webContents.executeJavaScript("document.activeElement.blur()");
