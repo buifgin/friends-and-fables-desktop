@@ -18,7 +18,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     button.innerHTML = name === 'skills'
       ? '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/><circle cx="12" cy="12" r="1"/></svg>'
       : '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" x2="9" y1="14" y2="18"/><line x1="7" x2="4" y1="17" y2="20"/><line x1="3" x2="5" y1="19" y2="21"/></svg>';
-    const label = document.createElement('span'); label.setAttribute('data-ff-combat-label', ''); label.setAttribute('aria-hidden', 'true'); label.className = 'font-body'; button.append(label);
+    const label = document.createElement('span'); label.setAttribute('data-ff-combat-label', ''); label.setAttribute('aria-hidden', 'true'); label.className = 'font-header'; button.append(label);
     button.addEventListener('click', () => {
       if (button.disabled || otherLayer() || settingsClosing?.isConnected) return;
       settingsSuppressed = false;
@@ -92,6 +92,10 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     } else mountedRailAside = found.aside;
     for (const button of controls.querySelectorAll<HTMLButtonElement>('[data-ff-combat-mode]')) {
       if (button.className !== found.settings.className) button.className = found.settings.className;
+      const label = button.querySelector<HTMLElement>('[data-ff-combat-label]');
+      const nativeHeader = found.settings.querySelector<HTMLElement>(':scope > .font-header');
+      const labelClass = nativeHeader?.className || 'font-header';
+      if (label && label.className !== labelClass) label.className = labelClass;
     }
     controls.removeAttribute('data-ff-combat-controls-fallback');
     if (controls.parentElement !== found.group || controls.nextElementSibling !== found.settings) found.group.insertBefore(controls, found.settings);
