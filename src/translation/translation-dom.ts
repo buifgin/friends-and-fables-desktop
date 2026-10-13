@@ -97,11 +97,22 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     if(disposed)return;
     for(const record of records){const overlay=record.target as HTMLElement;const element=overlay.parentElement;if(element)fitPreview(element,overlay);}
   });
+  function presentationRoot(node: Text | Attr): Element {
+    const element=parent(node)!;
+    const block=element.closest('[data-ff-desktop-detail-card],.prose');
+    // Native Settings cards also contain live controls and already translated labels.
+    // A pending description must mask its own paragraph, never clone/blank the form.
+    if(block?.querySelector('button,input,textarea,select,[contenteditable]:not([contenteditable="false"]),[role="checkbox"],[role="switch"]')) {
+      const paragraph=element.closest('p');
+      return paragraph&&block.contains(paragraph)?paragraph:element;
+    }
+    return block??element;
+  }
   function updateStatus(): void {
     // Paint a reversible presentation over native text. A ready prefix
     // is visible immediately; later fragments wait behind the first unresolved range.
     const unfinished=[...entries.values()].filter(entry=>!entry.complete&&eligible(entry.node));
-    const hiddenParents=new Set(hideUntranslated?unfinished.filter(entry=>entry.node instanceof Text).map(entry=>parent(entry.node)!.closest('[data-ff-desktop-detail-card],.prose')??parent(entry.node)!):[]);
+    const hiddenParents=new Set(hideUntranslated?unfinished.filter(entry=>entry.node instanceof Text).map(entry=>presentationRoot(entry.node)):[]);
     for(const element of blanked.keys())if(!hiddenParents.has(element))reveal(element);
     // Capture ink before concealing ancestors, so nested blocks retain their color.
     const ink=new Map([...hiddenParents].filter(element=>!blanked.has(element)).map(element=>[element,getComputedStyle(element).color]));
@@ -315,6 +326,14 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     for (const mutation of mutations) {
       const ignoreChanged=mutation.type==='attributes' && ['data-ff-translation-ignore','data-ff-desktop-instruction-block'].includes(mutation.attributeName ?? '');
       if (!ignoreChanged && (mutation.target instanceof Element ? mutation.target : mutation.target.parentElement)?.closest('[data-ff-translation-status],[data-ff-translation-ignore]')) continue;
+      // Retained Campaign is suspended/revealed through its owned stylesheet.
+      // React can update hidden text while eligibility intentionally skips it.
+      // Scan that bounded surface on stylesheet changes before the reveal paints.
+      const target=mutation.target instanceof Element?mutation.target:mutation.target.parentElement;
+      if(target?.closest('style')) {
+        const campaign=document.querySelector('[data-ff-campaign-panel]');
+        if(campaign)schedule(campaign);
+      }
       if (mutation.type === 'childList') { schedule(mutation.target); for (const node of mutation.addedNodes) schedule(node); }
       else schedule(mutation.target);
     }

@@ -517,6 +517,28 @@ const timer=setTimeout(()=>{console.error('Translation smoke test timed out.');a
  assert(narrowBeta.feed.scroll>narrowBeta.feed.client);
  await contents.executeJavaScript("pendingWatch.disconnect();window.__friendsFablesDesktopTranslation.dispose();window.__friendsFablesDesktopChatAppearance.dispose();pendingCss.remove()");
  assert.equal(await contents.executeJavaScript("document.getElementById('roll-vantage').textContent"),'Vantage');
+ // Retained Campaign changes while another section is visible; stylesheet reveal
+ // must translate before the first frame without masking its native form controls.
+ for (const hide of [false,true]) for (const resize of [false,true]) {
+  const frame=await contents.executeJavaScript(`(async()=>{
+   document.body.innerHTML='<style id="campaign-visibility">[data-ff-campaign-panel]{visibility:hidden}</style><section data-ff-campaign-panel><div data-ff-desktop-detail-card><h3 id="campaign-caption">Campaign Settings</h3><p id="campaign-prose">The unexplored kingdom awaits your next adventure.</p><input id="campaign-draft" value="Silver Phoenix"><button id="campaign-button">Save</button></div></section>';
+   window.campaignNativeText=document.getElementById('campaign-caption').firstChild;
+   window.campaignNativeInput=document.getElementById('campaign-draft');
+   (${installTranslationDom.toString()})('campaign-reveal',${JSON.stringify(RUSSIAN_DICTIONARY)},true,['Silver Phoenix'],(${localTranslation.toString()}),${hide},${resize});
+   campaignNativeText.data='Campaign Name';
+   await new Promise(resolve=>requestAnimationFrame(resolve));
+   document.getElementById('campaign-visibility').textContent='[data-ff-campaign-panel]{visibility:visible}';
+   return await new Promise(resolve=>requestAnimationFrame(()=>{
+    const p=document.getElementById('campaign-prose'),control=document.getElementById('campaign-draft');
+    resolve({caption:campaignNativeText.data,sameText:campaignNativeText===document.getElementById('campaign-caption').firstChild,sameInput:control===campaignNativeInput,draft:control.value,formMasked:!!control.closest('[data-ff-translation-blank]'),pendingMasked:p.hasAttribute('data-ff-translation-blank'),prose:p.textContent});
+   }));
+  })()`);
+  assert.equal(frame.caption,'Название кампании',`Campaign reveal translates before paint (hide=${hide}, resize=${resize}).`);
+  assert.equal(frame.sameText,true);assert.equal(frame.sameInput,true);assert.equal(frame.draft,'Silver Phoenix');
+  assert.equal(frame.formMasked,false,'Pending Campaign prose cannot blank the enclosing native settings form.');
+  if(hide)assert.equal(frame.pendingMasked,true,'Only pending prose is masked before Campaign paint.');
+  await contents.executeJavaScript('window.__friendsFablesDesktopTranslation.dispose()');
+ }
  // Dynamic blank mode uses the same native Text node, but reserves only ready text and dots.
  await contents.executeJavaScript(`document.body.innerHTML='<p id="dynamic-story" style="width:140px">${'The long unfinished paragraph flows. '.repeat(12)}</p><div role="dialog"><h2 id="character-title">Aria of Dawn</h2><button role="tab" id="progression-tab" data-state="active">Progression</button><div role="tabpanel" data-state="active"><h3 id="class-heading">Class Features</h3><div class="rounded-lg border bg-card/50"><h4 class="font-semibold text-sm" id="custom-heading">Sorcerous Restoration</h4><h4 class="font-semibold text-sm" id="short-custom-heading">Stormheart</h4><h4 id="named-heading">Mira</h4></div></div></div><h1 id="model-name">Silver Phoenix</h1>';window.dynamicNode=document.getElementById('dynamic-story').firstChild;window.sourceHeight=document.getElementById('dynamic-story').getBoundingClientRect().height;(${installTranslationDom.toString()})('dynamic-test',${JSON.stringify(RUSSIAN_DICTIONARY)},true,['Mira'],(${localTranslation.toString()}),true,true)`);
  assert.equal(await contents.executeJavaScript('dynamicNode.data'),'…');
