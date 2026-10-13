@@ -190,7 +190,7 @@ async function save(settings, window) {
   for(const alpha of [0,.5,1]) {
     await setPanelCss({...customizedPanel,cardBackground:'#123456',cardBackgroundOpacity:alpha});
     const attack=await styleSnapshot();
-    const expected=`rgba(18, 52, 86, ${alpha})`;
+    const expected=alpha===1?'rgb(18, 52, 86)':`rgba(18, 52, 86, ${alpha})`;
     for(const index of [0,1,2,3,4]) assert.equal(attack.attackSurfaces[index][0],expected,`Weapon, spell, target, message and selected summary backgrounds share ${alpha} opacity.`);
     for(const index of [0,1,2,3,4]) {
       assert.equal(attack.attackSurfaces[index][1],attack.themeForeground,'Attack surfaces use the fixture theme foreground token at every background opacity.');
