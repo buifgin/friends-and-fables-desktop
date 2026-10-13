@@ -14,7 +14,7 @@ export function configureCampaignChatPages(enabled: boolean): void {
   if (host[key]) { if (!enabled) host[key]!.dispose(); return; }
   if (!enabled) return;
   let disposed = false, scanning = false;
-  const subscriptions = new Map<Observer, { query: Query; unsubscribe: () => void }>();
+  const subscriptions = new Map<Query, { observer: Observer; unsubscribe: () => void }>();
   const busy = new Set<Query>();
   function campaign(): string | undefined {
     if (location.protocol !== 'https:' || location.hostname !== 'play.fables.gg') return;
@@ -75,11 +75,7 @@ export function configureCampaignChatPages(enabled: boolean): void {
     try {
       const id = campaign();
       if (!id) { dispose(); return; }
-      for (const [observer, subscription] of subscriptions) {
-        if (!matches(observer.options?.queryKey, id) || observer.getCurrentQuery() !== subscription.query) {
-          subscription.unsubscribe(); subscriptions.delete(observer);
-        }
-      }
+      const mounted = new Map<Query, Set<Observer>>();
       const seen = new Set<Fiber>();
       for (const element of document.querySelectorAll('[id^="event-container-"], [id^="event-message-card-"], .tiptap[contenteditable="true"]')) {
         const fiberKey = Object.keys(element).find(name => name.startsWith('__reactFiber$'));
@@ -90,14 +86,28 @@ export function configureCampaignChatPages(enabled: boolean): void {
           let hook = fiber.memoizedState;
           for (let count = 0; hook && count < 80; count++, hook = hook.next as typeof hook) {
             const observer = hook.memoizedState as Observer | undefined;
-            if (!observer || !matches(observer.options?.queryKey, id) || observer.options?.maxPages !== 3 || typeof observer.getCurrentQuery !== 'function' || typeof observer.subscribe !== 'function' || subscriptions.has(observer)) continue;
+            if (!observer || !matches(observer.options?.queryKey, id) || observer.options?.maxPages !== 3 || typeof observer.getCurrentQuery !== 'function' || typeof observer.subscribe !== 'function') continue;
             const query = observer.getCurrentQuery();
             if (!query || !matches(query.queryKey, id) || query.options?.maxPages !== 3 || typeof query.setData !== 'function') continue;
-            const unsubscribe = observer.subscribe(() => normalize(query));
-            subscriptions.set(observer, { query, unsubscribe });
-            normalize(query);
+            const observers = mounted.get(query) ?? new Set<Observer>();
+            observers.add(observer); mounted.set(query, observers);
           }
         }
+      }
+      // Discovery is complete before changing subscriptions: retain an existing
+      // observer only while its hook is still present on a mounted DOM fiber.
+      for (const [query, subscription] of subscriptions) {
+        if (!mounted.get(query)?.has(subscription.observer)) {
+          subscription.unsubscribe(); subscriptions.delete(query);
+        }
+      }
+      for (const [query, observers] of mounted) {
+        if (!subscriptions.has(query)) {
+          const observer = observers.values().next().value!;
+          const unsubscribe = observer.subscribe(() => normalize(query));
+          subscriptions.set(query, { observer, unsubscribe });
+        }
+        normalize(query);
       }
     } finally { scanning = false; }
   }

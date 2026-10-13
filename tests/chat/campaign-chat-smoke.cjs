@@ -14,11 +14,17 @@ const server=(start,end)=>({data:Array.from({length:end-start+1},(_,i)=>event(st
 const listeners=new Set();let writes=0;
 const query={options:{maxPages:3},queryKey:['events',campaign],state:{data:{pages:[server(100,114)],pageParams:[{cursor:115,direction:'backward'}]},dataUpdatedAt:123,fetchStatus:'idle',status:'success'},
  setData(data,options){writes++;this.state={...this.state,data};if(options.updatedAt!==123||options.manual!==true)throw Error('Cache timestamps/manual contract');for(const listener of [...listeners])listener({});},setState(state){Object.assign(this.state,state)}};
-const observer={options:{maxPages:3,queryKey:query.queryKey},getCurrentQuery:()=>query,subscribe(listener){listeners.add(listener);return()=>listeners.delete(listener)}};
-const card=document.createElement('div');card.id='event-container-100';card.__reactFiber$fixture={memoizedState:{memoizedState:observer,next:null},return:null};document.body.appendChild(card);
+const observerForQuery=()=>({active:0,options:{maxPages:3,queryKey:query.queryKey},getCurrentQuery:()=>query,subscribe(listener){this.active++;listeners.add(listener);return()=>{this.active--;listeners.delete(listener)}}});
+const observer=observerForQuery(),duplicate=observerForQuery();
+const card=document.createElement('div');card.id='event-container-100';card.__reactFiber$fixture={memoizedState:{memoizedState:observer,next:{memoizedState:duplicate,next:null}},return:null};document.body.appendChild(card);
 const ids=()=>query.state.data.pages.flatMap(page=>page.data.map(e=>e.id));
 const append=id=>{const old=query.state.data;query.setData({...old,pages:[...old.pages,{data:[event(id)],previousCursor:100,nextCursor:undefined,hasPreviousPage:true,hasNextPage:false}].slice(-3),pageParams:[...old.pageParams,null].slice(-3)},{updatedAt:123,manual:true})};
 (${configure})(true);
+if(listeners.size!==1||observer.active+duplicate.active!==1)throw Error('Same query subscribed through multiple observers');
+const remounted=observerForQuery();card.__reactFiber$fixture.memoizedState={memoizedState:remounted,next:null};window.dispatchEvent(new Event('click'));
+if(observer.active!==0||duplicate.active!==0||remounted.active!==1||listeners.size!==1)throw Error('Remount retained stale observer');
+card.__reactFiber$fixture.memoizedState=null;window.dispatchEvent(new Event('click'));if(listeners.size!==0)throw Error('Unmount retained observer');
+card.__reactFiber$fixture.memoizedState={memoizedState:remounted,next:null};window.dispatchEvent(new Event('click'));
 append(115);append(116);append(117);
 if(ids().join(',')!==Array.from({length:18},(_,i)=>100+i).join(','))throw Error('Third native append evicted original messages: '+ids());
 const original=query.state.data.pages[0],originalEvent=original.data[0];
@@ -38,6 +44,12 @@ if(ids().includes(130)||!query.state.data.pages.flatMap(p=>p.data).includes(edit
 const oldPage=server(85,99),param={cursor:100,direction:'backward'};
 query.setData({pages:[oldPage,...query.state.data.pages].slice(0,3),pageParams:[param,...query.state.data.pageParams].slice(0,3)},{updatedAt:123,manual:true});
 if(query.state.data.pages[0]!==oldPage||query.state.data.pageParams[0]!==param)throw Error('Genuine backward pagination modified');
+// Synthetic native backward truncation: preserve actual metadata, even when
+// a genuine formerly-final page cannot advertise an evicted incremental tail.
+const finalServer=server(100,114),olderServer=server(85,99),oldestServer=server(70,84);
+query.setData({pages:[olderServer,finalServer,{data:[event(115)],hasPreviousPage:true,hasNextPage:false,previousCursor:100}],pageParams:[{cursor:100,direction:'backward'},{cursor:115,direction:'backward'},null]},{updatedAt:123,manual:true});
+query.setData({pages:[oldestServer,...query.state.data.pages].slice(0,3),pageParams:[{cursor:85,direction:'backward'},...query.state.data.pageParams].slice(0,3)},{updatedAt:123,manual:true});
+if(ids().includes(115)||query.state.data.pages[2]!==finalServer||query.state.data.pages[2].hasNextPage!==false)throw Error('Genuine backward truncation metadata was guessed/rewritten');
 const clean={pages:[server(120,134)],pageParams:[{cursor:135,direction:'backward'}]};query.setData(clean,{updatedAt:123,manual:true});
 if(query.state.data!==clean)throw Error('Refetch was merged with stale history');
 const before=writes;(${configure})(true);if(writes!==before||listeners.size!==1)throw Error('Repeated configure rewrote cache/subscribed twice');
