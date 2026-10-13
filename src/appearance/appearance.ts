@@ -7,6 +7,7 @@ import { DEFAULT_APPEARANCE, themeBackground, themeCss, validateAppearance } fro
 import type { AppearanceSettings, AppearanceState } from './themes';
 import { backgroundLibrary, backgroundPreview, importBackground, selectBackground } from './backgrounds';
 import { chatCss, configureChatAppearance } from './chat-appearance';
+import { configureCampaignChatPages } from '../chat/campaign-chat';
 import { exportTheme, importTheme } from './theme-files';
 import { BUILT_IN_THEMES, applyLibraryTheme, makeSavedTheme, themeSummary, validateThemeLibrary } from './theme-library';
 import type { SavedTheme } from './theme-library';
@@ -448,6 +449,8 @@ export class AppearanceManager {
       if (previous) await contents.removeInsertedCSS(previous);
       if (contents.isDestroyed() || document !== website.document) return;
       // No IPC bridge or Node access is added to the remote website.
+      await contents.executeJavaScript(`(${configureCampaignChatPages.toString()})(true)`);
+      if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureChatAppearance.toString()})(${JSON.stringify(settings)})`);
       if (contents.isDestroyed() || document !== website.document) return;
       await contents.executeJavaScript(`(${configureWebsiteSettings.toString()})(true,${JSON.stringify(this.locale)})`);
