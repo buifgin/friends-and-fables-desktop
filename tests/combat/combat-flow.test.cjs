@@ -76,6 +76,8 @@ test('preference reads do not scan DOM or React and duplicate config retains sta
 function flowFixture(options = {}) {
   const f = fixture({ automaticDamage: true, hideIntermediateFranz: !!options.hide, hideDamagePrompt: !!options.hidePrompt });
   const { Element, root, form, formFiber, context } = f;
+  let damageListener, damageResultState = {status:'idle',submittedAt:0};
+  const damageObserver={options:{mutationFn:function nativeSendRoll({rollResult,rollChoice,campaign,rollCharacter}){return {rollResult,rollChoice,campaign,rollCharacter}}},getCurrentResult(){return damageResultState},subscribe(fn){damageListener=fn;return()=>{damageListener=null}}};
   let listener, result = { status: 'idle', submittedAt: 0 }, calls = 0, passedChoice, unsubscribed = 0;
   const observer = { options: { mutationFn: function nativeGM({ lastEventId }) { return ['ENCOUNTER_GM_RESPONSE', 'GM_RESPONSE', lastEventId]; } }, getCurrentResult() { return result; }, subscribe(fn) { listener = fn; return () => { listener = null; unsubscribed++; }; } };
   const character = { id: 83026155 };
@@ -92,8 +94,8 @@ function flowFixture(options = {}) {
   button.isConnected = true; button.disabled = false; button.matches = () => false; button.getClientRects = () => [{}];
   const nativeCampaign = { id: 'campaign-a', active_encounter_id: 412456 };
   const rowFiber = { memoizedProps: { event: dmEvent, campaign: nativeCampaign }, return: root };
-  const t5 = { memoizedProps: { rollChoice: choice, campaignId: 'campaign-a', usersCharacter: character }, return: rowFiber };
-  const callback = function nativeQuickRoll(event) { event.stopPropagation(); const dice_expression = choice.dice_expression; passedChoice = { ...choice, dice_expression }; calls++; if (options.failure) throw Error('native unknown outcome'); if (options.reject) return Promise.reject(Error('native async unknown outcome')); };
+  const t5 = { memoizedProps: { rollChoice: choice, campaignId: 'campaign-a', usersCharacter: character }, memoizedState:{memoizedState:damageObserver}, return: rowFiber };
+  const callback = function nativeQuickRoll(event) { event.stopPropagation(); const dice_expression = choice.dice_expression; passedChoice = { ...choice, dice_expression }; calls++; if(options.voidMutation){damageResultState={status:'pending',submittedAt:Date.now()+1,variables:{rollChoice:choice,campaign:nativeCampaign,rollCharacter:character,rollResult:{}}};damageListener?.(damageResultState);} if (options.failure) throw Error('native unknown outcome'); if (options.reject) return Promise.reject(Error('native async unknown outcome')); };
   const buttonFiber = { memoizedProps: { onClick: callback }, return: t5 }; t5.child = buttonFiber; rowFiber.child = t5; button.__reactFiber$fixture = buttonFiber;
   dmRow.__reactFiber$fixture = rowFiber; attackRow.__reactFiber$fixture = { memoizedProps: { event: attackEvent, campaign: nativeCampaign }, return: root };
   owner.sibling = attackRow.__reactFiber$fixture; attackRow.__reactFiber$fixture.sibling = rowFiber;
@@ -129,6 +131,8 @@ function flowFixture(options = {}) {
   return { ...f, observer, owner, character, attack, choice, dmEvent, attackEvent, button, t5, rows, card, attackCard, attackPanel, prompt, damageResult, finalReply, nativeCampaign, avatar, middle, actions, shell, rowHost, result: () => result, calls: () => calls, passedChoice: () => passedChoice, unsubscribed: () => unsubscribed,
     submit(trusted = true) { f.documentListeners.submit({ isTrusted: trusted, target: form }); },
     pending(extra = {}) { result = { status: 'pending', submittedAt: Date.now() + 1, variables: { requestId: request, lastEventId: attackEvent.id, isMultiplayer: true }, ...extra }; listener?.(result); if (!options.streaming) { result = { ...result, status: 'success' }; listener?.(result); } f.notify(); },
+    damageFailure(extra={}) {damageResultState={...damageResultState,status:'error',error:Error('native backend rejection'),...extra};damageListener?.(damageResultState);f.notify();},
+    damageState:()=>damageResultState,damageObserver,
     finish(extra = {}) { result = { ...result, status: 'success', ...extra }; listener?.(result); f.notify(); },
   };
 }
@@ -418,4 +422,23 @@ test('fully concealed intermediate contributes no outer event slot; native resul
  assert.equal(f.rows[1].style.getPropertyValue('display'),'none');assert.equal(outer.style.getPropertyValue('display'),'none');
  f.middle.append(f.damageResult);f.notify();assert.equal(f.rows[1].style.getPropertyValue('display'),'');assert.equal(outer.style.getPropertyValue('display'),'');
  f.setPreferences({hideDamagePrompt:false});f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.card.style.getPropertyValue('display'),'none');
+});
+
+test('native void mutation failure restores owned presentation immediately and never autoretries',()=>{
+ const f=flowFixture({voidMutation:true,prompt:true,wrapper:true,hide:true,hidePrompt:true});f.damageResult.remove();f.finalReply.remove();f.submit();f.pending();
+ assert.equal(f.calls(),1);assert.equal(f.prompt.style.getPropertyValue('display'),'none');assert.equal(f.rows[1].style.getPropertyValue('display'),'none');assert.equal(f.attackPanel.children.length,1);
+ f.damageFailure();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.rows[1].style.getPropertyValue('display'),'');assert.equal(f.card.style.getPropertyValue('display'),'');assert.equal(f.attackPanel.children.length,0);f.notify();assert.equal(f.calls(),1);
+ assert.equal([...f.context.window.__friendsFablesDesktopCombatFlowOutcomes.values()][0].status,'failed');
+});
+test('native void mutation stale or unrelated error cannot restore another automatic prompt',()=>{
+ for(const patch of [{submittedAt:0},{variables:{rollChoice:{id:999},campaign:{id:'campaign-a'},rollCharacter:{id:83026155}}},{variables:{rollChoice:null,campaign:{id:'campaign-a'},rollCharacter:{id:83026155}}}]){
+ const f=flowFixture({voidMutation:true,prompt:true,hidePrompt:true});f.submit();f.pending();f.damageFailure(patch);assert.equal(f.prompt.style.getPropertyValue('display'),'none');assert.equal(f.calls(),1);}
+});
+
+test('ambiguous native mutation observers fail closed and valid choice errors stay scoped',()=>{
+ const f=flowFixture({voidMutation:true,prompt:true,hidePrompt:true});
+ f.t5.memoizedState.next={memoizedState:{...f.damageObserver,subscribe(){return()=>{}}}};f.submit();f.pending();f.damageFailure();
+ assert.equal(f.prompt.style.getPropertyValue('display'),'none','Two exact mutation owners are ambiguous');
+ const other=flowFixture({voidMutation:true,prompt:true,hidePrompt:true});other.submit();other.pending();const variables={...other.damageState().variables,rollCharacter:{id:999}};other.damageFailure({variables});
+ assert.equal(other.prompt.style.getPropertyValue('display'),'none');
 });

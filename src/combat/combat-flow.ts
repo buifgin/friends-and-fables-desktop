@@ -29,6 +29,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   const hiddenPrompts = new Map<HTMLElement, { value: string; priority: string }>();
   const narrationLayout = new Map<HTMLElement, Map<string, { value: string; priority: string }>>();
   const progress = new Map<string | number, { campaign: string; encounter: string | number; request: string; character: string | number; outcomeKey?: string }>();
+  const nativeWatches = new Map<string, { outcome: Outcome; choice: Native; observers: { observer: Observer; baseline: Native; unsubscribe?: () => void }[] }>();
+  function clearNativeWatch(key: string): void { const watch = nativeWatches.get(key); nativeWatches.delete(key); for (const item of watch?.observers ?? []) try { item.unsubscribe?.(); } catch { /* Native owner may already be disposed. */ } }
   const statuses = new Map<HTMLElement, HTMLElement>();
   const emptyRows = new Map<HTMLElement, { value: string; priority: string }>();
   let language = locale;
@@ -57,7 +59,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     hiddenPrompts.clear();
   }
-  function restoreAll(): void { restore(); restorePrompts(); restoreEmptyRows(); restoreStatus(); progress.clear(); }
+  function restoreAll(): void { for (const key of nativeWatches.keys()) clearNativeWatch(key); restore(); restorePrompts(); restoreEmptyRows(); restoreStatus(); progress.clear(); }
   function read(): Preferences {
     try {
       const raw = localStorage.getItem(storageKey());
@@ -455,6 +457,43 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     for (const [panel, status] of statuses) if (!desired.has(panel)) { status.remove(); statuses.delete(panel); }
   }
+  function watchNativeRoll(key: string, outcome: Outcome, owner: Fiber, choice: Native): void {
+    const observers = new Map<Observer, { observer: Observer; baseline: Native; unsubscribe?: () => void }>();
+    let hook = owner.memoizedState;
+    for (let count = 0; hook && count < 240; count++, hook = hook.next as typeof hook) {
+      const value = hook.memoizedState as Observer | undefined;
+      if (typeof value?.getCurrentResult !== 'function' || typeof value.subscribe !== 'function' || typeof value.options?.mutationFn !== 'function') continue;
+      try { const baseline = value.getCurrentResult(); if (baseline?.status !== 'pending') observers.set(value, { observer: value, baseline }); } catch { /* Ignore unknown native hook values. */ }
+    }
+    if (hook || !observers.size) return;
+    const watch = { outcome, choice, observers: [...observers.values()] };
+    nativeWatches.set(key, watch);
+    for (const item of watch.observers) try { item.unsubscribe = item.observer.subscribe(() => schedule()); } catch { observers.delete(item.observer); }
+    watch.observers = watch.observers.filter(item => observers.has(item.observer));
+  }
+  function observeNativeRolls(): void {
+    for (const [key, watch] of nativeWatches) {
+      const outcome = watch.outcome;
+      const proof = linked.get(outcome.eventId), row = document.getElementById(`event-container-${outcome.eventId}`);
+      if (!proof || proof.outcomeKey !== key || !row || !encounterMatches(row, proof.encounter) || !prefs.automaticDamage || outcome.campaign !== campaign || outcome.status === 'failed' || outcome.status === 'unknown' || Date.now() - outcome.started > 120000) { clearNativeWatch(key); continue; }
+      const matches: Native[] = [];
+      for (const { observer, baseline } of watch.observers) try {
+        const result = observer.getCurrentResult(), variables = result?.variables;
+        // t5 passes these exact native arguments to B.mutate (which returns
+        // void). Fresh observer state plus choice object identity ties failure
+        // to our invocation; never inspect a latest global mutation/error.
+        if (result !== baseline && variables !== baseline.variables && Number.isFinite(result.submittedAt)
+          && result.submittedAt >= outcome.started && result.submittedAt > (baseline.submittedAt ?? 0)
+          && variables?.rollChoice === watch.choice && variables.campaign?.id === outcome.campaign
+          && variables.rollCharacter?.id === outcome.character && variables.rollChoice.id === outcome.choiceId
+          && variables.rollChoice.event_id === outcome.eventId && variables.rollChoice.type === 'Damage'
+          && variables.rollResult && typeof variables.rollResult === 'object') matches.push(result);
+      } catch { /* Native observer teardown is not proof of backend failure. */ }
+      if (matches.length !== 1) continue;
+      if (matches[0].status === 'error') { outcome.status = 'failed'; clearNativeWatch(key); }
+      else if (matches[0].status === 'success') clearNativeWatch(key);
+    }
+  }
   function observeOutcomes(): void {
     for (const outcome of outcomes.values()) {
       if (outcome.campaign !== campaign || outcome.status !== 'claimed') continue;
@@ -563,6 +602,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request, attackId: attack.id, outcomeKey: key, choiceOwner }); cancel();
     progress.set(attack.id, { campaign, encounter: current.encounter, request: current.request, character: current.character, outcomeKey: key });
     syncNarration(); syncPrompts(); syncPresentation();
+    watchNativeRoll(key, outcome, choiceOwner, latestOwner!.rollChoice as Native);
     try { const result = candidate.callback({ stopPropagation() {}, preventDefault() {}, currentTarget: candidate.button, target: candidate.button });
       if (result && typeof (result as PromiseLike<unknown>).then === 'function') void Promise.resolve(result).catch(() => { outcome.status = 'failed'; schedule(); });
     } catch { outcome.status = 'failed'; schedule(); /* Unknown send outcome is terminal. Keep native manual controls. */ }
@@ -573,7 +613,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (disposed) return;
     syncRoute();
     if (!campaign) return;
-    try { observeOutcomes(); applyFlow(); syncNarration(); syncPrompts(); syncPresentation(); } catch { cancel(); restoreAll(); }
+    try { observeNativeRolls(); observeOutcomes(); applyFlow(); syncNarration(); syncPrompts(); syncPresentation(); } catch { cancel(); restoreAll(); }
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(sync); }
   // Mutation delivery precedes paint; RAF-only concealment permits a first-frame flash.
