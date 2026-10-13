@@ -44,12 +44,19 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
     for (const [target, styles] of entry.styles) for (const [property, [value, priority]] of styles) {
       if (value) target.style.setProperty(property, value, priority); else target.style.removeProperty(property);
     }
+    const canvasStyles = entry.native && entry.styles.get(entry.native.canvas);
     entry.styles.clear();
-    // A height-only change does not trigger the native width-filtered observer.
-    // Restore its normal square bitmap as well as its original inline CSS.
+    // Restore normal-flow CSS synchronously from the restored host width. The
+    // native observer may still hold expanded dimensions until its next frame,
+    // and ignores height-only changes, so restoring its last write is unsafe.
     if (entry.native?.canvas.isConnected) {
-      const width = Math.floor(entry.root.clientWidth * (window.devicePixelRatio || 1));
+      const cssWidth = entry.root.clientWidth;
+      const width = Math.floor(cssWidth * (window.devicePixelRatio || 1));
       if (width > 0) {
+        for (const property of ['width', 'height']) {
+          const original = canvasStyles?.get(property);
+          if (original) entry.native.canvas.style.setProperty(property, `${cssWidth}px`, original[1]);
+        }
         if (entry.native.canvas.width !== width) entry.native.canvas.width = width;
         if (entry.native.canvas.height !== width) entry.native.canvas.height = width;
       }
@@ -71,14 +78,6 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
     // Its width-only observer writes a square canvas. Keep the bitmap matched to
     // our rectangular viewport; CSS stretching would break its pointer geometry.
     for (const [property, value] of Object.entries({ position: 'absolute', inset: '0px', width: '100%', height: '100%' })) set(entry, property, value, native.stage);
-    // Retain the website's latest square inline dimensions when its observer
-    // writes them, so disabling after a sidebar resize restores current CSS.
-    const saved = entry.styles.get(native.canvas);
-    for (const property of ['width', 'height']) {
-      if (saved?.has(property) && native.canvas.style.getPropertyPriority(property) !== 'important') {
-        saved.set(property, [native.canvas.style.getPropertyValue(property), native.canvas.style.getPropertyPriority(property)]);
-      }
-    }
     for (const [property, value] of Object.entries({ display: 'block', 'box-sizing': 'border-box', width: '100%', height: '100%' })) set(entry, property, value, native.canvas);
     const toolbar = native.stage.querySelector<HTMLElement>(':scope > .absolute.bottom-0.right-0');
     // Leave the native toolbar reachable above our resize grip.
