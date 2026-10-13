@@ -29,6 +29,7 @@ export interface CombatPanelSettings {
   customizeBackground: boolean; customizeBorder: boolean; borderColor: string;
   customizeButtons: boolean; buttonBackground: string; buttonTextColor: string;
   buttonBackgroundOpacity: number;
+  cardBackground: string; cardBackgroundOpacity: number;
   customizeSpacing: boolean; tileGap: number; contentPadding: number;
 }
 
@@ -73,6 +74,7 @@ export const DEFAULT_APPEARANCE: AppearanceSettings = {
   combatPanel: { enabled: false, color: '#101010', opacity: .92, blur: 12,
     customizeBackground: true, customizeBorder: false, borderColor: '#555555',
     customizeButtons: false, buttonBackground: '#202020', buttonTextColor: '#ffffff', buttonBackgroundOpacity: 1,
+    cardBackground: '#101010', cardBackgroundOpacity: .92,
     customizeSpacing: false, tileGap: 8, contentPadding: 20 },
 };
 
@@ -187,6 +189,8 @@ export function validateAppearance(value: unknown): AppearanceSettings {
       buttonBackgroundOpacity: combatPanel.buttonBackgroundOpacity === undefined
         ? (legacyTransparentButtons === undefined ? DEFAULT_APPEARANCE.combatPanel.buttonBackgroundOpacity : flag(legacyTransparentButtons) ? 0 : 1)
         : range(combatPanel.buttonBackgroundOpacity, 0, 1),
+      cardBackground: hex(combatPanel.cardBackground ?? DEFAULT_APPEARANCE.combatPanel.cardBackground),
+      cardBackgroundOpacity: range(combatPanel.cardBackgroundOpacity ?? DEFAULT_APPEARANCE.combatPanel.cardBackgroundOpacity, 0, 1),
       customizeSpacing: flag(combatPanel.customizeSpacing ?? false),
       tileGap: range(combatPanel.tileGap ?? 8, 4, 24), contentPadding: range(combatPanel.contentPadding ?? 20, 8, 32) },
     input: { enabled: flag(composer.enabled), style: messageStyle(composer.style) },

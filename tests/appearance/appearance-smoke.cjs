@@ -48,11 +48,14 @@ async function save(settings, window) {
   }
   assert.equal(DEFAULT_APPEARANCE.combatPanel.tileGap, 8, 'First spacing customization starts at the measured native tile gap.');
   assert.equal(DEFAULT_APPEARANCE.combatPanel.contentPadding, 20, 'First spacing customization starts at the native12+8 inset.');
+  assert.equal(DEFAULT_APPEARANCE.combatPanel.cardBackgroundOpacity, .92, 'Attack card and message field surfaces have one saved opacity setting.');
+  assert.equal(DEFAULT_APPEARANCE.combatPanel.cardBackground, '#101010', 'Attack card and message field surfaces share one saved color.');
   const oldPanel = { enabled: true, color: '#234567', opacity: .4, blur: 7 };
   assert.deepEqual(validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: oldPanel }).combatPanel,
     { ...DEFAULT_APPEARANCE.combatPanel, ...oldPanel }, 'Legacy background settings keep native borders, buttons and spacing.');
   for (const patch of [{tileGap:3}, {tileGap:25}, {contentPadding:7}, {contentPadding:33},
-    {tileGap:NaN}, {customizeButtons:'true'}, {buttonBackgroundOpacity:NaN}, {buttonBackgroundOpacity:1.01}, {borderColor:'red'}, {buttonBackground:'red'}, {buttonTextColor:'red'}]) {
+    {tileGap:NaN}, {customizeButtons:'true'}, {buttonBackgroundOpacity:NaN}, {buttonBackgroundOpacity:1.01},
+    {cardBackgroundOpacity:NaN}, {cardBackgroundOpacity:1.01}, {cardBackground:'red'}, {borderColor:'red'}, {buttonBackground:'red'}, {buttonTextColor:'red'}]) {
     assert.throws(() => validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: { ...DEFAULT_APPEARANCE.combatPanel, ...patch } }));
   }
   assert.throws(() => validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: { ...DEFAULT_APPEARANCE.combatPanel,
@@ -87,6 +90,12 @@ async function save(settings, window) {
   assert(initialSpacingCss.includes('--ff-combat-tile-gap: 8px'));
   assert(initialSpacingCss.includes('--ff-combat-content-padding: 20px'));
   const nativeCss = combatPanelAppearanceCss(DEFAULT_APPEARANCE.combatPanel);
+  for (const alpha of [0, .5, 1]) {
+    const surfacesCss = combatPanelAppearanceCss({ ...DEFAULT_APPEARANCE.combatPanel, enabled:true, cardBackground:'#123456', cardBackgroundOpacity:alpha });
+    assert(surfacesCss.includes(`rgba(18, 52, 86, ${alpha})`), `Card/target/message background opacity ${alpha} is applied to the shared surface rule.`);
+    assert(surfacesCss.includes('label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"])'), 'The shared card background covers target tiles.');
+    assert(surfacesCss.includes('textarea'), 'The shared card background covers the Attack message field.');
+  }
   assert.equal(DEFAULT_APPEARANCE.combatPanel.buttonBackgroundOpacity, 1);
   assert(!nativeCss.includes('button:not([role="checkbox"]):not([role="switch"]) { background: transparent'), 'Native panel button fills remain the default.');
   const transparentCss = combatPanelAppearanceCss({ ...customizedPanel, buttonBackgroundOpacity: 0 });
@@ -98,6 +107,9 @@ async function save(settings, window) {
   assert(transparentCss.includes('background: hsl(var(--primary, 41 62% 65%)) !important'));
   assert(transparentCss.includes('rgba(35, 69, 103, 0.28)'));
   assert(combatPanelCss.includes(':focus-visible'), 'Existing keyboard focus outlines remain in panel CSS.');
+  assert(combatPanelCss.includes('[data-ff-combat-controls-group][data-ff-combat-controls-expanded] [data-ff-combat-label]'), 'Expanded combat rows reveal their labels.');
+  assert(combatPanelCss.includes('justify-content: flex-start !important;') && combatPanelCss.includes('gap: 10px !important;'), 'Expanded combat rows align icons and labels as menu items.');
+  assert(combatPanelCss.includes('[data-ff-combat-controls-group][data-ff-combat-controls-expanded] {\n    padding-bottom: 0 !important;'), 'Expanded combat rows reclaim the collapsed expander reservation.');
   assert(!nativeCss.includes('--ff-combat-tile-gap:'));
   assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('#123456'));
   assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('#234567'));

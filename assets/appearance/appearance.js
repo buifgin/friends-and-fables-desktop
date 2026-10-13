@@ -61,6 +61,8 @@ function selection() {
       customizeBorder: element('combat-panel-customize-border').checked, borderColor: element('combat-panel-border-color').value,
       customizeButtons: element('combat-panel-customize-buttons').checked,
       buttonBackgroundOpacity: Number(element('combat-panel-button-background-opacity').value) / 100,
+      cardBackgroundOpacity: Number(element('combat-panel-card-background-opacity').value) / 100,
+      cardBackground: element('combat-panel-card-background').value,
       buttonBackground: element('combat-panel-button-background').value, buttonTextColor: element('combat-panel-button-text-color').value,
       customizeSpacing: element('combat-panel-customize-spacing').checked,
       tileGap: Number(element('combat-panel-tile-gap').value), contentPadding: Number(element('combat-panel-content-padding').value) },
@@ -120,11 +122,12 @@ function showSettings(settings) {
     ['border-color','borderColor','#555555'], ['customize-buttons','customizeButtons',false],
     ['button-background','buttonBackground','#202020'], ['button-text-color','buttonTextColor','#ffffff'],
     ['button-background-opacity','buttonBackgroundOpacity',1],
+    ['card-background','cardBackground','#101010'], ['card-background-opacity','cardBackgroundOpacity',.92],
     ['customize-spacing','customizeSpacing',false], ['tile-gap','tileGap',8], ['content-padding','contentPadding',20],
   ]) {
     const control = element(`combat-panel-${id}`);
     const value = combatPanel[key] ?? fallback;
-    control[control.type === 'checkbox' ? 'checked' : 'value'] = key === 'buttonBackgroundOpacity' ? value * 100 : value;
+    control[control.type === 'checkbox' ? 'checked' : 'value'] = key.endsWith('Opacity') ? value * 100 : value;
   }
   element('message-styles').checked = settings.messages.enabled;
   element('input-styles').checked = settings.input.enabled;
@@ -244,6 +247,8 @@ function updatePreview() {
   }
   element('combat-panel-button-background-opacity-label').value = `${Math.round((combatPanel.buttonBackgroundOpacity ?? 1) * 100)}%`;
   element('combat-panel-button-background-opacity').disabled = busy || !combatPanel.enabled;
+  element('combat-panel-card-background-opacity-label').value = `${Math.round((combatPanel.cardBackgroundOpacity ?? .92) * 100)}%`;
+  for (const id of ['combat-panel-card-background','combat-panel-card-background-opacity']) element(id).disabled = busy || !combatPanel.enabled;
   element('combat-panel-opacity-label').value = `${Math.round(combatPanel.opacity * 100)}%`;
   element('combat-panel-blur-label').value = `${combatPanel.blur} px`;
   element('image-blur-label').value = `${settings.backgroundEffects.blur} px`;
