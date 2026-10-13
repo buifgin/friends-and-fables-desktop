@@ -95,8 +95,8 @@ async function save(settings, window) {
     assert(surfacesCss.includes(`rgba(18, 52, 86, ${alpha})`), `Card/target/message background opacity ${alpha} is applied to the shared surface rule.`);
     assert(surfacesCss.includes('.relative.rounded-lg.border.bg-card.shadow-sm.w-full'), 'Shared Attack colors match the native weapon/spell summary card shape without requiring a group class.');
     assert(surfacesCss.includes('label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"])'), 'The shared card background covers target tiles.');
-    assert(surfacesCss.includes('[data-ff-combat-chat] textarea[name="message"]'), 'The shared Attack-only selector covers the captured native message textarea.');
-    assert(!surfacesCss.includes('.tiptap'), 'Attack message styling does not assume the unrelated chat composer is the message field.');
+    assert(surfacesCss.includes('textarea[name="message"]'), 'The Attack dock selector covers the named native message textarea inside its form.');
+    assert(!surfacesCss.includes('[data-ff-combat-chat] textarea[name="message"]'), 'Attack styling does not rely on the separate normal chat marker.');
     assert(surfacesCss.includes('[data-ff-combat-panel-mode="actions"]'), 'The shared background is scoped to Attack mode.');
   }
   assert.equal(DEFAULT_APPEARANCE.combatPanel.buttonBackgroundOpacity, 1);
@@ -132,15 +132,16 @@ async function save(settings, window) {
     body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
     button,input,select,textarea {border:1px solid #777;color:#eee;background:#345;}
     button:disabled {opacity:.5;}
-    [data-ff-combat-chat] textarea[name="message"] {background:hsl(var(--background));color:hsl(var(--foreground));}
+    #chat-message-field {background:hsl(var(--background));color:hsl(var(--foreground));}
   </style><style id="panel-style"></style><div data-ff-combat-docked="" data-ff-combat-panel="" data-ff-combat-panel-mode="actions">
     <div data-ff-combat-body><div class="p-6"><div class="flex-1 w-full overflow-y-auto p-4 space-y-6"><div id="standard" class="grid gap-4"><button id="standard-button" class="group"><div><svg class="lucide"></svg></div><span>Standard</span></button></div></div></div></div>
     <div data-ff-dice-favorites><div data-ff-dice-favorite-tiles><div data-ff-dice-favorite-group-tiles class="grid"><button id="favorite-button" class="group"><div><svg class="lucide"></svg></div><span>Favorite</span></button></div></div></div>
     <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button><button id="generic-checkbox" role="checkbox" aria-checked="true">Generic</button><button id="generic-switch" role="switch" aria-checked="true">Generic switch</button><button id="menu-button" aria-haspopup="menu">⋯</button></form>
     <div id="weapon-card" class="rounded-lg border bg-card shadow-sm w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white clickable relative @container">Weapon</div><div id="spell-card" class="rounded-lg border bg-card shadow-sm w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white clickable relative @container">Spell</div><div id="summary-card" aria-selected="true" class="rounded-lg border bg-card shadow-sm w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white clickable relative @container">Selected summary</div>
     <label id="target-card" class="flex items-center space-x-3 rounded border p-4 clickable"><button id="target-checkbox" role="checkbox" aria-checked="true">Checked</button></label>
+    <form id="attack-form"><textarea id="attack-message-field" name="message">draft stays editable</textarea></form>
     <span id="primary-probe" style="color:hsl(var(--primary, 41 62% 65%))"></span><span id="primary-foreground-probe" style="color:hsl(var(--primary-foreground, 0 0% 13%))"></span><span id="foreground-probe" style="color:hsl(var(--foreground, 0 0% 96%))"></span>
-  </div><main><div data-ff-combat-chat><textarea id="attack-message-field" name="message">draft stays editable</textarea></div></main><button id="outside">Outside</button><input id="outside-field" value="keep">`));
+  </div><main><div data-ff-combat-chat><textarea id="chat-message-field" name="message">normal chat draft</textarea></div></main><button id="outside">Outside</button><input id="outside-field" value="keep">`));
   await styleWindow.webContents.executeJavaScript("document.documentElement.setAttribute('data-ff-combat-open','true')");
   const styleSnapshot = () => styleWindow.webContents.executeJavaScript(`({
     themeForeground:getComputedStyle(document.getElementById('foreground-probe')).color,
@@ -152,12 +153,17 @@ async function save(settings, window) {
     padding:[document.querySelector('.p-6'),document.querySelector('[data-ff-dice-favorites]')].map(n=>getComputedStyle(n).padding),
     fields:['correction','outside-field'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [n.value,s.backgroundColor,s.color];}),
     attackSurfaces:['weapon-card','spell-card','target-card','attack-message-field','summary-card'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderTopColor,n.value??n.textContent];}),
+    outsideChat:(()=>{const n=document.getElementById('chat-message-field'),s=getComputedStyle(n);return [s.backgroundColor,s.color,n.value]})(),
+    messageInActionForm:(()=>{const n=document.getElementById('attack-message-field');return n.closest('form')?.id==='attack-form'&&!!n.closest('[data-ff-combat-docked]')})(),
+    chatOutsideDock:!document.getElementById('chat-message-field').closest('[data-ff-combat-docked]'),
     targetChecked:document.getElementById('target-checkbox').getAttribute('aria-checked'), messageName:document.getElementById('attack-message-field').getAttribute('name')
   })`);
   const setPanelCss = settings => styleWindow.webContents.executeJavaScript(`document.getElementById('panel-style').textContent=${JSON.stringify(combatPanelAppearanceCss(settings))}`);
   const rawPanelStyle = await styleSnapshot();
   await setPanelCss(DEFAULT_APPEARANCE.combatPanel);
   const nativePanelStyle = await styleSnapshot();
+  assert.equal(nativePanelStyle.messageInActionForm,true,'The native message textarea fixture belongs to the Attack form inside the dock.');
+  assert.equal(nativePanelStyle.chatOutsideDock,true,'The separate normal chat composer remains outside the Attack dock.');
   const targetPalette = await styleWindow.webContents.executeJavaScript(`[
     getComputedStyle(document.getElementById('primary-probe')).color,
     getComputedStyle(document.getElementById('primary-foreground-probe')).color
@@ -203,6 +209,7 @@ async function save(settings, window) {
     assert.equal(attack.attackSurfaces[2][2],'rgb(18, 52, 86)','Target tile border remains visible at every background opacity.');
     assert.equal(attack.messageName,'message','The native message textarea keeps its name and form ownership.');
     assert.equal(attack.attackSurfaces[3][3],'draft stays editable','Changing background styling preserves the native textarea draft value.');
+    assert.deepEqual(attack.outsideChat,nativePanelStyle.outsideChat,'The normal chat textarea remains outside Attack background styling.');
   }
   styleWindow.show();
   styleWindow.focus();
@@ -219,6 +226,7 @@ async function save(settings, window) {
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','skills')");
   const nonAttack=await styleWindow.webContents.executeJavaScript("['weapon-card','spell-card','target-card','attack-message-field','summary-card'].map(id=>getComputedStyle(document.getElementById(id)).backgroundColor)");
   assert.deepEqual(nonAttack,rawPanelStyle.attackSurfaces.map(surface=>surface[0]),'Attack card/target/message backgrounds do not leak into Skills mode.');
+  assert.deepEqual(await styleSnapshot().then(snapshot=>snapshot.outsideChat),nativePanelStyle.outsideChat,'The normal chat textarea remains unchanged in Skills mode.');
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','actions')");
   await setPanelCss(customizedPanel);
   assert.deepEqual(customPanelStyle.gaps,['24px','24px']);
