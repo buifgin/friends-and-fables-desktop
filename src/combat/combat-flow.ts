@@ -433,10 +433,17 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       // The native accepted choice points to that result; no latest-row guess.
       if (outcome && id(outcome.rollResultId)) {
         const resultCard = document.getElementById(`event-message-card-${outcome.rollResultId}`);
-        if (resultCard && ancestry(resultCard, 24).some(fiber => {
+        const resultEvent = resultCard && ancestry(resultCard, 24).some(fiber => {
           const result = fiber.memoizedProps?.event as Native | undefined;
           return !!result && result.id === outcome.rollResultId && result.campaign_id === campaign && result.character_id === proof.character && result.events_roll?.roll_type === 'Damage';
-        })) { progress.delete(attackId); continue; }
+        });
+        // React may insert nS's dice DOM before its current event props can be
+        // resolved. The already-proven native choice supplies the exact ID;
+        // its event wrapper and unique native dice panel prove the mount even
+        // in that commit gap. Never select a latest or nearby Damage row.
+        const resultMount = resultCard && resultCard.closest(`[id="event-${outcome.rollResultId}"]`)
+          && resultCard.querySelectorAll('div.relative.rounded-2xl.border-2.overflow-hidden').length === 1;
+        if (resultEvent || resultMount) { progress.delete(attackId); continue; }
       }
       const panels = Array.from(card.querySelectorAll<HTMLElement>('div')).filter(node => {
         const fiber = committedFiber(node), classes = fiber?.memoizedProps?.className;
@@ -497,11 +504,28 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   function observeOutcomes(): void {
     for (const outcome of outcomes.values()) {
       if (outcome.campaign !== campaign || outcome.status !== 'claimed') continue;
-      const row = document.getElementById(`event-container-${outcome.eventId}`), event = row && eventFor(row);
-      const choice = Array.isArray(event?.rollChoices) && event.rollChoices.find((value: Native) => value?.id === outcome.choiceId);
-      if (choice?.accepted === true && choice.character_id === outcome.character && id(choice.roll_result_id)) {
-        outcome.status = 'accepted'; outcome.rollResultId = choice.roll_result_id;
-      } else if (outcome.status === 'claimed' && Date.now() - outcome.started > 120000) outcome.status = 'unknown';
+      const row = document.getElementById(`event-container-${outcome.eventId}`), proof = linked.get(outcome.eventId);
+      const resultIds = new Set<string | number>();
+      if (row && proof?.outcomeKey && outcomes.get(proof.outcomeKey) === outcome && encounterMatches(row, proof.encounter)) {
+        const snapshots: Native[] = [];
+        const event = eventFor(row); if (event) snapshots.push(event);
+        // uJ publishes its native events collection independently of memoized
+        // per-row event/choice props. Read only the same committed ancestry,
+        // bounded loaded history, and exact causal event/choice identity.
+        for (const fiber of ancestry(row, 48)) {
+          const events = fiber.memoizedProps?.events;
+          if (Array.isArray(events)) snapshots.push(...events.slice(-30));
+        }
+        for (const event of snapshots) {
+          if (event?.id !== outcome.eventId || event.role !== 'dm' || event.campaign_id !== outcome.campaign || event.request_id !== proof.request || !Array.isArray(event.rollChoices)) continue;
+          const choices = event.rollChoices.filter((choice: Native) => choice?.id === outcome.choiceId);
+          if (choices.length !== 1) continue;
+          const choice = choices[0];
+          if (choice.accepted === true && choice.type === 'Damage' && choice.event_id === outcome.eventId && choice.character_id === outcome.character && id(choice.roll_result_id)) resultIds.add(choice.roll_result_id);
+        }
+      }
+      if (resultIds.size === 1) { outcome.status = 'accepted'; outcome.rollResultId = [...resultIds][0]; }
+      else if (Date.now() - outcome.started > 120000) outcome.status = 'unknown';
     }
   }
   function applyFlow(): void {

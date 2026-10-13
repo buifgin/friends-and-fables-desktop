@@ -442,3 +442,33 @@ test('ambiguous native mutation observers fail closed and valid choice errors st
  const other=flowFixture({voidMutation:true,prompt:true,hidePrompt:true});other.submit();other.pending();const variables={...other.damageState().variables,rollCharacter:{id:999}};other.damageFailure({variables});
  assert.equal(other.prompt.style.getPropertyValue('display'),'none');
 });
+
+function mountDamageWithLaggingProps(f, resultId) {
+ const outer=new f.Element(),row=new f.Element(),card=new f.Element(),panel=new f.Element();
+ outer.id='event-'+resultId;row.id='event-container-undefined';card.id='event-message-card-'+resultId;outer.append(row);row.append(card);card.append(panel);row.resultCard=card;
+ card.closest=selector=>selector==='[id="event-'+resultId+'"]'?outer:null;card.querySelectorAll=selector=>selector==='div.relative.rounded-2xl.border-2.overflow-hidden'?[panel]:[];
+ f.rows.push(row);return {outer,row,card,panel};
+}
+test('exact native result DOM ends progress before result Fiber props publish',()=>{
+ const f=flowFixture({prompt:true,hide:true,hidePrompt:true});f.submit();f.pending();f.choice.accepted=true;f.choice.roll_result_id=107655730;f.notify();
+ assert.equal(f.attackPanel.children.length,1,'Accepted choice without visible dice retains progress');
+ mountDamageWithLaggingProps(f,107655730);f.notify();assert.equal(f.attackPanel.children.length,0,'Exact owned dice DOM ends status in mutation microtask, without result Fiber props');
+});
+test('ancestor native event collection supplies exact accepted result before per-row choice props',()=>{
+ const f=flowFixture({prompt:true,hide:true,hidePrompt:true});f.submit();f.pending();assert.equal(f.choice.accepted,null);
+ f.root.memoizedProps={events:[{...f.dmEvent,rollChoices:[{...f.choice,accepted:true,roll_result_id:107655730}]}]};
+ mountDamageWithLaggingProps(f,107655730);f.notify();assert.equal(f.choice.accepted,null,'Per-row choice stays delayed');assert.equal(f.attackPanel.children.length,0);
+});
+test('unrelated or unknown-ID native dice never terminate owned pending status',()=>{
+ const f=flowFixture({prompt:true,hidePrompt:true});f.submit();f.pending();mountDamageWithLaggingProps(f,999);f.notify();assert.equal(f.attackPanel.children.length,1);
+ f.root.memoizedProps={events:[{...f.dmEvent,request_id:'other',rollChoices:[{...f.choice,accepted:true,roll_result_id:999}]}]};f.notify();assert.equal(f.attackPanel.children.length,1);
+ f.root.memoizedProps={events:[{...f.dmEvent,rollChoices:[{...f.choice,accepted:true,roll_result_id:107655730}]}]};f.notify();assert.equal(f.attackPanel.children.length,1,'Unrelated dice DOM cannot terminate exact different result');
+});
+
+test('exact result ID still requires native dice card mount and conflicting collection IDs fail closed',()=>{
+ const f=flowFixture({prompt:true,hidePrompt:true});f.submit();f.pending();
+ f.root.memoizedProps={events:[{...f.dmEvent,rollChoices:[{...f.choice,accepted:true,roll_result_id:107655730}]},{...f.dmEvent,rollChoices:[{...f.choice,accepted:true,roll_result_id:107655731}]}]};
+ const mounted=mountDamageWithLaggingProps(f,107655730);f.notify();assert.equal(f.attackPanel.children.length,1,'Conflicting accepted results cannot establish ownership');
+ f.root.memoizedProps.events.pop();mounted.card.querySelectorAll=()=>[];f.notify();assert.equal(f.attackPanel.children.length,1,'Exact ID with no native dice panel retains waiting status');
+ mounted.card.querySelectorAll=()=>[mounted.panel];mounted.card.closest=()=>null;f.notify();assert.equal(f.attackPanel.children.length,1,'Unknown outer event wrapper retains waiting status');
+});
