@@ -16,45 +16,150 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   let disposed = false;
   let expandedComposer: HTMLElement | null = null;
   const expandButtons = new Map<HTMLElement, HTMLButtonElement>();
-  const snapshots = new Map<string, { clone: HTMLElement; at: number; overlay?: HTMLElement }>();
+  type NativeEvent = { id?: number | null; role?: string; content?: string; campaign_id?: string; character_id?: number | string | null; isOptimistic?: boolean };
+  type Snapshot = { clone: HTMLElement; at: number; gapAt?: number; card: HTMLElement; event?: NativeEvent; signature?: string; optimistic: boolean;
+    body: HTMLElement; text: string; height: number; width: number; top: number; left: number; overlay?: HTMLElement;
+    geometry?: { card: HTMLElement; properties: Map<string, { value: string; priority: string; applied: string }> } };
+  const snapshots = new Map<string, Snapshot>();
+  let snapshotCampaign: string | undefined;
   let snapshotTimer = 0;
   function closeExpanded(): void {
     expandedComposer?.removeAttribute('data-ff-desktop-input-expanded'); expandedComposer = null;
     for (const button of expandButtons.values()) { button.setAttribute('aria-expanded', 'false'); button.textContent = '↗'; button.title = 'Expand message input'; button.setAttribute('aria-label', 'Expand message input'); }
     schedule();
   }
-  function snapshotMessages(): void {
-    if (disposed) return;
-    const now = Date.now();
-    for (const card of document.querySelectorAll<HTMLElement>('[id^="event-message-card-"]')) {
-      if (roleFor(card) !== 'player') continue;
-      const body = Array.from(card.querySelectorAll<HTMLElement>('.prose')).find(element => !element.closest('[contenteditable="true"],[data-ff-desktop-message-snapshot]'));
-      const old = snapshots.get(card.id);
-      if (body && (body.closest('[data-ff-translation-blank],[data-ff-translation-pending]') || body.querySelector('[data-ff-translation-blank],[data-ff-translation-pending],[data-ff-translation-placeholder]'))) {
-        old?.overlay?.remove(); snapshots.delete(card.id); continue;
+  function nativeEvent(card: Element): NativeEvent | undefined {
+    const fiberKey = Object.keys(card).find(name => name.startsWith('__reactFiber$'));
+    type Fiber = { memoizedProps?: { event?: NativeEvent }; return?: Fiber };
+    let fiber = fiberKey ? (card as unknown as Record<string, Fiber>)[fiberKey] : undefined;
+    for (let depth = 0; fiber && depth < 30; depth++, fiber = fiber.return) {
+      const event = fiber.memoizedProps?.event;
+      if (event?.role === 'player' || event?.role === 'dm' || event?.role === 'npc') return event;
+    }
+    return;
+  }
+  function signature(event: NativeEvent | undefined, campaign: string): string | undefined {
+    if (!event || typeof event.content !== 'string' || !event.content.trim() || event.content.length > 40000 || event.campaign_id !== campaign) return;
+    if (event.role === 'player' && !((typeof event.character_id === 'number' && Number.isSafeInteger(event.character_id) && event.character_id > 0) || (typeof event.character_id === 'string' && event.character_id.length > 0 && event.character_id.length < 128))) return;
+    return JSON.stringify([campaign, event.role, event.character_id ?? null, event.content]);
+  }
+  function visible(element: Element): boolean {
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (node.hasAttribute('hidden') || node.getAttribute('aria-hidden') === 'true' || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse' || style.opacity === '0' || style.contentVisibility === 'hidden') return false;
+    }
+    return true;
+  }
+  function removeOverlay(snapshot: Snapshot): void {
+    snapshot.overlay?.remove(); snapshot.overlay = undefined;
+    if (snapshot.geometry) {
+      const { card, properties } = snapshot.geometry;
+      for (const [name, previous] of properties) {
+        // Do not overwrite a newer native/other-feature inline declaration.
+        if (card.style.getPropertyValue(name) !== previous.applied || card.style.getPropertyPriority(name) !== 'important') continue;
+        if (previous.value) card.style.setProperty(name, previous.value, previous.priority);
+        else card.style.removeProperty(name);
       }
-      if (body?.textContent?.trim()) {
-        old?.overlay?.remove();
-        const clone = body.cloneNode(true) as HTMLElement;
-        for (const hidden of clone.querySelectorAll('[data-ff-desktop-hidden-instructions],[data-ff-desktop-sp-draft],script,style,[data-ff-translation-placeholder]')) hidden.remove();
-        for (const paragraph of clone.querySelectorAll('p')) if (/^\s*\[\[FF-SP:1\]\][\s\S]*\[\[\/FF-SP:1\]\]\s*$/.test(paragraph.textContent ?? '')) paragraph.remove();
-        if (!clone.textContent?.trim() || clone.textContent.includes('[[FF-SP:1]]') || clone.textContent.includes('[[/FF-SP:1]]')) continue;
-        clone.removeAttribute('id'); clone.removeAttribute('contenteditable');
-        for (const child of clone.querySelectorAll('[id]')) child.removeAttribute('id');
-        snapshots.set(card.id, { clone, at: now });
-      } else if (old && now - old.at < 4000) {
-        if (!old.overlay?.isConnected) {
-          old.overlay = old.clone.cloneNode(true) as HTMLElement;
-          old.overlay.setAttribute('data-ff-desktop-message-snapshot', 'true'); old.overlay.setAttribute('data-ff-translation-ignore', 'true');
-          old.overlay.setAttribute('aria-hidden', 'true'); old.overlay.style.pointerEvents = 'none';
-          card.append(old.overlay);
+      snapshot.geometry = undefined;
+    }
+  }
+  function clearSnapshots(): void {
+    for (const snapshot of snapshots.values()) removeOverlay(snapshot);
+    snapshots.clear(); clearTimeout(snapshotTimer);
+  }
+  function safeClone(body: HTMLElement): HTMLElement | undefined {
+    const clone = body.cloneNode(true) as HTMLElement;
+    const sourceNodes = [body, ...body.querySelectorAll<HTMLElement>('*')];
+    const cloneNodes = [clone, ...clone.querySelectorAll<HTMLElement>('*')];
+    const excluded = '[data-ff-desktop-hidden-instructions],[data-ff-desktop-sp-draft],[data-ff-translation-placeholder],script,style,button,input,textarea,select,iframe,video,audio';
+    for (let index = 0; index < sourceNodes.length; index++) {
+      const source = sourceNodes[index], copy = cloneNodes[index];
+      if (source.matches(excluded) || !visible(source)) { if (index === 0) return; copy.remove(); continue; }
+      copy.removeAttribute('id'); copy.removeAttribute('contenteditable');
+      for (const attribute of Array.from(copy.attributes)) if (/^on/i.test(attribute.name)) copy.removeAttribute(attribute.name);
+    }
+    for (const paragraph of clone.querySelectorAll('p')) if (/^\s*\[\[FF-SP:1\]\][\s\S]*\[\[\/FF-SP:1\]\]\s*$/.test(paragraph.textContent ?? '')) paragraph.remove();
+    const text = clone.textContent?.trim() ?? '';
+    if (!text || /\[\[\/?FF-SP:1\]\]/.test(text.replace(/\\/g, ''))) return;
+    return clone;
+  }
+  function showOverlay(snapshot: Snapshot, card: HTMLElement): void {
+    if (snapshot.overlay?.isConnected) return;
+    snapshot.gapAt ??= Date.now();
+    const properties = new Map<string, { value: string; priority: string; applied: string }>();
+    const own = (name: string, applied: string): void => {
+      properties.set(name, { value: card.style.getPropertyValue(name), priority: card.style.getPropertyPriority(name), applied });
+      card.style.setProperty(name, applied, 'important');
+    };
+    const style = getComputedStyle(card);
+    if (style.position === 'static') own('position', 'relative');
+    const extra = style.boxSizing === 'border-box' ? 0 : ['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth'].reduce((sum, name) => sum + (parseFloat(style[name as keyof CSSStyleDeclaration] as string) || 0), 0);
+    own('min-height', `${Math.max(0, snapshot.height - extra)}px`);
+    snapshot.geometry = { card, properties };
+    const overlay = snapshot.clone.cloneNode(true) as HTMLElement;
+    overlay.setAttribute('data-ff-desktop-message-snapshot', 'true'); overlay.setAttribute('data-ff-translation-ignore', 'true'); overlay.setAttribute('aria-hidden', 'true');
+    overlay.style.cssText += `;position:absolute!important;top:${snapshot.top}px!important;left:${snapshot.left}px!important;width:${snapshot.width}px!important;max-width:none!important;margin:0!important;pointer-events:none!important;opacity:1!important;visibility:visible!important;animation:none!important;transition:none!important;`;
+    snapshot.overlay = overlay; card.append(overlay);
+  }
+  function snapshotMessages(cards?: Set<HTMLElement>, changedBodies = new Set<HTMLElement>()): void {
+    if (disposed) return;
+    const campaign = /^\/([^/]+)\/play\/?$/.exec(location.pathname)?.[1];
+    const view = new URLSearchParams(location.search).get('view');
+    if (!campaign || view && view !== 'play') { clearSnapshots(); snapshotCampaign = undefined; return; }
+    if (snapshotCampaign !== campaign) { clearSnapshots(); snapshotCampaign = campaign; }
+    const now = Date.now();
+    // Expire before matching so an old temporary message cannot bridge a new ID.
+    for (const [id, snapshot] of snapshots) {
+      // Visible bodies remain eligible after quiet time. The four-second limit
+      // starts at a real hydration gap/detachment and never refreshes while blank.
+      if (!snapshot.card.isConnected && snapshot.optimistic) snapshot.gapAt ??= now;
+      if (snapshot.gapAt !== undefined && now - snapshot.gapAt >= 4000 || !snapshot.card.isConnected && !snapshot.optimistic) { removeOverlay(snapshot); snapshots.delete(id); }
+    }
+    for (const card of cards ?? document.querySelectorAll<HTMLElement>('[id^="event-message-card-"]')) {
+      if (!card.isConnected) continue;
+      const role = roleFor(card);
+      if (!role || settings.dice.enabled && card.querySelector('[class~=\"from-slate-900/95\"][class~=\"to-slate-950/95\"]')) continue;
+      if (settings.messages.enabled) mark(card, 'data-ff-desktop-message', role);
+      const event = nativeEvent(card), currentSignature = signature(event, campaign);
+      const body = Array.from(card.querySelectorAll<HTMLElement>('.prose')).find(element => !element.closest('[contenteditable="true"],[data-ff-desktop-message-snapshot]'));
+      let old = snapshots.get(card.id);
+      const pending = !!body && (!!body.closest('[data-ff-translation-blank],[data-ff-translation-pending]') || !!body.querySelector('[data-ff-translation-blank],[data-ff-translation-pending],[data-ff-translation-placeholder]'));
+      const concealedNarration = role === 'gm' && !!body && Array.from(body.querySelectorAll('p,div,blockquote,ul,ol,pre')).some(element => !visible(element));
+      if (!visible(card) || !body || !visible(body) || pending || concealedNarration) {
+        if (old) removeOverlay(old); snapshots.delete(card.id);
+        // A pending confirmed body must also invalidate its matching temporary
+        // English snapshot; translation-ready cannot later resurrect it.
+        for (const [id, snapshot] of snapshots) if (snapshot.optimistic && currentSignature && snapshot.signature === currentSignature) { removeOverlay(snapshot); snapshots.delete(id); }
+        continue;
+      }
+      if (old && !(old.signature !== undefined || currentSignature !== undefined ? old.signature === currentSignature : old.card === card && old.event === event)) { removeOverlay(old); snapshots.delete(card.id); old = undefined; }
+      if (body.textContent?.trim()) {
+        if (old) removeOverlay(old);
+        const text = body.textContent ?? '', rect = card.getBoundingClientRect(), bodyRect = body.getBoundingClientRect();
+        // Keep the sanitized clone while native prose is unchanged. Geometry and
+        // freshness still track the visible card; unrelated cards need no cloning.
+        const clone = old?.body === body && old.text === text && !changedBodies.has(body)
+          ? old.clone : text.length <= 20000 ? safeClone(body) : undefined;
+        if (!clone || rect.height <= 0 || rect.height > 4000 || bodyRect.width <= 0 || bodyRect.height <= 0) { snapshots.delete(card.id); continue; }
+        const style = getComputedStyle(card);
+        snapshots.set(card.id, { clone, at: now, card, event, body, text, signature: currentSignature,
+          optimistic: role === 'player' && event?.isOptimistic === true && event.id == null && card.id === 'event-message-card-null' && !!currentSignature,
+          height: rect.height, width: bodyRect.width, top: bodyRect.top - rect.top - (parseFloat(style.borderTopWidth) || 0), left: bodyRect.left - rect.left - (parseFloat(style.borderLeftWidth) || 0) });
+      } else {
+        if (!old && role === 'player' && event?.role === 'player' && typeof event.id === 'number' && Number.isSafeInteger(event.id) && event.id > 0 && card.id === `event-message-card-${event.id}` && currentSignature && event.isOptimistic !== true) {
+          const candidates = Array.from(snapshots.entries()).filter(([, snapshot]) => snapshot.optimistic && !snapshot.card.isConnected && snapshot.signature === currentSignature);
+          if (candidates.length === 1) {
+            const [id, snapshot] = candidates[0]; snapshots.delete(id); removeOverlay(snapshot);
+            old = { ...snapshot, card, event, body, text: '', optimistic: false }; snapshots.set(card.id, old);
+          }
         }
+        if (old && (old.gapAt === undefined || now - old.gapAt < 4000)) showOverlay(old, card);
       }
     }
-    for (const [id, snapshot] of snapshots) if (now - snapshot.at > 4000 || !document.getElementById(id)) { snapshot.overlay?.remove(); snapshots.delete(id); }
-    while (snapshots.size > 32) { const id = snapshots.keys().next().value!; snapshots.get(id)?.overlay?.remove(); snapshots.delete(id); }
+    while (snapshots.size > 32) { const id = snapshots.keys().next().value!; removeOverlay(snapshots.get(id)!); snapshots.delete(id); }
     clearTimeout(snapshotTimer);
-    if (Array.from(snapshots.values()).some(snapshot => snapshot.overlay?.isConnected)) snapshotTimer = window.setTimeout(snapshotMessages, 4000);
+    const gaps = Array.from(snapshots.values()).filter(snapshot => snapshot.gapAt !== undefined);
+    if (gaps.length) snapshotTimer = window.setTimeout(() => snapshotMessages(), Math.max(1, Math.min(...gaps.map(snapshot => 4000 - (now - snapshot.gapAt!)))));
   }
   function outside(event: PointerEvent): void {
     if (!(event.target instanceof Element) || event.target.closest('[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]')) return;
@@ -83,14 +188,9 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   function roleFor(card: Element): 'player' | 'gm' | null {
     // The site does not render event.role as an HTML attribute. Read only this
     // cosmetic role from the nearest React component, including NPC events.
-    const fiberKey = Object.keys(card).find((name) => name.startsWith('__reactFiber$'));
-    type Fiber = { memoizedProps?: { event?: { role?: string } }; return?: Fiber };
-    let fiber: Fiber | undefined = fiberKey ? (card as unknown as Record<string, Fiber>)[fiberKey] : undefined;
-    for (let depth = 0; fiber && depth < 30; depth++, fiber = fiber.return) {
-      const role = fiber.memoizedProps?.event?.role;
-      if (role === 'player') return 'player';
-      if (role === 'dm' || role === 'npc') return 'gm';
-    }
+    const role = nativeEvent(card)?.role;
+    if (role === 'player') return 'player';
+    if (role === 'dm' || role === 'npc') return 'gm';
     const container = card.closest('[id^="event-container-"]');
     if (container && Array.from(container.querySelectorAll('img')).some((image) => {
       try { return decodeURIComponent(image.getAttribute('src') ?? '').includes('/franz/'); } catch { return false; }
@@ -275,34 +375,77 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       }
     }
     reconcile();
-    queueMicrotask(() => queueMicrotask(snapshotMessages));
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(scan); }
   const observer = new MutationObserver(records => {
-    if (records.some(record => record.type === 'childList' || record.type === 'characterData')) queueMicrotask(() => queueMicrotask(snapshotMessages));
+    // MutationObserver runs before paint; a RAF-only scan leaves one empty
+    // native body frame during optimistic/confirmed component replacement.
+    const cards = new Set<HTMLElement>(), changedBodies = new Set<HTMLElement>();
+    let detached = false;
+    const cardSelector = '[id^="event-message-card-"]';
+    const owned = '[data-ff-desktop-message-snapshot]';
+    const add = (card: HTMLElement, bodyChanged = false): void => {
+      cards.add(card);
+      if (bodyChanged) for (const body of card.querySelectorAll<HTMLElement>('.prose')) {
+        if (!body.closest(owned)) changedBodies.add(body);
+      }
+    };
+    for (const record of records) {
+      if (record.type === 'childList' && record.removedNodes.length) {
+        for (const snapshot of snapshots.values()) if (snapshot.optimistic && !snapshot.card.isConnected && snapshot.gapAt === undefined
+          && Array.from(record.removedNodes).some(node => node.contains(snapshot.card))) {
+          snapshot.gapAt = Date.now(); detached = true;
+        }
+      }
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      if (!target || target.closest(owned)) continue;
+      const card = target.closest<HTMLElement>(cardSelector);
+      if (card) {
+        // Dice animations and unrelated author/header controls cannot change the
+        // native prose. Card/ancestor concealment and prose mutations can.
+        if (target.closest('svg') && !target.closest('.prose') || target.closest('button,input,textarea,select')) continue;
+        const prose = target.closest('.prose');
+        const nodes = record.type === 'childList' ? [...record.addedNodes, ...record.removedNodes].filter(node => !(node instanceof Element && node.matches(owned))) : [];
+        const hasProse = nodes.some(node => node instanceof Element && (node.matches('.prose') || !!node.querySelector('.prose')));
+        if (record.type === 'childList' || prose || target === card || target.querySelector('.prose')) add(card, !!prose || hasProse || record.type === 'attributes');
+      } else if (record.type === 'childList') {
+        // Only mounted cards enter the immediate pass. Removing a temporary card
+        // retains its bounded snapshot for the exact confirmed association.
+        for (const node of record.addedNodes) if (node instanceof Element && !node.closest(owned)) {
+          if (node.matches(cardSelector)) add(node as HTMLElement, true);
+          for (const mounted of node.querySelectorAll<HTMLElement>(cardSelector)) add(mounted, true);
+        }
+      } else if (record.type === 'attributes' && ['class','style','hidden','aria-hidden','data-ff-translation-blank','data-ff-translation-pending'].includes(record.attributeName ?? '')) {
+        // A container can conceal every card without touching the prose itself.
+        for (const descendant of target.querySelectorAll<HTMLElement>(cardSelector)) add(descendant, true);
+      }
+    }
+    if (cards.size || detached) snapshotMessages(cards, changedBodies);
     if (records.some(record => record.type !== 'characterData' || record.target.parentElement?.closest('svg[id="d20"]'))) schedule();
   });
   observer.observe(document.documentElement, {
     childList: true, subtree: true, attributes: true, characterData: true,
-    attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state', 'data-panel', 'data-panel-group-id', 'data-panel-id', 'data-panel-size'],
+    attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state', 'data-panel', 'data-panel-group-id', 'data-panel-id', 'data-panel-size', 'style', 'hidden', 'aria-hidden', 'data-ff-translation-blank', 'data-ff-translation-pending', 'data-ff-desktop-hidden-instructions'],
   });
-  function translationReady(): void { for (const snapshot of snapshots.values()) snapshot.overlay?.remove(); snapshots.clear(); queueMicrotask(() => queueMicrotask(snapshotMessages)); }
+  function translationReady(): void { clearSnapshots(); snapshotMessages(); }
+  function routeChanged(): void { clearSnapshots(); snapshotCampaign = undefined; snapshotMessages(); schedule(); }
   document.addEventListener('ff-desktop-translation-ready', translationReady);
   window.addEventListener('pointerdown', outside, true);
   window.addEventListener('keydown', onEscape, true);
-  window.addEventListener('popstate', schedule);
+  window.addEventListener('popstate', routeChanged);
   window.addEventListener('storage', schedule);
   host[key] = { dispose() {
     disposed = true; observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(snapshotTimer);
     closeExpanded(); for (const button of expandButtons.values()) button.remove();
-    for (const snapshot of snapshots.values()) snapshot.overlay?.remove();
+    clearSnapshots();
     document.removeEventListener('ff-desktop-translation-ready', translationReady);
     window.removeEventListener('pointerdown', outside, true); window.removeEventListener('keydown', onEscape, true);
-    window.removeEventListener('popstate', schedule);
+    window.removeEventListener('popstate', routeChanged);
     window.removeEventListener('storage', schedule);
     clearMarks();
   } };
   scan();
+  queueMicrotask(() => queueMicrotask(() => snapshotMessages()));
 }
 
 export function chatCss(settings: AppearanceSettings, image: string | null): string {
