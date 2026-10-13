@@ -391,6 +391,13 @@ export class AppearanceManager {
     this.websites.add(website);
     contents.on('did-start-navigation', (details) => {
       if (!details.isMainFrame || details.isSameDocument) return;
+      // Invalidate in-flight work immediately, but retain the current document's
+      // theme/readiness: will-frame-navigate can still cancel this attempt.
+      website.document++;
+    });
+    contents.on('did-navigate', () => {
+      // Only a committed main-frame navigation retires the current stylesheet.
+      // This also keeps desktop command URLs from resetting Appearance.
       website.document++;
       website.ready = false;
       // Clear the old theme before the next document, including authentication.
