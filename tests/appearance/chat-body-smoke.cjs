@@ -9,7 +9,7 @@ const {configureChatAppearance,chatCss}=require(path.join(root,'dist/appearance/
 const {DEFAULT_APPEARANCE}=require(path.join(root,'dist/appearance/themes'));
 const settings={...DEFAULT_APPEARANCE,preset:'website',messages:{...DEFAULT_APPEARANCE.messages,enabled:true}};
 const campaign='01a0d854-78d5-7064-ae41-f63d561c8e01';
-const html='<!doctype html><style>.card{position:relative;padding:10px;width:500px;box-sizing:border-box}.author{height:40px}.prose>div:not(:empty){padding:21px 0;line-height:24px}.prose p{margin:0}</style><body><main id="feed"></main></body>';
+const html='<!doctype html><style>.card{position:relative;padding:10px;width:500px;box-sizing:border-box}.author{height:40px}.prose>div:not(:empty){padding:21px 0;line-height:24px}.prose p{margin:0}.native-shape{border:1px solid transparent}.native-shape .prose>div:not(:empty){padding:0}.native-shape .prose p{margin:20px 0}.native-shape .space-y-4>:not([hidden])~:not([hidden]){margin-top:16px}</style><body><main id="feed"></main></body>';
 let window,profile,passed=false;
 const timer=setTimeout(()=>{console.error('Chat body fixture timed out');app.exit(1)},30000);
 (async()=>{
@@ -40,6 +40,27 @@ const timer=setTimeout(()=>{console.error('Chat body fixture timed out');app.exi
    check(confirmed.querySelector('.prose')===body&&body.firstElementChild===nativeChild,'Native prose identity was replaced');
    nativeChild.textContent='Chat geometry check 18';await settle();check(!overlay(confirmed),'Fallback remained after native body became ready');
    check(confirmed.style.getPropertyValue('min-height')==='','Reserved geometry remained after ready');
+   // Actual native margins collapse through .prose in normal flow, but an
+   // absolute fallback changes the boundary. Compare painted glyph anchors.
+   const textY=(root,card)=>{const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode()){if(!node.textContent.trim())continue;const range=document.createRange();range.selectNodeContents(node);const rect=range.getClientRects()[0];if(rect&&rect.height)return rect.top-card.getBoundingClientRect().top}throw Error('Missing visible text anchor')};
+   const nativeShape=(native,paragraphs=[])=>{const element=card(native);element.classList.add('native-shape');const child=element.querySelector('.prose>div');child.className='space-y-4 whitespace-normal';for(const text of paragraphs){const p=document.createElement('p');p.textContent=text;child.append(p)}return element};
+   const alignment=[];
+   for(const paragraphs of [['Native paragraph margin'],['First native paragraph','Second native paragraph']]){
+    const content=paragraphs.join(' / '),temporaryNative=nativeShape(event(null,content),paragraphs);await settle();
+    const originalBody=temporaryNative.querySelector('.prose'),anchors=[...originalBody.querySelectorAll('p')].map(p=>textY(p,temporaryNative)),height=temporaryNative.getBoundingClientRect().height;
+    check(getComputedStyle(originalBody.querySelector('p')).marginTop==='20px','Native margin fixture shape missing');
+    temporaryNative.remove();const aligned=nativeShape(event(500+paragraphs.length,content)),alignedBody=aligned.querySelector('.prose'),alignedChild=alignedBody.firstElementChild;await firstFrame();
+    const fallback=overlay(aligned);check(fallback,'Native margin fallback missing');
+    const fallbackAnchors=[...fallback.querySelectorAll('p')].map(p=>textY(p,aligned));
+    check(fallbackAnchors.length===anchors.length&&fallbackAnchors.every((y,i)=>Math.abs(y-anchors[i])<.1),'Native paragraph fallback text anchor jumped: '+JSON.stringify({anchors,fallbackAnchors}));
+    check(aligned.getBoundingClientRect().height===height,'Native margin card geometry changed');
+    check(getComputedStyle(fallback.querySelector('p')).marginTop==='20px','Fallback changed native paragraph margins');
+    for(const text of paragraphs){const p=document.createElement('p');p.textContent=text;alignedChild.append(p)}await firstFrame();
+    check(!overlay(aligned)&&aligned.querySelector('.prose')===alignedBody&&alignedBody.firstElementChild===alignedChild,'Native margin hydration altered body identity or retained fallback');
+    const hydrated=[...alignedBody.querySelectorAll('p')].map(p=>textY(p,aligned));check(hydrated.every((y,i)=>Math.abs(y-anchors[i])<.1),'Hydrated paragraph anchor differs from observed source');
+    alignedChild.textContent='';await firstFrame();check([...overlay(aligned).querySelectorAll('p')].every((p,i)=>Math.abs(textY(p,aligned)-anchors[i])<.1),'Same-ID native paragraph alignment changed');
+    alignment.push({anchors,fallbackAnchors,hydrated,height});aligned.remove();await settle();
+   }
    // Unrelated renderer churn must not inspect or re-clone unchanged prose.
    const stable=card(event(300,'Stable body'),'Stable body');
    const navigation=document.createElement('header');document.body.append(navigation);
@@ -74,7 +95,7 @@ const timer=setTimeout(()=>{console.error('Chat body fixture timed out');app.exi
    nativeChild.textContent='Ready again';await settle();nativeChild.textContent='';await settle();check(overlay(confirmed),'Expected same-ID overlay for disposal');
    window.__friendsFablesDesktopChatAppearance.dispose();check(!document.querySelector('[data-ff-desktop-message-snapshot]')&&confirmed.style.getPropertyValue('min-height')==='','Dispose retained body/geometry');
    configure(settings);nativeChild.textContent='Ready again';await settle();nativeChild.textContent='';await settle();history.replaceState({},'', '/settings');window.dispatchEvent(new Event('popstate'));await settle();check(!document.querySelector('[data-ff-desktop-message-snapshot]'),'Route change retained body');
-   window.__friendsFablesDesktopChatAppearance.dispose();Date.now=realNow;return {passed:true,observed};
+   window.__friendsFablesDesktopChatAppearance.dispose();Date.now=realNow;return {passed:true,observed,alignment};
   })()`);
   assert.equal(result.passed,true);console.log('Chat body continuity fixture passed:',result);passed=true;
  }catch(error){console.error('Chat body fixture failed:',error);}finally{clearTimeout(timer);window?.destroy();if(profile)await fs.rm(profile,{recursive:true,force:true});app.exit(passed?0:1);}

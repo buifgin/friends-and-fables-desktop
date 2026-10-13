@@ -18,7 +18,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   const expandButtons = new Map<HTMLElement, HTMLButtonElement>();
   type NativeEvent = { id?: number | null; role?: string; content?: string; campaign_id?: string; character_id?: number | string | null; isOptimistic?: boolean };
   type Snapshot = { clone: HTMLElement; at: number; gapAt?: number; card: HTMLElement; event?: NativeEvent; signature?: string; optimistic: boolean;
-    body: HTMLElement; text: string; height: number; width: number; top: number; left: number; overlay?: HTMLElement;
+    body: HTMLElement; text: string; anchorNode?: Text; anchorTop?: number; height: number; width: number; top: number; left: number; overlay?: HTMLElement;
     geometry?: { card: HTMLElement; properties: Map<string, { value: string; priority: string; applied: string }> } };
   const snapshots = new Map<string, Snapshot>();
   let snapshotCampaign: string | undefined;
@@ -67,8 +67,28 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     for (const snapshot of snapshots.values()) removeOverlay(snapshot);
     snapshots.clear(); clearTimeout(snapshotTimer);
   }
-  function safeClone(body: HTMLElement): HTMLElement | undefined {
+  function textTop(node: Text): number | undefined {
+    const range = document.createRange(); range.selectNodeContents(node);
+    const rect = Array.from(range.getClientRects()).find(rect => rect.width > 0 && rect.height > 0);
+    return rect?.top;
+  }
+  function firstText(root: HTMLElement): Text | undefined {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Node | null;
+    while ((node = walker.nextNode())) if (node.textContent?.trim()) return node as Text;
+    return;
+  }
+  function safeClone(body: HTMLElement): { clone: HTMLElement; anchorNode?: Text } | undefined {
     const clone = body.cloneNode(true) as HTMLElement;
+    // Pair text nodes before sanitization removes hidden/interactive descendants.
+    // The first surviving clone text then identifies its exact native source.
+    const sourceText = document.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+    const cloneText = document.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+    const sources = new Map<Node, Text>();
+    let copyText: Node | null;
+    while ((copyText = cloneText.nextNode())) {
+      const source = sourceText.nextNode(); if (source) sources.set(copyText, source as Text);
+    }
     const sourceNodes = [body, ...body.querySelectorAll<HTMLElement>('*')];
     const cloneNodes = [clone, ...clone.querySelectorAll<HTMLElement>('*')];
     const excluded = '[data-ff-desktop-hidden-instructions],[data-ff-desktop-sp-draft],[data-ff-translation-placeholder],script,style,button,input,textarea,select,iframe,video,audio';
@@ -81,7 +101,8 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     for (const paragraph of clone.querySelectorAll('p')) if (/^\s*\[\[FF-SP:1\]\][\s\S]*\[\[\/FF-SP:1\]\]\s*$/.test(paragraph.textContent ?? '')) paragraph.remove();
     const text = clone.textContent?.trim() ?? '';
     if (!text || /\[\[\/?FF-SP:1\]\]/.test(text.replace(/\\/g, ''))) return;
-    return clone;
+    const anchor = firstText(clone);
+    return { clone, anchorNode: anchor ? sources.get(anchor) : undefined };
   }
   function showOverlay(snapshot: Snapshot, card: HTMLElement): void {
     if (snapshot.overlay?.isConnected) return;
@@ -100,6 +121,14 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     overlay.setAttribute('data-ff-desktop-message-snapshot', 'true'); overlay.setAttribute('data-ff-translation-ignore', 'true'); overlay.setAttribute('aria-hidden', 'true');
     overlay.style.cssText += `;position:absolute!important;top:${snapshot.top}px!important;left:${snapshot.left}px!important;width:${snapshot.width}px!important;max-width:none!important;margin:0!important;pointer-events:none!important;opacity:1!important;visibility:visible!important;animation:none!important;transition:none!important;`;
     snapshot.overlay = overlay; card.append(overlay);
+    // Absolute positioning stops the native prose boundary margin collapse.
+    // Align the first retained glyph before paint without changing any paragraph
+    // margins or internal spacing, and without touching the native body nodes.
+    const anchor = firstText(overlay), top = anchor ? textTop(anchor) : undefined;
+    if (snapshot.anchorTop !== undefined && top !== undefined) {
+      const delta = snapshot.anchorTop - (top - card.getBoundingClientRect().top);
+      if (Number.isFinite(delta)) overlay.style.setProperty('top', `${snapshot.top + delta}px`, 'important');
+    }
   }
   function snapshotMessages(cards?: Set<HTMLElement>, changedBodies = new Set<HTMLElement>()): void {
     if (disposed) return;
@@ -138,11 +167,13 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         const text = body.textContent ?? '', rect = card.getBoundingClientRect(), bodyRect = body.getBoundingClientRect();
         // Keep the sanitized clone while native prose is unchanged. Geometry and
         // freshness still track the visible card; unrelated cards need no cloning.
-        const clone = old?.body === body && old.text === text && !changedBodies.has(body)
-          ? old.clone : text.length <= 20000 ? safeClone(body) : undefined;
-        if (!clone || rect.height <= 0 || rect.height > 4000 || bodyRect.width <= 0 || bodyRect.height <= 0) { snapshots.delete(card.id); continue; }
+        const safe = old?.body === body && old.text === text && !changedBodies.has(body)
+          ? { clone: old.clone, anchorNode: old.anchorNode } : text.length <= 20000 ? safeClone(body) : undefined;
+        if (!safe || rect.height <= 0 || rect.height > 4000 || bodyRect.width <= 0 || bodyRect.height <= 0) { snapshots.delete(card.id); continue; }
         const style = getComputedStyle(card);
-        snapshots.set(card.id, { clone, at: now, card, event, body, text, signature: currentSignature,
+        const anchor = safe.anchorNode ? textTop(safe.anchorNode) : undefined;
+        snapshots.set(card.id, { clone: safe.clone, anchorNode: safe.anchorNode, anchorTop: anchor !== undefined ? anchor - rect.top : undefined,
+          at: now, card, event, body, text, signature: currentSignature,
           optimistic: role === 'player' && event?.isOptimistic === true && event.id == null && card.id === 'event-message-card-null' && !!currentSignature,
           height: rect.height, width: bodyRect.width, top: bodyRect.top - rect.top - (parseFloat(style.borderTopWidth) || 0), left: bodyRect.left - rect.left - (parseFloat(style.borderLeftWidth) || 0) });
       } else {
