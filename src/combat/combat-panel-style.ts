@@ -607,8 +607,8 @@ export function combatPanelAppearanceCss(
   const cardOpacity = range(settings.cardBackgroundOpacity, 1, .92);
   const cardFill = rgba(settings.cardBackground ?? '', cardOpacity);
   const attackSurface = `${customizedSurface}[data-ff-combat-panel-mode="actions"]`;
-  const cardSurfaces = `${attackSurface} :is(.relative.rounded-lg.border.bg-card.shadow-sm.w-full, .relative.group.rounded-lg.border.bg-card.p-4, .group.rounded-lg.border.bg-card, label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]))`;
-  const attackMessageField = `html[data-ff-combat-open="true"]:has([data-ff-combat-docked][data-ff-combat-panel-mode="actions"]) [data-ff-combat-chat] textarea[name="message"]`;
+  const cardSurfaces = `${attackSurface} :is(.relative.rounded-lg.border.bg-card.shadow-sm.w-full, .relative.group.rounded-lg.border.bg-card.p-4, .group.rounded-lg.border.bg-card, label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]), textarea[name="message"])`;
+  const attackMessageField = `${attackSurface} textarea[name="message"]`;
   const buttonHoverOpacity = buttonOpacity === 0 ? .28 : Math.min(1, buttonOpacity + .2);
   const border = settings.enabled && settings.customizeBorder ? `
     ${customizedSurface} { border-right-color: ${hex(settings.borderColor ?? '', '#555555')} !important; }
