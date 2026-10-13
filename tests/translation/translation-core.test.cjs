@@ -99,6 +99,23 @@ test('custom attack headings and damage labels use bounded Russian interface ter
   'Specific interface labels do not trigger broad prose rewriting.');
 });
 
+test('native Attack submit label and named message placeholder translate immediately',()=>{
+ const {localTranslation,translationPlan}=require('../../dist/translation/translation-core');
+ assert.equal(localTranslation('Submit Actions',RUSSIAN_DICTIONARY),'Выполнить действия');
+ const cases=[
+  ['Enter a message for Могнус (optional)...','Введите сообщение для Могнус (необязательно)...'],
+  ['  Enter a message for Mira Starfall (optional)...\n','  Введите сообщение для Mira Starfall (необязательно)...\n'],
+  ['Enter a message for Ёж-Mira 2B (optional)…','Введите сообщение для Ёж-Mira 2B (необязательно)…'],
+ ];
+ for(const [source,target] of cases){
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),target,source);
+  const plan=translationPlan(source);assert.equal(plan.some(part=>part.translate),false,source);
+  assert.equal(plan.map(part=>renderTranslation(part)).join(''),target,source);
+ }
+ assert.equal(localTranslation('Please send a message for Mira (optional)...',RUSSIAN_DICTIONARY),undefined,
+  'The native placeholder pattern remains exact and anchored instead of rewriting prose.');
+});
+
 test('specialized terms retain canonical Russian names in prose without changing literal names or ordinary words',()=>{
  const sample='Mira uses Second Wind and casts Mage Armor. Her friends see the light.';
  const parts=translationPlan(sample,['Mira']);assert.equal(parts.map(p=>p.text).join(''),sample);

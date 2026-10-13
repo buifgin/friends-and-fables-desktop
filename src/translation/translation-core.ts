@@ -117,6 +117,10 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   // Native form labels may omit whitespace between the label and its optional span.
   const optionalDescription=text.match(/^(\s*)Description\s*\(\s*Optional\s*\)(\s*)$/i);
   if(optionalDescription)return optionalDescription[1]+casing(text.trim(),'Описание (необязательно)')+optionalDescription[2];
+  // Native Attack field placeholder contains a dynamic character name. Keep
+  // this exact UI pattern local without translating arbitrary message prose.
+  const attackMessage=text.match(/^(\s*)Enter a message for (.+?)(\s*)\(\s*optional\s*\)(\.{1,3}|…)?(\s*)$/i);
+  if(attackMessage)return `${attackMessage[1]}Введите сообщение для ${attackMessage[2]}${attackMessage[3]}(необязательно)${attackMessage[4]??''}${attackMessage[5]}`;
   const wrapped = text.match(/^(\s*[.·:;!?]+\s*)(.*?)(\s*[.·:;!?]*\s*)$/);
   if (wrapped && lookup(wrapped[2].trim().toLowerCase())) return wrapped[1]+casing(wrapped[2],lookup(wrapped[2].trim().toLowerCase())!)+wrapped[3];
   const save = text.match(/^(\s*)(Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+Save(\s*)$/i);
