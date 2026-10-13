@@ -431,3 +431,34 @@ test('attack form interface labels are immediate local translations without mode
  }
  assert.equal(localTranslation('Ability Modifier',RUSSIAN_DICTIONARY),'Модификатор характеристики','General mechanics wording stays intact.');
 });
+
+
+test('native received-damage events preserve arbitrary names and never require the model',()=>{
+ const {localTranslation}=require('../../dist/translation/translation-core');
+ for(const name of ['Писькогрыз jr.','DaiRum','Mira Sr.','3rd Guard (north)'])for(const count of [1,3,226]){
+  const source=`${name} took ${count} damage`;
+  const expected=`${name} получает ${count} урона`;
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),expected);
+  assert.equal(translationPlan(source).some(part=>part.translate),false);
+  assert.equal(translationPlan(source).map(part=>renderTranslation(part)).join(''),expected);
+ }
+ for(const source of ['Mira took damage.','Mira took 3 damage and fled.','Mira dealt 3 damage.','The warrior took a deep breath.'])
+  assert.equal(localTranslation(source,RUSSIAN_DICTIONARY),undefined);
+});
+
+test('bounded Jr. and Sr. name suffixes retain exact case and punctuation in mixed prose',()=>{
+ for(const suffix of ['jr.','Jr.','JR.','sr.','Sr.','SR.']){
+  const source=`Писькогрыз ${suffix} входит в таверну. The door opens.`;
+  const plan=translationPlan(source);
+  assert.equal(plan.map(part=>part.text).join(''),source);
+  assert.equal(plan.map(part=>renderTranslation(part,part.request)).join(''),source);
+  assert(plan.some(part=>part.protected?.some(item=>item.text===suffix)));
+  assert(plan.filter(part=>part.translate).every(part=>!part.request.includes(suffix)));
+  assert.equal(translationPlan(`Писькогрыз ${suffix} входит в таверну.`).some(part=>part.translate),false,'Russian prose with a literal suffix requires no model.');
+ }
+ for(const word of ['junior','senior','jrs','sriracha','adjr.','jrst.']){
+  const part=translationPlan(`The ${word} arrives.`).find(part=>part.translate);
+  assert(part.request.includes(word));
+  assert(!part.protected.some(item=>item.text===word));
+ }
+});

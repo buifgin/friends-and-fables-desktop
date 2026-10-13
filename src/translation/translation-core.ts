@@ -114,6 +114,9 @@ export function localTranslation(text: string, dictionary: Record<string,string>
   const normalized = text.replace(/\s+/g,' ').replace(/[’‘]/g,"'").trim().toLowerCase();
   const exact = lookup(normalized) ?? lookup(normalized.replace(/…/g,'...'));
   if (exact !== undefined) return text.slice(0,text.indexOf(text.trim())) + casing(text.trim(),exact) + text.slice(text.indexOf(text.trim())+text.trim().length);
+  // Exact mechanical event grammar: the dynamic name is always literal.
+  const receivedDamage=text.match(/^(\s*)([^\r\n]{1,100}?) took (\d+) damage([.!]?)(\s*)$/i);
+  if(receivedDamage)return `${receivedDamage[1]}${receivedDamage[2]} получает ${receivedDamage[3]} урона${receivedDamage[4]}${receivedDamage[5]}`;
   // Native form labels may omit whitespace between the label and its optional span.
   const optionalDescription=text.match(/^(\s*)Description\s*\(\s*Optional\s*\)(\s*)$/i);
   if(optionalDescription)return optionalDescription[1]+casing(text.trim(),'Описание (необязательно)')+optionalDescription[2];
@@ -313,7 +316,7 @@ export function translationPlan(text: string, names: string[] = []): Translation
   const protectedNames = [...new Set([...names,'Franz','Friends & Fables','DeepSeek V4 Flash','Gemini 3.1 Pro','Grok 4.7','GLM-5','Hy-3','Fenix','OpenAI','OpenRouter','Groq'])].filter(Boolean).sort((a, b) => b.length - a.length)
     .map(name => `(?<![\\p{L}\\p{N}_])${escape(name)}(?![\\p{L}\\p{N}_])`);
   const protectedPattern = new RegExp([
-    'https?://[^\\s<>]+', "[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", '\\b\\d*d(?:4|6|8|10|12|20|100)(?:\\s*[+-]\\s*\\d+)?\\b', ...protectedNames,
+    'https?://[^\\s<>]+', "[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)+", '\\b\\d*d(?:4|6|8|10|12|20|100)(?:\\s*[+-]\\s*\\d+)?\\b', '(?<=[\\p{L}]\\s)(?:jr|sr)\\.(?![\\p{L}\\p{N}_])', ...protectedNames,
   ].join('|'), 'giu');
   if (/ZXQ\d+ZXQ/.test(text)) return [{ text, translate: false }];
   const replacements = new Map<string, {original:string; rendered:string}>();

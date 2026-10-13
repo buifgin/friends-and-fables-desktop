@@ -185,6 +185,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
       if(node.nodeType===Node.COMMENT_NODE)return true;
       if(!(node instanceof Element))return false;
       if(node.matches('svg,[data-ff-translation-placeholder]'))return true;
+      if(node.tagName==='DIV' && !node.textContent && [...node.children].every(child=>child.matches('svg')))return true;
       if(node.tagName!=='SPAN' || node.children.length)return false;
       for(const child of node.childNodes){if(child instanceof Text)labelParts.push(child);else if(child.nodeType!==Node.COMMENT_NODE)return false;}
       return true;
@@ -195,31 +196,44 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     // collapse its fragments or clone the spinner into a translation preview.
     const franzStatus=/^\s*(?:Franz|Франц)\s+is\s+(?:thinking|imagining|envisioning|starting (?:an? )?encounter|starting combat|generating)(?:\.\.\.|…)?\s*$/i.test(labelSource);
     const emptyFavoriteLabel=labelSource.replace(/\s+/g,' ').trim().toLowerCase()==='you don\'t have any favorited attacks ready. add an attack in the custom tab and click "favorite attack" to save it as a favorite!';
-    const labelGroup=labelShape && (franzStatus || emptyFavoriteLabel || /^\s*(?:Add to Favorites|Remove from Favorites|Description\s*\(\s*Optional\s*\)|Select (?:a )?weapon(?:\.\.\.|…)?|Add damage roll|Roll attack|Favorite attack)\s*$/i.test(labelSource));
+    const damageEvent=labelShape && labelSource.match(/^(\s*)([^\r\n]{1,100}?) took (\d+) damage([.!]?)(\s*)$/i);
+    const labelGroup=labelShape && (damageEvent || franzStatus || emptyFavoriteLabel || /^\s*(?:Add to Favorites|Remove from Favorites|Description\s*\(\s*Optional\s*\)|Select (?:a )?weapon(?:\.\.\.|…)?|Add damage roll|Roll attack|Favorite attack)\s*$/i.test(labelSource));
     const counterSource = leaves.map(original).join(' ').replace(/\s+/g,' ').trim();
     const counterGroup = /^[\d,]+\s+XP until level\s+\d+$/i.test(counterSource) || /^\d+ (?:Topics? Researched|Blocks? Created|Memor(?:y|ies) Saved)(?: \d+ Blocks? Created)?$/i.test(counterSource);
     const mechanicsGroup=/^(?:(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder) damage|Preview:\s*\d+d\d+(?:\s*[+−-]\s*\d+)?\s+(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)|Bonuses:\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise)(?:[.,]\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*)$/i.test(counterSource);
     if(labelGroup) parts=labelParts;
     else if(leaves.length) parts=leaves;
     const reset = (): false => { for (const node of parts) { const entry=nodes.get(node); if(entry?.fragments && fragmentOwners.get(node)===element) { restore(entry); fragmentOwners.delete(node); } } return false; };
-    if ((!labelGroup && !counterGroup && !mechanicsGroup && children.length>0) || parts.length < 2 || parts.length > 12) return reset();
+    if ((!labelGroup && !counterGroup && !mechanicsGroup && children.length>0) || parts.length < (damageEvent?1:2) || parts.length > 12) return reset();
     const originals = parts.map(node => { const entry=nodes.get(node); return entry && read(node)===entry.rendered ? entry.original : read(node); });
     const source = counterGroup || mechanicsGroup ? originals.join(' ').replace(/\s+/g,' ').trim() : originals.join('');
     if (source.length > 512 || !labelGroup && !counterGroup && !mechanicsGroup && !/^(?:\s*[\d,]+\s*XP until level\s*\d+\s*|\s*DC\s+\d+\s*|\s*Your turn,\s*.{1,100}\s*|\s*\d+\s+(?:Topics? Researched|Blocks? Created|Memor(?:y|ies) Saved)\s*|\s*\d+\s+credits?(?:\s*\+)?\s*\/\s*turn\s*|\s*(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma)\s+(?:Modifier|Save)\s*|\s*Level\s+\d+\s+spell slot\s+(?:consumed|restored)[.!]?\s*|\s*Custom Instructions\s*\(\s*\d+\s*\/\s*\d+\s*\)\s*|\s*Battle lasted\s+\d+\s+turns?[.!]?\s*|\s*\(\s*\d+\s+characters? remaining\s*\)\s*|\s*(?:\(\s*)?\d+\s+active\s*[,/]\s*\d+\s+idle\s*\)?\s*|\s*[\d,.]+\s+(?:Followers|Following)\s*|\s*[+−\-]?[\d.,]+(?:\s*\/\s*[\d.,]+)?\s*(?:lbs?\.?|ft\.?|HP)\s*|\s*(?:End|Waiting for|Run|Skip)\s+.{1,100}?Turn\s*|\s*(?:Franz|Франц)\s+is\s+(?:thinking|imagining|envisioning|starting (?:an? )?encounter|starting combat|generating)(?:\.\.\.|…)?\s*|\s*Executor\s*:\s*(?:Encounter|Adventure)\s*|\s*General Feat\s*|\s*Configure\s+(?:Flat Adjustment|Override|Modifier)\s*|\s*(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s+damage\s*|\s*Preview:\s*\d+d\d+(?:\s*[+−-]\s*\d+)?\s+(?:acid|bludgeoning|cold|fire|force|lightning|necrotic|piercing|poison|psychic|radiant|slashing|thunder)\s*|\s*Bonuses:\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise)(?:[.,]\s*[+−-]?\d+\s+(?:Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma|Proficiency|Expertise))*\s*)$/i.test(source)
-      || names.some(name => name.toLowerCase()!=='franz'&&[source,...originals].some(value=>value.trim().toLowerCase()===name.toLowerCase()))
+      || !damageEvent && names.some(name => name.toLowerCase()!=='franz'&&[source,...originals].some(value=>value.trim().toLowerCase()===name.toLowerCase()))
       || parts.some(node=>!eligible(node)) || entries.size + parts.filter(node=>!nodes.has(node)).length > 4000) return reset();
     const translated = local(source,dictionary);
     if (translated === undefined) return reset();
     const rendered = parts.map(()=>'');
     let start=0, offset=0;
-    for (let i=0;i<parts.length;i++) {
+    // Retain the name in its original Text/span fragments, even when it has
+    // spaces, punctuation or numbers. Only the mechanical suffix is localized.
+    if(damageEvent){
+      const nameEnd=damageEvent[1].length+damageEvent[2].length;
+      let consumed=0;
+      for(let i=0;i<parts.length && consumed<nameEnd;i++){
+        const length=Math.min(originals[i].length,nameEnd-consumed);
+        rendered[i]=originals[i].slice(0,length);consumed+=length;
+        start=consumed===nameEnd && length===originals[i].length?i+1:i;
+      }
+      offset=nameEnd;
+    }
+    for (let i=start;i<parts.length;i++) {
       if (!/^\s*\d[\d,.]*\s*$/.test(originals[i])) continue;
       const at=translated.indexOf(originals[i],offset);
       if (at<0 || i===start && at!==offset) return reset();
-      if (i>start) rendered[start]=translated.slice(offset,at);
+      if (i>start) rendered[start]+=translated.slice(offset,at);
       rendered[i]=originals[i]; offset=at+originals[i].length; start=i+1;
     }
-    if (start<parts.length) rendered[start]=translated.slice(offset);
+    if (start<parts.length) rendered[start]+=translated.slice(offset);
     else if (offset!==translated.length) return reset();
     for (let i=0;i<parts.length;i++) {
       const node=parts[i]; let entry=nodes.get(node);
