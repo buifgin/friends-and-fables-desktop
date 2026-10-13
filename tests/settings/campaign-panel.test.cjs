@@ -92,6 +92,9 @@ test('desktop palette overrides owned Campaign styling and survives layout updat
  assert.match(css,/button:has\(> \.lucide-x\)[^}]*width:34px!important[^}]*height:34px!important[^}]*border-radius:50%!important/,'Only the direct native close button receives the circular 34px target.');
  assert.match(css,/button:has\(> \.lucide-x\) > \.lucide-x\{display:block!important;width:18px!important;height:18px!important/,'The native close icon uses the shared 18px SVG size.');
  assert.match(css,/--ff-campaign-accent:#d8bb82/,'The campaign title and close focus state use the player accent.');
+ assert.ok(css.includes('button[class~="bg-green-500/10"][class~="border-green-500/30"]')&&css.includes('[role="radio"][data-state="on"]')&&css.includes('[role="radio"][aria-checked="true"]'), 'Known selected Campaign model and pacing controls receive a dedicated state rule.');
+ assert.ok(css.includes('background:#383a3e!important;border-color:#d8bb82!important;color:#f5f5f5!important'), 'Selected controls retain the desktop selected fill, accent border and readable foreground.');
+ assert.match(css,/:is\(button,input,textarea,\[role="combobox"\]\):focus-visible\{outline:2px solid #d8bb82!important/,'Selected-state styling retains the palette focus-visible outline.');
  f.configure(true,450,650);assert.equal(f.clicks,1);assert.match(f.head.children[0].textContent,/background:#202124!important/);f.configure(false);assert.equal(f.closes,1);
  const g=fixture();g.configure(true,400,700,{...palette,background:'red;}body{display:none'});assert.doesNotMatch(g.head.children[0].textContent,/body\{|display:none/);
 });
