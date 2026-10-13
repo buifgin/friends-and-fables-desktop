@@ -126,7 +126,8 @@ async function save(settings, window) {
     [data-ff-dice-favorites][data-ff-dice-favorites-inline] {padding:0;width:100%;box-sizing:border-box;}
     .p-4,[data-ff-dice-favorite-tiles] {padding:8px;}
     [data-ff-combat-body] {padding:12px;}
-    :root { --primary: 41 62% 65%; --primary-foreground: 0 0% 13%; --border: 0 0% 50%; }
+    :root { --primary: 41 62% 65%; --primary-foreground: 0 0% 13%; --border: 0 0% 50%; --foreground: 39 29% 93%; --background: 195 86% 3%; }
+    body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
     button,input,select,textarea {border:1px solid #777;color:#eee;background:#345;}
     button:disabled {opacity:.5;}
   </style><style id="panel-style"></style><div data-ff-combat-docked="" data-ff-combat-panel="" data-ff-combat-panel-mode="actions">
@@ -135,10 +136,12 @@ async function save(settings, window) {
     <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button><button id="generic-checkbox" role="checkbox" aria-checked="true">Generic</button><button id="generic-switch" role="switch" aria-checked="true">Generic switch</button><button id="menu-button" aria-haspopup="menu">⋯</button></form>
     <div id="weapon-card" class="relative group rounded-lg border bg-card p-4">Weapon</div><div id="spell-card" class="relative group rounded-lg border bg-card p-4">Spell</div>
     <label id="target-card" class="flex items-center space-x-3 rounded border p-4 clickable"><button id="target-checkbox" role="checkbox" aria-checked="true">Checked</button></label>
-    <span id="primary-probe" style="color:hsl(var(--primary, 41 62% 65%))"></span><span id="primary-foreground-probe" style="color:hsl(var(--primary-foreground, 0 0% 13%))"></span>
+    <span id="primary-probe" style="color:hsl(var(--primary, 41 62% 65%))"></span><span id="primary-foreground-probe" style="color:hsl(var(--primary-foreground, 0 0% 13%))"></span><span id="foreground-probe" style="color:hsl(var(--foreground, 0 0% 96%))"></span>
   </div><main><div data-ff-combat-chat><div id="attack-message-field" class="tiptap" contenteditable="true">draft stays editable</div></div></main><button id="outside">Outside</button><input id="outside-field" value="keep">`));
   await styleWindow.webContents.executeJavaScript("document.documentElement.setAttribute('data-ff-combat-open','true')");
   const styleSnapshot = () => styleWindow.webContents.executeJavaScript(`({
+    themeForeground:getComputedStyle(document.getElementById('foreground-probe')).color,
+    pageBackground:getComputedStyle(document.body).backgroundColor,
     buttons:['standard-button','favorite-button','action-button','menu-button','outside'].map(id=>{
       const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderColor,s.opacity,n.disabled];}),
     nativeControls:['target-checkbox','generic-checkbox','generic-switch'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderTopColor,s.borderTopWidth];}),
@@ -155,6 +158,18 @@ async function save(settings, window) {
     getComputedStyle(document.getElementById('primary-probe')).color,
     getComputedStyle(document.getElementById('primary-foreground-probe')).color
   ]`);
+  const contrastRatio = (foreground, background, baseBackground, alpha = 1) => {
+    const rgb = value => value.match(/[\d.]+/g).slice(0, 3).map(Number);
+    const linear = channel => {
+      const value = channel / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    const [fr, fg, fb] = rgb(foreground).map(linear);
+    const [br, bg, bb] = rgb(background).map((channel, index) => channel * alpha + rgb(baseBackground)[index] * (1 - alpha)).map(linear);
+    const luminance = (r, g, b) => 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    const [light, dark] = [luminance(fr, fg, fb), luminance(br, bg, bb)].sort((a, b) => b - a);
+    return (light + 0.05) / (dark + 0.05);
+  };
   assert.deepEqual(nativePanelStyle.nativeControls[0],[targetPalette[0],targetPalette[1],targetPalette[0],'2px'],'The concrete native target checkbox uses the configured gold checked fill and border.');
   await setPanelCss(customizedPanel);
   const customPanelStyle = await styleSnapshot();
@@ -174,7 +189,11 @@ async function save(settings, window) {
     const attack=await styleSnapshot();
     const expected=`rgba(18, 52, 86, ${alpha})`;
     for(const index of [0,1,2,3]) assert.equal(attack.attackSurfaces[index][0],expected,`Weapon, spell, target and editable message backgrounds share ${alpha} opacity.`);
-    for(const index of [0,1,2,3]) assert.equal(attack.attackSurfaces[index][1],'rgb(238, 238, 238)','Foreground remains readable at every background opacity.');
+    for(const index of [0,1,2,3]) {
+      assert.equal(attack.attackSurfaces[index][1],attack.themeForeground,'Attack surfaces use the fixture theme foreground token at every background opacity.');
+      assert(contrastRatio(attack.attackSurfaces[index][1], 'rgb(18, 52, 86)', attack.pageBackground, alpha) >= 4.5,
+        `Attack surface text retains WCAG AA contrast at background opacity ${alpha}.`);
+    }
     assert.equal(attack.targetChecked,'true','Selected target state remains checked at every background opacity.');
     assert.equal(attack.nativeControls[0][0],targetPalette[0],'Selected target checkbox fill remains readable above the customized tile background.');
     assert.equal(attack.attackSurfaces[2][2],'rgb(18, 52, 86)','Target tile border remains visible at every background opacity.');
