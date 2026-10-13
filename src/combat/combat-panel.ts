@@ -18,6 +18,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     button.innerHTML = name === 'skills'
       ? '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" focusable="false"><rect x="3" y="3" width="18" height="18" rx="4"/><circle cx="8" cy="8" r="1"/><circle cx="16" cy="16" r="1"/><circle cx="12" cy="12" r="1"/></svg>'
       : '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" x2="9" y1="14" y2="18"/><line x1="7" x2="4" y1="17" y2="20"/><line x1="3" x2="5" y1="19" y2="21"/></svg>';
+    const label = document.createElement('span'); label.setAttribute('data-ff-combat-label', ''); label.setAttribute('aria-hidden', 'true'); label.className = 'font-header'; button.append(label);
     button.addEventListener('click', () => {
       if (button.disabled || otherLayer() || settingsClosing?.isConnected) return;
       settingsSuppressed = false;
@@ -60,10 +61,13 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }
     railWritten.clear();
   }
-  function findNativeRail(): { aside: HTMLElement; group: HTMLElement; settings: HTMLButtonElement } | null {
+  function findNativeRail(): { aside: HTMLElement; group: HTMLElement; settings: HTMLElement } | null {
     for (const group of document.querySelectorAll<HTMLElement>('aside > div')) {
-      if (!['flex', 'flex-col', 'gap-4', 'items-center', 'relative', 'z-10'].every(token => group.classList.contains(token))) continue;
-      const settings = Array.from(group.children).find((node): node is HTMLButtonElement => node instanceof HTMLButtonElement && !!node.querySelector('svg.lucide-settings'));
+      if (!['flex', 'flex-col', 'relative', 'z-10'].every(token => group.classList.contains(token))) continue;
+      const rows = Array.from(group.children);
+      const expandedRows = rows.filter(node => node instanceof HTMLElement && node.matches('.font-body.group.flex.flex-row') && !!node.querySelector(':scope > .font-header'));
+      const settings = rows.find((node): node is HTMLElement => node instanceof HTMLElement && (node instanceof HTMLButtonElement && !!node.querySelector('svg.lucide-settings')
+        || expandedRows.length >= 3 && expandedRows.includes(node) && /^(Settings|Настройки)$/.test(node.textContent?.trim() ?? '')));
       const aside = group.parentElement;
       if (!settings || !(aside instanceof HTMLElement)) continue;
       const box = aside.getBoundingClientRect();
@@ -93,8 +97,9 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (controls.parentElement !== found.group || controls.nextElementSibling !== found.settings) found.group.insertBefore(controls, found.settings);
     const bottomGroup = Array.from(found.aside.children).find(node => node !== found.group && node instanceof HTMLElement && node.classList.contains('relative') && node.classList.contains('z-10'));
     const available = Math.max(0, found.aside.clientHeight - (bottomGroup?.getBoundingClientRect().height ?? 40) - 24);
-    const normalGapHeight = found.group.scrollHeight + (found.group.hasAttribute('data-ff-combat-controls-compact') ? found.group.children.length * 8 : 0);
-    setRailAttribute('data-ff-combat-controls-compact', normalGapHeight > available ? '' : null);
+    const expanded = found.aside.getBoundingClientRect().width > 120;
+    const normalGapHeight = found.group.scrollHeight + (!expanded && found.group.hasAttribute('data-ff-combat-controls-compact') ? found.group.children.length * 8 : 0);
+    setRailAttribute('data-ff-combat-controls-compact', !expanded && normalGapHeight > available ? '' : null);
     const box = found.aside.getBoundingClientRect();
     setRailAttribute('data-ff-combat-controls-expanded', box.width > 120 ? '' : null);
     const groupBox = found.group.getBoundingClientRect();
@@ -238,6 +243,8 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   function labels(): void {
     for (const [button, label] of [[skillsTab, language === 'ru' ? 'Кости' : 'Dice'], [actionsTab, language === 'ru' ? 'Действия боя' : 'Combat actions']] as const) {
       button.setAttribute('aria-label', label); button.title = label;
+      const caption = button.querySelector('[data-ff-combat-label]');
+      if (caption && caption.textContent !== label) caption.textContent = label;
     }
   }
   function updateControls(): void {

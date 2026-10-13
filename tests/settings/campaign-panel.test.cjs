@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 const { configureNativeCampaignPanel } = require('../../dist/settings/campaign-panel');
-function fixture({ unrelated = false, wrongIdentity = false } = {}) {
+function fixture({ unrelated = false, wrongIdentity = false, expandedRail = false } = {}) {
   class Style {
     constructor() { this.values = new Map(); }
     getPropertyValue(k) { return this.values.get(k)?.[0] ?? ''; }
@@ -23,24 +23,26 @@ function fixture({ unrelated = false, wrongIdentity = false } = {}) {
     contains(node) { return node === this || this.children.some(c => c.contains(node)); }
     append(node) { node.parentElement = this; this.children.push(node); }
     remove() { this.isConnected = false; this.parentElement.children = this.parentElement.children.filter(n => n !== this); }
-    querySelector(q) { return q.includes('lucide-x') ? this.close ?? null : null; }
+    querySelector(q) { return q.includes('lucide-x') ? this.close ?? null : q.includes('overflow-y-auto') ? this.scroller ?? null : q.includes('.font-header') ? this.caption ?? null : null; }
     closest() { return workspace; }
     matches() { return this === overlay; }
   }
   const body = new Element(), head = new Element(), background = new Element(), workspace = new Element(), editor = new Element(), gear = new Element(), overlay = new Element();
   body.append(background); background.append(workspace); workspace.append(editor);
+  if (expandedRail) { gear.caption = new Element(); gear.textContent = 'Настройки'; }
   const dialogs = [], listeners = new Map(), microtasks = [];
   let clicks = 0, closes = 0, observe; const opened=[];
   const dialog = new Element(); dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true'); dialog.setAttribute('data-state','open');
   dialog.__reactFiber$fixture = { type:'div', memoizedProps: { role:'dialog' }, child: { type: wrongIdentity ? function Other(){} : function NativeCampaign(){return 'Campaign Settings';}, memoizedProps:{campaignId:'01a0d854-78d5-7064-ae41-f63d561c8e01',isHost:true} } };
   const close = new Element(); dialog.close = close; dialog.append(close);
+  const scroller = new Element(); dialog.scroller = scroller; dialog.append(scroller);
   close.click = () => { closes++; dialog.remove(); dialogs.splice(dialogs.indexOf(dialog),1); if (!dialogs.length) { body.style.removeProperty('pointer-events'); body.style.removeProperty('overflow'); background.removeAttribute('aria-hidden'); } };
   gear.click = () => { assert.equal(gear.getAttribute('data-ff-native-campaign-launch'),'true'); clicks++; body.append(overlay); body.append(dialog); dialog.previousElementSibling = overlay; dialogs.push(dialog); body.style.setProperty('pointer-events','none'); body.style.setProperty('overflow','hidden'); background.setAttribute('aria-hidden','true'); };
   if (unrelated) { const other = new Element(); other.setAttribute('role','dialog'); body.append(other); dialogs.push(other); }
-  const document = {body,head,createElement:()=>new Element(),querySelector:q=>q.startsWith('aside') ? gear : editor, querySelectorAll:()=>dialogs.filter(d=>d.isConnected),addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
+  const document = {body,head,createElement:()=>new Element(),querySelector:q=>q.startsWith('aside') ? expandedRail ? null : gear : editor, querySelectorAll:q=>q.startsWith('aside') && expandedRail ? [gear] : dialogs.filter(d=>d.isConnected),addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
   const location = {origin:'https://play.fables.gg',pathname:'/01a0d854-78d5-7064-ae41-f63d561c8e01/play',search:''};
   const window = {open:(...args)=>opened.push(args),setInterval:()=>1,addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
-  const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block'}),queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
+  const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,HTMLButtonElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block'}),queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
   const configure = (show,w=400,h=700,palette)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${w},${h},${JSON.stringify(palette)})`,context);
   const flush = ()=>{while(microtasks.length) microtasks.shift()();};
   return {configure,flush,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,gear,get clicks(){return clicks;},get closes(){return closes;}};
@@ -80,11 +82,11 @@ test('desktop palette overrides owned Campaign styling and survives layout updat
  f.configure(true,400,700,palette);assert.match(f.head.children[0].textContent,/background:#202124!important/);assert.match(f.head.children[0].textContent,/font:14px system-ui/);
  const css=f.head.children[0].textContent;
  assert.match(css,/border:1px solid!important;border-radius:8px!important;overflow:hidden!important/,'The dock keeps a thin rounded desktop frame without scrolling the outer dialog.');
- assert.match(css,/div\.flex-1\.items-center\.overflow-y-auto\{overflow:auto!important;scrollbar-width:thin!important/,'Only the captured native content scroller owns overflow and a thin scrollbar.');
+ assert.match(css,/div\.flex-1\.items-center\.overflow-y-auto\{overflow:auto!important;[^}]*scrollbar-width:thin!important/,'Only the captured native content scroller owns overflow and a thin scrollbar.');
  assert.match(css,/h3\.font-header\{font-size:30px!important/,'The first campaign card title receives the desktop heading size.');
  assert.match(css,/div\.mx-auto > div:first-child > div > h3\.font-header::before\{content:"FRIENDS & FABLES DESKTOP";display:block;[^}]*font-size:10px;[^}]*letter-spacing:\.15em/,'The exact desktop eyebrow label is limited to the captured first card heading.');
  assert.doesNotMatch(css,/\[data-ff-desktop-detail-card="true"\]/,'Heading matching follows the captured first-card structure without requiring the optional appearance marker.');
- assert.match(css,/div\.p-6\.h-full\{padding:0!important\}/,'Captured wrapper padding is reset before applying desktop main spacing.');
+ assert.match(css,/div\.p-6\.h-full\{padding:0!important;/,'Captured wrapper padding is reset before applying desktop main spacing.');
  assert.match(css,/div\.mx-auto\{padding:28px 32px!important\}/,'Native content receives the desktop editor main padding.');
  assert.doesNotMatch(css,/\[data-ff-campaign-panel\] h3\s*\{/,'Ordinary campaign section headings keep their native size.');
  assert.match(css,/button:has\(> \.lucide-x\)[^}]*width:34px!important[^}]*height:34px!important[^}]*border-radius:50%!important/,'Only the direct native close button receives the circular 34px target.');
@@ -142,4 +144,25 @@ test('route departure disposes a suspended native Campaign exactly once',()=>{
  const f=fixture();f.configure(true);f.configure('suspend');f.location.pathname='/settings';f.scan();
  assert.equal(f.closes,1);assert.equal(f.head.children.length,0);assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),null);
  f.configure(false);assert.equal(f.closes,1);
+});
+
+
+test('Campaign flex chain bounds its sole content scroller and removes nested first-card framing',()=>{
+ const f=fixture();f.configure(true);const css=f.head.children[0].textContent;
+ assert.match(css,/div\.overflow-y-auto\.h-full\{[^}]*min-height:0!important[^}]*flex:1 1 0%!important/,'Outer native flex child must shrink within the fixed dock.');
+ assert.match(css,/div\.p-6\.h-full\{[^}]*height:100%!important[^}]*min-height:0!important[^}]*display:flex!important/,'Padding wrapper constrains the content instead of growing with it.');
+ assert.match(css,/div\.flex-1\.items-center\.overflow-y-auto\{[^}]*min-height:0!important[^}]*overflow-y:auto!important/,'The only intended content scroller has a bounded flex height.');
+ assert.match(css,/div\.mx-auto > div:first-child\{[^}]*padding:0!important[^}]*border:0!important/,'The desktop content gutter replaces the native double card frame.');
+ assert.match(css,/\[data-ff-campaign-panel\] :is\(label,h3\.font-medium\)\{font-size:13px!important/,'Ordinary labels use the same 13px desktop settings typography.');
+});
+
+
+test('Campaign content is keyboard focusable while mounted and restores native tabindex on disposal',()=>{
+ const f=fixture();f.configure(true);assert.equal(f.dialog.scroller.getAttribute('tabindex'),'0');f.configure('suspend');f.configure(true);assert.equal(f.dialog.scroller.getAttribute('tabindex'),'0');f.configure(false);assert.equal(f.dialog.scroller.getAttribute('tabindex'),null);
+ const g=fixture();g.dialog.scroller.setAttribute('tabindex','-1');g.configure(true);assert.equal(g.dialog.scroller.getAttribute('tabindex'),'-1');g.configure(false);assert.equal(g.dialog.scroller.getAttribute('tabindex'),'-1','Existing native focus ownership is retained.');
+});
+
+
+test('Campaign launches through the expanded native labelled Settings row without replacing it',()=>{
+ const f=fixture({expandedRail:true}),nativeRow=f.gear;f.configure(true);assert.equal(f.clicks,1);assert.equal(f.gear,nativeRow);f.configure('suspend');f.configure(true);assert.equal(f.clicks,1);f.configure(false);assert.equal(f.closes,1);assert.equal(f.gear,nativeRow);
 });
