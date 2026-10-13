@@ -36,7 +36,7 @@ export const SHARED_INTERFACE_GLOSSARY: Record<string, string> = {
   'hp healed':'ОЗ восстановлено', 'hp recovered':'ОЗ восстановлено',
   'cantrip used - no spell slot consumed':'Использован заговор — ячейка заклинания не потрачена',
   'spell slot consumed':'Ячейка заклинания использована', 'spell slot restored':'Ячейка заклинания восстановлена',
-  'attack roll required':'Требуется бросок атаки', 'to hit':'Бонус атаки', 'actions':'Действия',
+  'attack roll required':'Требуется бросок атаки', 'to hit':'Бонус атаки', 'actions':'Действия', 'submit actions':'Выполнить действия',
   'action name':'Название действия', 'action description':'Описание действия',
   'weapon':'Оружие', 'weapons':'Оружие', 'weapon properties':'Свойства оружия', 'weapon traits':'Особенности оружия',
   'armor properties':'Свойства доспехов', 'two handed':'Двуручное', 'two-handed damage':'Урон двумя руками',
