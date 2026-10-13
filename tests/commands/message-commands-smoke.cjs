@@ -60,7 +60,7 @@ const html=`<!doctype html><html><meta charset="utf-8"><body><div class="grid re
  assert.match(await js('sent[2]'),/Привет, Mira/);
  await draft('<p>/me </p><p>/gm Complete note.</p>');await enter();await sleep(80);assert.equal(await sent(),3,'An empty command on any line blocks the entire submission.');
  await until("document.querySelector('[data-ff-desktop-command-controls] [role=status]').textContent==='Add text after the command.'");
- manager.setLocale('ru');await draft('<p>/me </p>');await enter();await until("document.querySelector('[data-ff-desktop-command-controls] [role=status]').textContent==='Добавьте текст после команды.'");assert.equal(await sent(),3,'RU validation rejects an empty command without sending.');assert.equal(await js("editor.getHTML().trim()"),'<p></p>','Invalid RU command content is cleaned while the native draft is not submitted.');
+ manager.setLocale('ru');await draft('<p>/me </p>');await enter();await until("document.querySelector('[data-ff-desktop-command-controls] [role=status]').textContent==='Добавьте текст после команды.'");assert.equal(await sent(),3,'RU validation rejects an empty command without sending.');assert.equal(await js("editor.getHTML().trim()"),'<p>/me</p>','The cleaned invalid RU command keeps its native prefix draft without submitting.');
  manager.setLocale('en');await until("document.querySelector('[data-ff-desktop-command-controls] [role=status]').textContent==='Add text after the command.'");
  await draft('<p>Ordinary №1.</p><p>/me First action.<br>/gm Later note.</p>');await enter();await sendCount(4);
  assert.equal(await js('sent[3]'),'<p>Ordinary #1.</p><p><em>First action.</em><br>#Later note.#</p>','Every command line and number sign is formatted before a single Enter submits.');
