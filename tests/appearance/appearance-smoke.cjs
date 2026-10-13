@@ -155,6 +155,7 @@ async function save(settings, window) {
     targetChecked:document.getElementById('target-checkbox').getAttribute('aria-checked'), messageName:document.getElementById('attack-message-field').getAttribute('name')
   })`);
   const setPanelCss = settings => styleWindow.webContents.executeJavaScript(`document.getElementById('panel-style').textContent=${JSON.stringify(combatPanelAppearanceCss(settings))}`);
+  const rawPanelStyle = await styleSnapshot();
   await setPanelCss(DEFAULT_APPEARANCE.combatPanel);
   const nativePanelStyle = await styleSnapshot();
   const targetPalette = await styleWindow.webContents.executeJavaScript(`[
@@ -217,7 +218,7 @@ async function save(settings, window) {
   styleWindow.hide();
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','skills')");
   const nonAttack=await styleWindow.webContents.executeJavaScript("['weapon-card','spell-card','target-card','attack-message-field','summary-card'].map(id=>getComputedStyle(document.getElementById(id)).backgroundColor)");
-  assert.deepEqual(nonAttack,['rgba(0, 0, 0, 0)','rgba(0, 0, 0, 0)','rgba(0, 0, 0, 0)',nativePanelStyle.attackSurfaces[3][0],'rgba(0, 0, 0, 0)'],'Attack card/target/message backgrounds do not leak into Dice mode.');
+  assert.deepEqual(nonAttack,rawPanelStyle.attackSurfaces.map(surface=>surface[0]),'Attack card/target/message backgrounds do not leak into Skills mode.');
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','actions')");
   await setPanelCss(customizedPanel);
   assert.deepEqual(customPanelStyle.gaps,['24px','24px']);
