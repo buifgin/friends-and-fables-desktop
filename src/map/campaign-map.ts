@@ -3,6 +3,7 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
   type Size = { height?: number; width?: number; expandedHeight?: number; left?: number; top?: number };
   type Entry = { root: HTMLElement; controls: HTMLElement; expand: HTMLButtonElement; reset: HTMLButtonElement; move: HTMLButtonElement; kind: 'battle' | 'world';
     handle: HTMLElement; styles: Map<HTMLElement, Map<string, [string, string]>>; size: Size; campaign: string; expanded: boolean; popover: boolean; left?: number; top?: number;
+    native?: { stage: HTMLElement; canvas: HTMLCanvasElement; resize: ResizeObserver; mutations: MutationObserver };
     drag?: { x: number; y: number; width: number; height: number }; moving?: { x: number; y: number; left: number; top: number } };
   const key = '__friendsFablesDesktopMap';
   const host = window as unknown as Record<string, { dispose(): void; setLocale(value: 'en' | 'ru'): void } | undefined>;
@@ -44,6 +45,15 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
       if (value) target.style.setProperty(property, value, priority); else target.style.removeProperty(property);
     }
     entry.styles.clear();
+    // A height-only change does not trigger the native width-filtered observer.
+    // Restore its normal square bitmap as well as its original inline CSS.
+    if (entry.native?.canvas.isConnected) {
+      const width = Math.floor(entry.root.clientWidth * (window.devicePixelRatio || 1));
+      if (width > 0) {
+        if (entry.native.canvas.width !== width) entry.native.canvas.width = width;
+        if (entry.native.canvas.height !== width) entry.native.canvas.height = width;
+      }
+    }
   }
   function labels(entry: Entry): void {
     entry.expand.textContent = entry.expanded ? text('Close map', 'Закрыть карту') : text('Expand map', 'Развернуть карту');
@@ -53,6 +63,41 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
     entry.move.title=text('Drag to move. Arrow keys move the window; Home centers it.','Перетаскивайте для перемещения. Стрелки перемещают окно, Home возвращает в центр.');
     entry.handle.setAttribute('aria-label', entry.expanded ? text('Resize expanded map', 'Изменить размер развёрнутой карты') : text('Resize map height', 'Изменить высоту карты'));
     entry.handle.title = text('Drag to resize. Use arrow keys when focused.', 'Перетаскивайте для изменения размера. При фокусе используйте стрелки.');
+  }
+  function syncNativeCanvas(entry: Entry): void {
+    const native = entry.native;
+    if (!native || !native.canvas.isConnected || !entry.root.contains(native.canvas) || (!entry.expanded && entry.size.height === undefined)) return;
+    // The native renderer redraws each frame in CSS pixels with a DPR transform.
+    // Its width-only observer writes a square canvas. Keep the bitmap matched to
+    // our rectangular viewport; CSS stretching would break its pointer geometry.
+    for (const [property, value] of Object.entries({ position: 'absolute', inset: '0px', width: '100%', height: '100%' })) set(entry, property, value, native.stage);
+    // Retain the website's latest square inline dimensions when its observer
+    // writes them, so disabling after a sidebar resize restores current CSS.
+    const saved = entry.styles.get(native.canvas);
+    for (const property of ['width', 'height']) {
+      if (saved?.has(property) && native.canvas.style.getPropertyPriority(property) !== 'important') {
+        saved.set(property, [native.canvas.style.getPropertyValue(property), native.canvas.style.getPropertyPriority(property)]);
+      }
+    }
+    for (const [property, value] of Object.entries({ display: 'block', 'box-sizing': 'border-box', width: '100%', height: '100%' })) set(entry, property, value, native.canvas);
+    const toolbar = native.stage.querySelector<HTMLElement>(':scope > .absolute.bottom-0.right-0');
+    // Leave the native toolbar reachable above our resize grip.
+    if (toolbar) set(entry, 'bottom', entry.expanded ? '24px' : '10px', toolbar);
+    const ratio = window.devicePixelRatio || 1;
+    const width = Math.floor(native.canvas.clientWidth * ratio), height = Math.floor(native.canvas.clientHeight * ratio);
+    if (width > 0 && height > 0) {
+      if (native.canvas.width !== width) native.canvas.width = width;
+      if (native.canvas.height !== height) native.canvas.height = height;
+    }
+  }
+  function attachNativeCanvas(entry: Entry, canvas: HTMLCanvasElement): void {
+    entry.native?.resize.disconnect(); entry.native?.mutations.disconnect();
+    const resize = new ResizeObserver(() => syncNativeCanvas(entry));
+    const mutations = new MutationObserver(() => syncNativeCanvas(entry));
+    entry.native = { canvas, stage: canvas.parentElement!, resize, mutations };
+    resize.observe(entry.root); resize.observe(canvas);
+    mutations.observe(canvas, { attributes: true, attributeFilter: ['style', 'width', 'height'] });
+    syncNativeCanvas(entry);
   }
   function layout(entry: Entry): void {
     if (entry.kind === 'world' && (entry.expanded || entry.size.height !== undefined)) {
@@ -86,6 +131,7 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
       entry.handle.setAttribute('aria-valuenow', String(Math.round(entry.root.getBoundingClientRect().height)));
       entry.handle.removeAttribute('aria-valuetext');
     }
+    syncNativeCanvas(entry);
     labels(entry);
   }
   function close(entry: Entry): void {
@@ -119,10 +165,11 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
     layout(entry);
   }
   function remove(entry: Entry): void {
+    entry.native?.resize.disconnect(); entry.native?.mutations.disconnect();
     close(entry); entry.controls.remove(); entry.handle.remove(); restoreStyles(entry);
     entries.delete(entry.root);
   }
-  function add(root: HTMLElement, campaign: string, kind: 'battle' | 'world'): void {
+  function add(root: HTMLElement, campaign: string, kind: 'battle' | 'world', canvas?: HTMLCanvasElement): void {
     const controls = document.createElement('div'); controls.setAttribute('data-ff-desktop-map-controls', 'true'); controls.setAttribute('translate', 'no');
     controls.style.cssText = 'position:absolute;left:8px;top:8px;z-index:30;display:flex;gap:6px;max-width:calc(100% - 52px);flex-wrap:wrap';
     const expand = document.createElement('button'), reset = document.createElement('button');
@@ -165,15 +212,28 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
         saveSize(entry);
       }
     });
+    if (canvas) attachNativeCanvas(entry, canvas);
     layout(entry);
   }
   function scan(): void {
     frame = 0;
     const campaign = /\/([^/]+)\/play\/?$/.exec(location.pathname)?.[1];
     const roots = new Map<HTMLElement,'battle'|'world'>();
+    const nativeCanvases = new Map<HTMLElement, HTMLCanvasElement>();
     if (campaign) {
-      for (const canvas of document.querySelectorAll('canvas.absolute.inset-0')) {
+      for (const canvas of document.querySelectorAll<HTMLCanvasElement>('canvas.absolute.inset-0, canvas.touch-none.border-line.rounded-md.border-2')) {
         if (canvas.closest('[role="dialog"],form')) continue;
+        // Current battle maps are a normal-flow canvas in a relative stage,
+        // with a native icon toolbar. Require the entire contract rather than
+        // treating arbitrary touch canvases (including map editors) as maps.
+        const stage = canvas.parentElement, nativeRoot = stage?.parentElement;
+        const toolbar = stage?.querySelector<HTMLElement>(':scope > .absolute.bottom-0.right-0');
+        const current = canvas.matches('.touch-none.border-line.rounded-md.border-2') && !canvas.classList.contains('absolute') &&
+          stage?.matches('.relative') && nativeRoot?.matches('.w-full.relative') &&
+          toolbar?.querySelector('button > .lucide-zoom-in') && toolbar.querySelector('button > .lucide-zoom-out') &&
+          toolbar.querySelector('button > .lucide-grid3x3, button > .lucide-grid-3x3, button > .lucide-grid') && toolbar.querySelector('button > .lucide-ruler');
+        if (current && nativeRoot) { roots.set(nativeRoot, 'battle'); nativeCanvases.set(nativeRoot, canvas); continue; }
+        if (!canvas.matches('.absolute.inset-0')) continue;
         const root = canvas.classList.contains('touch-none') ? canvas.closest<HTMLElement>('[class~="min-h-[300px]"]') : null;
         if (root) roots.set(root,'battle');
         else {
@@ -186,12 +246,14 @@ export function configureCampaignMap(enabled: boolean, locale: 'en' | 'ru'): voi
     for (const entry of entries.values()) {
       if (!roots.has(entry.root) || entry.campaign !== campaign) remove(entry);
       else {
+        const canvas = nativeCanvases.get(entry.root);
+        if (canvas && canvas !== entry.native?.canvas) attachNativeCanvas(entry, canvas);
         // React can replace the canvas children while keeping the same map box.
         if (!entry.root.contains(entry.controls)) entry.root.append(entry.controls);
         if (!entry.root.contains(entry.handle)) entry.root.append(entry.handle);
       }
     }
-    if (campaign) for (const [root,kind] of roots) if (!entries.has(root) && !root.hasAttribute('popover')) add(root, campaign,kind);
+    if (campaign) for (const [root,kind] of roots) if (!entries.has(root) && !root.hasAttribute('popover')) add(root, campaign,kind,nativeCanvases.get(root));
   }
   function schedule(): void { if (!frame) frame = requestAnimationFrame(scan); }
   function onResize(): void { for (const entry of entries.values()) layout(entry); }
