@@ -93,8 +93,10 @@ async function save(settings, window) {
   for (const alpha of [0, .5, 1]) {
     const surfacesCss = combatPanelAppearanceCss({ ...DEFAULT_APPEARANCE.combatPanel, enabled:true, cardBackground:'#123456', cardBackgroundOpacity:alpha });
     assert(surfacesCss.includes(`rgba(18, 52, 86, ${alpha})`), `Card/target/message background opacity ${alpha} is applied to the shared surface rule.`);
+    assert(surfacesCss.includes('.relative.rounded-lg.border.bg-card.shadow-sm.w-full'), 'Shared Attack colors match the native weapon/spell summary card shape without requiring a group class.');
     assert(surfacesCss.includes('label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"])'), 'The shared card background covers target tiles.');
-    assert(surfacesCss.includes('[data-ff-combat-chat] :is(.tiptap, [contenteditable="true"])'), 'The shared Attack-only selector covers the native Tiptap message field.');
+    assert(surfacesCss.includes('[data-ff-combat-chat] textarea[name="message"]'), 'The shared Attack-only selector covers the captured native message textarea.');
+    assert(!surfacesCss.includes('.tiptap'), 'Attack message styling does not assume the unrelated chat composer is the message field.');
     assert(surfacesCss.includes('[data-ff-combat-panel-mode="actions"]'), 'The shared background is scoped to Attack mode.');
   }
   assert.equal(DEFAULT_APPEARANCE.combatPanel.buttonBackgroundOpacity, 1);
@@ -130,14 +132,15 @@ async function save(settings, window) {
     body { background: hsl(var(--background)); color: hsl(var(--foreground)); }
     button,input,select,textarea {border:1px solid #777;color:#eee;background:#345;}
     button:disabled {opacity:.5;}
+    [data-ff-combat-chat] textarea[name="message"] {background:hsl(var(--background));color:hsl(var(--foreground));}
   </style><style id="panel-style"></style><div data-ff-combat-docked="" data-ff-combat-panel="" data-ff-combat-panel-mode="actions">
     <div data-ff-combat-body><div class="p-6"><div class="flex-1 w-full overflow-y-auto p-4 space-y-6"><div id="standard" class="grid gap-4"><button id="standard-button" class="group"><div><svg class="lucide"></svg></div><span>Standard</span></button></div></div></div></div>
     <div data-ff-dice-favorites><div data-ff-dice-favorite-tiles><div data-ff-dice-favorite-group-tiles class="grid"><button id="favorite-button" class="group"><div><svg class="lucide"></svg></div><span>Favorite</span></button></div></div></div>
     <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button><button id="generic-checkbox" role="checkbox" aria-checked="true">Generic</button><button id="generic-switch" role="switch" aria-checked="true">Generic switch</button><button id="menu-button" aria-haspopup="menu">⋯</button></form>
-    <div id="weapon-card" class="relative group rounded-lg border bg-card p-4">Weapon</div><div id="spell-card" class="relative group rounded-lg border bg-card p-4">Spell</div>
+    <div id="weapon-card" class="rounded-lg border bg-card shadow-sm w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white clickable relative @container">Weapon</div><div id="spell-card" class="rounded-lg border bg-card shadow-sm w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white clickable relative @container">Spell</div><div id="summary-card" aria-selected="true" class="rounded-lg border bg-card shadow-sm w-full bg-gradient-to-r from-gray-900 to-gray-800 text-white clickable relative @container">Selected summary</div>
     <label id="target-card" class="flex items-center space-x-3 rounded border p-4 clickable"><button id="target-checkbox" role="checkbox" aria-checked="true">Checked</button></label>
     <span id="primary-probe" style="color:hsl(var(--primary, 41 62% 65%))"></span><span id="primary-foreground-probe" style="color:hsl(var(--primary-foreground, 0 0% 13%))"></span><span id="foreground-probe" style="color:hsl(var(--foreground, 0 0% 96%))"></span>
-  </div><main><div data-ff-combat-chat><div id="attack-message-field" class="tiptap" contenteditable="true">draft stays editable</div></div></main><button id="outside">Outside</button><input id="outside-field" value="keep">`));
+  </div><main><div data-ff-combat-chat><textarea id="attack-message-field" name="message">draft stays editable</textarea></div></main><button id="outside">Outside</button><input id="outside-field" value="keep">`));
   await styleWindow.webContents.executeJavaScript("document.documentElement.setAttribute('data-ff-combat-open','true')");
   const styleSnapshot = () => styleWindow.webContents.executeJavaScript(`({
     themeForeground:getComputedStyle(document.getElementById('foreground-probe')).color,
@@ -148,8 +151,8 @@ async function save(settings, window) {
     gaps:[document.getElementById('standard'),document.querySelector('[data-ff-dice-favorite-group-tiles]')].map(n=>getComputedStyle(n).gap),
     padding:[document.querySelector('.p-6'),document.querySelector('[data-ff-dice-favorites]')].map(n=>getComputedStyle(n).padding),
     fields:['correction','outside-field'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [n.value,s.backgroundColor,s.color];}),
-    attackSurfaces:['weapon-card','spell-card','target-card','attack-message-field'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderTopColor,n.textContent];}),
-    targetChecked:document.getElementById('target-checkbox').getAttribute('aria-checked'), messageEditable:document.getElementById('attack-message-field').getAttribute('contenteditable')
+    attackSurfaces:['weapon-card','spell-card','target-card','attack-message-field','summary-card'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderTopColor,n.value??n.textContent];}),
+    targetChecked:document.getElementById('target-checkbox').getAttribute('aria-checked'), messageName:document.getElementById('attack-message-field').getAttribute('name')
   })`);
   const setPanelCss = settings => styleWindow.webContents.executeJavaScript(`document.getElementById('panel-style').textContent=${JSON.stringify(combatPanelAppearanceCss(settings))}`);
   await setPanelCss(DEFAULT_APPEARANCE.combatPanel);
@@ -188,8 +191,8 @@ async function save(settings, window) {
     await setPanelCss({...customizedPanel,cardBackground:'#123456',cardBackgroundOpacity:alpha});
     const attack=await styleSnapshot();
     const expected=`rgba(18, 52, 86, ${alpha})`;
-    for(const index of [0,1,2,3]) assert.equal(attack.attackSurfaces[index][0],expected,`Weapon, spell, target and editable message backgrounds share ${alpha} opacity.`);
-    for(const index of [0,1,2,3]) {
+    for(const index of [0,1,2,3,4]) assert.equal(attack.attackSurfaces[index][0],expected,`Weapon, spell, target, message and selected summary backgrounds share ${alpha} opacity.`);
+    for(const index of [0,1,2,3,4]) {
       assert.equal(attack.attackSurfaces[index][1],attack.themeForeground,'Attack surfaces use the fixture theme foreground token at every background opacity.');
       assert(contrastRatio(attack.attackSurfaces[index][1], 'rgb(18, 52, 86)', attack.pageBackground, alpha) >= 4.5,
         `Attack surface text retains WCAG AA contrast at background opacity ${alpha}.`);
@@ -197,15 +200,15 @@ async function save(settings, window) {
     assert.equal(attack.targetChecked,'true','Selected target state remains checked at every background opacity.');
     assert.equal(attack.nativeControls[0][0],targetPalette[0],'Selected target checkbox fill remains readable above the customized tile background.');
     assert.equal(attack.attackSurfaces[2][2],'rgb(18, 52, 86)','Target tile border remains visible at every background opacity.');
-    assert.equal(attack.messageEditable,'true','The native editable message field keeps its contenteditable ownership.');
-    assert.equal(attack.attackSurfaces[3][3],'draft stays editable','Changing background styling preserves the native message draft.');
+    assert.equal(attack.messageName,'message','The native message textarea keeps its name and form ownership.');
+    assert.equal(attack.attackSurfaces[3][3],'draft stays editable','Changing background styling preserves the native textarea draft value.');
   }
   await styleWindow.webContents.executeJavaScript("document.getElementById('attack-message-field').focus()");
   assert.deepEqual(await styleWindow.webContents.executeJavaScript("(()=>{const s=getComputedStyle(document.getElementById('attack-message-field'));return [document.activeElement.matches(':focus-visible'),s.outlineWidth,s.outlineStyle]})()"),[true,'2px','solid'],'The Attack message field keeps a visible keyboard focus outline.');
   await styleWindow.webContents.executeJavaScript("document.activeElement.blur()");
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','skills')");
-  const nonAttack=await styleWindow.webContents.executeJavaScript("['weapon-card','spell-card','target-card','attack-message-field'].map(id=>getComputedStyle(document.getElementById(id)).backgroundColor)");
-  assert.deepEqual(nonAttack,Array(4).fill('rgba(0, 0, 0, 0)'),'Attack surface backgrounds do not leak into Dice mode.');
+  const nonAttack=await styleWindow.webContents.executeJavaScript("['weapon-card','spell-card','target-card','attack-message-field','summary-card'].map(id=>getComputedStyle(document.getElementById(id)).backgroundColor)");
+  assert.deepEqual(nonAttack,['rgba(0, 0, 0, 0)','rgba(0, 0, 0, 0)','rgba(0, 0, 0, 0)',nativePanelStyle.attackSurfaces[3][0],'rgba(0, 0, 0, 0)'],'Attack card/target/message backgrounds do not leak into Dice mode.');
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','actions')");
   await setPanelCss(customizedPanel);
   assert.deepEqual(customPanelStyle.gaps,['24px','24px']);
