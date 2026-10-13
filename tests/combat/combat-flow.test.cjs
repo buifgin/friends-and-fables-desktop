@@ -10,6 +10,7 @@ function fixture(saved) {
     setAttribute(k, v) { this.attributes.set(k, v); }
     append(...nodes) { for (const node of nodes) { node.remove(); node.parentElement = this; this.children.push(node); } }
     remove() { if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(n => n !== this); this.parentElement = null; }
+    get childNodes() { return this.children; }
     contains(node) { return node === this || this.children.some(n => n.contains(node)); }
     closest() { return null; }
     querySelector(selector) { return this.children.find(n => n.tagName === selector) || null; }
@@ -75,6 +76,8 @@ test('preference reads do not scan DOM or React and duplicate config retains sta
 function flowFixture(options = {}) {
   const f = fixture({ automaticDamage: true, hideIntermediateFranz: !!options.hide, hideDamagePrompt: !!options.hidePrompt });
   const { Element, root, form, formFiber, context } = f;
+  let damageListener, damageResultState = {status:'idle',submittedAt:0};
+  const damageObserver={options:{mutationFn:function nativeSendRoll({rollResult,rollChoice,campaign,rollCharacter}){return {rollResult,rollChoice,campaign,rollCharacter}}},getCurrentResult(){return damageResultState},subscribe(fn){damageListener=fn;return()=>{damageListener=null}}};
   let listener, result = { status: 'idle', submittedAt: 0 }, calls = 0, passedChoice, unsubscribed = 0;
   const observer = { options: { mutationFn: function nativeGM({ lastEventId }) { return ['ENCOUNTER_GM_RESPONSE', 'GM_RESPONSE', lastEventId]; } }, getCurrentResult() { return result; }, subscribe(fn) { listener = fn; return () => { listener = null; unsubscribed++; }; } };
   const character = { id: 83026155 };
@@ -91,8 +94,8 @@ function flowFixture(options = {}) {
   button.isConnected = true; button.disabled = false; button.matches = () => false; button.getClientRects = () => [{}];
   const nativeCampaign = { id: 'campaign-a', active_encounter_id: 412456 };
   const rowFiber = { memoizedProps: { event: dmEvent, campaign: nativeCampaign }, return: root };
-  const t5 = { memoizedProps: { rollChoice: choice, campaignId: 'campaign-a', usersCharacter: character }, return: rowFiber };
-  const callback = function nativeQuickRoll(event) { event.stopPropagation(); const dice_expression = choice.dice_expression; passedChoice = { ...choice, dice_expression }; calls++; if (options.failure) throw Error('native unknown outcome'); if (options.reject) return Promise.reject(Error('native async unknown outcome')); };
+  const t5 = { memoizedProps: { rollChoice: choice, campaignId: 'campaign-a', usersCharacter: character }, memoizedState:{memoizedState:damageObserver}, return: rowFiber };
+  const callback = function nativeQuickRoll(event) { event.stopPropagation(); const dice_expression = choice.dice_expression; passedChoice = { ...choice, dice_expression }; calls++; if(options.voidMutation){damageResultState={status:'pending',submittedAt:Date.now()+1,variables:{rollChoice:choice,campaign:nativeCampaign,rollCharacter:character,rollResult:{}}};damageListener?.(damageResultState);} if (options.failure) throw Error('native unknown outcome'); if (options.reject) return Promise.reject(Error('native async unknown outcome')); };
   const buttonFiber = { memoizedProps: { onClick: callback }, return: t5 }; t5.child = buttonFiber; rowFiber.child = t5; button.__reactFiber$fixture = buttonFiber;
   dmRow.__reactFiber$fixture = rowFiber; attackRow.__reactFiber$fixture = { memoizedProps: { event: attackEvent, campaign: nativeCampaign }, return: root };
   owner.sibling = attackRow.__reactFiber$fixture; attackRow.__reactFiber$fixture.sibling = rowFiber;
@@ -120,11 +123,16 @@ function flowFixture(options = {}) {
   }
   card.querySelectorAll = () => [];
   dmRow.querySelectorAll = selector => selector === 'button' ? [button] : selector === '[id^="event-message-card-"]' ? [card] : [];
-  context.document.getElementById = value => value === dmRow.id ? dmRow : null;
+  const attackCard = new Element(), attackPanel = new Element();attackCard.id='event-message-card-'+attackEvent.id;attackRow.append(attackCard);attackCard.append(attackPanel);
+  const attackFiber=attackRow.__reactFiber$fixture,attackCardOwner={type:function NativeNarrativeCard(){return 'event-message-card-'},memoizedProps:{eventId:attackEvent.id},return:attackFiber},attackCardHost={tag:5,type:'div',stateNode:attackCard,memoizedProps:{},return:attackCardOwner},attackPanelHost={tag:5,type:'div',stateNode:attackPanel,memoizedProps:{className:'relative rounded-2xl border-2 overflow-hidden'},return:attackCardHost};
+  attackFiber.child=attackCardOwner;attackCardOwner.child=attackCardHost;attackCardHost.child=attackPanelHost;attackCard.__reactFiber$fixture=attackCardHost;attackPanel.__reactFiber$fixture=attackPanelHost;attackCard.querySelectorAll=()=>[attackPanel];
+  context.document.getElementById = value => value === dmRow.id ? dmRow : value===attackCard.id?attackCard: rows.find(row=>row.resultCard?.id===value)?.resultCard ?? null;
   const rows = [attackRow, dmRow]; context.document.querySelectorAll = () => rows;
-  return { ...f, observer, owner, character, attack, choice, dmEvent, attackEvent, button, t5, rows, card, prompt, damageResult, finalReply, nativeCampaign, avatar, middle, actions, shell, rowHost, result: () => result, calls: () => calls, passedChoice: () => passedChoice, unsubscribed: () => unsubscribed,
+  return { ...f, observer, owner, character, attack, choice, dmEvent, attackEvent, button, t5, rows, card, attackCard, attackPanel, prompt, damageResult, finalReply, nativeCampaign, avatar, middle, actions, shell, rowHost, result: () => result, calls: () => calls, passedChoice: () => passedChoice, unsubscribed: () => unsubscribed,
     submit(trusted = true) { f.documentListeners.submit({ isTrusted: trusted, target: form }); },
     pending(extra = {}) { result = { status: 'pending', submittedAt: Date.now() + 1, variables: { requestId: request, lastEventId: attackEvent.id, isMultiplayer: true }, ...extra }; listener?.(result); if (!options.streaming) { result = { ...result, status: 'success' }; listener?.(result); } f.notify(); },
+    damageFailure(extra={}) {damageResultState={...damageResultState,status:'error',error:Error('native backend rejection'),...extra};damageListener?.(damageResultState);f.notify();},
+    damageState:()=>damageResultState,damageObserver,
     finish(extra = {}) { result = { ...result, status: 'success', ...extra }; listener?.(result); f.notify(); },
   };
 }
@@ -292,10 +300,10 @@ test('legacy preferences migrate the new prompt flag off and invalid storage fai
  const f=fixture();assert.throws(()=>f.controller().setPreferences({...f.preferences(),hideDamagePrompt:1}));
  f.controller().setPreferences({campaignId:'campaign-a',automaticDamage:true,hideIntermediateFranz:false});assert.equal(f.preferences().hideDamagePrompt,false);
 });
-test('prompt hiding requires local accepted choice plus result identity and preserves actual dice and final reply',()=>{
+test('prompt hides on local causal claim before acceptance and preserves actual dice and final reply',()=>{
  const f=flowFixture({prompt:true,hidePrompt:true});f.prompt.style.setProperty('display','flex','important');f.submit();f.pending();
- assert.equal(f.prompt.style.getPropertyValue('display'),'flex','Claim alone cannot hide the manual prompt');
- f.choice.accepted=true;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'flex','Accepted without result identity cannot hide');
+ assert.equal(f.prompt.style.getPropertyValue('display'),'none','Owned automatic prompt hides before native acceptance');
+ f.choice.accepted=true;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'none','Owned prompt stays hidden during native rolling');
  f.choice.roll_result_id=107655730;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'none');
  for(const node of [f.card,f.rows[0],f.rows[1],f.damageResult,f.finalReply])assert.equal(node.style.getPropertyValue('display'),'');
  f.setPreferences({hideIntermediateFranz:true});f.notify();assert.equal(f.card.style.getPropertyValue('display'),'none');assert.equal(f.prompt.style.getPropertyValue('display'),'none');
@@ -307,9 +315,9 @@ test('prompt accepted display restores on auto off, route, encounter, disposal a
   action(f);assert.equal(f.prompt.style.getPropertyValue('display'),'grid');assert.equal(f.prompt.style.getPropertyPriority('display'),'important');
  }
 });
-test('historical, failed, unknown, text-based and mixed host choices stay visible without callback replay',()=>{
+test('historical, failed, unknown, text-based and mixed host choices stay visible without callback replay',async()=>{
  for(const options of [{failure:true},{reject:true},{unrelated:true},{accepted:true},{miss:true}]){
-  const f=flowFixture({...options,prompt:true,hidePrompt:true});f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');f.submit();f.pending();f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');
+  const f=flowFixture({...options,prompt:true,hidePrompt:true});f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');f.submit();f.pending();await new Promise(resolve=>setImmediate(resolve));f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');
  }
  const text=flowFixture({prompt:true,hidePrompt:true});text.attack.requires_attack_roll=false;text.submit();text.pending();assert.equal(text.calls(),0);assert.equal(text.prompt.style.getPropertyValue('display'),'');
  const failed=flowFixture({prompt:true,hidePrompt:true,failure:true});failed.submit();failed.pending();failed.choice.accepted=true;failed.choice.roll_result_id=107655730;failed.notify();assert.equal(failed.prompt.style.getPropertyValue('display'),'');assert.equal([...failed.context.window.__friendsFablesDesktopCombatFlowOutcomes.values()][0].status,'failed');
@@ -381,4 +389,56 @@ test('causal streaming narration hides before choice arrival, errors and cancell
   action(f);f.notify();for(const node of [f.card,f.avatar,f.actions])assert.equal(node.style.getPropertyValue('display'),'');assert.equal(f.calls(),0);
  }
  const f=flowFixture({streaming:true,hide:true,prompt:true,wrapper:true,unrelated:true});f.submit();f.pending();assert.equal(f.card.style.getPropertyValue('display'),'');assert.equal(f.avatar.style.getPropertyValue('display'),'');
+});
+
+test('pending causal prompt hides before generation finishes and before the next animation frame',()=>{
+ const f=flowFixture({streaming:true,prompt:true,wrapper:true,hide:true,hidePrompt:true});f.submit();f.pending();
+ assert.equal(f.calls(),0);assert.equal(f.prompt.style.getPropertyValue('display'),'none');
+ f.button.getClientRects=()=>[];f.finish();assert.equal(f.calls(),1,'Concealing the owned prompt must not prevent its native callback');
+});
+test('pending prehidden prompt restores on cancellation and independent toggles',()=>{
+ for(const action of [f=>f.submit(),f=>f.finish({status:'error'}),f=>f.setPreferences({automaticDamage:false}),f=>f.install(false)]){
+ const f=flowFixture({streaming:true,prompt:true,hide:true,hidePrompt:true});f.submit();f.pending();assert.equal(f.prompt.style.getPropertyValue('display'),'none');action(f);f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');}
+ const f=flowFixture({streaming:true,prompt:true,hide:true,hidePrompt:true});f.submit();f.pending();f.setPreferences({hideDamagePrompt:false});f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.card.style.getPropertyValue('display'),'none');
+});
+
+test('status belongs inside exact hit card and ends at native Damage result mount before final reply',()=>{
+ const f=flowFixture({streaming:true,prompt:true,hide:true,hidePrompt:true});f.install(true,'ru');f.submit();f.pending();
+ assert.equal(f.attackPanel.children.length,1);assert.equal(f.attackPanel.children[0].textContent,'Бросок урона выполняется…');assert.equal(f.calls(),0);
+ f.finish();assert.equal(f.attackPanel.children.length,1);f.choice.accepted=true;f.choice.roll_result_id=107655730;f.notify();assert.equal(f.attackPanel.children.length,1,'Acceptance alone is not dice appearance');
+ const row=new f.Element(),card=new f.Element();row.id='event-container-undefined';card.id='event-message-card-107655730';row.append(card);row.resultCard=card;
+ const fiber={memoizedProps:{event:{id:107655730,campaign_id:'campaign-a',character_id:f.character.id,events_roll:{roll_type:'Damage'}}},return:f.root};f.rows[1].__reactFiber$fixture.sibling=fiber;row.__reactFiber$fixture=fiber;const host={memoizedProps:{},return:fiber};fiber.child=host;card.__reactFiber$fixture=host;f.rows.push(row);f.notify();
+ assert.equal(f.attackPanel.children.length,0);assert.equal(f.finalReply.style.getPropertyValue('display'),'');f.notify();assert.equal(f.attackPanel.children.length,0);
+});
+test('status absent for manual misses and unrelated flows, restores on failure and cancellation',()=>{
+ for(const options of [{miss:true},{failure:true}]){const f=flowFixture(options);f.submit();f.pending();f.notify();assert.equal(f.attackPanel.children.length,0);}
+ const manual=flowFixture({unrelated:true});manual.notify();assert.equal(manual.attackPanel.children.length,0);
+ for(const action of [f=>f.submit(),f=>f.setPreferences({automaticDamage:false}),f=>f.install(false),f=>{f.context.location.pathname='/campaign-b/play';f.notify()}]){const f=flowFixture({streaming:true});f.submit();f.pending();assert.equal(f.attackPanel.children.length,1);action(f);f.notify();assert.equal(f.attackPanel.children.length,0);}
+});
+
+test('fully concealed intermediate contributes no outer event slot; native result sibling prevents collapse',()=>{
+ const f=flowFixture({streaming:true,prompt:true,wrapper:true,hide:true,hidePrompt:true});
+ f.damageResult.remove();f.finalReply.remove();const outer=new f.Element();outer.id='event-'+f.dmEvent.id;outer.append(f.rows[1]);f.submit();f.pending();
+ assert.equal(f.rows[1].style.getPropertyValue('display'),'none');assert.equal(outer.style.getPropertyValue('display'),'none');
+ f.middle.append(f.damageResult);f.notify();assert.equal(f.rows[1].style.getPropertyValue('display'),'');assert.equal(outer.style.getPropertyValue('display'),'');
+ f.setPreferences({hideDamagePrompt:false});f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.card.style.getPropertyValue('display'),'none');
+});
+
+test('native void mutation failure restores owned presentation immediately and never autoretries',()=>{
+ const f=flowFixture({voidMutation:true,prompt:true,wrapper:true,hide:true,hidePrompt:true});f.damageResult.remove();f.finalReply.remove();f.submit();f.pending();
+ assert.equal(f.calls(),1);assert.equal(f.prompt.style.getPropertyValue('display'),'none');assert.equal(f.rows[1].style.getPropertyValue('display'),'none');assert.equal(f.attackPanel.children.length,1);
+ f.damageFailure();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.rows[1].style.getPropertyValue('display'),'');assert.equal(f.card.style.getPropertyValue('display'),'');assert.equal(f.attackPanel.children.length,0);f.notify();assert.equal(f.calls(),1);
+ assert.equal([...f.context.window.__friendsFablesDesktopCombatFlowOutcomes.values()][0].status,'failed');
+});
+test('native void mutation stale or unrelated error cannot restore another automatic prompt',()=>{
+ for(const patch of [{submittedAt:0},{variables:{rollChoice:{id:999},campaign:{id:'campaign-a'},rollCharacter:{id:83026155}}},{variables:{rollChoice:null,campaign:{id:'campaign-a'},rollCharacter:{id:83026155}}}]){
+ const f=flowFixture({voidMutation:true,prompt:true,hidePrompt:true});f.submit();f.pending();f.damageFailure(patch);assert.equal(f.prompt.style.getPropertyValue('display'),'none');assert.equal(f.calls(),1);}
+});
+
+test('ambiguous native mutation observers fail closed and valid choice errors stay scoped',()=>{
+ const f=flowFixture({voidMutation:true,prompt:true,hidePrompt:true});
+ f.t5.memoizedState.next={memoizedState:{...f.damageObserver,subscribe(){return()=>{}}}};f.submit();f.pending();f.damageFailure();
+ assert.equal(f.prompt.style.getPropertyValue('display'),'none','Two exact mutation owners are ambiguous');
+ const other=flowFixture({voidMutation:true,prompt:true,hidePrompt:true});other.submit();other.pending();const variables={...other.damageState().variables,rollCharacter:{id:999}};other.damageFailure({variables});
+ assert.equal(other.prompt.style.getPropertyValue('display'),'none');
 });

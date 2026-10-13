@@ -22,13 +22,22 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   const claimHost = window as unknown as { __friendsFablesDesktopCombatFlowClaims?: Set<string>; __friendsFablesDesktopCombatFlowOutcomes?: Map<string, Outcome> };
   const claimed = claimHost.__friendsFablesDesktopCombatFlowClaims ??= new Set<string>();
   const outcomes = claimHost.__friendsFablesDesktopCombatFlowOutcomes ??= new Map<string, Outcome>();
-  const linked = new Map<string | number, { campaign: string; encounter: string | number; request: string; outcomeKey: string; choiceOwner: Fiber }>();
+  const linked = new Map<string | number, { campaign: string; encounter: string | number; request: string; attackId: string | number; outcomeKey: string; choiceOwner: Fiber }>();
+  const pendingPrompts = new Map<string | number, { campaign: string; encounter: string | number; request: string; character: string | number; choiceId: string | number; choiceOwner: Fiber }>();
   const narrating = new Map<string | number, { campaign: string; encounter: string | number; request: string }>();
   const hidden = new Map<HTMLElement, { value: string; priority: string }>();
   const hiddenPrompts = new Map<HTMLElement, { value: string; priority: string }>();
   const narrationLayout = new Map<HTMLElement, Map<string, { value: string; priority: string }>>();
+  const progress = new Map<string | number, { campaign: string; encounter: string | number; request: string; character: string | number; outcomeKey?: string }>();
+  const nativeWatches = new Map<string, { outcome: Outcome; choice: Native; observers: { observer: Observer; baseline: Native; unsubscribe?: () => void }[] }>();
+  function clearNativeWatch(key: string): void { const watch = nativeWatches.get(key); nativeWatches.delete(key); for (const item of watch?.observers ?? []) try { item.unsubscribe?.(); } catch { /* Native owner may already be disposed. */ } }
+  const statuses = new Map<HTMLElement, HTMLElement>();
+  const emptyRows = new Map<HTMLElement, { value: string; priority: string }>();
+  let language = locale;
+  function restoreStatus(): void { for (const node of statuses.values()) node.remove(); statuses.clear(); }
+  function restoreEmptyRows(): void { for (const [node, previous] of emptyRows) { if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display'); } emptyRows.clear(); }
   const storageKey = (): string => `ff-desktop-combat-flow-v1:${campaign}`;
-  function cancel(): void { const current = ticket; ticket = null; if (narrating.size) { narrating.clear(); schedule(); } try { current?.unsubscribe?.(); } catch { /* Native lifecycle may already be disposed. */ } }
+  function cancel(): void { const current = ticket; ticket = null; if (current?.attackId) progress.delete(current.attackId); pendingPrompts.clear(); if (narrating.size) { narrating.clear(); schedule(); } try { current?.unsubscribe?.(); } catch { /* Native lifecycle may already be disposed. */ } }
   function restoreNode(node: HTMLElement): void {
     const previous = hidden.get(node); if (!previous) return;
     if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
@@ -50,7 +59,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     hiddenPrompts.clear();
   }
-  function restoreAll(): void { restore(); restorePrompts(); }
+  function restoreAll(): void { for (const key of nativeWatches.keys()) clearNativeWatch(key); restore(); restorePrompts(); restoreEmptyRows(); restoreStatus(); progress.clear(); }
   function read(): Preferences {
     try {
       const raw = localStorage.getItem(storageKey());
@@ -89,7 +98,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     localStorage.setItem(storageKey(), JSON.stringify(next));
     prefs = next;
     if (!prefs.automaticDamage) { cancel(); linked.clear(); restoreAll(); }
-    else { if (!prefs.hideIntermediateFranz) restore(); if (!prefs.hideDamagePrompt) restorePrompts(); }
+    else { if (!prefs.hideIntermediateFranz) restore(); if (!prefs.hideDamagePrompt) restorePrompts(); if (!prefs.hideIntermediateFranz || !prefs.hideDamagePrompt) restoreEmptyRows(); }
     schedule(); return { campaignId: campaign, ...prefs };
   }
   function fiberRoot(fiber: Fiber): Fiber | null {
@@ -357,18 +366,21 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   }
   function syncPrompts(): void {
     const desired = new Set<HTMLElement>();
-    if (prefs.automaticDamage && prefs.hideDamagePrompt) for (const [eventId, proof] of linked) {
-      const outcome = outcomes.get(proof.outcomeKey);
-      if (outcome?.status !== 'accepted' || outcome.campaign !== campaign || outcome.eventId !== eventId || proof.campaign !== campaign) continue;
+    const proofs = new Map<string | number, { campaign: string; encounter: string | number; request: string; choiceOwner: Fiber; outcomeKey?: string; character?: string | number; choiceId?: string | number }>(pendingPrompts);
+    for (const [eventId, proof] of linked) proofs.set(eventId, proof);
+    if (prefs.automaticDamage && prefs.hideDamagePrompt) for (const [eventId, proof] of proofs) {
+      const outcome = outcomes.get(proof.outcomeKey ?? '');
+      if (proof.campaign !== campaign || outcome && (outcome.status === 'failed' || outcome.status === 'unknown' || outcome.campaign !== campaign || outcome.eventId !== eventId)) continue;
+      const character = outcome?.character ?? proof.character, choiceId = outcome?.choiceId ?? proof.choiceId;
       const row = document.getElementById(`event-container-${eventId}`), event = row && eventFor(row);
       if (!row || !encounterMatches(row, proof.encounter) || event?.role !== 'dm' || event.campaign_id !== campaign || event.request_id !== proof.request) continue;
       const owner = currentFiber(proof.choiceOwner), props = owner?.memoizedProps, choice = props?.rollChoice as Native | undefined;
-      const choices = Array.isArray(event.rollChoices) ? event.rollChoices.filter((value: Native) => value?.id === outcome.choiceId) : [];
-      if (choices.length !== 1 || choices[0].accepted !== true || choices[0].type !== 'Damage' || choices[0].roll_result_id !== outcome.rollResultId
-        || choices[0].character_id !== outcome.character || choices[0].event_id !== eventId
-        || props?.campaignId !== campaign || (props.usersCharacter as Native)?.id !== outcome.character
-        || choice?.id !== outcome.choiceId || choice.event_id !== eventId || choice.character_id !== outcome.character
-        || choice.type !== 'Damage' || choice.accepted !== true || choice.roll_result_id !== outcome.rollResultId) continue;
+      const choices = Array.isArray(event.rollChoices) ? event.rollChoices.filter((value: Native) => value?.type === 'Damage' && value.character_id === character) : [];
+      if (choices.length !== 1 || choices[0].id !== choiceId || choices[0].accepted === false || choices[0].type !== 'Damage' || choices[0].character_id !== character || choices[0].event_id !== eventId
+        || props?.campaignId !== campaign || (props.usersCharacter as Native)?.id !== character
+        || !choice || choice.id !== choiceId || choice.event_id !== eventId || choice.character_id !== character
+        || choice.type !== 'Damage' || choice.accepted !== choices[0].accepted || choice.roll_result_id !== choices[0].roll_result_id
+        || !['dice_expression', 'fixed_bonus', 'modifier_value', 'number_of_dice', 'proficiency_bonus'].every(field => choice[field] === choices[0][field])) continue;
       // Captured t5 returns a single outer div for the choice label/avatar and
       // pending/completed badge. Resolve that committed direct host child, never
       // a nearest DOM row; actual dice results and narration are sibling owners.
@@ -386,6 +398,100 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     for (const node of desired) {
       if (!hiddenPrompts.has(node)) hiddenPrompts.set(node, { value: node.style.getPropertyValue('display'), priority: node.style.getPropertyPriority('display') });
       if (node.style.getPropertyValue('display') !== 'none' || node.style.getPropertyPriority('display') !== 'important') node.style.setProperty('display', 'none', 'important');
+    }
+  }
+  function syncPresentation(): void {
+    restoreEmptyRows();
+    // Collapse only a fully concealed, structurally validated intermediate.
+    // Dice and other native outcomes make the row nonempty and remain visible.
+    if (prefs.hideIntermediateFranz && prefs.hideDamagePrompt) {
+      const concealed = (node: Element): boolean => {
+        if (hidden.has(node as HTMLElement) || hiddenPrompts.has(node as HTMLElement)) return true;
+        return node.children.length > 0 && Array.from(node.children).every(concealed) && !Array.from(node.childNodes).some(child => child.nodeType === 3 && child.textContent?.trim());
+      };
+      for (const [eventId] of new Map([...narrating, ...linked])) {
+        const row = document.getElementById(`event-container-${eventId}`);
+        if (!row || !narrationLayout.has(row) || !concealed(row)) continue;
+        for (const node of [row, ...(row.parentElement?.id === `event-${eventId}` && row.parentElement.children.length === 1 ? [row.parentElement] : [])]) {
+          emptyRows.set(node, { value: node.style.getPropertyValue('display'), priority: node.style.getPropertyPriority('display') }); node.style.setProperty('display', 'none', 'important');
+        }
+      }
+    }
+    const desired = new Set<HTMLElement>();
+    if (prefs.automaticDamage) for (const [attackId, proof] of progress) {
+      const outcome = outcomes.get(proof.outcomeKey ?? '');
+      if (proof.campaign !== campaign || outcome?.status === 'failed' || outcome?.status === 'unknown') { progress.delete(attackId); continue; }
+      const card = document.getElementById(`event-message-card-${attackId}`);
+      const chain = card && ancestry(card, 24);
+      const event = chain?.map(fiber => fiber.memoizedProps?.event as Native | undefined).find(event => event?.id === attackId);
+      if (!card || !chain || event?.request_id !== proof.request || event.campaign_id !== campaign || event.character_id !== proof.character
+        || event.command_used !== 'roll_attack' || !encounterMatches(card, proof.encounter)
+        || !chain.some(fiber => fiber.memoizedProps?.eventId === attackId && typeof fiber.type === 'function' && String(fiber.type).includes('event-message-card-'))) {
+        if (card) progress.delete(attackId); continue;
+      }
+      // Native nS starts its dice animation when the exact result mounts.
+      // The native accepted choice points to that result; no latest-row guess.
+      if (outcome && id(outcome.rollResultId)) {
+        const resultCard = document.getElementById(`event-message-card-${outcome.rollResultId}`);
+        if (resultCard && ancestry(resultCard, 24).some(fiber => {
+          const result = fiber.memoizedProps?.event as Native | undefined;
+          return !!result && result.id === outcome.rollResultId && result.campaign_id === campaign && result.character_id === proof.character && result.events_roll?.roll_type === 'Damage';
+        })) { progress.delete(attackId); continue; }
+      }
+      const panels = Array.from(card.querySelectorAll<HTMLElement>('div')).filter(node => {
+        const fiber = committedFiber(node), classes = fiber?.memoizedProps?.className;
+        return fiber?.tag === 5 && fiber.type === 'div' && typeof classes === 'string'
+          && ['relative', 'rounded-2xl', 'border-2', 'overflow-hidden'].every(marker => classes.split(/\s+/).includes(marker))
+          && ancestry(node, 24).some(fiber => (fiber.memoizedProps?.event as Native)?.id === attackId);
+      });
+      if (panels.length !== 1) continue;
+      const panel = panels[0]; desired.add(panel);
+      let status = statuses.get(panel);
+      if (!status) {
+        status = document.createElement('span'); status.setAttribute('data-ff-combat-damage-progress', 'true'); status.setAttribute('data-ff-translation-ignore', 'true'); status.setAttribute('role', 'status');
+        status.style.cssText = 'display:block;text-align:right;font:inherit;font-size:12px;line-height:1.4;color:inherit;opacity:.8;padding:4px 12px 8px;position:relative;pointer-events:none';
+        statuses.set(panel, status); panel.append(status);
+      }
+      const text = language === 'ru' ? 'Бросок урона выполняется…' : 'Damage roll in progress…';
+      if (status.textContent !== text) status.textContent = text;
+    }
+    for (const [panel, status] of statuses) if (!desired.has(panel)) { status.remove(); statuses.delete(panel); }
+  }
+  function watchNativeRoll(key: string, outcome: Outcome, owner: Fiber, choice: Native): void {
+    const observers = new Map<Observer, { observer: Observer; baseline: Native; unsubscribe?: () => void }>();
+    let hook = owner.memoizedState;
+    for (let count = 0; hook && count < 240; count++, hook = hook.next as typeof hook) {
+      const value = hook.memoizedState as Observer | undefined;
+      if (typeof value?.getCurrentResult !== 'function' || typeof value.subscribe !== 'function' || typeof value.options?.mutationFn !== 'function') continue;
+      try { const baseline = value.getCurrentResult(); if (baseline?.status !== 'pending') observers.set(value, { observer: value, baseline }); } catch { /* Ignore unknown native hook values. */ }
+    }
+    if (hook || !observers.size) return;
+    const watch = { outcome, choice, observers: [...observers.values()] };
+    nativeWatches.set(key, watch);
+    for (const item of watch.observers) try { item.unsubscribe = item.observer.subscribe(() => schedule()); } catch { observers.delete(item.observer); }
+    watch.observers = watch.observers.filter(item => observers.has(item.observer));
+  }
+  function observeNativeRolls(): void {
+    for (const [key, watch] of nativeWatches) {
+      const outcome = watch.outcome;
+      const proof = linked.get(outcome.eventId), row = document.getElementById(`event-container-${outcome.eventId}`);
+      if (!proof || proof.outcomeKey !== key || !row || !encounterMatches(row, proof.encounter) || !prefs.automaticDamage || outcome.campaign !== campaign || outcome.status === 'failed' || outcome.status === 'unknown' || Date.now() - outcome.started > 120000) { clearNativeWatch(key); continue; }
+      const matches: Native[] = [];
+      for (const { observer, baseline } of watch.observers) try {
+        const result = observer.getCurrentResult(), variables = result?.variables;
+        // t5 passes these exact native arguments to B.mutate (which returns
+        // void). Fresh observer state plus choice object identity ties failure
+        // to our invocation; never inspect a latest global mutation/error.
+        if (result !== baseline && variables !== baseline.variables && Number.isFinite(result.submittedAt)
+          && result.submittedAt >= outcome.started && result.submittedAt > (baseline.submittedAt ?? 0)
+          && variables?.rollChoice === watch.choice && variables.campaign?.id === outcome.campaign
+          && variables.rollCharacter?.id === outcome.character && variables.rollChoice.id === outcome.choiceId
+          && variables.rollChoice.event_id === outcome.eventId && variables.rollChoice.type === 'Damage'
+          && variables.rollResult && typeof variables.rollResult === 'object') matches.push(result);
+      } catch { /* Native observer teardown is not proof of backend failure. */ }
+      if (matches.length !== 1) continue;
+      if (matches[0].status === 'error') { outcome.status = 'failed'; clearNativeWatch(key); }
+      else if (matches[0].status === 'success') clearNativeWatch(key);
     }
   }
   function observeOutcomes(): void {
@@ -423,6 +529,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     // This is the native eJ hit rule captured in its submit function. Critical
     // dice remain entirely owned by the following native Damage callback.
     if (roll.total_roll < roll.dc) { cancel(); return; }
+    progress.set(attack.id, { campaign, encounter: current.encounter, request: current.request, character: current.character });
     // The local observer + validated hit own this causal intermediate already
     // while it streams. Conceal its narration without claiming or accepting a
     // choice; cancellation restores it. A competing DM event is ambiguous.
@@ -430,8 +537,22 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (intermediate.length > 1) { cancel(); return; }
     if (intermediate.length === 1) {
       const entry = intermediate[0];
+      if (entry.event?.error) { cancel(); return; }
       if (entry.event?.command_used !== 'encounter_player_turn_action_response' || !encounterMatches(entry.row, current.encounter)) { cancel(); return; }
       if (id(entry.event.id)) narrating.set(entry.event.id, { campaign, encounter: current.encounter, request: current.request });
+      if (!entry.event.error && Array.isArray(entry.event.rollChoices)) {
+        const choices = entry.event.rollChoices.filter((choice: Native) => choice?.type === 'Damage' && choice.character_id === current.character);
+        if (choices.length === 1 && id(choices[0].id) && choices[0].event_id === entry.event.id && choices[0].accepted === null && typeof choices[0].dice_expression === 'string') {
+          const owners = new Set<Fiber>();
+          for (const button of Array.from(entry.row.querySelectorAll('button')).slice(0, 40)) for (const fiber of ancestry(button, 16)) {
+            const props = fiber.memoizedProps, choice = props?.rollChoice as Native | undefined;
+            if (choice && choice.id === choices[0].id && choice.event_id === entry.event.id && choice.character_id === current.character && props?.campaignId === campaign
+              && (props.usersCharacter as Native)?.id === current.character && choice.accepted === null
+              && ['type', 'dice_expression', 'fixed_bonus', 'modifier_value', 'number_of_dice', 'proficiency_bonus'].every(field => choice[field] === choices[0][field])) owners.add(fiber);
+          }
+          if (owners.size === 1) pendingPrompts.set(entry.event.id, { campaign, encounter: current.encounter, request: current.request, character: current.character, choiceId: choices[0].id, choiceOwner: [...owners][0] });
+        }
+      }
     }
     if (!current.finished) return;
     const matches: { row: Element; event: Native; choice: Native }[] = [];
@@ -456,7 +577,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     const buttons = Array.from(match.row.querySelectorAll<HTMLButtonElement>('button'));
     if (buttons.length > 40) { cancel(); return; }
     for (const button of buttons) {
-      if (!button.isConnected || button.disabled || button.matches(':disabled') || button.closest('[hidden],[aria-hidden="true"]') || !button.getClientRects().length) continue;
+      if (!button.isConnected || button.disabled || button.matches(':disabled') || button.closest('[hidden],[aria-hidden="true"]') || !button.getClientRects().length && ![...hiddenPrompts.keys()].some(node => node.contains(button))) continue;
       const chain = ancestry(button, 16), props = chain[0]?.memoizedProps;
       const owners = chain.map(fiber => fiber.memoizedProps).filter(p => (p?.rollChoice as Native)?.id === match.choice.id && p?.campaignId === campaign
         && (p?.usersCharacter as Native)?.id === current.character && (p?.rollChoice as Native)?.event_id === match.event.id && (p?.rollChoice as Native)?.accepted === null
@@ -478,8 +599,10 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (traversalBudget <= 0 || !choiceOwner) { cancel(); return; }
     const outcome: Outcome = { campaign, character: current.character, eventId: match.event.id, choiceId: match.choice.id, started: Date.now(), status: 'claimed' };
     outcomes.set(key, outcome);
-    claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request, outcomeKey: key, choiceOwner }); cancel();
-    syncNarration();
+    claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request, attackId: attack.id, outcomeKey: key, choiceOwner }); cancel();
+    progress.set(attack.id, { campaign, encounter: current.encounter, request: current.request, character: current.character, outcomeKey: key });
+    syncNarration(); syncPrompts(); syncPresentation();
+    watchNativeRoll(key, outcome, choiceOwner, latestOwner!.rollChoice as Native);
     try { const result = candidate.callback({ stopPropagation() {}, preventDefault() {}, currentTarget: candidate.button, target: candidate.button });
       if (result && typeof (result as PromiseLike<unknown>).then === 'function') void Promise.resolve(result).catch(() => { outcome.status = 'failed'; schedule(); });
     } catch { outcome.status = 'failed'; schedule(); /* Unknown send outcome is terminal. Keep native manual controls. */ }
@@ -490,10 +613,11 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (disposed) return;
     syncRoute();
     if (!campaign) return;
-    try { observeOutcomes(); applyFlow(); syncNarration(); syncPrompts(); } catch { cancel(); restoreAll(); }
+    try { observeNativeRolls(); observeOutcomes(); applyFlow(); syncNarration(); syncPrompts(); syncPresentation(); } catch { cancel(); restoreAll(); }
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(sync); }
-  const observer = new MutationObserver(() => schedule());
+  // Mutation delivery precedes paint; RAF-only concealment permits a first-frame flash.
+  const observer = new MutationObserver(() => { if (frame) cancelAnimationFrame(frame); sync(); });
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'data-ff-combat-panel-mode', 'hidden', 'aria-hidden'] });
   function storageChanged(event: StorageEvent): void {
     if (event.storageArea !== localStorage || event.key !== storageKey()) return;
@@ -505,7 +629,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   window.addEventListener('popstate', schedule);
   host[key] = {
     getPreferences, setPreferences,
-    update() { schedule(); },
+    update(nextLocale) { language = nextLocale; schedule(); },
     dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('submit', submitted, true); window.clearInterval(timer); window.removeEventListener('popstate', schedule); window.removeEventListener('storage', storageChanged); cancel(); restoreAll(); delete host[key]; }
   };
   schedule();
