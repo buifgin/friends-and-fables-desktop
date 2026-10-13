@@ -27,6 +27,8 @@
     'Combat panel': 'Панель боя', 'Customize combat panel': 'Настроить панель боя',
     'Customize panel background': 'Настроить фон панели', 'Customize panel borders': 'Настроить рамки панели',
     'Customize panel buttons': 'Настроить кнопки панели', 'Customize panel spacing': 'Настроить отступы панели',
+    'Attack card and field background': 'Фон карточек и поля сообщения в атаке',
+    'Attack card and field background opacity': 'Непрозрачность фона карточек и поля сообщения в атаке',
     'Button background': 'Фон кнопок', 'Button text color': 'Цвет текста кнопок',
     'Button background opacity': 'Непрозрачность фона кнопок',
     'Tile spacing': 'Промежуток между плитками', 'Panel content padding': 'Внутренние отступы панели',

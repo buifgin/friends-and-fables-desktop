@@ -60,12 +60,30 @@ export const combatPanelCss = `
     width: 100% !important;
     min-width: 0 !important;
     max-width: 100% !important;
-    justify-content: center;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    padding-inline: 12px !important;
     flex: none;
+  }
+
+  [data-ff-combat-controls-group][data-ff-combat-controls-expanded] [data-ff-combat-label] {
+    display: block !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: inherit;
+  }
+
+  [data-ff-combat-controls-group]:not([data-ff-combat-controls-expanded]) [data-ff-combat-label] {
+    display: none !important;
   }
 
   [data-ff-combat-controls-group] {
     padding-bottom: 48px !important;
+  }
+
+  [data-ff-combat-controls-group][data-ff-combat-controls-expanded] {
+    padding-bottom: 0 !important;
   }
 
   [data-ff-combat-controls-group] ~ .absolute:has(> button > svg:is(.lucide-chevron-right, .lucide-chevron-left)) {
@@ -586,6 +604,11 @@ export function combatPanelAppearanceCss(
     ? hex(settings.borderColor ?? '', '#555555')
     : 'hsl(var(--border, 0 0% 50%))';
   const buttonOpacity = range(settings.buttonBackgroundOpacity, 1, 1);
+  const cardOpacity = range(settings.cardBackgroundOpacity, 1, .92);
+  const cardFill = rgba(settings.cardBackground ?? '', cardOpacity);
+  const attackSurface = `${customizedSurface}[data-ff-combat-panel-mode="actions"]`;
+  const cardSurfaces = `${attackSurface} :is(.relative.group.rounded-lg.border.bg-card.p-4, .group.rounded-lg.border.bg-card, label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]), textarea)`;
+  const attackMessageField = `html[data-ff-combat-open="true"]:has([data-ff-combat-docked][data-ff-combat-panel-mode="actions"]) [data-ff-combat-chat] :is(.tiptap, [contenteditable="true"])`;
   const buttonHoverOpacity = buttonOpacity === 0 ? .28 : Math.min(1, buttonOpacity + .2);
   const border = settings.enabled && settings.customizeBorder ? `
     ${customizedSurface} { border-right-color: ${hex(settings.borderColor ?? '', '#555555')} !important; }
@@ -667,6 +690,19 @@ export function combatPanelAppearanceCss(
       filter: none !important;
       -webkit-backdrop-filter: none !important;
       backdrop-filter: none !important;
+    }
+    ${cardSurfaces} {
+      background-color: ${cardFill} !important;
+      color: hsl(var(--foreground, 0 0% 96%)) !important;
+    }
+    ${cardSurfaces}:focus-within { border-color: hsl(var(--primary, 41 62% 65%)) !important; }
+    ${attackMessageField} {
+      background-color: ${cardFill} !important;
+      color: hsl(var(--foreground, 0 0% 96%)) !important;
+    }
+    ${attackMessageField}:focus-visible {
+      outline: 2px solid hsl(var(--primary, 41 62% 65%)) !important;
+      outline-offset: 2px !important;
     }
     ${surface}::before, ${surface}::after {
       content: "" !important;

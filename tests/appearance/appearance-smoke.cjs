@@ -48,11 +48,14 @@ async function save(settings, window) {
   }
   assert.equal(DEFAULT_APPEARANCE.combatPanel.tileGap, 8, 'First spacing customization starts at the measured native tile gap.');
   assert.equal(DEFAULT_APPEARANCE.combatPanel.contentPadding, 20, 'First spacing customization starts at the native12+8 inset.');
+  assert.equal(DEFAULT_APPEARANCE.combatPanel.cardBackgroundOpacity, .92, 'Attack card and message field surfaces have one saved opacity setting.');
+  assert.equal(DEFAULT_APPEARANCE.combatPanel.cardBackground, '#101010', 'Attack card and message field surfaces share one saved color.');
   const oldPanel = { enabled: true, color: '#234567', opacity: .4, blur: 7 };
   assert.deepEqual(validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: oldPanel }).combatPanel,
     { ...DEFAULT_APPEARANCE.combatPanel, ...oldPanel }, 'Legacy background settings keep native borders, buttons and spacing.');
   for (const patch of [{tileGap:3}, {tileGap:25}, {contentPadding:7}, {contentPadding:33},
-    {tileGap:NaN}, {customizeButtons:'true'}, {buttonBackgroundOpacity:NaN}, {buttonBackgroundOpacity:1.01}, {borderColor:'red'}, {buttonBackground:'red'}, {buttonTextColor:'red'}]) {
+    {tileGap:NaN}, {customizeButtons:'true'}, {buttonBackgroundOpacity:NaN}, {buttonBackgroundOpacity:1.01},
+    {cardBackgroundOpacity:NaN}, {cardBackgroundOpacity:1.01}, {cardBackground:'red'}, {borderColor:'red'}, {buttonBackground:'red'}, {buttonTextColor:'red'}]) {
     assert.throws(() => validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: { ...DEFAULT_APPEARANCE.combatPanel, ...patch } }));
   }
   assert.throws(() => validateAppearance({ ...DEFAULT_APPEARANCE, combatPanel: { ...DEFAULT_APPEARANCE.combatPanel,
@@ -87,6 +90,13 @@ async function save(settings, window) {
   assert(initialSpacingCss.includes('--ff-combat-tile-gap: 8px'));
   assert(initialSpacingCss.includes('--ff-combat-content-padding: 20px'));
   const nativeCss = combatPanelAppearanceCss(DEFAULT_APPEARANCE.combatPanel);
+  for (const alpha of [0, .5, 1]) {
+    const surfacesCss = combatPanelAppearanceCss({ ...DEFAULT_APPEARANCE.combatPanel, enabled:true, cardBackground:'#123456', cardBackgroundOpacity:alpha });
+    assert(surfacesCss.includes(`rgba(18, 52, 86, ${alpha})`), `Card/target/message background opacity ${alpha} is applied to the shared surface rule.`);
+    assert(surfacesCss.includes('label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"])'), 'The shared card background covers target tiles.');
+    assert(surfacesCss.includes('[data-ff-combat-chat] :is(.tiptap, [contenteditable="true"])'), 'The shared Attack-only selector covers the native Tiptap message field.');
+    assert(surfacesCss.includes('[data-ff-combat-panel-mode="actions"]'), 'The shared background is scoped to Attack mode.');
+  }
   assert.equal(DEFAULT_APPEARANCE.combatPanel.buttonBackgroundOpacity, 1);
   assert(!nativeCss.includes('button:not([role="checkbox"]):not([role="switch"]) { background: transparent'), 'Native panel button fills remain the default.');
   const transparentCss = combatPanelAppearanceCss({ ...customizedPanel, buttonBackgroundOpacity: 0 });
@@ -98,6 +108,9 @@ async function save(settings, window) {
   assert(transparentCss.includes('background: hsl(var(--primary, 41 62% 65%)) !important'));
   assert(transparentCss.includes('rgba(35, 69, 103, 0.28)'));
   assert(combatPanelCss.includes(':focus-visible'), 'Existing keyboard focus outlines remain in panel CSS.');
+  assert(combatPanelCss.includes('[data-ff-combat-controls-group][data-ff-combat-controls-expanded] [data-ff-combat-label]'), 'Expanded combat rows reveal their labels.');
+  assert(combatPanelCss.includes('justify-content: flex-start !important;') && combatPanelCss.includes('gap: 10px !important;'), 'Expanded combat rows align icons and labels as menu items.');
+  assert(combatPanelCss.includes('[data-ff-combat-controls-group][data-ff-combat-controls-expanded] {\n    padding-bottom: 0 !important;'), 'Expanded combat rows reclaim the collapsed expander reservation.');
   assert(!nativeCss.includes('--ff-combat-tile-gap:'));
   assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('#123456'));
   assert(!combatPanelAppearanceCss({ ...customizedPanel, enabled: false }).includes('#234567'));
@@ -116,20 +129,24 @@ async function save(settings, window) {
     :root { --primary: 41 62% 65%; --primary-foreground: 0 0% 13%; --border: 0 0% 50%; }
     button,input,select,textarea {border:1px solid #777;color:#eee;background:#345;}
     button:disabled {opacity:.5;}
-  </style><style id="panel-style"></style><div data-ff-combat-docked="" data-ff-combat-panel="">
+  </style><style id="panel-style"></style><div data-ff-combat-docked="" data-ff-combat-panel="" data-ff-combat-panel-mode="actions">
     <div data-ff-combat-body><div class="p-6"><div class="flex-1 w-full overflow-y-auto p-4 space-y-6"><div id="standard" class="grid gap-4"><button id="standard-button" class="group"><div><svg class="lucide"></svg></div><span>Standard</span></button></div></div></div></div>
     <div data-ff-dice-favorites><div data-ff-dice-favorite-tiles><div data-ff-dice-favorite-group-tiles class="grid"><button id="favorite-button" class="group"><div><svg class="lucide"></svg></div><span>Favorite</span></button></div></div></div>
     <form data-ff-combat-corrections><input id="correction" value="draft"><button id="action-button" disabled>Action</button><button id="generic-checkbox" role="checkbox" aria-checked="true">Generic</button><button id="generic-switch" role="switch" aria-checked="true">Generic switch</button><button id="menu-button" aria-haspopup="menu">⋯</button></form>
-    <label class="flex items-center space-x-3 rounded border p-4 clickable"><button id="target-checkbox" role="checkbox" aria-checked="true">Checked</button></label>
+    <div id="weapon-card" class="relative group rounded-lg border bg-card p-4">Weapon</div><div id="spell-card" class="relative group rounded-lg border bg-card p-4">Spell</div>
+    <label id="target-card" class="flex items-center space-x-3 rounded border p-4 clickable"><button id="target-checkbox" role="checkbox" aria-checked="true">Checked</button></label>
     <span id="primary-probe" style="color:hsl(var(--primary, 41 62% 65%))"></span><span id="primary-foreground-probe" style="color:hsl(var(--primary-foreground, 0 0% 13%))"></span>
-  </div><button id="outside">Outside</button><input id="outside-field" value="keep">`));
+  </div><main><div data-ff-combat-chat><div id="attack-message-field" class="tiptap" contenteditable="true">draft stays editable</div></div></main><button id="outside">Outside</button><input id="outside-field" value="keep">`));
+  await styleWindow.webContents.executeJavaScript("document.documentElement.setAttribute('data-ff-combat-open','true')");
   const styleSnapshot = () => styleWindow.webContents.executeJavaScript(`({
     buttons:['standard-button','favorite-button','action-button','menu-button','outside'].map(id=>{
       const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderColor,s.opacity,n.disabled];}),
     nativeControls:['target-checkbox','generic-checkbox','generic-switch'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderTopColor,s.borderTopWidth];}),
     gaps:[document.getElementById('standard'),document.querySelector('[data-ff-dice-favorite-group-tiles]')].map(n=>getComputedStyle(n).gap),
     padding:[document.querySelector('.p-6'),document.querySelector('[data-ff-dice-favorites]')].map(n=>getComputedStyle(n).padding),
-    fields:['correction','outside-field'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [n.value,s.backgroundColor,s.color];})
+    fields:['correction','outside-field'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [n.value,s.backgroundColor,s.color];}),
+    attackSurfaces:['weapon-card','spell-card','target-card','attack-message-field'].map(id=>{const n=document.getElementById(id),s=getComputedStyle(n);return [s.backgroundColor,s.color,s.borderTopColor,n.textContent];}),
+    targetChecked:document.getElementById('target-checkbox').getAttribute('aria-checked'), messageEditable:document.getElementById('attack-message-field').getAttribute('contenteditable')
   })`);
   const setPanelCss = settings => styleWindow.webContents.executeJavaScript(`document.getElementById('panel-style').textContent=${JSON.stringify(combatPanelAppearanceCss(settings))}`);
   await setPanelCss(DEFAULT_APPEARANCE.combatPanel);
@@ -152,6 +169,26 @@ async function save(settings, window) {
   for (const button of customPanelStyle.buttons.slice(0,3)) assert.deepEqual(button.slice(0,3),['rgb(35, 69, 103)','rgb(254, 220, 186)','rgb(18, 52, 86)']);
   assert.deepEqual(customPanelStyle.buttons[4],nativePanelStyle.buttons[4],'Customization stays within the dock.');
   assert.equal(customPanelStyle.buttons[2][4],true,'Disabled action state is preserved.');
+  for(const alpha of [0,.5,1]) {
+    await setPanelCss({...customizedPanel,cardBackground:'#123456',cardBackgroundOpacity:alpha});
+    const attack=await styleSnapshot();
+    const expected=`rgba(18, 52, 86, ${alpha})`;
+    for(const index of [0,1,2,3]) assert.equal(attack.attackSurfaces[index][0],expected,`Weapon, spell, target and editable message backgrounds share ${alpha} opacity.`);
+    for(const index of [0,1,2,3]) assert.equal(attack.attackSurfaces[index][1],'rgb(238, 238, 238)','Foreground remains readable at every background opacity.');
+    assert.equal(attack.targetChecked,'true','Selected target state remains checked at every background opacity.');
+    assert.equal(attack.nativeControls[0][0],targetPalette[0],'Selected target checkbox fill remains readable above the customized tile background.');
+    assert.equal(attack.attackSurfaces[2][2],'rgb(18, 52, 86)','Target tile border remains visible at every background opacity.');
+    assert.equal(attack.messageEditable,'true','The native editable message field keeps its contenteditable ownership.');
+    assert.equal(attack.attackSurfaces[3][3],'draft stays editable','Changing background styling preserves the native message draft.');
+  }
+  await styleWindow.webContents.executeJavaScript("document.getElementById('attack-message-field').focus()");
+  assert.deepEqual(await styleWindow.webContents.executeJavaScript("(()=>{const s=getComputedStyle(document.getElementById('attack-message-field'));return [document.activeElement.matches(':focus-visible'),s.outlineWidth,s.outlineStyle]})()"),[true,'2px','solid'],'The Attack message field keeps a visible keyboard focus outline.');
+  await styleWindow.webContents.executeJavaScript("document.activeElement.blur()");
+  await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','skills')");
+  const nonAttack=await styleWindow.webContents.executeJavaScript("['weapon-card','spell-card','target-card','attack-message-field'].map(id=>getComputedStyle(document.getElementById(id)).backgroundColor)");
+  assert.deepEqual(nonAttack,Array(4).fill('rgba(0, 0, 0, 0)'),'Attack surface backgrounds do not leak into Dice mode.');
+  await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','actions')");
+  await setPanelCss(customizedPanel);
   assert.deepEqual(customPanelStyle.gaps,['24px','24px']);
   assert.deepEqual(customPanelStyle.padding,['32px','32px']);
   assert.equal(await styleWindow.webContents.executeJavaScript("getComputedStyle(document.querySelector('.p-6 .p-4')).padding"),'0px','Custom content padding is applied once across native nested containers.');
@@ -824,6 +861,7 @@ async function save(settings, window) {
   assert.equal(await settingsContents.executeJavaScript("document.querySelector('.die-number').textContent"),'20');
   await settingsContents.executeJavaScript("window.settingsLocale.set('ru')");
   await until(settingsContents,"document.querySelector('[data-critical=natural20] legend').textContent==='Натуральная 20'");
+  await until(settingsContents,"document.body.textContent.includes('Непрозрачность фона карточек и поля сообщения в атаке')&&document.body.textContent.includes('Фон карточек и поля сообщения в атаке')");
   await settingsContents.executeJavaScript("window.settingsLocale.set('en');element('dice-preview-result').value='16';updatePreview()");
   await website.webContents.executeJavaScript("document.querySelector('[data-test=critical-menu-icon]').remove();document.querySelector('#d20 text').firstChild.data='16';document.querySelector('#d4 text').firstChild.data='3'");
   await save(newSettings,settingsWindow);
@@ -1077,7 +1115,8 @@ async function save(settings, window) {
   }
 
   // Simulate a fresh application manager reading preferences from disk.
-  const finalState = await save({ ...newSettings, preset: 'custom', customColor: '#123456' }, settingsWindow);
+  const finalState = await save({ ...newSettings, preset: 'custom', customColor: '#123456',
+    combatPanel: { ...newSettings.combatPanel, cardBackground: '#345678', cardBackgroundOpacity: .5 } }, settingsWindow);
   if (process.env.FABLES_TEST_SCREENSHOT) {
     await settingsContents.executeJavaScript('window.appearance.get().then(showSettings)');
     settingsWindow.show();
