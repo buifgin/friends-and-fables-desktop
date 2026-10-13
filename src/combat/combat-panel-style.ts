@@ -71,7 +71,6 @@ export const combatPanelCss = `
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font: inherit;
   }
 
   [data-ff-combat-controls-group]:not([data-ff-combat-controls-expanded]) [data-ff-combat-label] {
@@ -104,17 +103,11 @@ export const combatPanelCss = `
     padding: 0;
     border: 0;
     border-radius: 6px;
-    background: transparent;
     box-shadow: none;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
     cursor: pointer;
     pointer-events: auto;
-    transition: color 200ms ease, background-color 200ms ease;
-  }
-
-  [data-ff-combat-controls] [data-ff-combat-mode]:hover:not(:disabled) {
-    background: transparent;
   }
 
   [data-ff-combat-controls] [data-ff-combat-mode]:focus-visible {
