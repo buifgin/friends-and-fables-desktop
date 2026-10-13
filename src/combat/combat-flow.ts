@@ -458,7 +458,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       let status = statuses.get(panel);
       if (!status) {
         status = document.createElement('span'); status.setAttribute('data-ff-combat-damage-progress', 'true'); status.setAttribute('data-ff-translation-ignore', 'true'); status.setAttribute('role', 'status');
-        status.style.cssText = 'display:block;text-align:right;font:inherit;font-size:12px;line-height:1.4;color:inherit;opacity:.8;padding:4px 12px 8px;position:relative;pointer-events:none';
+        status.style.cssText = 'display:block;text-align:right;font:inherit;font-size:12px;line-height:1.4;color:inherit;opacity:.8;padding:4px 12px 8px;position:absolute;right:0;bottom:0;max-width:100%;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none';
         statuses.set(panel, status); panel.append(status);
       }
       const text = language === 'ru' ? 'Бросок урона выполняется…' : 'Damage roll in progress…';
