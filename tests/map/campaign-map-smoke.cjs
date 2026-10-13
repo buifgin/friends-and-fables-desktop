@@ -50,7 +50,7 @@ let nativeMapWidth=0;new ResizeObserver(entries=>{const root=entries[0].target,w
  assert.equal(await js('typeof window.require'),'undefined');
  await key('ArrowDown');assert.equal((await size()).height,324);
  assert.equal(await js("JSON.parse(localStorage.getItem('ff-desktop-map-size-v1:sample')).height"),324);
- assert.equal(await js("document.querySelector('#map [data-ff-desktop-map-resizer]').getAttribute('aria-label')"),'Изменить высоту карты');
+ assert.equal(await js("document.querySelector('#map [data-ff-desktop-map-resizer]').getAttribute('aria-label')"),'Resize map height');
  await until("originalCanvas.height===324");
  await expand();await until("document.getElementById('map').matches(':popover-open')");
  const expanded=await size();assert(expanded.width>400);assert(expanded.height>324);
@@ -95,6 +95,7 @@ let nativeMapWidth=0;new ResizeObserver(entries=>{const root=entries[0].target,w
  const saved=await size();
  await js("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))");
  assert.equal((await size()).height,324);assert.equal(await js("document.getElementById('map').hasAttribute('popover')"),false);
+ assert.equal(await js("document.querySelector('#map [data-ff-desktop-map-resizer]').getAttribute('aria-label')"),'Изменить высоту карты','The collapsed map exposes its Russian accessible label after the locale switches to RU.');
  await new Promise(resolve=>{contents.once('did-finish-load',resolve);contents.reload()});await until("document.querySelector('#map [data-ff-desktop-map-resizer]')!==null");assert.equal((await size()).height,324);
  await expand();assert.equal((await size()).width,saved.width);assert.equal((await size()).height,saved.height);assert.equal((await size()).left,saved.left);assert.equal((await size()).top,saved.top);assert.equal(await js("document.querySelector('#map canvas')===window.originalCanvas"),true,'Restoring the expanded RU map preserves its native canvas.');assert.equal(await js("document.querySelector('#map [data-ff-desktop-map-resizer]').getAttribute('aria-label')"),'Изменить размер развёрнутой карты');
  await js("document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));history.pushState(null,'','/sample/play?view=world');dispatchEvent(new PopStateEvent('popstate'))");
