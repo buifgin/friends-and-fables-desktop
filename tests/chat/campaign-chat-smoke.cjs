@@ -12,8 +12,13 @@ const campaign=${JSON.stringify(campaign)};
 const event=id=>({id,role:id%3===0?'dm':id%3===1?'player':'roll',message:'native '+id});
 const server=(start,end)=>({data:Array.from({length:end-start+1},(_,i)=>event(start+i)),hasPreviousPage:true,hasNextPage:false,previousCursor:start,nextCursor:end,direction:'backward',nativeMetadata:{retained:true}});
 const listeners=new Set();let writes=0;
+// JSON-shaped native replaceEqualDeep: retain equal subtrees, copy changed
+// arrays/objects (including own undefined metadata keys).
+const replaceEqualDeep=(a,b)=>{if(a===b)return a;if(!a||!b||typeof a!=='object'||typeof b!=='object'||Array.isArray(a)!==Array.isArray(b))return b;const keys=Object.keys(b),copy=Array.isArray(b)?[]:{};let equal=Object.keys(a).length===keys.length;for(const key of keys){copy[key]=replaceEqualDeep(a[key],b[key]);if(copy[key]!==a[key]||!Object.hasOwn(a,key))equal=false;}return equal?a:copy};
+const jobs=[];let batch=false;
+const flush=()=>{let runs=0;while(jobs.length){if(++runs>100)throw Error('Native batched notification loop exceeded100');jobs.shift()();}};
 const query={options:{maxPages:3},queryKey:['events',campaign],state:{data:{pages:[server(100,114)],pageParams:[{cursor:115,direction:'backward'}]},dataUpdatedAt:123,fetchStatus:'idle',status:'success'},
- setData(data,options){writes++;this.state={...this.state,data};if(options.updatedAt!==123||options.manual!==true)throw Error('Cache timestamps/manual contract');for(const listener of [...listeners])listener({});},setState(state){Object.assign(this.state,state)}};
+ setData(data,options){writes++;this.state={...this.state,data:replaceEqualDeep(this.state.data,data)};if(options.updatedAt!==123||options.manual!==true)throw Error('Cache timestamps/manual contract');for(const listener of [...listeners]){if(batch)jobs.push(()=>listener({}));else listener({});}if(batch)jobs.push(()=>window.dispatchEvent(new Event('click')));},setState(state){Object.assign(this.state,state)}};
 const observerForQuery=()=>({active:0,options:{maxPages:3,queryKey:query.queryKey},getCurrentQuery:()=>query,subscribe(listener){this.active++;listeners.add(listener);return()=>{this.active--;listeners.delete(listener)}}});
 const observer=observerForQuery(),duplicate=observerForQuery();
 const card=document.createElement('div');card.id='event-container-100';card.__reactFiber$fixture={memoizedState:{memoizedState:observer,next:{memoizedState:duplicate,next:null}},return:null};document.body.appendChild(card);
@@ -40,20 +45,35 @@ if(ids().includes(100)||ids().length!==17||query.state.data.pages.length!==2)thr
 const edited={...query.state.data.pages[1].data[1],message:'edited'};
 query.setData({...query.state.data,pages:query.state.data.pages.map((p,i)=>i===1?{...p,data:[edited]}:p)},{updatedAt:123,manual:true});
 append(132);
-if(ids().includes(130)||!query.state.data.pages.flatMap(p=>p.data).includes(edited))throw Error('Deletion/edit resurrected or lost');
+if(ids().includes(130)||!query.state.data.pages.flatMap(p=>p.data).some(row=>row.id===edited.id&&row.message===edited.message))throw Error('Deletion/edit resurrected or lost');
 const oldPage=server(85,99),param={cursor:100,direction:'backward'};
 query.setData({pages:[oldPage,...query.state.data.pages].slice(0,3),pageParams:[param,...query.state.data.pageParams].slice(0,3)},{updatedAt:123,manual:true});
-if(query.state.data.pages[0]!==oldPage||query.state.data.pageParams[0]!==param)throw Error('Genuine backward pagination modified');
+if(query.state.data.pages[0].data[0].id!==85||query.state.data.pageParams[0].cursor!==param.cursor)throw Error('Genuine backward pagination modified');
 // Synthetic native backward truncation: preserve actual metadata, even when
 // a genuine formerly-final page cannot advertise an evicted incremental tail.
 const finalServer=server(100,114),olderServer=server(85,99),oldestServer=server(70,84);
 query.setData({pages:[olderServer,finalServer,{data:[event(115)],hasPreviousPage:true,hasNextPage:false,previousCursor:100}],pageParams:[{cursor:100,direction:'backward'},{cursor:115,direction:'backward'},null]},{updatedAt:123,manual:true});
 query.setData({pages:[oldestServer,...query.state.data.pages].slice(0,3),pageParams:[{cursor:85,direction:'backward'},...query.state.data.pageParams].slice(0,3)},{updatedAt:123,manual:true});
-if(ids().includes(115)||query.state.data.pages[2]!==finalServer||query.state.data.pages[2].hasNextPage!==false)throw Error('Genuine backward truncation metadata was guessed/rewritten');
+if(ids().includes(115)||query.state.data.pages[2].data[0].id!==100||query.state.data.pages[2].hasNextPage!==false)throw Error('Genuine backward truncation metadata was guessed/rewritten');
 const clean={pages:[server(120,134)],pageParams:[{cursor:135,direction:'backward'}]};query.setData(clean,{updatedAt:123,manual:true});
-if(query.state.data!==clean)throw Error('Refetch was merged with stale history');
+if(query.state.data.pages[0].data.map(e=>e.id).join(',')!==clean.pages[0].data.map(e=>e.id).join(',')||query.state.data.pages.length!==1)throw Error('Refetch was merged with stale history');
+batch=true;const batchBefore=writes;append(135);flush();
+if(writes-batchBefore>2)throw Error('Unchanged append repeatedly normalized');
+const batchStable=writes;for(let i=0;i<30;i++){window.dispatchEvent(new Event('click'));for(const listener of listeners)jobs.push(()=>listener({}));flush();}
+if(writes!==batchStable)throw Error('Structural-sharing/batched rescans rewrote unchanged content');
+const changedRow={...query.state.data.pages.at(-1).data[0],message:'edited under batched sharing'};
+query.setData({...query.state.data,pages:query.state.data.pages.map((p,i)=>i===query.state.data.pages.length-1?{...p,data:[changedRow]}:p)},{updatedAt:123,manual:true});flush();
+if(query.state.data.pages.at(-1).data[0].message!==changedRow.message)throw Error('Batched edit lost');
+// A native effect can replay its same unnormalized update in a later batch.
+// Diagnose replays separately from an unsolicited notification/render loop.
+const replay={pages:[server(120,134),{data:[event(135)],hasPreviousPage:true,hasNextPage:false,previousCursor:120,nextCursor:undefined}],pageParams:[{cursor:135,direction:'backward'},null]};
+query.setData(replay,{updatedAt:123,manual:true});flush();const replayBefore=writes;
+for(let i=0;i<5;i++){query.setData(replay,{updatedAt:123,manual:true});flush();}
+if(writes-replayBefore>10)throw Error('Native replay produced more than one correction per actual update');
+console.log('Native replay diagnostic: '+(writes-replayBefore-5)+' corrections for5 explicit native updates.');
+batch=false;query.setData(clean,{updatedAt:123,manual:true});
 const before=writes;(${configure})(true);if(writes!==before||listeners.size!==1)throw Error('Repeated configure rewrote cache/subscribed twice');
-const unsupported={pages:[{...server(120,134),data:[event(134),event(120)]}],pageParams:[null]};query.setData(unsupported,{updatedAt:123,manual:true});if(query.state.data!==unsupported)throw Error('Unsupported descending shape modified');
+const unsupported={pages:[{...server(120,134),data:[event(134),event(120)]}],pageParams:[null]};query.setData(unsupported,{updatedAt:123,manual:true});if(query.state.data.pages[0].data[0].id!==134||query.state.data.pages[0].data[1].id!==120)throw Error('Unsupported descending shape modified');
 query.setData(clean,{updatedAt:123,manual:true});
 if(card!==document.querySelectorAll('[id^=\"event-container-\"]')[0])throw Error('Native card identity modified');
 (${configure})(false);if(listeners.size!==0)throw Error('Disable did not unsubscribe');
