@@ -1,6 +1,6 @@
 // Serialized into the campaign renderer: keep all helpers inside this function.
 export function configureCampaignChatPages(enabled: boolean): void {
-  type EventRow = { id: number; [key: string]: unknown };
+  type EventRow = { id: number | null; isOptimistic?: boolean; [key: string]: unknown };
   type Page = { data: EventRow[]; hasPreviousPage: boolean; hasNextPage: boolean;
     previousCursor?: number; nextCursor?: number; direction?: unknown; [key: string]: unknown };
   type Data = { pages: Page[]; pageParams: unknown[]; [key: string]: unknown };
@@ -14,7 +14,7 @@ export function configureCampaignChatPages(enabled: boolean): void {
   if (host[key]) { if (!enabled) host[key]!.dispose(); return; }
   if (!enabled) return;
   let disposed = false, scanning = false;
-  const subscriptions = new Map<Query, { observer: Observer; unsubscribe: () => void }>();
+  const subscriptions = new Map<Query, { observer: Observer; unsubscribe: () => void; restore(): void }>();
   const busy = new Set<Query>();
   function campaign(): string | undefined {
     if (location.protocol !== 'https:' || location.hostname !== 'play.fables.gg') return;
@@ -23,18 +23,19 @@ export function configureCampaignChatPages(enabled: boolean): void {
   function matches(value: unknown, id: string): boolean {
     return Array.isArray(value) && value.length === 2 && value[0] === 'events' && value[1] === id;
   }
-  function normalize(query: Query): void {
-    const id = campaign();
-    if (disposed || !id || !matches(query.queryKey, id) || query.options?.maxPages !== 3 || busy.has(query)) return;
-    const data = query.state?.data;
-    if (!data || !Array.isArray(data.pages) || !Array.isArray(data.pageParams) || data.pages.length !== data.pageParams.length || data.pages.length > 3) return;
+  function temporary(page: Page | undefined, param: unknown): boolean {
+    return param === null && !!page && Array.isArray(page.data) && page.data.length === 1 && page.direction === undefined && page.hasPreviousPage === true && page.hasNextPage === false && page.data[0]?.isOptimistic === true && page.data[0].id == null;
+  }
+  function pack(data: Data): Data {
+    if (!data || !Array.isArray(data.pages) || !Array.isArray(data.pageParams) || data.pages.length !== data.pageParams.length || data.pages.length > 4) return data;
     // Null parameters are the captured native append shape. Genuine server
     // requests have cursor/direction objects and are never repacked.
     let previous = -Infinity;
-    for (const page of data.pages) {
-      if (!page || !Array.isArray(page.data) || page.data.length > 15 || typeof page.hasPreviousPage !== 'boolean' || typeof page.hasNextPage !== 'boolean') return;
+    for (const [index, page] of data.pages.entries()) {
+      if (!page || !Array.isArray(page.data) || page.data.length > 15 || typeof page.hasPreviousPage !== 'boolean' || typeof page.hasNextPage !== 'boolean') return data;
+      if (index === data.pages.length - 1 && temporary(page, data.pageParams[index])) continue;
       for (const row of page.data) {
-        if (!row || !Number.isSafeInteger(row.id) || row.id <= previous) return;
+        if (!row || row.isOptimistic === true || typeof row.id !== 'number' || !Number.isSafeInteger(row.id) || row.id <= previous) return data;
         previous = row.id;
       }
     }
@@ -42,11 +43,11 @@ export function configureCampaignChatPages(enabled: boolean): void {
     let changed = false;
     for (let index = 0; index < data.pages.length;) {
       const first = data.pages[index];
-      if (data.pageParams[index] !== null || first.direction !== undefined || first.data.length === 0 || !first.hasPreviousPage) {
+      if (temporary(first, data.pageParams[index]) || data.pageParams[index] !== null || first.direction !== undefined || first.data.length === 0 || !first.hasPreviousPage) {
         pages.push(first); pageParams.push(data.pageParams[index++]); continue;
       }
       let end = index + 1;
-      while (end < data.pages.length && data.pageParams[end] === null && data.pages[end].direction === undefined && data.pages[end].hasPreviousPage && data.pages[end].data.length > 0) end++;
+      while (end < data.pages.length && !temporary(data.pages[end], data.pageParams[end]) && data.pageParams[end] === null && data.pages[end].direction === undefined && data.pages[end].hasPreviousPage && data.pages[end].data.length > 0) end++;
       const rows = data.pages.slice(index, end).flatMap(page => page.data);
       const last = data.pages[end - 1];
       for (let offset = 0; offset < rows.length; offset += 15) {
@@ -54,7 +55,7 @@ export function configureCampaignChatPages(enabled: boolean): void {
         // Cursors denote the first/last actual event, as captured on native
         // server pages. Inherited append previousCursor points at stale history.
         const page: Page = { ...(offset === 0 ? first : last), data: chunk,
-          previousCursor: chunk[0].id, nextCursor: chunk[chunk.length - 1].id,
+          previousCursor: chunk[0].id!, nextCursor: chunk[chunk.length - 1].id!,
           hasPreviousPage: first.hasPreviousPage, hasNextPage: more || last.hasNextPage };
         const existing = data.pages[index + offset / 15];
         if (existing && existing.data.length === chunk.length && existing.data.every((row, i) => row === chunk[i]) && existing.previousCursor === page.previousCursor && existing.nextCursor === page.nextCursor && existing.hasNextPage === page.hasNextPage) pages.push(existing);
@@ -64,10 +65,63 @@ export function configureCampaignChatPages(enabled: boolean): void {
       if (pages.length !== end) changed = true;
       index = end;
     }
-    if (!changed) return;
+    // Actual adjacent newer rows prove forward availability. Keep this cursor
+    // when backward pagination later evicts the newer page from its window.
+    for (let index = 0; index + 1 < pages.length; index++) {
+      const page = pages[index], next = pages[index + 1], last = page.data.at(-1);
+      if (last && typeof last.id === 'number' && next.data.length && typeof next.data[0].id === 'number' && next.data[0].id > last.id && (!page.hasNextPage || page.nextCursor !== last.id)) {
+        pages[index] = { ...page, hasNextPage: true, nextCursor: last.id }; changed = true;
+      }
+    }
+    return changed ? { ...data, pages, pageParams } : data;
+  }
+  function normalize(query: Query): void {
+    const id = campaign();
+    if (disposed || !id || !matches(query.queryKey, id) || query.options?.maxPages !== 3 || busy.has(query)) return;
+    const data = query.state.data;
+    if (!data || temporary(data.pages?.at(-1), data.pageParams?.at(-1))) return;
+    const normalized = pack(data);
+    if (normalized === data) return;
     busy.add(query);
-    try { query.setData({ ...data, pages, pageParams }, { updatedAt: query.state.dataUpdatedAt, manual: true }); }
+    try { query.setData(normalized, { updatedAt: query.state.dataUpdatedAt, manual: true }); }
     finally { busy.delete(query); }
+  }
+  function intercept(query: Query): (() => void) | undefined {
+    const descriptor = Object.getOwnPropertyDescriptor(query, 'setData');
+    if (descriptor && (!('value' in descriptor) || !descriptor.writable)) return;
+    const original = query.setData;
+    const wrapper = function(this: Query, ...args: unknown[]): unknown {
+      const id = campaign();
+      if (this === query && !disposed && id && matches(query.queryKey, id) && query.options.maxPages === 3) {
+        const incoming = args[0] as Data | undefined, current = query.state.data;
+        let candidate = incoming;
+        if (incoming && temporary(incoming.pages?.at(-1), incoming.pageParams?.at(-1))) {
+          // Only the captured append of one separate temporary page qualifies.
+          const prefix = current && Array.isArray(current.pages) && Array.isArray(current.pageParams) && incoming.pages.length === current.pages.length + 1 && incoming.pageParams.length === current.pageParams.length + 1 && current.pages.every((page, index) => page === incoming.pages[index] && current.pageParams[index] === incoming.pageParams[index]) && !current.pages.some((page, index) => temporary(page, current.pageParams[index]));
+          if (!prefix) candidate = undefined;
+        }
+        // A confirmed resolution can clone page metadata and truncate the
+        // currently committed four-page optimistic window. Recover only exact
+        // still-current suffix rows, never archived or edited/deleted history.
+        if (incoming && current && Array.isArray(incoming.pages) && Array.isArray(incoming.pageParams) && Array.isArray(current.pages) && Array.isArray(current.pageParams) && incoming.pages.length === 3 && incoming.pageParams.length === 3 && current.pages.length === 4 && current.pageParams.length === 4 && temporary(current.pages[3], current.pageParams[3]) && incoming.pageParams[2] === null) {
+          const sameRows = (a: Page, b: Page): boolean => Array.isArray(a?.data) && Array.isArray(b?.data) && a.data.length === b.data.length && a.data.every((row, index) => row === b.data[index]);
+          const last = incoming.pages[2], previous = current.pages[2]?.data?.at(-1);
+          if (sameRows(incoming.pages[0], current.pages[1]) && sameRows(incoming.pages[1], current.pages[2]) && last?.data?.length === 1 && last.direction === undefined && last.hasPreviousPage === true && last.hasNextPage === false && previous && typeof previous.id === 'number' && typeof last.data[0]?.id === 'number' && Number.isSafeInteger(last.data[0].id) && last.data[0].id > previous.id && last.data[0].isOptimistic !== true) {
+            const recovered = pack({ ...incoming, pages: [current.pages[0], ...incoming.pages], pageParams: [...current.pageParams.slice(0, 3), null] });
+            if (recovered.pages.length <= 3) candidate = recovered;
+          }
+        }
+        if (candidate) args[0] = pack(candidate);
+      }
+      return Reflect.apply(original, this, args);
+    };
+    try { Object.defineProperty(query, 'setData', descriptor ? { ...descriptor, value: wrapper } : { configurable: true, writable: true, value: wrapper }); }
+    catch { return; } // Unsupported sealed/nonextensible native instance.
+    return () => {
+      if (query.setData !== wrapper) return;
+      if (descriptor) Object.defineProperty(query, 'setData', descriptor);
+      else delete (query as unknown as Record<string, unknown>).setData;
+    };
   }
   function scan(): void {
     if (disposed || scanning) return;
@@ -98,14 +152,16 @@ export function configureCampaignChatPages(enabled: boolean): void {
       // observer only while its hook is still present on a mounted DOM fiber.
       for (const [query, subscription] of subscriptions) {
         if (!mounted.get(query)?.has(subscription.observer)) {
-          subscription.unsubscribe(); subscriptions.delete(query);
+          subscription.unsubscribe(); subscription.restore(); subscriptions.delete(query);
         }
       }
       for (const [query, observers] of mounted) {
         if (!subscriptions.has(query)) {
           const observer = observers.values().next().value!;
+          const restore = intercept(query);
+          if (!restore) continue;
           const unsubscribe = observer.subscribe(() => normalize(query));
-          subscriptions.set(query, { observer, unsubscribe });
+          subscriptions.set(query, { observer, unsubscribe, restore });
         }
         normalize(query);
       }
@@ -121,7 +177,7 @@ export function configureCampaignChatPages(enabled: boolean): void {
   function dispose(): void {
     if (disposed) return;
     disposed = true; mutations.disconnect(); clearInterval(timer);
-    for (const entry of subscriptions.values()) entry.unsubscribe();
+    for (const entry of subscriptions.values()) { entry.unsubscribe(); entry.restore(); }
     subscriptions.clear();
     window.removeEventListener('click', scan, true); window.removeEventListener('keydown', scan, true);
     window.removeEventListener('popstate', scan); window.removeEventListener('pagehide', dispose);
