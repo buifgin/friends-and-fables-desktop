@@ -203,9 +203,18 @@ async function save(settings, window) {
     assert.equal(attack.messageName,'message','The native message textarea keeps its name and form ownership.');
     assert.equal(attack.attackSurfaces[3][3],'draft stays editable','Changing background styling preserves the native textarea draft value.');
   }
-  await styleWindow.webContents.executeJavaScript("document.getElementById('attack-message-field').focus()");
+  styleWindow.show();
+  styleWindow.focus();
+  await styleWindow.webContents.executeJavaScript(`new Promise(resolve=>requestAnimationFrame(()=>resolve()))`);
+  assert(styleWindow.isVisible() && styleWindow.isFocused(),'The isolated style fixture is visible and focused before keyboard input.');
+  await styleWindow.webContents.executeJavaScript(`document.querySelectorAll('input,button,textarea,[tabindex]').forEach(element=>element.tabIndex=-1);
+    document.body.tabIndex=0;document.getElementById('attack-message-field').tabIndex=0;document.body.focus();`);
+  styleWindow.webContents.sendInputEvent({ type:'keyDown', keyCode:'TAB' });
+  styleWindow.webContents.sendInputEvent({ type:'keyUp', keyCode:'TAB' });
+  assert.equal(await styleWindow.webContents.executeJavaScript("document.activeElement.id"),'attack-message-field','A native Tab key reaches the Attack message field in the isolated fixture.');
   assert.deepEqual(await styleWindow.webContents.executeJavaScript("(()=>{const s=getComputedStyle(document.getElementById('attack-message-field'));return [document.activeElement.matches(':focus-visible'),s.outlineWidth,s.outlineStyle]})()"),[true,'2px','solid'],'The Attack message field keeps a visible keyboard focus outline.');
   await styleWindow.webContents.executeJavaScript("document.activeElement.blur()");
+  styleWindow.hide();
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','skills')");
   const nonAttack=await styleWindow.webContents.executeJavaScript("['weapon-card','spell-card','target-card','attack-message-field','summary-card'].map(id=>getComputedStyle(document.getElementById(id)).backgroundColor)");
   assert.deepEqual(nonAttack,['rgba(0, 0, 0, 0)','rgba(0, 0, 0, 0)','rgba(0, 0, 0, 0)',nativePanelStyle.attackSurfaces[3][0],'rgba(0, 0, 0, 0)'],'Attack card/target/message backgrounds do not leak into Dice mode.');
