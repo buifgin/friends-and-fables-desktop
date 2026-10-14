@@ -1,7 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),{EventEmitter}=require('node:events'),Module=require('node:module');
 const handlers=new Map();
-class Contents extends EventEmitter{constructor(){super();this.mainFrame={origin:'fables-desktop://settings',url:''};this.destroyed=false;}loadURL(url){this.mainFrame.url=url;return Promise.resolve();}setWindowOpenHandler(){}isDestroyed(){return this.destroyed;}send(){}focus(){}close(){this.destroyed=true;}}
-class View{constructor(options){this.options=options;this.webContents=new Contents();}setVisible(v){this.visible=v;}setBounds(b){this.bounds=b;}setBackgroundColor(){}}
+class Contents extends EventEmitter{constructor(){super();this.mainFrame={origin:'fables-desktop://settings',url:''};this.destroyed=false;}loadURL(url){this.mainFrame.url=url;return Promise.resolve();}setWindowOpenHandler(){}getURL(){return this.mainFrame.url;}executeJavaScript(source){return Promise.resolve(source.includes('data-ff-appearance-rendered')?{ready:true,locale:'en',preset:'custom',customColor:'#234567'}:true);}isDestroyed(){return this.destroyed;}send(){}focus(){}close(){this.destroyed=true;}}
+class View{constructor(options){this.options=options;this.webContents=new Contents();}setVisible(v){this.visible=v;}getVisible(){return this.visible;}setBounds(b){this.bounds=b;}setBackgroundColor(){}}
 const original=Module._load;Module._load=function(name,...args){if(name==='electron')return {WebContentsView:View,ipcMain:{handle:(n,f)=>handlers.set(n,f),removeHandler:n=>handlers.delete(n)}};return original.call(this,name,...args);};
 const {SettingsHub,SETTINGS_HUB_URL}=require('../../dist/settings/settings-hub');Module._load=original;
 function fixture(){handlers.clear();const window=new EventEmitter();window.contentView={addChildView(){}};window.isDestroyed=()=>false;window.isFullScreen=()=>false;const created=[];const appearance={getLocale:()=> 'en',getSettings:()=>({preset:'custom',customColor:'#234567'}),createPanel:()=>{const v=new View();created.push(v);return v;}};let hub,closed=0;hub=new SettingsHub(window,appearance,{hideDesktopTopbarInFullscreen:false,save:async()=>{}},()=>{closed++;hub.setVisible(false);},()=>{},s=>hub.select(s));const manager={createPanel:()=>{const v=new View();created.push(v);return v;},setSettingsOpener(){}};hub.configure({translation:manager,instructions:manager});hub.layout({x:0,y:32,width:580,height:700});return {hub,window,created,get closed(){return closed;}};}
@@ -37,7 +37,7 @@ test('Settings renderer localizes document metadata and navigation while retaini
  const node=id=>{if(!nodes.has(id))nodes.set(id,{checked:false,disabled:false,hidden:false,textContent:'',attributes:{},setAttribute(name,value){this.attributes[name]=value;},getAttribute(name){return this.attributes[name]??null;},toggleAttribute(name,value){this[name]=value;},replaceChildren(...children){this.children=children;}});return nodes.get(id);};
  let onChange,poll,saves=[],snapshot=null,resolveRead,readCount=0;
  let state={section:'combat',locale:'ru',theme:{},campaignAvailable:true,hideDesktopTopbarInFullscreen:false,combat:null};
- const context={window:{settingsTheme:{apply(){}},settingsHub:{get:async()=>state,onChange:fn=>onChange=fn,select:async()=>{},close:async()=>{},saveGeneral:async()=>state,getCombat:async()=>{readCount++;return resolveRead?new Promise(r=>resolveRead=r):snapshot;},saveCombat:async value=>{saves.push(value);return snapshot={...value,hideIntermediateFranz:value.automaticDamage&&value.hideIntermediateFranz,hideDamagePrompt:value.automaticDamage&&value.hideDamagePrompt};}}},document:{documentElement:{lang:''},visibilityState:'visible',getElementById:node,querySelector:node,createElement:()=>({attributes:{},setAttribute(name,value){this.attributes[name]=value;},getAttribute(name){return this.attributes[name]??null;}})},setInterval:fn=>poll=fn};
+ const context={window:{settingsTheme:{apply(){}},settingsHub:{get:async()=>state,onChange:fn=>onChange=fn,select:async()=>{},close:async()=>{},saveGeneral:async()=>state,getCombat:async()=>{readCount++;return resolveRead?new Promise(r=>resolveRead=r):snapshot;},saveCombat:async value=>{saves.push(value);return snapshot={...value,hideIntermediateFranz:value.automaticDamage&&value.hideIntermediateFranz,hideDamagePrompt:value.automaticDamage&&value.hideDamagePrompt};}}},document:{documentElement:{lang:'',attributes:{},setAttribute(name,value){this.attributes[name]=value;},getAttribute(name){return this.attributes[name]??null;}},visibilityState:'visible',getElementById:node,querySelector:node,createElement:()=>({attributes:{},setAttribute(name,value){this.attributes[name]=value;},getAttribute(name){return this.attributes[name]??null;}})},setInterval:fn=>poll=fn};
  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../assets/settings/settings-hub.js'),'utf8'),context);
  const drain=()=>new Promise(r=>setImmediate(r));await drain();
  const enLabels=['Campaign','Appearance','Translation','/sp','Music','Combat','General'],ruLabels=['Кампания','Оформление','Перевод','/sp','Музыка','Бой','Общие'];
@@ -60,6 +60,9 @@ test('Settings renderer localizes document metadata and navigation while retaini
  snapshot={campaignId:'b',automaticDamage:false,hideIntermediateFranz:false};poll();await drain();assert.equal(node('automatic-damage').checked,false);
  resolveRead=true;const before=readCount;poll();poll();assert.equal(readCount,before+1);resolveRead(snapshot);resolveRead=null;await drain();
  onChange({...state,section:'campaign'});assert.equal(node('close').hidden,true);assert.equal(node('#content').hidden,true);onChange({...state,section:'general',campaignAvailable:false});assert.equal(node('close').hidden,false);assert.equal(node('#content').hidden,false);assert.equal(node('sections').children.length,5);const count=readCount;poll();await drain();assert.equal(readCount,count);
+ onChange({...state,section:'general',renderRevision:20});assert.equal(context.document.documentElement.getAttribute('data-ff-settings-rendered'),'20:general');
+ onChange({...state,section:'campaign',renderRevision:19});assert.equal(node('#content').hidden,false,'An older Campaign snapshot cannot blank completed General content');assert.equal(context.document.documentElement.getAttribute('data-ff-settings-rendered'),'20:general');
+ onChange({...state,section:'campaign',renderRevision:21});assert.equal(node('#content').hidden,true);assert.equal(context.document.documentElement.getAttribute('data-ff-settings-rendered'),'21:campaign');
  onChange({...state,section:'combat',combat:snapshot});await drain();context.document.visibilityState='hidden';poll();assert.equal(readCount,count+1);
 });
 
@@ -129,4 +132,104 @@ test('actual Settings dock keeps website bounds across native Campaign cross-swi
  await dock.openSection('general');dock.hide();assert.deepEqual(website.bounds,{x:0,y:32,width:1280,height:768});assert.equal(trace.filter(x=>x[0]==='dispose').length,1);
  await dock.openSection('campaign');await dock.openSection('general');await dock.setCampaignAvailable(false);
  assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});assert.equal(trace.filter(x=>x[0]==='dispose').length,2);dock.hide();assert.equal(trace.filter(x=>x[0]==='dispose').length,2);
+});
+
+test('Campaign remains committed until the exact local renderer completes target state',async()=>{
+ const f=fixture(),trace=[],manager={setSettingsOpener(){}};
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});
+ await f.hub.select('campaign');const nativeBounds={...f.hub.view.bounds};let finishReady;
+ f.hub.view.webContents.executeJavaScript=source=>{assert.match(source,/data-ff-settings-rendered/);return source.includes('const advance=')?Promise.resolve(true):new Promise(resolve=>finishReady=resolve);};
+ const switching=f.hub.select('general',()=>trace.push('layout'));
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(f.hub.currentSection(),'campaign');assert.deepEqual(f.hub.view.bounds,nativeBounds);assert.deepEqual(trace,[]);
+ const sender=f.hub.view.webContents;assert.equal(handlers.get('settings-hub:get')({sender,senderFrame:sender.mainFrame}).section,'general','Only prepared renderer state advances before native layout');
+ finishReady(true);await switching;assert.equal(f.hub.currentSection(),'general');assert.equal(f.hub.view.bounds.width,580);assert.deepEqual(trace,['layout','suspend']);
+});
+
+for(const section of ['general','appearance'])for(const cancel of ['newer-section','hidden','unavailable','closed','wrong-url','new-document','not-rendered','renderer-error'])test(section+' pending ready cannot commit after '+cancel,async()=>{
+ const f=fixture(),trace=[],manager={setSettingsOpener(){}};
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){trace.push('hide');}}});
+ await f.hub.select('campaign');let finishReady,contents,cancelObserved=false;
+ const install=target=>{contents=target;target.executeJavaScript=source=>{if(source.startsWith('(()=>{const wait=')&&!source.includes('wait.expected=')){cancelObserved=true;finishReady(false);return Promise.resolve(true);}return new Promise((resolve,reject)=>finishReady=value=>value==='error'?reject(Error('owned renderer unavailable')):resolve(value));};};
+ if(section==='general')install(f.hub.view.webContents);
+ else {const create=f.hub.appearance.createPanel;f.hub.appearance.createPanel=()=>{const view=create();install(view.webContents);return view;};}
+ const switching=f.hub.select(section,()=>trace.push('stale-layout'));await new Promise(resolve=>setImmediate(resolve));
+ if(cancel==='newer-section')await f.hub.select('campaign');
+ if(cancel==='hidden')f.hub.setVisible(false);
+ if(cancel==='unavailable')f.hub.setCampaignAvailable(false);
+ if(cancel==='closed')f.window.emit('closed');
+ if(cancel==='wrong-url')contents.mainFrame.url='fables-desktop://settings/wrong';
+ if(cancel==='new-document')contents.emit('did-navigate');
+ finishReady(cancel==='renderer-error'?'error':cancel==='not-rendered'?false:section==='appearance'?{ready:true,locale:'en',preset:'custom',customColor:'#234567'}:true);await switching;
+ assert.equal(f.hub.currentSection(),'campaign');assert.equal(trace.includes('stale-layout'),false);assert.equal(trace.includes('suspend'),false);
+ assert.equal(f.hub.preparing,undefined,'Pending state is cleared on cancellation, failure or stale ownership');
+ if(cancel==='hidden')assert.equal(f.hub.view.visible,false);
+ if(cancel==='closed')assert.equal(contents.isDestroyed(),true);
+ if(['newer-section','hidden','unavailable','closed','new-document'].includes(cancel))assert.equal(cancelObserved,true,'Cancellation actively disconnects pending renderer observation');
+});
+
+test('passive DOM wait accepts a newer same-section state and drops observer/timer on success or cancellation',async()=>{
+ const vm=require('node:vm'),f=fixture(),manager={setSettingsOpener(){}};
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){},hide(){}}});await f.hub.select('campaign');
+ let snapshot,marker=null;const observers=new Set(),timers=new Map(),context={window:{innerWidth:580,innerHeight:700},document:{visibilityState:'visible',documentElement:{getAttribute:()=>marker}},requestAnimationFrame:callback=>setImmediate(callback),cancelAnimationFrame:handle=>clearImmediate(handle),MutationObserver:class{constructor(callback){this.callback=callback;}observe(){observers.add(this);}disconnect(){observers.delete(this);}},setTimeout(callback){const id={};timers.set(id,callback);return id;},clearTimeout(id){timers.delete(id);}};
+ const contents=f.hub.view.webContents;contents.send=(_channel,state)=>snapshot=state;contents.executeJavaScript=source=>Promise.resolve(vm.runInNewContext(source,context));
+ let opening=f.hub.select('general');await new Promise(resolve=>setImmediate(resolve));assert.equal(observers.size,1);assert.equal(timers.size,1);const first=snapshot.renderRevision;
+ f.hub.update();assert.ok(snapshot.renderRevision>first);marker=snapshot.renderRevision+':general';for(const observer of observers)observer.callback();await opening;
+ assert.equal(f.hub.currentSection(),'general');assert.equal(observers.size,0);assert.equal(timers.size,0);assert.equal(context.window.__friendsFablesSettingsPaintWait,undefined);
+ await f.hub.select('campaign');marker=null;opening=f.hub.select('general');await new Promise(resolve=>setImmediate(resolve));assert.equal(observers.size,1);f.hub.setVisible(false);await opening;assert.equal(observers.size,0);assert.equal(timers.size,0);assert.equal(context.window.__friendsFablesSettingsPaintWait,undefined);
+});
+
+test('General remains painted during cold Appearance preparation and editor is shown before external hub state is sent',async()=>{
+ const f=fixture();await f.hub.select('general');const trace=[];let finishReady;
+ const create=f.hub.appearance.createPanel;f.hub.appearance.createPanel=()=>{const view=create();view.webContents.executeJavaScript=source=>source.includes('wait.expected=')?Promise.resolve(true):new Promise(resolve=>finishReady=resolve);view.setVisible=value=>{view.visible=value;if(value)trace.push('editor-visible');};return view;};
+ f.hub.view.webContents.send=(_channel,state)=>trace.push('hub-'+state.section);
+ const opening=f.hub.select('appearance');await new Promise(resolve=>setImmediate(resolve));f.hub.update();
+ const sender=f.hub.view.webContents;assert.equal(handlers.get('settings-hub:get')({sender,senderFrame:sender.mainFrame}).section,'general');assert.equal(f.hub.currentSection(),'general');assert.equal(f.created[0].visible,false);assert.deepEqual(trace,['hub-general']);
+ finishReady({ready:true,locale:'en',preset:'custom',customColor:'#234567'});await opening;assert.deepEqual(trace,['hub-general','editor-visible','hub-appearance']);assert.equal(f.hub.currentSection(),'appearance');
+});
+
+test('cold Appearance passive wait rejects malformed or wrong-locale marker and cleans up after terminal chosen state',async()=>{
+ const vm=require('node:vm'),f=fixture();await f.hub.select('general');let marker='not-json';const observers=new Set(),timers=new Map(),context={window:{innerWidth:580,innerHeight:700},document:{visibilityState:'visible',documentElement:{getAttribute:()=>marker}},requestAnimationFrame:callback=>setImmediate(callback),cancelAnimationFrame:handle=>clearImmediate(handle),MutationObserver:class{constructor(callback){this.callback=callback;}observe(){observers.add(this);}disconnect(){observers.delete(this);}},setTimeout(callback){const id={};timers.set(id,callback);return id;},clearTimeout(id){timers.delete(id);}};
+ const create=f.hub.appearance.createPanel;f.hub.appearance.createPanel=()=>{const view=create();view.webContents.executeJavaScript=source=>Promise.resolve(vm.runInNewContext(source,context));return view;};
+ const opening=f.hub.select('appearance');await new Promise(resolve=>setImmediate(resolve));assert.equal(observers.size,1);marker=JSON.stringify({locale:'ru',preset:'custom',customColor:'#234567'});for(const observer of observers)observer.callback();assert.equal(f.hub.currentSection(),'general');assert.equal(observers.size,1);
+ marker=JSON.stringify({locale:'en',preset:'custom',customColor:'#234567'});for(const observer of observers)observer.callback();await opening;assert.equal(f.hub.currentSection(),'appearance');assert.equal(observers.size,0);assert.equal(timers.size,0);assert.equal(context.window.__friendsFablesSettingsPaintWait,undefined);
+});
+
+for(const cancel of ['newer-section','hidden','unavailable','closed','resize','not-painted','paint-error'])test('expanded visible hub keeps native Campaign until paint, rejects '+cancel,async()=>{
+ const f=fixture(),trace=[],manager={setSettingsOpener(){}};f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});await f.hub.select('campaign');let finishPaint,canceled=false;
+ f.hub.view.webContents.executeJavaScript=source=>{if(source.startsWith('(()=>{const wait=')){canceled=true;finishPaint(false);return Promise.resolve(true);}if(source.includes('const advance='))return new Promise((resolve,reject)=>finishPaint=value=>value==='error'?reject(Error('visible renderer unavailable')):resolve(value));return Promise.resolve(true);};
+ const opening=f.hub.select('general',()=>trace.push('layout'));await new Promise(resolve=>setImmediate(resolve));assert.equal(f.hub.currentSection(),'campaign');assert.equal(f.hub.view.bounds.width,580,'Prepared visible hub resizes while committed native content remains');assert.deepEqual(trace,[]);
+ if(cancel==='newer-section')await f.hub.select('campaign');if(cancel==='hidden')f.hub.setVisible(false);if(cancel==='unavailable')f.hub.setCampaignAvailable(false);if(cancel==='closed')f.window.emit('closed');if(cancel==='resize')f.hub.layout({x:0,y:32,width:640,height:710});
+ finishPaint(cancel==='paint-error'?'error':false);await opening;assert.equal(f.hub.currentSection(),'campaign');assert.deepEqual(trace,[]);assert.equal(f.hub.preparing,undefined);
+ if(['newer-section','hidden','unavailable','closed','resize'].includes(cancel))assert.equal(canceled,true,'Paint RAF/timer wait is canceled actively');
+ if(cancel==='not-painted'||cancel==='paint-error')assert.equal(f.hub.view.bounds.width,126,'Failure restores prior committed geometry');
+});
+
+test('same-bounds layout and Campaign refresh preserve expanded preparation until visible paint completes',async()=>{
+ const f=fixture(),trace=[],manager={setSettingsOpener(){}};f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});await f.hub.select('campaign');let finishPaint;
+ f.hub.view.webContents.executeJavaScript=source=>source.includes('const advance=')?new Promise(resolve=>finishPaint=resolve):Promise.resolve(true);
+ const opening=f.hub.select('general');await new Promise(resolve=>setImmediate(resolve));f.hub.layout({x:0,y:32,width:580,height:700});assert.equal(f.hub.view.bounds.width,580);f.hub.refreshCampaign();assert.equal(f.hub.view.bounds.width,580);assert.equal(f.hub.currentSection(),'campaign');assert.deepEqual(trace,[]);
+ finishPaint(true);await opening;assert.equal(f.hub.currentSection(),'general');assert.deepEqual(trace,['suspend']);
+});
+
+test('accepted Appearance state readiness waits for interactive initial settlement, follows locale without draft replay, rejects stale preferences independently',()=>{
+ const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path'),{DEFAULT_APPEARANCE}=require('../../dist/appearance/themes');
+ const source=fs.readFileSync(path.join(__dirname,'../../assets/appearance/appearance.js'),'utf8'),start=source.indexOf('function markRendered()'),end=source.indexOf('function appearanceError('),nodes=new Map();
+ const node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',checked:false,hidden:false,disabled:false,classList:{toggle(){}},querySelectorAll:()=>[]});return nodes.get(id);};
+ const root={lang:'en',attributes:{},setAttribute(name,value){this.attributes[name]=value;},getAttribute(name){return this.attributes[name]??null;}};
+ const context={busy:true,renderedSettings:undefined,appliedRevision:-1,appliedLocaleRevision:-1,roles:[],canUndoReset:false,panelWidth:0,panelNavigationWidth:0,customColor:'#161616',backgroundImage:null,backgroundName:'',imagePreview:null,form:{elements:{preset:{value:'website'}}},colorInput:node('custom-color'),hexInput:node('custom-hex'),element:node,document:{documentElement:root,body:{classList:{toggle(){}}}},window:{settingsLocale:{set:locale=>root.lang=locale}},showThemes(){},readDicePalette(){}};
+ vm.createContext(context);context.updatePreview=()=>{node('theme-options').disabled=context.busy;context.markRendered();};vm.runInContext(source.slice(start,end),context);
+ const state={...structuredClone(DEFAULT_APPEARANCE),preset:'custom',customColor:'#203040',locale:'en',localeRevision:0,revision:0,platform:'linux'};
+ context.showSettings(state);assert.equal(root.getAttribute('data-ff-appearance-rendered'),null,'A notification while initial get is pending cannot advertise loading controls');assert.equal(node('theme-options').disabled,true);
+ context.applyInterfaceLocale({locale:'ru',localeRevision:1});assert.equal(root.lang,'ru');assert.equal(root.getAttribute('data-ff-appearance-rendered'),null,'Interface locale alone cannot make initial preferences interactive');
+ context.busy=false;context.showSettings(state);assert.equal(context.form.elements.preset.value,'custom');assert.equal(context.hexInput.value,'#203040');assert.equal(node('theme-options').disabled,false);let ready=JSON.parse(root.getAttribute('data-ff-appearance-rendered'));assert.equal(ready.locale,'ru');assert.equal(ready.localeRevision,1,'Old locale metadata cannot discard fresh initial preference fields');
+ context.hexInput.value='#345678';node('theme-name').value='unsaved draft';context.applyInterfaceLocale({locale:'en',localeRevision:2});ready=JSON.parse(root.getAttribute('data-ff-appearance-rendered'));assert.equal(ready.locale,'en');assert.equal(context.hexInput.value,'#345678');assert.equal(node('theme-name').value,'unsaved draft','Interface readiness refresh preserves local drafts');
+ context.busy=true;context.showSettings({...state,customColor:'#456789',revision:2,localeRevision:2});context.busy=false;context.showSettings({...state,customColor:'#203040',revision:1,localeRevision:0});assert.equal(context.hexInput.value,'#456789');assert.equal(node('theme-options').disabled,false);ready=JSON.parse(root.getAttribute('data-ff-appearance-rendered'));assert.equal(ready.revision,2);assert.equal(ready.customColor,'#456789','Initial settlement unlocks newest accepted preferences without overwriting them with stale data');
+});
+
+test('pending Appearance follows latest expected provider on update and cannot commit returned older ready metadata',async()=>{
+ const vm=require('node:vm'),f=fixture();let locale='en',customColor='#234567',marker=null;f.hub.appearance.getLocale=()=>locale;f.hub.appearance.getSettings=()=>({preset:'custom',customColor});await f.hub.select('general');
+ const observers=new Set(),timers=new Map(),context={window:{},document:{documentElement:{getAttribute:()=>marker}},requestAnimationFrame:()=>{},cancelAnimationFrame(){},MutationObserver:class{constructor(callback){this.callback=callback;}observe(){observers.add(this);}disconnect(){observers.delete(this);}},setTimeout(callback){const id={};timers.set(id,callback);return id;},clearTimeout(id){timers.delete(id);}};
+ const create=f.hub.appearance.createPanel;f.hub.appearance.createPanel=()=>{const view=create();view.webContents.executeJavaScript=source=>Promise.resolve(vm.runInNewContext(source,context));return view;};
+ let opening=f.hub.select('appearance');await new Promise(resolve=>setImmediate(resolve));locale='ru';customColor='#345678';f.hub.update();marker=JSON.stringify({locale:'en',preset:'custom',customColor:'#234567'});for(const observer of observers)observer.callback();assert.equal(f.hub.currentSection(),'general');assert.equal(observers.size,1);marker=JSON.stringify({locale,preset:'custom',customColor});for(const observer of observers)observer.callback();await opening;assert.equal(f.hub.currentSection(),'appearance');assert.equal(observers.size,0);assert.equal(timers.size,0);
+ await f.hub.select('general');let finish;f.created[0].webContents.executeJavaScript=()=>new Promise(resolve=>finish=resolve);opening=f.hub.select('appearance');await new Promise(resolve=>setImmediate(resolve));finish({ready:true,locale,preset:'custom',customColor});customColor='#567890';await opening;assert.equal(f.hub.currentSection(),'general','Provider changed after renderer response; old ready result cannot commit');assert.equal(f.hub.preparing,undefined);
 });
