@@ -20,6 +20,7 @@ let panelNavigationWidth = 0;
 let appliedRevision = -1;
 let appliedLocaleRevision = -1;
 let renderedSettings;
+let interactive = false;
 const previousStyles = new Map();
 
 for (const field of document.querySelectorAll('[data-style]')) {
@@ -85,6 +86,7 @@ function selection() {
 }
 function markRendered() {
   if (busy || !renderedSettings) return;
+  interactive = true;
   document.documentElement.setAttribute('data-ff-appearance-rendered',JSON.stringify({revision:appliedRevision,localeRevision:appliedLocaleRevision,locale:document.documentElement.lang,...renderedSettings}));
 }
 function applyInterfaceLocale(state) {
@@ -93,8 +95,12 @@ function applyInterfaceLocale(state) {
   appliedLocaleRevision = revision; window.settingsLocale.set(state.locale); markRendered();
 }
 function showSettings(settings) {
+  const staleLocale = (settings.localeRevision ?? 0) < appliedLocaleRevision;
   applyInterfaceLocale(settings);
-  if (settings.revision < appliedRevision) { updatePreview(); return; }
+  // Once controls have been interactive, older-locale replies must not replay
+  // saved fields over drafts, even if layout changes advanced manager revision.
+  // Initial preferences can still settle under the current interface locale.
+  if (settings.revision < appliedRevision || interactive && staleLocale) { updatePreview(); return; }
   appliedRevision = settings.revision;
   canUndoReset = settings.canUndoReset;
   if (settings.themes) showThemes(settings.themes);
