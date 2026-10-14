@@ -23,11 +23,15 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       if (button.disabled || otherLayer() || settingsClosing?.isConnected) return;
       settingsSuppressed = false;
       if (reserved && mode === name) { close(); return; }
-      if (reserved || picker) close(); requested = name; schedule();
+      if (reserved || picker) close(true); requested = name; schedule();
     }); controls.append(button);
   }
   let reserved = false, pending = false, pendingReopened = false, internalLaunch = false;
   let settingsSuppressed = false, settingsClosing: HTMLElement | null = null;
+  let retiringPicker: HTMLElement | null = null, retirementDeadline = 0;
+  let retiringClose: HTMLElement | null = null, retiringHeading: HTMLElement | null = null;
+  let retiringMode: 'actions' | 'skills' | null = null, retiringHeadingText = '';
+  let retiringOwner: Fiber | undefined;
   const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top', '--ff-combat-controls-bottom'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
   const railWritten = new Map<string, string>();
   let mountedRail: HTMLElement | null = null, mountedRailAside: HTMLElement | null = null;
@@ -135,7 +139,8 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   // Keep geometry until the picker closes. Suspend only modal overrides for
   // nested layers, restoring native locks without moving their anchor.
-  let modalUndo: (() => void)[] = [], layoutUndo: (() => void)[] = [];
+  type LayoutUndo = { node: HTMLElement; owner: HTMLElement | null; restore(): void };
+  let modalUndo: (() => void)[] = [], layoutUndo: LayoutUndo[] = [];
   let modalActive = false;
   const hiddenBefore = new Map<HTMLElement, string | null>();
   function rightWorkspacePanes(): HTMLElement[] {
@@ -166,7 +171,19 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const old = node.getAttribute(name);
     if (old === value) return;
     if (value === null) node.removeAttribute(name); else node.setAttribute(name, value);
-    (layout ? layoutUndo : modalUndo).push(() => { if (node.getAttribute(name) !== value) return; if (old === null) node.removeAttribute(name); else node.setAttribute(name, old); });
+    const restore = () => { if (node.getAttribute(name) !== value) return; if (old === null) node.removeAttribute(name); else node.setAttribute(name, old); };
+    if (layout) layoutUndo.push({ node, owner: picker?.contains(node) ? picker : null, restore });
+    else modalUndo.push(restore);
+  }
+  function pruneDetachedLayout(): void {
+    // Ownership is captured before native descendants can move elsewhere.
+    // Detached nodes lose our markers; connected reused nodes keep native writes.
+    for (let index = layoutUndo.length - 1; index >= 0; index--) {
+      const entry = layoutUndo[index];
+      if (!entry.owner || entry.owner.isConnected) continue;
+      if (!entry.node.isConnected) entry.restore();
+      layoutUndo.splice(index, 1);
+    }
   }
   function property(node: HTMLElement, name: string, value: string): void {
     const old = node.style.getPropertyValue(name), priority = node.style.getPropertyPriority(name);
@@ -184,10 +201,15 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }
     modalUndo = []; modalActive = false;
   }
-  function release(nativeRemoved = false): void {
+  function release(nativeRemoved = false, keepLayout = false): void {
     suspendModal(nativeRemoved); restoreFiltered();
-    reserved = false; pending = false; pendingReopened = false;
-    for (const restore of layoutUndo.reverse()) restore();
+    pending = false; pendingReopened = false;
+    // A mode switch keeps only already-owned layout until native exit/adoption.
+    // Modal locks still return to the native layer during its close animation.
+    if (keepLayout) { updateControls(); return; }
+    retiringPicker = null; retiringClose = null; retiringHeading = null; retiringMode = null; retiringHeadingText = ''; retiringOwner = undefined; retirementDeadline = 0; reserved = false;
+    pruneDetachedLayout();
+    for (const entry of layoutUndo.reverse()) entry.restore();
     layoutUndo = [];
     document.documentElement.removeAttribute('data-ff-combat-open');
     chat?.removeAttribute('data-ff-combat-chat');
@@ -225,8 +247,20 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   document.addEventListener('focusin', focusGate); document.addEventListener('focusout', focusGate);
   document.addEventListener('dismissableLayer.pointerDownOutside', cancelOutside, true);
   document.addEventListener('dismissableLayer.focusOutside', cancelOutside, true);
-  function close(): void {
-    const current = picker; release(); attempted = true;
+  function close(switching = false): void {
+    const current = picker;
+    const retain = switching && !!current?.isConnected && current.hasAttribute('data-ff-combat-docked');
+    release(false, retain); attempted = true;
+    if (retain) {
+      retiringPicker = current; retiringMode = mode; retirementDeadline = Date.now() + 5000;
+      retiringClose = current!.querySelector('button:has(.lucide-x)');
+      // This node is already an owned dock: native Actions can advance into
+      // targets/forms without retaining its initial Choose Action caption.
+      retiringHeading = current!.querySelector<HTMLElement>('[data-ff-combat-heading]')
+        ?? current!.querySelector<HTMLElement>('h2,h3,div.text-center.absolute');
+      retiringHeadingText = retiringHeading?.textContent?.trim() ?? '';
+      retiringOwner = Object.entries(current!).find(([name]) => name.startsWith('__reactFiber'))?.[1] as Fiber | undefined;
+    }
     current?.querySelector<HTMLButtonElement>('button:has(.lucide-x)')?.click();
     picker = null; launched = null; requested = null; updateControls();
   }
@@ -290,6 +324,9 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   function dock(): void {
     if (!picker || modalActive || otherLayer()) return;
+    // A proven replacement ends the handoff deadline; its layout entries stay
+    // independent from the detached old picker's conditional cleanup.
+    retirementDeadline = 0;
     attribute(picker, 'data-ff-combat-docked', '', true); attribute(picker, 'data-ff-combat-panel', '', true);
     attribute(picker, 'data-ff-combat-panel-mode', mode, true);
     const heading = Array.from(picker.querySelectorAll<HTMLElement>('h2')).find(node => /^(Choose Action|Выберите действие)$/i.test(node.textContent?.trim() ?? ''));
@@ -496,6 +533,24 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   function scan(): void {
     queued = false; if (disposed) return;
+    pruneDetachedLayout();
+    // Never hold a refused native close forever, or adopt its old node as the
+    // requested replacement. Reservation is released on invalid ownership/TTL.
+    if (retirementDeadline && Date.now() > retirementDeadline) release();
+    else if (retiringPicker) {
+      if (!retiringPicker.isConnected) { retiringPicker = null; retiringClose = null; retiringHeading = null; retiringMode = null; retiringHeadingText = ''; retiringOwner = undefined; }
+      else {
+        const currentOwner = Object.entries(retiringPicker).find(([name]) => name.startsWith('__reactFiber'))?.[1] as Fiber | undefined;
+        const sameOwner = retiringOwner ? !!currentOwner && (currentOwner === retiringOwner
+          || currentOwner.alternate === retiringOwner || retiringOwner.alternate === currentOwner) : !currentOwner;
+        const sameHeading = !!retiringHeadingText && retiringHeading?.textContent?.trim() === retiringHeadingText;
+        if (retiringPicker.parentElement !== document.body || retiringPicker.getAttribute('role') !== 'dialog'
+          || !retiringPicker.hasAttribute('data-ff-combat-docked') || !retiringPicker.hasAttribute('data-ff-combat-panel')
+          || retiringPicker.getAttribute('data-ff-combat-panel-mode') !== retiringMode
+          || !retiringClose?.isConnected || retiringPicker.querySelector('button:has(.lucide-x)') !== retiringClose
+          || !retiringHeading?.isConnected || !retiringPicker.contains(retiringHeading) || !sameHeading || !sameOwner) release();
+      }
+    }
     const nextRoute = location.pathname + location.search;
     if (route !== nextRoute) { if (picker || reserved) close(); route = nextRoute; encounter = false; attempted = false; requested = null; }
     const play = /\/play\/?$/.test(location.pathname) && (!new URLSearchParams(location.search).has('view') || new URLSearchParams(location.search).get('view') === 'play');
@@ -541,7 +596,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const awaitingDice = launched === 'skills' || requested === 'skills';
     const found = skills ?? (!awaitingDice ? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? ''))) : undefined);
     if (settingsClosing && !settingsClosing.isConnected) settingsClosing = null;
-    if (found && found !== settingsClosing && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
+    if (found && found !== retiringPicker && found !== settingsClosing && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     filterAdventure();
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
     syncNativeTurn();
@@ -570,7 +625,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (!next || internalLaunch || otherLayer() || settingsClosing?.isConnected) return;
     settingsSuppressed = false;
     // Observe before native handlers; do not cancel or replace their event.
-    if (picker || reserved) close();
+    if (picker || reserved) close(true);
     mode = next; launched = next; attempted = true; rememberBackground();
     bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
     schedule();
