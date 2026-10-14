@@ -198,9 +198,13 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     updateControls();
   }
   const visible = (element: Element): boolean => element.getAttribute('data-state') !== 'closed' && !element.hasAttribute('hidden') && getComputedStyle(element).display !== 'none';
+  function concealedSpellHelper(node: Element): boolean {
+    const helper = (window as unknown as { __friendsFablesDesktopSpellSlots?: { isConcealedHelper?(dialog: Element, dock: Element): boolean } }).__friendsFablesDesktopSpellSlots;
+    return !!picker && helper?.isConcealedHelper?.(node, picker) === true;
+  }
   function otherLayer(): boolean {
     return Array.from(document.querySelectorAll('[role="dialog"], [role="alertdialog"], [role="listbox"], [role="menu"], [data-radix-popper-content-wrapper]'))
-      .some(node => node !== picker && visible(node));
+      .some(node => node !== picker && visible(node) && !concealedSpellHelper(node));
   }
   function background(target: EventTarget | null): boolean {
     if (!(target instanceof Node) || picker?.contains(target)) return false;
@@ -552,6 +556,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     else if (!settingsSuppressed && now && !attempted && !reserved && !pending && !found && !otherLayer()) open();
   }
   function schedule(): void { if (!queued && !disposed) { queued = true; queueMicrotask(scan); } }
+  document.addEventListener('ff-spell-helper-change', schedule);
   const observer = new MutationObserver(schedule); observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-state', 'aria-expanded'] });
   railResizeObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(schedule) : null;
   window.addEventListener('resize', schedule);
@@ -585,6 +590,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     closeForSettings,
     update(value, nextCss) { language = value; if (style.textContent !== nextCss) style.textContent = nextCss; labels(); schedule(); },
     dispose() { disposed = true; observer.disconnect(); clearInterval(timer); if (picker || reserved) close();
+      document.removeEventListener('ff-spell-helper-change', schedule);
       document.removeEventListener('wheel', wheelGate);
       document.removeEventListener('focusin', focusGate); document.removeEventListener('focusout', focusGate);
       document.removeEventListener('dismissableLayer.pointerDownOutside', cancelOutside, true); document.removeEventListener('dismissableLayer.focusOutside', cancelOutside, true);

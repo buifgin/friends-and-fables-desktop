@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const root = path.resolve(__dirname, '../..');
 const runtimeRoot = process.env.FABLES_TEST_APP_ROOT || root;
-const html = `<!doctype html><html><head><style>:root{--foreground:220 10% 90%;--primary:45 100% 50%}body{background:#080808;color:#eee}.flex{display:flex}.flex-col{flex-direction:column}.gap-1{gap:4px}.h-3{height:12px}.w-3{width:12px}.h-4{height:16px}.w-4{width:16px}.rounded-full{border-radius:999px;box-sizing:border-box}.border{border:1px solid #999}[class~="bg-primary/70"]{background:hsl(var(--primary)/.7)}.bg-primary{background:hsl(var(--primary))}.bg-muted,.bg-gray-800{background:#222}[role=dialog]{position:fixed;inset:100px;background:#080808}.fixed{position:fixed}.inset-0{inset:0}#sidebar{position:fixed;top:16px;right:16px;width:180px}#left-dock{inset:0 auto 0 0;width:260px;max-width:40vw}</style></head><body><aside id="sidebar"><div class="container-[size]"><div id="rows"></div><button id="open" type="button">Open Spellbook</button></div></aside><textarea id="draft">preserve this draft</textarea><script>
+const html = `<!doctype html><html><head><style>:root{--foreground:220 10% 90%;--primary:45 100% 50%}body{background:#080808;color:#eee}.flex{display:flex}.flex-col{flex-direction:column}.gap-1{gap:4px}.h-3{height:12px}.w-3{width:12px}.h-4{height:16px}.w-4{width:16px}.rounded-full{border-radius:999px;box-sizing:border-box}.border{border:1px solid #999}[class~="bg-primary/70"]{background:hsl(var(--primary)/.7)}.bg-primary{background:hsl(var(--primary))}.bg-muted,.bg-gray-800{background:#222}[role=dialog]{position:fixed;inset:100px;background:#080808}.fixed{position:fixed}.inset-0{inset:0}.z-50{z-index:50}.native-backdrop{background:rgba(0,0,0,.5)}#sidebar{position:fixed;top:16px;right:16px;width:180px}#left-dock{inset:0 auto 0 0;width:260px;max-width:40vw}</style></head><body><aside id="sidebar"><div class="container-[size]"><div id="rows"></div><button id="open" type="button">Open Spellbook</button></div></aside><textarea id="draft">preserve this draft</textarea><script>
 window.keydowns=[];document.addEventListener('keydown',event=>window.keydowns.push({key:event.key,repeat:event.repeat}),true);window.calls=[];window.opens=0;window.closes=0;window.cacheInvalidations=0;window.toasts=0;window.queryReads=0;
 window.config={characterId:123,campaignId:'fixture',phase:'campaign',viewOnly:false,pending:false,used:2,max:4};
 window.mountSidebar=()=>{
@@ -15,12 +15,21 @@ window.mountSidebar=()=>{
  document.querySelector('#open').__reactFiber$fixture={return:owner};document.querySelector('#open').__reactProps$fixture={onClick:()=>{const options={defaultTab:"spells"};window.opens++;window.mountBook(options)}};
 };
 window.mountDock=mode=>{const node=document.createElement('div'),overlay=document.createElement('div');overlay.className='fixed inset-0';overlay.setAttribute('data-state','open');overlay.style.setProperty('display','none','important');overlay.style.setProperty('pointer-events','none','important');node.id='left-dock';node.setAttribute('role','dialog');node.setAttribute('data-state','open');node.setAttribute('aria-modal','false');if(mode==='campaign')node.setAttribute('data-ff-campaign-panel','');else{node.setAttribute('data-ff-combat-docked','');node.setAttribute('data-ff-combat-panel','');node.setAttribute('data-ff-combat-panel-mode',mode)}node.__reactFiber$fixture={memoizedProps:{},return:null};document.body.append(overlay,node);window.dockNode=node;window.dockOverlay=overlay;return node};
+// Real controllers own markers, modal locks and the parent backdrop in this regression.
+window.mountNativeDock=mode=>{
+ const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50 native-backdrop';overlay.setAttribute('data-state','open');
+ const node=document.createElement('div');node.id='left-dock';node.setAttribute('role','dialog');node.setAttribute('data-state','open');node.setAttribute('aria-modal','true');
+ const close=document.createElement('button');close.type='button';close.innerHTML='<svg class="lucide-x"></svg>';close.onclick=()=>{node.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow=''};node.append(close);
+ if(mode==='campaign'){node.__reactFiber$fixture={memoizedProps:{},child:{type:function NativeCampaign(){return 'Campaign Settings'},memoizedProps:{campaignId:config.campaignId,isHost:true}},return:null}}
+ else {node.insertAdjacentHTML('beforeend','<h2>Choose Action</h2>');node.__reactFiber$fixture={memoizedProps:{},return:null}}
+ document.body.style.pointerEvents='none';document.body.style.overflow='hidden';document.body.append(overlay,node);window.dockNode=node;window.dockOverlay=overlay;
+};
 window.mountBook=()=>{
- const c=window.config;const dock=document.querySelector('#left-dock'),beforePointer=document.body.style.pointerEvents,beforeOverflow=document.body.style.overflow;if(dock)dock.setAttribute('aria-modal','true');document.body.style.pointerEvents='none';document.body.style.overflow='hidden';const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.id='book';dialog.setAttribute('data-state','open');const provider={memoizedProps:{contentId:'book',open:true,onOpenChange(value){if(!value){window.closes++;dialog.remove();overlay.remove();document.body.style.pointerEvents=beforePointer;document.body.style.overflow=beforeOverflow;if(dock?.isConnected)dock.setAttribute('aria-modal','false')}}},return:null};const providerAlternate={memoizedProps:provider.memoizedProps,return:null,alternate:provider};provider.alternate=providerAlternate;const portal={tag:4,stateNode:{containerInfo:document.body},return:provider};const overlayPortal={tag:4,stateNode:{containerInfo:document.body},return:providerAlternate};const overlay=document.createElement('div');overlay.className='fixed inset-0';overlay.setAttribute('data-state','open');overlay.__reactFiber$fixture={return:overlayPortal};dialog.__reactFiber$fixture={return:portal};
+ const c=window.config;const dock=document.querySelector('#left-dock'),beforePointer=document.body.style.pointerEvents,beforeOverflow=document.body.style.overflow;if(dock)dock.setAttribute('aria-modal','true');document.body.style.pointerEvents='none';document.body.style.overflow='hidden';const dialog=document.createElement('div');dialog.setAttribute('role','dialog');dialog.id='book';dialog.setAttribute('data-state','open');const provider={memoizedProps:{contentId:'book',open:true,onOpenChange(value){if(!value){const remove=()=>{window.closes++;dialog.remove();overlay.remove();document.body.style.pointerEvents=beforePointer;document.body.style.overflow=beforeOverflow;if(dock?.isConnected)dock.setAttribute('aria-modal','false')};if(c.holdClose){provider.memoizedProps.open=false;window.pendingNativeClose=remove}else remove()}}},return:null};const providerAlternate={memoizedProps:provider.memoizedProps,return:null,alternate:provider};provider.alternate=providerAlternate;const portal={tag:4,stateNode:{containerInfo:document.body},return:provider};const overlayPortal={tag:4,stateNode:{containerInfo:document.body},return:providerAlternate};const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50 native-backdrop';overlay.setAttribute('data-state','open');overlay.__reactFiber$fixture={return:overlayPortal};dialog.__reactFiber$fixture={return:portal};
  const close=document.createElement('button');close.type='button';close.innerHTML='<svg class="lucide-x"></svg>';close.setAttribute('aria-label','Close');close.onclick=()=>{provider.memoizedProps.onOpenChange(false)};
  close.__reactProps$fixture={onClick:close.onclick};close.__reactFiber$fixture={memoizedProps:close.__reactProps$fixture,return:{memoizedProps:{preventClose:undefined,onClose:undefined},return:portal}};dialog.append(close);
  const observer={options:{mutationFn:async function({characterId,campaignId,level,maxSlots,usedSlots}){return {characterId,campaignId,level,maxSlots,usedSlots}},onSuccess(){window.cacheInvalidations++}},getCurrentResult(){return {isPending:window.config.pending,status:window.config.pending?'pending':'idle'}}};
- const owner={memoizedProps:{characterId:c.characterId,campaignId:c.campaignId,phase:c.phase,viewOnly:c.viewOnly},memoizedState:{memoizedState:observer,next:{memoizedState:{options:{queryKey:['spellSlots',c.characterId]},getCurrentResult(){window.queryReads++;return {status:'success',isPending:false,isLoading:false,isFetching:!!window.config.fetching,data:[{level:1,max_slots:c.max,used_slots:window.config.queryUsed??c.used}]}}},next:null}},return:portal};
+ const owner={memoizedProps:{characterId:c.deferIdentity?undefined:c.characterId,campaignId:c.campaignId,phase:c.phase,viewOnly:c.viewOnly},memoizedState:{memoizedState:observer,next:{memoizedState:{options:{queryKey:['spellSlots',c.characterId]},getCurrentResult(){window.queryReads++;return {status:'success',isPending:false,isLoading:false,isFetching:!!window.config.fetching,data:[{level:1,max_slots:c.max,used_slots:window.config.queryUsed??c.used}]}}},next:null}},return:portal};
  const row=document.createElement('div');row.className='flex flex-col gap-1';row.__reactFiber$fixture={key:'1',memoizedProps:{},return:owner};row.innerHTML='<p>Level 1</p><div class="flex flex-row"></div>';dialog.append(row);
  for(let i=0;i<c.max;i++){
   const node=document.createElement('button');node.type='button';node.className='h-4 w-4 rounded-full '+(i<c.max-c.used?'bg-primary':'bg-gray-800');node.disabled=c.viewOnly||c.phase!=='campaign';
@@ -44,8 +53,9 @@ app.on('window-all-closed',()=>{});
  const {width:workAreaWidth,height:workAreaHeight}=screen.getPrimaryDisplay().workAreaSize;
  win=new BrowserWindow({show:false,width:Math.min(900,workAreaWidth),height:Math.min(800,workAreaHeight),webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
  let nativeFocusEvents=0;win.on('focus',()=>nativeFocusEvents++);
- await win.loadURL('https://fixture.invalid/campaign/fixture/play');win.show();win.focus();win.webContents.focus();
- const js=source=>win.webContents.executeJavaScript(source);
+ await win.loadURL('https://play.fables.gg/fixture/play');win.show();win.focus();win.webContents.focus();
+ const js=async source=>{try{return await win.webContents.executeJavaScript(source)}catch(error){error.message+=' renderer expression='+source.slice(0,500);throw error}};
+ win.webContents.on('console-message',(_event,details)=>{if(details.level==='error')console.error('Renderer console: '+details.message)});
  const focusDiagnostics=async()=>({bounds:win.getBounds(),workArea:{width:workAreaWidth,height:workAreaHeight},visible:win.isVisible(),focused:win.isFocused(),documentHasFocus:await js('document.hasFocus()').catch(()=>false),nativeFocusEvents});
  let readiness;
  while(Date.now()<fixtureDeadline-1500){
@@ -68,6 +78,59 @@ app.on('window-all-closed',()=>{});
   win.webContents.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:'left',clickCount:1});win.webContents.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:'left',clickCount:1});
  };
  await wait('document.querySelector("[data-ff-spell-slot]")');
+ const {configureCombatPanel}=require(path.join(runtimeRoot,'dist/combat/combat-panel'));
+ const {combatPanelCss}=require(path.join(runtimeRoot,'dist/combat/combat-panel-style'));
+ const {configureNativeCampaignPanel}=require(path.join(runtimeRoot,'dist/settings/campaign-panel'));
+ await js(`(()=>{const workspace=document.createElement('div');workspace.className='flex h-full w-full';workspace.id='real-workspace';workspace.innerHTML='<div class="flex-1 h-full w-full"><div><div class="tiptap" contenteditable="true">preserved composer</div><button type="button"><svg class="lucide-dice-3"></svg></button></div></div>';document.body.append(workspace);const gear=document.createElement('button');gear.type='button';gear.id='native-gear';gear.innerHTML='<svg class="lucide-settings"></svg>';gear.onclick=()=>mountNativeDock('campaign');document.querySelector('aside').append(gear)})()`);
+ const sampleBackdrops=()=>js(`new Promise((resolve,reject)=>{const samples=[],timer=setTimeout(()=>reject(Error('Backdrop paint budget exhausted')),1000);let remaining=8;const frame=()=>{const describe=node=>{const s=getComputedStyle(node),r=node.getBoundingClientRect();return {display:s.display,opacity:Number(s.opacity),background:s.backgroundColor,zIndex:s.zIndex,x:r.x,y:r.y,width:r.width,height:r.height}};samples.push({parent:describe(dockOverlay),sheet:describe(lastOverlay),dialog:describe(lastDialog),sameDock:dockNode===document.querySelector('#left-dock'),modal:dockNode.getAttribute('aria-modal'),calls:calls.length});if(--remaining)requestAnimationFrame(frame);else{clearTimeout(timer);resolve(samples)}};requestAnimationFrame(frame)})`);
+ for(const mode of ['combat','campaign']){
+  await js(`Object.assign(config,{campaignId:'01a0d854-78d5-7064-ae41-f63d561c8e01',fetching:true});history.replaceState(null,'','/'+config.campaignId+'/play')`);
+  if(mode==='combat'){await js('('+configureCombatPanel.toString()+')(true,"en",'+JSON.stringify(combatPanelCss)+')');await js('mountNativeDock("combat")')}
+  else await js('('+configureNativeCampaignPanel.toString()+')(true,320,600)');
+  await wait('dockNode?.getAttribute("aria-modal")==="false"&&getComputedStyle(dockOverlay).display==="none"');
+  const count=await js('calls.length');
+  await nativeSlotClick(0,mode);
+  await wait('!!document.querySelector("#book")&&lastDialog.style.opacity==="0"&&!!document.querySelector("[aria-busy=true]")');
+  const samples=await sampleBackdrops();console.log('Owned helper backdrop frames '+mode+' '+JSON.stringify(samples));
+  for(const sample of samples){assert.equal(sample.sameDock,true);assert.equal(sample.calls,count,'fetching query must remain untouched');assert.equal(sample.sheet.opacity,0);assert.equal(sample.dialog.opacity,0);assert.equal(sample.parent.display,'none',mode+' concealed owned helper must not restore the parent native backdrop: '+JSON.stringify(sample))}
+  await js('config.fetching=false');await wait('calls.length==='+String(count+1));await wait('!document.querySelector("#book")');
+  assert.deepEqual(await js('calls.at(-1)'),{characterId:123,campaignId:'01a0d854-78d5-7064-ae41-f63d561c8e01',level:1,maxSlots:4,usedSlots:3});
+  // An unrelated transparent modal still owns native modal protections.
+  await js(`(()=>{const unrelated=document.createElement('div');unrelated.id='unrelated-transparent';unrelated.setAttribute('role','dialog');unrelated.setAttribute('data-state','open');unrelated.style.opacity='0';document.body.append(unrelated)})()`);
+  await wait('dockNode.getAttribute("aria-modal")==="true"&&getComputedStyle(dockOverlay).display!=="none"');
+  await js('document.querySelector("#unrelated-transparent").remove()');await wait('dockNode.getAttribute("aria-modal")==="false"');
+  // Before native ownership is available, retain the visible native modal.
+  await js('Object.assign(config,{fetching:true,deferIdentity:true});document.querySelectorAll("#sidebar [data-ff-spell-slot]")[0].click()');
+  await wait('!!document.querySelector("#book")&&dockNode.getAttribute("aria-modal")==="true"&&getComputedStyle(dockOverlay).display!=="none"');
+  const unowned=await sampleBackdrops();for(const frame of unowned){assert.notEqual(frame.sheet.opacity,0);assert.notEqual(frame.dialog.opacity,0);assert.notEqual(frame.parent.display,'none');assert.equal(frame.calls,count+1)}
+  await js('config.deferIdentity=false;lastOwner.memoizedProps.characterId=config.characterId;lastDialog.append(document.createComment("native identity ready"))');
+  await wait('lastDialog.style.opacity==="0"&&getComputedStyle(dockOverlay).display==="none"');
+  assert.equal(await js('window.__friendsFablesDesktopSpellSlots.isConcealedHelper(lastDialog,dockNode)'),true);
+  // External native style writes revoke concealment; never overwrite that write.
+  await js('lastDialog.style.setProperty("opacity",".4","important")');
+  await wait('getComputedStyle(dockOverlay).display!=="none"');
+  assert.equal(await js('window.__friendsFablesDesktopSpellSlots.isConcealedHelper(lastDialog,dockNode)'),false);
+  await js('lastDialog.querySelector("button").click()');await wait('!document.querySelector("[aria-busy=true]")');
+  await js('new Promise(resolve=>setTimeout(resolve,320))');
+  assert.equal(await js('lastDialog.style.opacity'),'0.4','preserve the exact external native opacity write');
+  assert.equal(await js('calls.length'),count+1,'ownership/style revocation never invokes a native slot callback');
+  assert.equal(await js('document.querySelector("#draft").value'),'preserve this draft');
+  // Native provider closes before an exit-animation dialog actually unmounts.
+  await js('Object.assign(config,{fetching:false,holdClose:true});document.querySelectorAll("#sidebar [data-ff-spell-slot]")[0].click()');
+  await wait('!document.querySelector("[aria-busy=true]")&&!!document.querySelector("#book")&&!!window.pendingNativeClose');
+  const exitFrames=await sampleBackdrops();console.log('Owned helper exit frames '+mode+' '+JSON.stringify(exitFrames));
+  for(const frame of exitFrames){assert.equal(frame.sameDock,true);assert.equal(frame.calls,count+2);assert.equal(frame.sheet.opacity,0);assert.equal(frame.dialog.opacity,0);assert.equal(frame.parent.display,'none',mode+' proven retiring helper must keep parent backdrop hidden through native provider close: '+JSON.stringify(frame))}
+  assert.equal(await js('window.__friendsFablesDesktopSpellSlots.isConcealedHelper(lastDialog,dockNode)'),true);
+  assert.equal(await js(`(()=>{const portal=lastDialog.__reactFiber$fixture.return,original=portal.return;portal.return={memoizedProps:{...original.memoizedProps},return:null};const result=window.__friendsFablesDesktopSpellSlots.isConcealedHelper(lastDialog,dockNode);portal.return=original;return result})()`),false,'foreign closed provider cannot inherit retirement ownership');
+  assert.equal(await js(`(()=>{const provider=lastDialog.__reactFiber$fixture.return.return,original=provider.memoizedProps.onOpenChange;provider.memoizedProps.onOpenChange=()=>{};const result=window.__friendsFablesDesktopSpellSlots.isConcealedHelper(lastDialog,dockNode);provider.memoizedProps.onOpenChange=original;return result})()`),false,'replacement native close callback cannot inherit retirement ownership');
+  await js('pendingNativeClose();pendingNativeClose=null;config.holdClose=false');
+  await wait('!document.querySelector("#book")&&dockNode.getAttribute("aria-modal")==="false"');
+  if(mode==='combat')await js('('+configureCombatPanel.toString()+')(false,"en","")');else await js('('+configureNativeCampaignPanel.toString()+')(false,320,600)');
+  await js('dockNode.remove();dockOverlay.remove();document.body.style.pointerEvents="";document.body.style.overflow=""');
+ }
+ await js('document.querySelector("#real-workspace").remove();document.querySelector("#native-gear").remove();Object.assign(config,{campaignId:"fixture",fetching:false});history.replaceState(null,"","/fixture/play");calls.length=0;opens=0;closes=0;cacheInvalidations=0;toasts=0');
+ if(process.argv.includes('--backdrop-only')){console.log('Real dock helper backdrop PASS');clearTimeout(timer);win.destroy();app.exit(0);return}
+
  const assertAppearance=async(selector,size)=>{
   const circles=await js('Array.from(document.querySelectorAll('+JSON.stringify(selector)+')).map(node=>({width:node.getBoundingClientRect().width,height:node.getBoundingClientRect().height,shadow:getComputedStyle(node).boxShadow,background:getComputedStyle(node).backgroundColor,available:node.dataset.ffSpellAvailable}))');
   assert.equal(circles.length,4);

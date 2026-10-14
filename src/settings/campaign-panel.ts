@@ -51,8 +51,12 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend', width: n
     modalUndo.push(() => { if (node.style.getPropertyValue(name) !== value || node.style.getPropertyPriority(name) !== 'important') return; if (old) node.style.setProperty(name, old, priority); else node.style.removeProperty(name); });
   }
   const visible = (node: Element): boolean => node.isConnected && !node.hasAttribute('hidden') && node.getAttribute('data-state') !== 'closed' && getComputedStyle(node).display !== 'none';
+  function concealedSpellHelper(node: Element): boolean {
+    const helper = (window as unknown as { __friendsFablesDesktopSpellSlots?: { isConcealedHelper?(dialog: Element, dock: Element): boolean } }).__friendsFablesDesktopSpellSlots;
+    return !!panel && helper?.isConcealedHelper?.(node, panel) === true;
+  }
   function otherLayer(): boolean {
-    return Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]')).some(node => node !== panel && visible(node));
+    return Array.from(document.querySelectorAll('[role="dialog"],[role="alertdialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]')).some(node => node !== panel && visible(node) && !concealedSpellHelper(node));
   }
   function fiber(node: Element): Fiber | undefined {
     return Object.entries(node).find(([name]) => name.startsWith('__reactFiber'))?.[1] as Fiber | undefined;
@@ -138,12 +142,14 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend', width: n
     if (panel) { if (otherLayer()) { if (modalActive) suspend(); } else dock(); }
   }
   function schedule(): void { if (!queued && !disposed) { queued = true; queueMicrotask(scan); } }
+  document.addEventListener('ff-spell-helper-change', schedule);
   const observer = new MutationObserver(schedule);
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-state', 'aria-hidden', 'style'] });
   const timer = window.setInterval(schedule, 500);
   function dispose(retainClosed = false): void {
     if (disposed) { if (!retainClosed) delete host[key]; return; }
-    disposed = true; observer.disconnect(); clearInterval(timer);
+    disposed = true;
+    document.removeEventListener('ff-spell-helper-change', schedule); observer.disconnect(); clearInterval(timer);
     const owned = panel;
     suspend(!owned?.isConnected);
     for (const undo of layoutUndo.reverse()) undo();

@@ -1,6 +1,6 @@
 // Serialized into the renderer. Resolve native handlers from the current mounted tree only.
 export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void {
-  type Controller = { update(value: 'en' | 'ru'): void; dispose(): void };
+  type Controller = { update(value: 'en' | 'ru'): void; dispose(): void; isConcealedHelper(dialog: Element, dock: Element): boolean };
   const key = '__friendsFablesDesktopSpellSlots';
   const host = window as unknown as Record<string, Controller | undefined>;
   if (host[key]) { if (enabled) host[key]!.update(locale); else host[key]!.dispose(); return; }
@@ -75,7 +75,7 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
   function queue(): void { if (disposed || queued) return; queued = true; queueMicrotask(() => { queued = false; sync(); advance(); }); }
   const observer = new MutationObserver(queue);
   observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['class', 'disabled'] });
-  host[key] = { update(value) { language = value; sync(); }, dispose() { disposed = true; observer.disconnect(); for (const node of saved.keys()) restore(node); style.remove(); delete host[key]; } };
+  host[key] = { isConcealedHelper, update(value) { language = value; sync(); }, dispose() { disposed = true; observer.disconnect(); for (const node of saved.keys()) restore(node); style.remove(); delete host[key]; } };
   type NativeObserver = { options?: { queryKey?: unknown[]; mutationFn?: Function }; getCurrentResult?: () => { status?: string; isPending?: boolean; isLoading?: boolean; isFetching?: boolean; data?: { level: number; max_slots: number; used_slots: number }[] } };
   function observers(owner: Fiber): NativeObserver[] {
     const result: NativeObserver[] = []; let hook = owner.memoizedState;
@@ -109,8 +109,22 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
     return d.node.isConnected&&d.node.parentElement===document.body&&d.node.getAttribute('role')==='dialog'&&d.node.getAttribute('data-state')!=='closed'&&dockMarker(d.node)===d.marker&&d.node.getAttribute('data-ff-combat-panel-mode')===d.mode&&d.node.previousElementSibling===d.overlay&&d.overlay.isConnected&&d.overlay.parentElement===document.body&&d.overlay.getAttribute('data-state')==='open'&&!!current&&(current===d.owner||current.alternate===d.owner||d.owner.alternate===current);
   }
   function layers(docks:Docked[]):HTMLElement[] {return Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')).filter(node=>!docks.some(d=>node===d.node&&dockOwned(d)));}
-  type Request = { docks:Docked[]; b: Binding; route: string; focus: Element | null; deadline: number; dialog?: HTMLElement; overlay?: HTMLElement; close?: HTMLButtonElement; styles?: (string | null)[]; injectedStyles?: (string | null)[]; provider?: Fiber; called: boolean; mutation?: NativeObserver };
+  type Request = { docks:Docked[]; b: Binding; route: string; focus: Element | null; deadline: number; dialog?: HTMLElement; overlay?: HTMLElement; close?: HTMLButtonElement; styles?: (string | null)[]; injectedStyles?: (string | null)[]; provider?: Fiber; providerChange?: Props['onOpenChange']; retireUntil?: number; called: boolean; mutation?: NativeObserver };
   let request: Request | undefined;
+  const retiring = new Set<Request>();
+  const helperChanged = () => document.dispatchEvent(new Event('ff-spell-helper-change'));
+  const concealmentObserver = new MutationObserver(helperChanged);
+  function isConcealedHelper(dialog: Element, dock: Element): boolean {
+    if (disposed) return false;
+    const candidates = request ? [request, ...retiring] : [...retiring];
+    return candidates.some(r => r.dialog === dialog && dialog.getAttribute('role') === 'dialog'
+      && dialog.getAttribute('data-state') !== 'closed' && r.overlay?.getAttribute('data-state') === 'open' && campaign() === r.route
+      && (retiring.has(r) ? Date.now() <= (r.retireUntil ?? 0) : Date.now() <= r.deadline)
+      && r.docks.some(d => d.node === dock) && r.docks.every(dockOwned) && owned(r, retiring.has(r))
+      && !!r.injectedStyles && [r.dialog, r.overlay].every((node, index) =>
+        !!node && node.getAttribute('style') === r.injectedStyles![index]
+        && node.style.getPropertyValue('opacity') === '0' && node.style.getPropertyPriority('opacity') === 'important'));
+  }
   function portal(node: HTMLElement): Fiber | undefined { let f = fiber(node); for (let i = 0; f && i < 60; i++, f = f.return) if (f.tag === 4) return f; return; }
   function closeButton(dialog: HTMLElement): HTMLButtonElement | undefined {
     for (const button of dialog.querySelectorAll<HTMLButtonElement>('button')) {
@@ -124,18 +138,18 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
     }
     return;
   }
-  function dialogProvider(dialog: HTMLElement, overlay: HTMLElement): Fiber | undefined {
+  function dialogProvider(dialog: HTMLElement, overlay: HTMLElement, closed = false): Fiber | undefined {
     const dPortal = portal(dialog), oPortal = portal(overlay);
     if (dPortal?.stateNode?.containerInfo !== document.body || oPortal?.stateNode?.containerInfo !== document.body) return;
     const ancestors: Fiber[] = []; let f = fiber(dialog);
     for (let i = 0; f && i < 100; i++, f = f.return) {
       const p = f.memoizedProps;
-      if (p?.open === true && p.contentId === dialog.id && typeof p.onOpenChange === 'function') ancestors.push(f);
+      if ((p?.open === true || closed && p?.open === false) && p.contentId === dialog.id && typeof p.onOpenChange === 'function') ancestors.push(f);
     }
     f = fiber(overlay);
     for (let i = 0; f && i < 100; i++, f = f.return) {
       const p = f.memoizedProps;
-      if (p?.open !== true || p.contentId !== dialog.id || typeof p.onOpenChange !== 'function') continue;
+      if ((p?.open !== true && !(closed && p?.open === false)) || p.contentId !== dialog.id || typeof p.onOpenChange !== 'function') continue;
       const match = ancestors.find(value => value === f || value.alternate === f || value.memoizedProps?.onOpenChange === p.onOpenChange);
       if (match) return match;
     }
@@ -150,23 +164,30 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
       return false;
     });
   }
-  function owned(r: Request): boolean {
-    const current = r.dialog && r.overlay ? dialogProvider(r.dialog, r.overlay) : undefined;
-    const sameProvider = !!current && (current === r.provider || current.alternate === r.provider);
+  function owned(r: Request, closed = false): boolean {
+    const current = r.dialog && r.overlay ? dialogProvider(r.dialog, r.overlay, closed) : undefined;
+    const sameProvider = !!current && (current === r.provider || current.alternate === r.provider) && current.memoizedProps?.onOpenChange === r.providerChange;
     return !!r.dialog?.isConnected && !!r.overlay?.isConnected && r.dialog.previousElementSibling === r.overlay && !!r.close?.isConnected && r.dialog.contains(r.close) && closeButton(r.dialog) === r.close && sameProvider && matchingIdentity(r.dialog, r.b.character, r.route);
   }
   function finish(): void {
     const r = request; if (!r) return;
     request = undefined;
+    // Keep only the proven concealed exit sheet classified through native close.
+    // Retiring ownership ends with the bounded existing style-restoration window.
+    if (owned(r) && r.injectedStyles) { r.retireUntil = Date.now() + 300; retiring.add(r); }
     // A user may replace a mounted modal or change its identity while the request waits.
     if (owned(r)) r.close!.click();
+    helperChanged();
     window.setTimeout(() => {
+      retiring.delete(r);
+      if (!request && !retiring.size) concealmentObserver.disconnect();
       // Preserve user/native style writes that occurred after our concealment.
       for (const [index, node] of [r.dialog, r.overlay].entries()) {
         if (!node || !r.styles || !r.injectedStyles || node.getAttribute('style') !== r.injectedStyles[index]) continue;
         const original = r.styles[index];
         if (original === null) node.removeAttribute('style'); else if (original !== undefined) node.setAttribute('style', original);
       }
+      helperChanged();
       if (r.focus instanceof HTMLElement && r.focus.isConnected && r.docks.every(d=>dockOwned(d)&&d.node.getAttribute('aria-modal')==='false')&&!layers(r.docks).length) r.focus.focus({ preventScroll: true });
     }, 300);
     attribute(r.b.node, 'aria-busy', null);
@@ -185,9 +206,13 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
       // Bind before concealing: exact character modal descendants, native close and common portal.
       const provider = overlay instanceof HTMLElement ? dialogProvider(d, overlay) : undefined;
       if (matchingIdentity(d, r.b.character, r.route) && close && overlay instanceof HTMLElement && overlay.classList.contains('fixed') && overlay.classList.contains('inset-0') && overlay.getAttribute('data-state') === 'open' && provider) {
-        r.dialog = d; r.overlay = overlay; r.close = close; r.provider = provider; r.styles = [d.getAttribute('style'), overlay.getAttribute('style')];
+        r.dialog = d; r.overlay = overlay; r.close = close; r.provider = provider; r.providerChange = provider.memoizedProps?.onOpenChange; r.styles = [d.getAttribute('style'), overlay.getAttribute('style')];
         d.style.setProperty('opacity', '0', 'important'); overlay.style.setProperty('opacity', '0', 'important');
         r.injectedStyles = [d.getAttribute('style'), overlay.getAttribute('style')];
+        // Target only the two owned nodes: external style writes revoke the
+        // classification without a global style observer or polling layout.
+        for (const node of [d, overlay]) concealmentObserver.observe(node, { attributes: true, attributeFilter: ['style', 'data-state'] });
+        helperChanged();
       } else if (Date.now() > r.deadline - 4000) { finish(); return; }
     }
     if (!r.dialog) return;
@@ -248,7 +273,7 @@ export function configureSpellSlots(enabled: boolean, locale: 'en' | 'ru'): void
   document.addEventListener('click', click, true); document.addEventListener('keydown', keyboard, true);
   const timer = window.setInterval(advance, 50);
   const initialDispose = host[key]!.dispose;
-  host[key]!.dispose = () => { finish(); window.clearInterval(timer); document.removeEventListener('click', click, true); document.removeEventListener('keydown', keyboard, true); initialDispose(); };
+  host[key]!.dispose = () => { finish(); window.clearInterval(timer); document.removeEventListener('click', click, true); document.removeEventListener('keydown', keyboard, true); concealmentObserver.disconnect(); retiring.clear(); initialDispose(); helperChanged(); };
   sync();
 }
 
