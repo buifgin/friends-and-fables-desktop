@@ -1,18 +1,18 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),{EventEmitter}=require('node:events'),Module=require('node:module');
 const handlers=new Map();
-class Contents extends EventEmitter{constructor(){super();this.mainFrame={origin:'fables-desktop://settings',url:''};this.destroyed=false;}loadURL(url){this.mainFrame.url=url;return Promise.resolve();}setWindowOpenHandler(){}getURL(){return this.mainFrame.url;}executeJavaScript(source){return Promise.resolve(source.includes('data-ff-appearance-rendered')?{ready:true,locale:'en',preset:'custom',customColor:'#234567'}:true);}isDestroyed(){return this.destroyed;}send(){}focus(){}close(){this.destroyed=true;}}
+class Contents extends EventEmitter{constructor(){super();this.mainFrame={origin:'fables-desktop://settings',url:''};this.destroyed=false;this.throttling=true;this.throttlingWrites=[];}getBackgroundThrottling(){return this.throttling;}setBackgroundThrottling(value){this.throttling=value;this.throttlingWrites.push(value);}loadURL(url){this.mainFrame.url=url;return Promise.resolve();}setWindowOpenHandler(){}getURL(){return this.mainFrame.url;}executeJavaScript(source){return Promise.resolve(/data-ff-(appearance|translation|instructions)-rendered/.test(source)?{ready:true,locale:'en',preset:'custom',customColor:'#234567'}:true);}isDestroyed(){return this.destroyed;}send(){}focus(){}close(){this.destroyed=true;}}
 class View{constructor(options){this.options=options;this.webContents=new Contents();}setVisible(v){this.visible=v;}getVisible(){return this.visible;}setBounds(b){this.bounds=b;}setBackgroundColor(){}}
 const original=Module._load;Module._load=function(name,...args){if(name==='electron')return {WebContentsView:View,ipcMain:{handle:(n,f)=>handlers.set(n,f),removeHandler:n=>handlers.delete(n)}};return original.call(this,name,...args);};
 const {SettingsHub,SETTINGS_HUB_URL}=require('../../dist/settings/settings-hub');Module._load=original;
-function fixture(){handlers.clear();const window=new EventEmitter();window.contentView={addChildView(){}};window.isDestroyed=()=>false;window.isFullScreen=()=>false;const created=[];const appearance={getLocale:()=> 'en',getSettings:()=>({preset:'custom',customColor:'#234567'}),createPanel:()=>{const v=new View();created.push(v);return v;}};let hub,closed=0;hub=new SettingsHub(window,appearance,{hideDesktopTopbarInFullscreen:false,save:async()=>{}},()=>{closed++;hub.setVisible(false);},()=>{},s=>hub.select(s));const manager={createPanel:()=>{const v=new View();created.push(v);return v;},setSettingsOpener(){}};hub.configure({translation:manager,instructions:manager});hub.layout({x:0,y:32,width:580,height:700});return {hub,window,created,get closed(){return closed;}};}
+function fixture(){handlers.clear();const window=new EventEmitter();window.contentView={children:[],addChildView(view,index){const old=this.children.indexOf(view);if(old>=0){this.children.splice(old,1);this.children.push(view);}else this.children.splice(index??this.children.length,0,view);},removeChildView(view){this.children.splice(this.children.indexOf(view),1);}};window.isDestroyed=()=>false;window.isFullScreen=()=>false;const created=[];const appearance={getLocale:()=> 'en',getSettings:()=>({preset:'custom',customColor:'#234567'}),createPanel:()=>{const v=new View();created.push(v);return v;}};let hub,closed=0;hub=new SettingsHub(window,appearance,{hideDesktopTopbarInFullscreen:false,save:async()=>{}},()=>{closed++;hub.setVisible(false);},()=>{},s=>hub.select(s));const manager={createPanel:()=>{const v=new View();created.push(v);return v;},getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};hub.configure({translation:manager,instructions:manager});hub.layout({x:0,y:32,width:580,height:700});return {hub,window,created,get closed(){return closed;}};}
 test('section switches retain editor view identity and unsaved state',async()=>{const f=fixture();await f.hub.select('appearance');const first=f.created[0];first.webContents.unsaved='draft';await f.hub.select('translation');assert.equal(first.visible,false);await f.hub.select('appearance');assert.equal(f.created.length,2);assert.equal(first.visible,true);assert.equal(first.webContents.unsaved,'draft');assert.deepEqual(first.bounds,{x:126,y:32,width:454,height:700});f.hub.setVisible(false);assert.ok(f.created.every(v=>!v.visible));});
 test('navigation IPC rejects website, subframe, wrong route and invalid section',async()=>{const {hub}=fixture(),invoke=handlers.get('settings-hub:get');const sender=hub.view.webContents;const event={sender,senderFrame:sender.mainFrame};assert.equal(invoke(event).section,'appearance');assert.deepEqual(invoke(event).theme,{preset:'custom',customColor:'#234567'},'The hub receives the selected theme for palette rendering.');assert.throws(()=>invoke({sender:new Contents(),senderFrame:sender.mainFrame}));assert.throws(()=>invoke({sender,senderFrame:{...sender.mainFrame}}));const old=sender.mainFrame.url;sender.mainFrame.url=SETTINGS_HUB_URL+'?bypass';assert.throws(()=>invoke(event));sender.mainFrame.url=old;assert.throws(()=>handlers.get('settings-hub:select')(event,'../translation'));assert.throws(()=>invoke({sender,senderFrame:null}));});
 test('campaign cannot open without native adapter and music creates no player',async()=>{const f=fixture();await assert.rejects(f.hub.select('campaign'),/not connected/);await f.hub.select('music');assert.equal(f.created.length,0);});
-test('native campaign adapter receives content bounds and host covers nav only',async()=>{const f=fixture(),shown=[],manager={setSettingsOpener(){}};let hidden=0;f.hub.configure({translation:manager,instructions:manager,campaign:{suspend(){},show:b=>shown.push(b),hide:()=>hidden++}});await f.hub.select('campaign');assert.deepEqual(shown.at(-1),{x:126,y:32,width:454,height:700});assert.equal(f.hub.view.bounds.width,126);assert.equal(hidden,0);await f.hub.select('campaign');f.hub.layout({x:0,y:32,width:580,height:700});assert.equal(hidden,0);assert.equal(shown.length,1,'Repeated selection/layout does not relaunch native Campaign');await f.hub.select('general');assert.equal(hidden,0);assert.equal(f.hub.hasRetainedCampaign(),true);f.hub.setVisible(false);assert.equal(hidden,1);assert.equal(f.hub.view.bounds.width,580);});
+test('native campaign adapter receives content bounds and host covers nav only',async()=>{const f=fixture(),shown=[],manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let hidden=0;f.hub.configure({translation:manager,instructions:manager,campaign:{suspend(){},show:b=>shown.push(b),hide:()=>hidden++}});await f.hub.select('campaign');assert.deepEqual(shown.at(-1),{x:126,y:32,width:454,height:700});assert.equal(f.hub.view.bounds.width,126);assert.equal(hidden,0);await f.hub.select('campaign');f.hub.layout({x:0,y:32,width:580,height:700});assert.equal(hidden,0);assert.equal(shown.length,1,'Repeated selection/layout does not relaunch native Campaign');await f.hub.select('general');assert.equal(hidden,0);assert.equal(f.hub.hasRetainedCampaign(),true);f.hub.setVisible(false);assert.equal(hidden,1);assert.equal(f.hub.view.bounds.width,580);});
 test('hide during pending editor load cancels opening',async()=>{const f=fixture();const opening=f.hub.select('appearance');f.hub.setVisible(false);await opening;assert.equal(f.hub.view.visible,false);});
 
 test('combat IPC exposes campaign preferences only to trusted main settings frame and rejects stale saves',async()=>{
- const f=fixture(),manager={setSettingsOpener(){}};let current={campaignId:'a',automaticDamage:false,hideIntermediateFranz:false},saved=[];
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let current={campaignId:'a',automaticDamage:false,hideIntermediateFranz:false},saved=[];
  f.hub.configure({translation:manager,instructions:manager,combat:{get:async()=>current,save:async value=>{saved.push(value);current=value;return current;}}});
  const sender=f.hub.view.webContents,event={sender,senderFrame:sender.mainFrame},get=handlers.get('settings-hub:combat-get'),save=handlers.get('settings-hub:combat-save');
  await f.hub.select('combat');assert.equal(f.created.length,0);assert.deepEqual(await get(event),{...current,hideDamagePrompt:current.hideDamagePrompt??false});
@@ -25,7 +25,7 @@ test('combat IPC exposes campaign preferences only to trusted main settings fram
  f.window.emit('closed');assert.equal(handlers.has('settings-hub:combat-save'),false);
 });
 test('combat get ignores older in-flight snapshots after campaign switch',async()=>{
- const f=fixture(),manager={setSettingsOpener(){}};let resolve,reads=0;
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let resolve,reads=0;
  const current={campaignId:'b',automaticDamage:false,hideIntermediateFranz:false};
  f.hub.configure({translation:manager,instructions:manager,combat:{get:()=>++reads===1?new Promise(r=>resolve=r):Promise.resolve(current),save:async()=>current}});
  const sender=f.hub.view.webContents,event={sender,senderFrame:sender.mainFrame},get=handlers.get('settings-hub:combat-get');
@@ -67,7 +67,7 @@ test('Settings renderer localizes document metadata and navigation while retaini
 });
 
 test('route availability hides campaign sections and rejects unavailable campaign navigation',async()=>{
- const f=fixture(),manager={setSettingsOpener(){}},shown=[];
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},shown=[];
  f.hub.configure({translation:manager,instructions:manager,campaign:{suspend(){},show:b=>shown.push(b),hide(){}}});
  f.hub.setCampaignAvailable(false);
  const sender=f.hub.view.webContents,event={sender,senderFrame:sender.mainFrame};
@@ -77,7 +77,7 @@ test('route availability hides campaign sections and rejects unavailable campaig
 });
 
 test('outer website geometry commits before Campaign adapter mounts and active theme refresh does not reopen',async()=>{
- const f=fixture(),manager={setSettingsOpener(){}},trace=[];
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},trace=[];
  f.hub.configure({translation:manager,instructions:manager,campaign:{suspend(){},show:b=>trace.push(['show',b]),hide:()=>trace.push(['hide'])}});
  await f.hub.select('campaign',()=>trace.push(['website-strip-committed']));
  assert.deepEqual(trace.map(x=>x[0]),['website-strip-committed','show']);
@@ -88,7 +88,7 @@ test('outer website geometry commits before Campaign adapter mounts and active t
 
 
 test('Campaign to Translation/General and back retains adapter and reservation until hub close',async()=>{
- const f=fixture(),trace=[],manager={createPanel:()=>new View(),setSettingsOpener(){}};
+ const f=fixture(),trace=[],manager={createPanel:()=>new View(),getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};
  f.hub.configure({translation:manager,instructions:manager,campaign:{show:b=>trace.push(['show',b]),suspend:()=>trace.push(['suspend']),hide:()=>trace.push(['dispose'])}});
  const websiteBounds=[];
  // The dock reserves native Campaign's strip even when local editors cover it.
@@ -100,7 +100,7 @@ test('Campaign to Translation/General and back retains adapter and reservation u
  await f.hub.select('general',commit);f.hub.setVisible(false);f.hub.setVisible(false);assert.equal(f.hub.hasRetainedCampaign(),false);assert.equal(trace.filter(x=>x[0]==='dispose').length,1);
 });
 test('route unavailability releases a retained Campaign while a different section is active',async()=>{
- const f=fixture(),manager={setSettingsOpener(){}},trace=[];
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},trace=[];
  f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend:()=>trace.push('suspend'),hide:()=>trace.push('dispose')}});
  await f.hub.select('campaign');await f.hub.select('general');f.hub.setCampaignAvailable(false);f.hub.setVisible(false);
  assert.deepEqual(trace,['suspend','dispose']);assert.equal(f.hub.hasRetainedCampaign(),false);await assert.rejects(f.hub.select('campaign'),/not available/);
@@ -118,10 +118,10 @@ test('actual Settings dock keeps website bounds across native Campaign cross-swi
   return original.call(this,name,...args);
  };
  let AppearanceDock;try{({AppearanceDock}=require('../../dist/shell/appearance-dock'));}finally{Module._load=original;}
- const window=new EventEmitter();window.isDestroyed=()=>false;window.isFullScreen=()=>false;window.getContentSize=()=>[1280,800];window.setMenuBarVisibility=()=>{};window.contentView={addChildView(){}};
+ const window=new EventEmitter();window.isDestroyed=()=>false;window.isFullScreen=()=>false;window.getContentSize=()=>[1280,800];window.setMenuBarVisibility=()=>{};window.contentView={children:[],addChildView(view,index){const old=this.children.indexOf(view);if(old>=0){this.children.splice(old,1);this.children.push(view);}else this.children.splice(index??this.children.length,0,view);},removeChildView(view){this.children.splice(this.children.indexOf(view),1);}};
  const website=new View(),history=[];website.setBounds=b=>{website.bounds=b;history.push({...b});};
  const appearance={getLocale:()=> 'en',getSettings:()=>({preset:'custom',customColor:'#234567',appearancePanelWidth:580}),createPanel:()=>new View()};
- const dock=new AppearanceDock(window,website,appearance),trace=[],manager={createPanel:()=>new View(),setSettingsOpener(){}};
+ const dock=new AppearanceDock(window,website,appearance),trace=[],manager={createPanel:()=>new View(),getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};
  dock.configureSettings({translation:manager,instructions:manager,campaign:{show:b=>trace.push(['show',b]),suspend:b=>trace.push(['suspend',b]),hide:()=>trace.push(['dispose'])}});
  await dock.openSection('general');assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});
  await dock.openSection('campaign');const reserved={...website.bounds};assert.deepEqual(reserved,{x:126,y:32,width:1154,height:768});
@@ -135,7 +135,7 @@ test('actual Settings dock keeps website bounds across native Campaign cross-swi
 });
 
 test('Campaign remains committed until the exact local renderer completes target state',async()=>{
- const f=fixture(),trace=[],manager={setSettingsOpener(){}};
+ const f=fixture(),trace=[],manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};
  f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});
  await f.hub.select('campaign');const nativeBounds={...f.hub.view.bounds};let finishReady;
  f.hub.view.webContents.executeJavaScript=source=>{assert.match(source,/data-ff-settings-rendered/);return source.includes('const advance=')?Promise.resolve(true):new Promise(resolve=>finishReady=resolve);};
@@ -146,7 +146,7 @@ test('Campaign remains committed until the exact local renderer completes target
 });
 
 for(const section of ['general','appearance'])for(const cancel of ['newer-section','hidden','unavailable','closed','wrong-url','new-document','not-rendered','renderer-error'])test(section+' pending ready cannot commit after '+cancel,async()=>{
- const f=fixture(),trace=[],manager={setSettingsOpener(){}};
+ const f=fixture(),trace=[],manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};
  f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){trace.push('hide');}}});
  await f.hub.select('campaign');let finishReady,contents,cancelObserved=false;
  const install=target=>{contents=target;target.executeJavaScript=source=>{if(source.startsWith('(()=>{const wait=')&&!source.includes('wait.expected=')){cancelObserved=true;finishReady(false);return Promise.resolve(true);}return new Promise((resolve,reject)=>finishReady=value=>value==='error'?reject(Error('owned renderer unavailable')):resolve(value));};};
@@ -168,7 +168,7 @@ for(const section of ['general','appearance'])for(const cancel of ['newer-sectio
 });
 
 test('passive DOM wait accepts a newer same-section state and drops observer/timer on success or cancellation',async()=>{
- const vm=require('node:vm'),f=fixture(),manager={setSettingsOpener(){}};
+ const vm=require('node:vm'),f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};
  f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){},hide(){}}});await f.hub.select('campaign');
  let snapshot,marker=null;const observers=new Set(),timers=new Map(),context={window:{innerWidth:580,innerHeight:700},document:{visibilityState:'visible',documentElement:{getAttribute:()=>marker}},requestAnimationFrame:callback=>setImmediate(callback),cancelAnimationFrame:handle=>clearImmediate(handle),MutationObserver:class{constructor(callback){this.callback=callback;}observe(){observers.add(this);}disconnect(){observers.delete(this);}},setTimeout(callback){const id={};timers.set(id,callback);return id;},clearTimeout(id){timers.delete(id);}};
  const contents=f.hub.view.webContents;contents.send=(_channel,state)=>snapshot=state;contents.executeJavaScript=source=>Promise.resolve(vm.runInNewContext(source,context));
@@ -195,7 +195,7 @@ test('cold Appearance passive wait rejects malformed or wrong-locale marker and 
 });
 
 for(const cancel of ['newer-section','hidden','unavailable','closed','resize','not-painted','paint-error'])test('expanded visible hub keeps native Campaign until paint, rejects '+cancel,async()=>{
- const f=fixture(),trace=[],manager={setSettingsOpener(){}};f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});await f.hub.select('campaign');let finishPaint,canceled=false;
+ const f=fixture(),trace=[],manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});await f.hub.select('campaign');let finishPaint,canceled=false;
  f.hub.view.webContents.executeJavaScript=source=>{if(source.startsWith('(()=>{const wait=')){canceled=true;finishPaint(false);return Promise.resolve(true);}if(source.includes('const advance='))return new Promise((resolve,reject)=>finishPaint=value=>value==='error'?reject(Error('visible renderer unavailable')):resolve(value));return Promise.resolve(true);};
  const opening=f.hub.select('general',()=>trace.push('layout'));await new Promise(resolve=>setImmediate(resolve));assert.equal(f.hub.currentSection(),'campaign');assert.equal(f.hub.view.bounds.width,580,'Prepared visible hub resizes while committed native content remains');assert.deepEqual(trace,[]);
  if(cancel==='newer-section')await f.hub.select('campaign');if(cancel==='hidden')f.hub.setVisible(false);if(cancel==='unavailable')f.hub.setCampaignAvailable(false);if(cancel==='closed')f.window.emit('closed');if(cancel==='resize')f.hub.layout({x:0,y:32,width:640,height:710});
@@ -205,7 +205,7 @@ for(const cancel of ['newer-section','hidden','unavailable','closed','resize','n
 });
 
 test('same-bounds layout and Campaign refresh preserve expanded preparation until visible paint completes',async()=>{
- const f=fixture(),trace=[],manager={setSettingsOpener(){}};f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});await f.hub.select('campaign');let finishPaint;
+ const f=fixture(),trace=[],manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});await f.hub.select('campaign');let finishPaint;
  f.hub.view.webContents.executeJavaScript=source=>source.includes('const advance=')?new Promise(resolve=>finishPaint=resolve):Promise.resolve(true);
  const opening=f.hub.select('general');await new Promise(resolve=>setImmediate(resolve));f.hub.layout({x:0,y:32,width:580,height:700});assert.equal(f.hub.view.bounds.width,580);f.hub.refreshCampaign();assert.equal(f.hub.view.bounds.width,580);assert.equal(f.hub.currentSection(),'campaign');assert.deepEqual(trace,[]);
  finishPaint(true);await opening;assert.equal(f.hub.currentSection(),'general');assert.deepEqual(trace,['suspend']);
@@ -236,4 +236,70 @@ test('pending Appearance follows latest expected provider on update and cannot c
  const create=f.hub.appearance.createPanel;f.hub.appearance.createPanel=()=>{const view=create();view.webContents.executeJavaScript=source=>Promise.resolve(vm.runInNewContext(source,context));return view;};
  let opening=f.hub.select('appearance');await new Promise(resolve=>setImmediate(resolve));locale='ru';customColor='#345678';f.hub.update();marker=JSON.stringify({locale:'en',preset:'custom',customColor:'#234567'});for(const observer of observers)observer.callback();assert.equal(f.hub.currentSection(),'general');assert.equal(observers.size,1);marker=JSON.stringify({locale,preset:'custom',customColor});for(const observer of observers)observer.callback();await opening;assert.equal(f.hub.currentSection(),'appearance');assert.equal(observers.size,0);assert.equal(timers.size,0);
  await f.hub.select('general');let finish;f.created[0].webContents.executeJavaScript=()=>new Promise(resolve=>finish=resolve);opening=f.hub.select('appearance');await new Promise(resolve=>setImmediate(resolve));finish({ready:true,locale,preset:'custom',customColor});customColor='#567890';await opening;assert.equal(f.hub.currentSection(),'general','Provider changed after renderer response; old ready result cannot commit');assert.equal(f.hub.preparing,undefined);
+});
+
+function externalWaitFixture(section){
+ const vm=require('node:vm'),f=fixture(),observers=new Set(),timers=new Map(),frames=new Map();let marker=null,nextFrame=0;
+ const root={getAttribute:()=>marker};
+ const context=vm.createContext({window:{innerWidth:454,innerHeight:700},document:{visibilityState:'hidden',documentElement:root},requestAnimationFrame(callback){const id=++nextFrame;frames.set(id,callback);return id;},cancelAnimationFrame:id=>frames.delete(id),MutationObserver:class{constructor(callback){this.callback=callback;}observe(){observers.add(this);}disconnect(){observers.delete(this);}},setTimeout(callback){const id={};timers.set(id,callback);return id;},clearTimeout:id=>timers.delete(id)});
+ f.hub.managers[section].createPanel=()=>{const view=new View();f.created.push(view);const setVisible=view.setVisible.bind(view),setThrottling=view.webContents.setBackgroundThrottling.bind(view.webContents);view.setVisible=value=>{setVisible(value);context.document.visibilityState=value&&!view.webContents.getBackgroundThrottling()?'visible':'hidden';};view.webContents.setBackgroundThrottling=value=>{setThrottling(value);context.document.visibilityState=view.visible&&!value?'visible':'hidden';};view.webContents.executeJavaScript=source=>Promise.resolve(vm.runInContext(source,context));return view;};
+ return {...f,context,observers,timers,frames,mark(value){marker=typeof value==='string'?value:JSON.stringify(value);for(const observer of [...observers])observer.callback();},tick(){const callbacks=[...frames.values()];frames.clear();for(const callback of callbacks)callback();}};
+}
+const flush=()=>new Promise(resolve=>setImmediate(resolve));
+for(const section of ['translation','instructions']){
+ test(section+' actual terminal wait keeps General until exact visible viewport paints and retains editor identity',async()=>{
+  const f=externalWaitFixture(section);await f.hub.select('general');let committed=0;const opening=f.hub.select(section,()=>committed++);await flush();
+  assert.equal(f.hub.currentSection(),'general');assert.equal(f.created[0].visible,false);assert.equal(f.observers.size,1);assert.equal(f.frames.size,0,'Hidden readiness never awaits RAF');
+  for(const invalid of ['broken',{locale:'ru',preset:'custom',customColor:'#234567'},{locale:'en',preset:'website',customColor:'#234567'}]){f.mark(invalid);await flush();assert.equal(f.hub.currentSection(),'general');assert.equal(f.created[0].visible,false);}
+  f.mark({locale:'en',preset:'custom',customColor:'#234567'});await flush();const editor=f.created[0];
+  assert.equal(editor.visible,true,'Surface draws while outgoing covers it');assert.equal(editor.webContents.getBackgroundThrottling(),false);assert.equal(f.context.document.visibilityState,'visible','Real throttling API changes Page Visibility before RAF');assert.equal(f.window.contentView.children[0],editor,'Preparation is underneath outgoing hub');assert.equal(f.hub.view.visible,true);assert.equal(f.hub.currentSection(),'general');assert.equal(committed,0);
+  f.context.window.innerWidth=450;f.tick();f.tick();await flush();assert.equal(f.hub.currentSection(),'general','Wrong viewport cannot commit');
+  f.context.window.innerWidth=454;f.tick();await flush();assert.equal(committed,0);f.tick();await opening;
+  assert.equal(f.hub.currentSection(),section);assert.deepEqual(editor.webContents.throttlingWrites,[false,true]);assert.equal(editor.webContents.getBackgroundThrottling(),true);assert.equal(f.window.contentView.children.at(-1),editor);assert.equal(committed,1);assert.equal(f.timers.size,0);assert.equal(f.frames.size,0);assert.equal(f.observers.size,0);assert.equal(f.context.window.__friendsFablesSettingsPaintWait,undefined);
+  editor.webContents.unsaved='kept draft';await f.hub.select('general');const warm=f.hub.select(section);await flush();assert.equal(f.created.length,1);f.tick();f.tick();await warm;assert.equal(editor.webContents.unsaved,'kept draft');
+  const order=[...f.window.contentView.children],visibility=[];const setVisible=editor.setVisible.bind(editor);editor.setVisible=value=>{visibility.push(value);setVisible(value);};await f.hub.select(section);assert.deepEqual(f.window.contentView.children,order,'Same-section focus never lowers the sole committed editor');assert.ok(visibility.every(Boolean));assert.equal(f.frames.size,0);assert.equal(editor.webContents.unsaved,'kept draft');
+ });
+ for(const cancel of ['newer-section','hidden','unavailable','closed','resize','timeout','navigation','hub-destroyed'])test(section+' actual prepared surface cleans up on '+cancel,async()=>{
+  const f=externalWaitFixture(section);await f.hub.select('general');let committed=0;const opening=f.hub.select(section,()=>committed++);await flush();f.mark({locale:'en',preset:'custom',customColor:'#234567'});await flush();const editor=f.created[0];assert.equal(editor.visible,true);
+  if(cancel==='newer-section')await f.hub.select('music');if(cancel==='hidden')f.hub.setVisible(false);if(cancel==='unavailable')f.hub.setCampaignAvailable(false);if(cancel==='closed')f.window.emit('closed');if(cancel==='resize')f.hub.layout({x:0,y:32,width:640,height:710});if(cancel==='navigation')editor.webContents.emit('did-navigate');if(cancel==='hub-destroyed'){f.hub.view.webContents.destroyed=true;f.hub.view.webContents.emit('destroyed');}if(cancel==='timeout')for(const callback of [...f.timers.values()])callback();
+  await opening;assert.equal(f.hub.currentSection(),cancel==='newer-section'?'music':'general');assert.equal(committed,0);assert.equal(editor.visible,false);assert.equal(editor.webContents.getBackgroundThrottling(),true);assert.deepEqual(editor.webContents.throttlingWrites,[false,true]);assert.equal(f.hub.preparing,undefined);assert.equal(f.frames.size,0);assert.equal(f.observers.size,0);assert.equal(f.timers.size,0);assert.equal(f.context.window.__friendsFablesSettingsPaintWait,undefined);
+ });
+ test(section+' missing marker times out without showing editor or replacing committed content',async()=>{const f=externalWaitFixture(section);await f.hub.select('general');const opening=f.hub.select(section);await flush();for(const callback of [...f.timers.values()])callback();await opening;assert.equal(f.hub.currentSection(),'general');assert.equal(f.created[0].visible,false);assert.equal(f.observers.size,0);assert.equal(f.timers.size,0);});
+ test(section+' pending wait tracks latest provider and refuses stale metadata at commit',async()=>{
+  const f=externalWaitFixture(section);let locale='en',color='#234567',enabled=false;f.hub.appearance.getLocale=()=>locale;f.hub.appearance.getSettings=()=>({preset:'custom',customColor:color});f.hub.managers.translation.getSettings=()=>({enabled,showOriginal:false});await f.hub.select('general');let opening=f.hub.select(section);await flush();locale='ru';enabled=true;color='#345678';f.hub.update();f.mark({locale:'en',preset:'custom',customColor:'#234567'});await flush();assert.equal(f.created[0].visible,false);
+  f.mark({locale,preset:'custom',customColor:color});await flush();f.tick();color='#456789';f.hub.update();f.tick();await flush();assert.equal(f.hub.currentSection(),'general','A changed expectation resets painted-frame readiness');f.mark({locale,preset:'custom',customColor:color});f.tick();f.tick();await opening;assert.equal(f.hub.currentSection(),section);
+  await f.hub.select('general');let finish;f.created[0].webContents.executeJavaScript=()=>new Promise(resolve=>finish=resolve);opening=f.hub.select(section);await flush();finish({ready:true,locale,preset:'custom',customColor:color});color='#567890';await opening;assert.equal(f.hub.currentSection(),'general','Provider changed after renderer response cannot commit');assert.equal(f.created[0].visible,false);
+ });
+}
+
+test('external terminal markers require initial interactive settlement and interface updates preserve draft fields',async()=>{
+ const vm=require('node:vm'),fs=require('node:fs'),path=require('node:path');
+ for(const section of ['translation','instructions']){
+  const nodes=new Map(),node=id=>{if(!nodes.has(id))nodes.set(id,{value:'',checked:false,disabled:['translation-options','options','apply'].includes(id),textContent:'',hidden:false,addEventListener(){},setAttribute(){},classList:{toggle(){}}});return nodes.get(id);};
+  const root={lang:'en',attributes:{},setAttribute(name,value){this.attributes[name]=value;},removeAttribute(name){delete this.attributes[name];},getAttribute(name){return this.attributes[name]??null;}};let finish,onTheme,onChange,onInterface;
+  const state=section==='translation'?{enabled:false,showOriginal:false,translateDescriptions:false,preservedNames:[],theme:{preset:'custom',customColor:'#234567'},cacheEntries:0,bundled:true}:{settings:{text:'stored',combatText:'',enabled:false,hideMarked:true},locale:'en',theme:{preset:'custom',customColor:'#234567'}};
+  const context={window:{settingsTheme:{apply(){}},settingsLocale:{set:locale=>root.lang=locale},translation:{get:()=>new Promise(resolve=>finish=resolve),onTheme:fn=>onTheme=fn,onChange:fn=>onChange=fn},hostInstructions:{get:()=>new Promise(resolve=>finish=resolve),onInterface:fn=>onInterface=fn}},document:{documentElement:root,getElementById:node,querySelectorAll:()=>[]}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../../assets',section==='translation'?'translation/translation.js':'commands/host-instructions.js'),'utf8'),context);
+  const marker='data-ff-'+section+'-rendered';assert.equal(root.getAttribute(marker),null);
+  if(section==='translation'){onChange({...state,enabled:true});onTheme({preset:'custom',customColor:'#345678'});}else onInterface({...state,locale:'ru',theme:{preset:'custom',customColor:'#345678'}});
+  assert.equal(root.getAttribute(marker),null,'Interface/notification cannot advertise initial loading renderer');finish(state);await flush();let ready=JSON.parse(root.getAttribute(marker));assert.equal(ready.locale,'ru');assert.equal(ready.customColor,'#345678','Initial GET cannot undo newer interface theme');assert.equal(ready.preset,'custom');
+  const draft=node(section==='translation'?'preserved-names':'instructions');draft.value='unsaved draft';
+  if(section==='translation')onTheme({preset:'custom',customColor:'#456789'});else onInterface({...state,locale:'en',theme:{preset:'custom',customColor:'#456789'}});
+  ready=JSON.parse(root.getAttribute(marker));assert.equal(ready.customColor,'#456789');assert.equal(draft.value,'unsaved draft','Interface refresh advertises latest appearance without replaying preference fields');
+ }
+});
+
+for(const previous of [true,false])for(const ending of ['success','cancel','paint-error'])test('prepared external child restores exact prior throttling '+previous+' after '+ending,async()=>{
+ const f=externalWaitFixture('translation');await f.hub.select('general');const opening=f.hub.select('translation');await flush();const editor=f.created[0];editor.webContents.throttling=previous;
+ if(ending==='paint-error'){const execute=editor.webContents.executeJavaScript.bind(editor.webContents);editor.webContents.executeJavaScript=source=>source.includes('const advance=')?Promise.reject(Error('paint unavailable')):execute(source);}
+ f.mark({locale:'en',preset:'custom',customColor:'#234567'});await flush();
+ if(ending==='success'){f.tick();f.tick();}if(ending==='cancel')f.hub.setVisible(false);await opening;
+ assert.equal(editor.webContents.getBackgroundThrottling(),previous);assert.deepEqual(editor.webContents.throttlingWrites,[false,previous]);assert.equal(f.hub.preparing,undefined);
+ assert.equal(f.hub.currentSection(),ending==='success'?'translation':'general');
+ if(ending!=='success'){assert.equal(editor.visible,false);assert.equal(f.timers.size,0);assert.equal(f.frames.size,0);}
+});
+
+test('retired preparation cannot restore throttling over a newer owner on the same editor',async()=>{
+ const f=externalWaitFixture('translation');await f.hub.select('general');let opening=f.hub.select('translation');await flush();f.mark({locale:'en',preset:'custom',customColor:'#234567'});await flush();const editor=f.created[0],restore=f.hub.preparing.restoreThrottling;
+ f.hub.setVisible(false);await opening;assert.equal(editor.webContents.getBackgroundThrottling(),true);await f.hub.select('general');opening=f.hub.select('translation');await flush();assert.equal(editor.webContents.getBackgroundThrottling(),false);restore();assert.equal(editor.webContents.getBackgroundThrottling(),false,'Old idempotent cleanup cannot overwrite current preparation');f.tick();f.tick();await opening;assert.deepEqual(editor.webContents.throttlingWrites,[false,true,false,true]);
 });
