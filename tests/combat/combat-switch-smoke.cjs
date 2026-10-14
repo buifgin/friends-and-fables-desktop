@@ -58,14 +58,14 @@ function launch(dice){
  const focusObserver=new MutationObserver(records=>{if(document.activeElement===document.body&&records.some(r=>r.removedNodes.length))panel.focus()});focusObserver.observe(panel,{childList:true,subtree:true});
  document.addEventListener('focusin',focusIn);document.addEventListener('focusout',focusOut);
  let closing=false,closeObserver;
- const finishClose=()=>{closeObserver?.disconnect();focusObserver.disconnect();document.removeEventListener('focusin',focusIn);document.removeEventListener('focusout',focusOut);panel.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow='';document.querySelector('#campaign').removeAttribute('aria-hidden')};
+ const finishClose=()=>{closeObserver?.disconnect();focusObserver.disconnect();document.removeEventListener('focusin',focusIn);document.removeEventListener('focusout',focusOut);panel.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow='';document.querySelector('#campaign').removeAttribute('aria-hidden');window.onNativeUnmount?.(panel)};
  // Live Radix/store trace retained the old Actions dialog with data-state=open
  // for66ms after Close, then mounted Dice116ms after the composer click.
- const close=()=>{if(closing)return;closing=true;window.transitionCloses++;if(window.delayedTransition){window.closingPanel=panel;closeObserver=new MutationObserver(()=>{if(panel.hasAttribute('data-ff-combat-docked'))window.transitionRedocks.push(panel.dataset.ffCombatPanelMode)});closeObserver.observe(panel,{attributes:true,attributeFilter:['data-ff-combat-docked']});setTimeout(finishClose,70)}else finishClose()};panel.querySelector('#close').onclick=close;
+ const close=()=>{if(closing)return;closing=true;window.transitionCloses++;if(window.refuseClose){window.closingPanel=panel;window.finishRefusedClose=finishClose;return}if(window.delayedTransition){window.closingPanel=panel;closeObserver=new MutationObserver(()=>{if(panel.hasAttribute('data-ff-combat-docked'))window.transitionRedocks.push(panel.dataset.ffCombatPanelMode)});closeObserver.observe(panel,{attributes:true,attributeFilter:['data-ff-combat-docked']});setTimeout(finishClose,70)}else finishClose()};panel.querySelector('#close').onclick=close;
  document.body.append(overlay,panel);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';document.querySelector('#campaign').setAttribute('aria-hidden','true');
  (dice?content.querySelector('input'):form.querySelector('input')).focus();
 }
-document.querySelector('#dice').onclick=()=>{if(window.delayedTransition)setTimeout(()=>launch(true),120);else launch(true)};document.querySelector('#attacks').onclick=()=>launch(false);
+document.querySelector('#dice').onclick=()=>{if(window.dropDiceLaunch)return;if(window.delayedTransition)setTimeout(()=>launch(true),120);else launch(true)};document.querySelector('#attacks').onclick=()=>launch(false);
 // Count actual observer deliveries. A runaway chain is disconnected only in
 // this fixture so a failing baseline can report its cause without hanging.
 const NativeObserver=window.MutationObserver;window.observers=[];window.deliveries=0;window.mutations=0;window.storm=null;window.recent=[];
@@ -126,6 +126,25 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    assert.ok(last.deliveries-first.deliveries<=12,label+' did not settle: '+JSON.stringify({first,last}));
    assert.equal(await js("document.querySelectorAll('[role=dialog]').length"),expectedPickers,label+' owns the expected native picker count');
    await js('window.deliveries=0;window.mutations=0;window.recent=[]');
+ };
+ // Bound samples to the exact old/new native dialogs and composer geometry.
+ const armSwitchFrames=async()=>{
+   await js(`Promise.all(document.querySelector('[data-ff-combat-docked]').getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{})))`);
+   await js(`(()=>{const old=document.querySelector('[data-ff-combat-docked]'),describe=node=>{if(!node?.isConnected)return null;const r=node.getBoundingClientRect(),s=getComputedStyle(node);return {x:r.x,y:r.y,width:r.width,height:r.height,transform:s.transform,opacity:s.opacity,state:node.getAttribute('data-state'),docked:node.hasAttribute('data-ff-combat-docked'),mode:node.dataset.ffCombatPanelMode}};window.switchOld=old;window.switchBaseline={old:describe(old),editor:describe(originalEditor),scroll:document.scrollingElement.scrollTop};window.switchFrames=[];window.switchPaintDone=new Promise((resolve,reject)=>{let samples=0,readyFrames=0;const timeout=setTimeout(()=>{cancelAnimationFrame(frameId);reject(Error('Switch paint sampling budget exhausted'))},1500);let frameId;const frame=()=>{if(window.closingPanel!==old){frameId=requestAnimationFrame(frame);return}const next=Array.from(document.querySelectorAll('[role=dialog]')).find(node=>node!==old),sample={time:performance.now(),old:describe(old),next:describe(next),sameOld:window.closingPanel===old,editor:describe(originalEditor),scroll:document.scrollingElement.scrollTop};switchFrames.push(sample);if(!old.isConnected&&next?.hasAttribute('data-ff-combat-docked'))readyFrames++;if(++samples>=70||readyFrames>=2){clearTimeout(timeout);resolve(switchFrames)}else frameId=requestAnimationFrame(frame)};frameId=requestAnimationFrame(frame)})})()`);
+ };
+ const assertSwitchFrames=async (label,guarded=false)=>{
+   const frames=await js('switchPaintDone'),baseline=await js('switchBaseline');console.log(label+' continuity frames '+JSON.stringify({baseline,frames}));
+   const exits=frames.filter(frame=>frame.old);assert.ok(exits.length>=2,label+' samples the same native old dialog before delayed unmount');
+   for(const frame of exits){assert.equal(frame.sameOld,true,label+' tracks exact owned native close identity');assert.ok(Math.abs(frame.old.x-baseline.old.x)<=2,label+' old native picker stays left through exit: '+JSON.stringify(frame));assert.ok(Math.abs(frame.old.width-baseline.old.width)<=2,label+' old picker keeps dock width through exit');assert.ok(Math.abs(frame.editor.x-baseline.editor.x)<=2,label+' composer reservation survives native exit');assert.equal(frame.scroll,baseline.scroll,label+' document scroll anchor remains stable')}
+   const cleanup=await js(`(()=>{const old=switchOld,next=document.querySelector('[data-ff-combat-docked]');return {detached:!old.isConnected,oldMarkers:Array.from(old.querySelectorAll('*')).concat(old).flatMap(node=>Array.from(node.attributes).filter(a=>/^data-ff-combat-(panel|docked|panel-mode|heading|close)$/.test(a.name)).map(a=>[node.tagName,a.name,a.value])),nativeModal:old.getAttribute('aria-modal'),nativeStyle:old.getAttribute('style'),nextMode:next?.dataset.ffCombatPanelMode,reserved:document.documentElement.getAttribute('data-ff-combat-open'),chat:originalEditor.closest('.flex-1.h-full.w-full')?.hasAttribute('data-ff-combat-chat')}})()`);
+   console.log(label+' detached cleanup '+JSON.stringify(cleanup));
+   assert.equal(cleanup.detached,true,label+' exact old native dialog unmounted');
+   assert.deepEqual(cleanup.oldMarkers,guarded?[['BUTTON','data-ff-combat-close','native-owned'],['DIV','data-ff-combat-panel-mode','native-external']]:[],label+' detached old picker restores owned markers and preserves external writes before full close');
+   if(guarded)assert.equal(await js('cleanupGuard.heading.isConnected&&cleanupGuard.heading.getAttribute("data-ff-combat-heading")==""&&cleanupGuard.heading.style.color==="red"&&switchOld.style.getPropertyValue("padding-left")==="13px"&&switchOld.style.getPropertyPriority("padding-left")=="important"'),true,label+' connected reused heading and detached native styles survive cleanup');
+   else assert.equal(cleanup.nativeStyle,null,label+' detached old native inline styles remain unchanged');
+   assert.equal(cleanup.nativeModal,'true',label+' old native modal value restored');
+   assert.equal(cleanup.reserved,'true',label+' shared reservation remains owned');assert.equal(cleanup.chat,true,label+' composer remains reserved');assert.equal(cleanup.nextMode,'skills',label+' replacement remains docked');
+   assert.equal(await js('originalEditor.textContent===transitionDraft'),true,label+' composer draft preserved');assert.equal(await js('rolls'),0,label+' never submits');
  };
  const click=async(selector,label,expectedPickers=1,ready)=>{
    await js(`document.querySelector(${JSON.stringify(selector)}).scrollIntoView({block:'center',inline:'center'})`);
@@ -204,7 +223,9 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await js('document.querySelector("#composer").__reactFiberFixture.memoizedProps.encounterActive=true;document.querySelector("#composer").append(document.createElement("span"))');
  await until("document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
  await js('window.delayedTransition=true;window.transitionBefore={opens,closes:transitionCloses,selections,rolls};window.transitionDraft=originalEditor.textContent;window.transitionFavorites=localStorage.getItem("ff-desktop-combat-pins-v1:fixture")');
+ await armSwitchFrames();
  await click('#dice','Delayed native composer Actions -> Dice',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='skills'");
+ await assertSwitchFrames('Native composer Actions -> Dice');
  assert.equal(await js('opens'),await js('transitionBefore.opens+1'),'Delayed native Dice launches exactly once.');
  assert.equal(await js('transitionCloses'),await js('transitionBefore.closes+1'),'Closing Actions is not retried during the delay.');
  assert.deepEqual(await js('transitionRedocks'),[],'Closing Actions never gets re-docked, including intermediate scans.');
@@ -214,10 +235,56 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await js('window.delayedTransition=false');
  await click('[data-ff-combat-mode=actions]','Return to Actions before delayed owned launch',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
  await js('window.delayedTransition=true;window.ownedTransitionOpens=opens');
+ // Native/external code may reclaim detached values and move an owned child
+ // into a connected surface during unmount. Cleanup must not replay onto it.
+ await js(`window.cleanupGuard={old:document.querySelector('[data-ff-combat-docked]'),heading:document.querySelector('[data-ff-combat-heading]'),close:document.querySelector('[data-ff-combat-close]')};window.onNativeUnmount=panel=>{if(panel!==cleanupGuard.old)return;window.onNativeUnmount=null;cleanupGuard.close.setAttribute('data-ff-combat-close','native-owned');panel.setAttribute('data-ff-combat-panel-mode','native-external');panel.style.setProperty('padding-left','13px','important');cleanupGuard.heading.style.color='red';document.querySelector('#campaign').append(cleanupGuard.heading)};true`);
+ await armSwitchFrames();
  await click('[data-ff-combat-mode=skills]','Delayed sidebar Actions -> Dice',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='skills'");
+ await assertSwitchFrames('Owned sidebar Actions -> Dice',true);
  assert.equal(await js('opens'),await js('ownedTransitionOpens+1'),'Owned launch waits for native close and opens Dice once.');
  assert.deepEqual(await js('transitionRedocks'),[],'Owned launch does not re-dock closing Actions.');
  await js('window.delayedTransition=false');
+ // Actions retains the same native picker when advancing to target selection.
+ // Ownership comes from the existing dock, not a still-visible Choose Action label.
+ await click('[data-ff-combat-mode=actions]','Actions before native target stage',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
+ await js('window.targetStagePicker=document.querySelector("[data-ff-combat-docked]");targetStagePicker.querySelector("h2").firstChild.data="Select targets";targetStagePicker.querySelector("form input").value="retained native target draft";window.targetStageForm=targetStagePicker.querySelector("form");window.delayedTransition=true;window.targetStageBefore={opens,closes:transitionCloses}');
+ await armSwitchFrames();
+ await click('[data-ff-combat-mode=skills]','Native target stage -> Dice',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='skills'");
+ await assertSwitchFrames('Native target stage -> Dice');
+ assert.equal(await js('switchOld===targetStagePicker&&targetStageForm.querySelector("input").value==="retained native target draft"'),true,'exact native target form/draft survives its close animation');
+ assert.equal(await js('opens===targetStageBefore.opens+1&&transitionCloses===targetStageBefore.closes+1'),true,'target-stage native close and Dice launch occur once');
+ await js('window.delayedTransition=false');
+ // A native launcher may fail to mount its replacement after old unmount.
+ // Keep the deadline meaningful through that gap, rather than reserving forever.
+ const awaitBoundedRelease=()=>js(`new Promise((resolve,reject)=>{const root=document.documentElement,start=performance.now(),observer=new MutationObserver(()=>{if(!root.hasAttribute('data-ff-combat-open')){observer.disconnect();clearTimeout(timer);requestAnimationFrame(()=>resolve(performance.now()-start))}}),timer=setTimeout(()=>{observer.disconnect();reject(Error('Owned switch reservation survived bounded native handoff deadline'))},6100);observer.observe(root,{attributes:true,attributeFilter:['data-ff-combat-open']});if(!root.hasAttribute('data-ff-combat-open')){observer.disconnect();clearTimeout(timer);resolve(0)}})`);
+ await click('[data-ff-combat-mode=actions]','Actions before missing replacement',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
+ await js('window.delayedTransition=true;window.dropDiceLaunch=true;window.boundBefore={opens,closes:transitionCloses};window.boundOld=document.querySelector("[data-ff-combat-docked]")');
+ await click('[data-ff-combat-mode=skills]','Missing native replacement',0,'!boundOld.isConnected');
+ assert.equal(await js('document.documentElement.hasAttribute("data-ff-combat-open")'),true,'brief native mount gap retains composer reservation');
+ const missingElapsed=await awaitBoundedRelease();console.log('Missing replacement bound '+missingElapsed+'ms');
+ assert.ok(missingElapsed<=6100,'missing native replacement releases within bounded handoff deadline');
+ assert.equal(await js('document.querySelector("[data-ff-combat-chat]")'),null);
+ assert.equal(await js('opens===boundBefore.opens&&transitionCloses===boundBefore.closes+1'),true,'missing replacement does not retry native launch/close');
+ await js('window.delayedTransition=false;window.dropDiceLaunch=false');
+ // A refused native close keeps its modal protections, but cannot hold layout forever.
+ await click('[data-ff-combat-mode=actions]','Actions before refused native close',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
+ await js('window.refuseClose=true;window.dropDiceLaunch=true;window.boundOld=document.querySelector("[data-ff-combat-docked]");window.boundBefore={opens,closes:transitionCloses}');
+ await click('[data-ff-combat-mode=skills]','Refused native close',1,'!!window.finishRefusedClose');
+ await awaitBoundedRelease();
+ assert.equal(await js('boundOld.isConnected&&!boundOld.hasAttribute("data-ff-combat-docked")&&boundOld.getAttribute("aria-modal")==="true"'),true,'refused close releases only owned layout; native dialog remains modal');
+ assert.equal(await js('document.body.style.pointerEvents'), 'none');
+ assert.equal(await js('opens===boundBefore.opens&&transitionCloses===boundBefore.closes+1'),true,'refused native close is not retried');
+ await js('window.refuseClose=false;finishRefusedClose();window.finishRefusedClose=null');
+ // Reused DOM/foreign contents revoke the original-mode ownership immediately.
+ await click('[data-ff-combat-mode=actions]','Actions before ownership revocation',1,"document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
+ await js('window.refuseClose=true;window.boundOld=document.querySelector("[data-ff-combat-docked]");window.boundBefore={opens,closes:transitionCloses}');
+ await click('[data-ff-combat-mode=skills]','Refused close before foreign content',1,'!!window.finishRefusedClose');
+ await js('boundOld.querySelector("h2").firstChild.data="Unrelated Modal";boundOld.append(document.createComment("native dialog reused"))');
+ await until('!document.documentElement.hasAttribute("data-ff-combat-open")');
+ assert.equal(await js('boundOld.isConnected&&!boundOld.hasAttribute("data-ff-combat-docked")&&boundOld.getAttribute("aria-modal")==="true"'),true,'foreign same-node contents cannot retain old dock geometry');
+ assert.equal(await js('opens===boundBefore.opens&&transitionCloses===boundBefore.closes+1'),true);
+ assert.equal(await js('originalEditor.textContent'), 'composer draft');assert.equal(await js('rolls'),0);
+ await js('window.refuseClose=false;finishRefusedClose();window.finishRefusedClose=null');
  await js(`history.pushState({},'', '/fixture/settings');window.dispatchEvent(new PopStateEvent('popstate'));true`);
  await js('new Promise(resolve=>requestAnimationFrame(()=>setTimeout(resolve,30)))');
  await manager.shutdown();
@@ -225,6 +292,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await js('window.__friendsFablesDesktopChatAppearance?.dispose()');
  for(const name of ['Corrections','Shortcuts','Workspace','Panel'])await js(`window.__friendsFablesDesktopCombat${name}.dispose()`);
  assert.equal(await js("document.querySelector('[data-ff-combat-controls],[data-ff-combat-workspace-tools],[data-ff-dice-navigation],[data-ff-dice-native-hidden],[data-ff-dice-selection-tile]')"),null);
+ assert.equal(await js('cleanupGuard.heading.isConnected&&cleanupGuard.heading.getAttribute("data-ff-combat-heading")==""&&cleanupGuard.heading.style.color==="red"&&cleanupGuard.close.getAttribute("data-ff-combat-close")=="native-owned"&&cleanupGuard.old.getAttribute("data-ff-combat-panel-mode")=="native-external"&&cleanupGuard.old.style.getPropertyValue("padding-left")=="13px"'),true,'pruned old entries never replay onto native reused values during later full release/disposal');
  assert.equal(await js('rolls'),0,'Regression never submits a roll or attack.');
  assert.equal(await js('originalEditor===document.querySelector(".tiptap") && originalEditor.textContent==="composer draft"'),true);
  assert.equal(await js('document.body.style.pointerEvents==="" && document.body.style.overflow===""'),true,'Cleanup restores native body styles.');
