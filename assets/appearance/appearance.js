@@ -19,6 +19,7 @@ let panelWidth = 420;
 let panelNavigationWidth = 0;
 let appliedRevision = -1;
 let appliedLocaleRevision = -1;
+let renderedSettings;
 const previousStyles = new Map();
 
 for (const field of document.querySelectorAll('[data-style]')) {
@@ -82,15 +83,18 @@ function selection() {
     linuxBlackMenu: element('black-menu').checked, linuxFloatingAppearance: element('floating-appearance').checked,
   };
 }
+function markRendered() {
+  if (busy || !renderedSettings) return;
+  document.documentElement.setAttribute('data-ff-appearance-rendered',JSON.stringify({revision:appliedRevision,localeRevision:appliedLocaleRevision,locale:document.documentElement.lang,...renderedSettings}));
+}
 function applyInterfaceLocale(state) {
   const revision = state.localeRevision ?? 0;
   if (revision < appliedLocaleRevision) return;
-  appliedLocaleRevision = revision; window.settingsLocale.set(state.locale);
+  appliedLocaleRevision = revision; window.settingsLocale.set(state.locale); markRendered();
 }
 function showSettings(settings) {
-  if ((settings.localeRevision ?? 0) < appliedLocaleRevision) return;
   applyInterfaceLocale(settings);
-  if (settings.revision < appliedRevision) return;
+  if (settings.revision < appliedRevision) { updatePreview(); return; }
   appliedRevision = settings.revision;
   canUndoReset = settings.canUndoReset;
   if (settings.themes) showThemes(settings.themes);
@@ -164,6 +168,7 @@ function showSettings(settings) {
   element('floating-appearance').checked = settings.linuxFloatingAppearance;
   element('linux-menu-setting').hidden = settings.platform !== 'linux';
   element('app-platform-note').hidden = settings.platform === 'linux';
+  renderedSettings={preset:settings.preset,customColor:settings.customColor};
   updatePreview();
 }
 function appearanceError(error) { return error.message.replace(/^Error invoking remote method '[^']+': Error: /, ''); }
@@ -316,6 +321,7 @@ function updatePreview() {
     ['.sample-roll',activePanel==='dice-panel'], ['.sample-input',activePanel==='messages-panel'], ['.sample-controls',activePanel==='messages-panel'] ]) {
     for (const sample of preview.querySelectorAll(selector)) sample.hidden = !show;
   }
+  markRendered();
 }
 function notify(message, error = false) { status.textContent = message; status.classList.toggle('error', error); }
 async function save(settings) {

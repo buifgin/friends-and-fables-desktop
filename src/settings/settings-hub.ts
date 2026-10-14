@@ -16,10 +16,13 @@ export interface SettingsManagers { translation: TranslationManager; instruction
 // exact URL and main-frame authorization; hidden editors are never reloaded.
 export class SettingsHub {
  readonly view: WebContentsView;
- private editors = new Map<SettingsSection,{view:WebContentsView;ready:Promise<void>}>();
+ private editors = new Map<SettingsSection,{view:WebContentsView;ready:Promise<void>;document:number}>();
  private section:SettingsSection='appearance';
  private visible=false;
  private revision=0;
+ private renderRevision=0;
+ private document=0;
+ private preparing?:{section:SettingsSection;revision:number;view:WebContentsView;url:string;paintBounds?:Rectangle;expected?:{locale:'en'|'ru';preset:string;customColor:string}};
  private managers?:SettingsManagers;
  private ready:Promise<void>;
  private bounds?:Rectangle;
@@ -33,6 +36,8 @@ export class SettingsHub {
   window.contentView.addChildView(this.view);this.view.setVisible(false);
   const contents=this.view.webContents;
   contents.on('will-navigate',event=>event.preventDefault());contents.on('will-redirect',event=>event.preventDefault());contents.setWindowOpenHandler(()=>({action:'deny'}));
+  contents.on('did-navigate',()=>{this.document++;this.cancelPreparation();});
+  contents.on('destroyed',()=>{this.revision++;this.preparing=undefined;});
   configureFullscreenShortcuts(contents,window);
   this.ready=contents.loadURL(SETTINGS_HUB_URL);
   ipcMain.handle('settings-hub:get',event=>{this.assertTrusted(event);return this.state();});
@@ -49,7 +54,7 @@ export class SettingsHub {
    if(!saved||combatPreferences(saved).campaignId!==prefs.campaignId)throw new Error('Combat campaign changed. Refresh settings.');
    return this.refreshCombat();
   });
-  window.on('closed',()=>{this.revision++;for(const method of ['get','select','close','general','combat-get','combat-save'])ipcMain.removeHandler(`settings-hub:${method}`);for(const editor of this.editors.values())if(!editor.view.webContents.isDestroyed())editor.view.webContents.close();if(!contents.isDestroyed())contents.close();});
+  window.on('closed',()=>{this.revision++;this.cancelPreparation();for(const method of ['get','select','close','general','combat-get','combat-save'])ipcMain.removeHandler(`settings-hub:${method}`);for(const editor of this.editors.values())if(!editor.view.webContents.isDestroyed())editor.view.webContents.close();if(!contents.isDestroyed())contents.close();});
  }
  configure(managers:SettingsManagers):void {this.managers=managers; managers.translation.setSettingsOpener(()=>this.navigate('translation'));managers.instructions.setSettingsOpener(()=>this.navigate('instructions'));this.update();}
  private assertTrusted(event:IpcMainInvokeEvent):void {if(event.sender!==this.view.webContents||event.senderFrame!==event.sender.mainFrame||event.senderFrame.origin!=='fables-desktop://settings'||event.senderFrame.url!==SETTINGS_HUB_URL)throw new Error('Settings navigation is available only in the app settings panel.');}
@@ -62,19 +67,65 @@ export class SettingsHub {
  }
  setCampaignAvailable(available:boolean):void {
   if(this.campaignAvailable===available)return;
-  this.campaignAvailable=available;this.revision++;
+  this.campaignAvailable=available;this.revision++;this.cancelPreparation();
   if(!available){this.combatRevision++;this.combat=null;this.releaseCampaign();}
   this.update();
  }
- private state(){const {preset,customColor}=this.appearance.getSettings();return {section:this.section,locale:this.appearance.getLocale(),theme:{preset,customColor},campaignAvailable:!!this.managers?.campaign&&this.campaignAvailable!==false,combat:this.combat,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
+ private state(){const {preset,customColor}=this.appearance.getSettings();return {section:this.preparing?.view===this.view?this.preparing.section:this.section,renderRevision:this.renderRevision,locale:this.appearance.getLocale(),theme:{preset,customColor},campaignAvailable:!!this.managers?.campaign&&this.campaignAvailable!==false,combat:this.combat,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
  currentSection():SettingsSection{return this.section;}
  hasRetainedCampaign():boolean{return this.campaignRetained;}
  private releaseCampaign():void {if(this.campaignRetained)this.managers?.campaign?.hide();this.campaignRetained=false;this.campaignBounds=undefined;}
- update():void {if(!this.view.webContents.isDestroyed()){this.view.setBackgroundColor(themeBackground(this.appearance.getSettings()));this.view.webContents.send('settings-hub:update',this.state());}}
+ private expectedAppearance(){const {preset,customColor}=this.appearance.getSettings();return {locale:this.appearance.getLocale(),preset,customColor};}
+ update():void {
+  if(this.view.webContents.isDestroyed())return;
+  this.renderRevision++;this.view.setBackgroundColor(themeBackground(this.appearance.getSettings()));this.view.webContents.send('settings-hub:update',this.state());
+  const pending=this.preparing;
+  if(pending?.section==='appearance') {
+   const contents=pending.view.webContents;pending.expected=this.expectedAppearance();
+   if(!contents.isDestroyed()&&contents.getURL()===pending.url)void contents.executeJavaScript(`(()=>{const wait=window.__friendsFablesSettingsPaintWait;if(wait?.revision===${pending.revision}){wait.expected=${JSON.stringify(pending.expected)};wait.check();}return true})()`).catch(()=>{});
+  }
+ }
+ private cancelPreparation():void {
+  const pending=this.preparing;this.preparing=undefined;
+  const contents=pending?.view.webContents;
+  if(!pending||!contents||contents.isDestroyed()||contents.getURL()!==pending.url)return;
+  void contents.executeJavaScript(`(()=>{const wait=window.__friendsFablesSettingsPaintWait;if(wait?.revision===${pending.revision})wait.finish(false);return true})()`).catch(()=>{});
+ }
+ private async rendered(section:SettingsSection,revision:number,view=this.view,url=SETTINGS_HUB_URL,paintBounds?:Rectangle):Promise<boolean> {
+  const contents=view.webContents;
+  if(contents.isDestroyed()||contents.getURL()!==url||paintBounds&&!view.getVisible())return false;
+  const entry=this.editors.get(section),document=view===this.view?this.document:entry?.document;
+  const minimum=this.renderRevision,external=view!==this.view,expected=this.expectedAppearance();
+  if(external&&this.preparing?.revision===revision)this.preparing.expected=expected;
+  const marker=view===this.view?'data-ff-settings-rendered':'data-ff-appearance-rendered';
+  const ready=view===this.view
+   ? `const marker=root.getAttribute(${JSON.stringify(marker)})?.split(':');return !!marker&&Number(marker[0])>=${minimum}&&marker[1]===${JSON.stringify(section)}`
+   : `try{const marker=JSON.parse(root.getAttribute(${JSON.stringify(marker)})||'null');return !!marker&&marker.locale===wait.expected.locale&&marker.preset===wait.expected.preset&&marker.customColor===wait.expected.customColor}catch{return false}`;
+  try {
+   // Observe only the exact local renderer's terminal DOM state. Hidden views
+   // need no RAF; the committed Campaign remains painted until this resolves.
+   const result=await contents.executeJavaScript(`new Promise(resolve=>{
+    const root=document.documentElement;let observer,timer,frame,paintFrames=0;
+    const wait={revision:${revision},expected:${JSON.stringify(expected)},check:()=>{},finish:value=>{observer?.disconnect();clearTimeout(timer);cancelAnimationFrame(frame);if(window.__friendsFablesSettingsPaintWait===wait)delete window.__friendsFablesSettingsPaintWait;resolve(value&&${external}?{ready:true,...wait.expected}:value)}};
+    window.__friendsFablesSettingsPaintWait?.finish(false);window.__friendsFablesSettingsPaintWait=wait;
+    const ready=()=>{${ready}};
+    ${paintBounds?`const advance=()=>{if(document.visibilityState==='visible'&&window.innerWidth===${paintBounds.width}&&window.innerHeight===${paintBounds.height}&&ready())paintFrames++;else paintFrames=0;if(paintFrames>=2)wait.finish(true);else frame=requestAnimationFrame(advance)};frame=requestAnimationFrame(advance);timer=setTimeout(()=>wait.finish(false),1500);return;`:''}
+    wait.check=()=>{if(ready())wait.finish(true)};
+    if(ready()){wait.finish(true);return}
+    observer=new MutationObserver(()=>{if(ready())wait.finish(true)});
+    observer.observe(root,{attributes:true,attributeFilter:[${JSON.stringify(marker)}]});
+    timer=setTimeout(()=>wait.finish(false),1500);
+   })`);
+   const latest=this.expectedAppearance();
+   const accepted=external?result?.ready===true&&result.locale===latest.locale&&result.preset===latest.preset&&result.customColor===latest.customColor:result===true;
+   return accepted&&!this.window.isDestroyed()&&!contents.isDestroyed()
+    &&contents.getURL()===url&&document===(view===this.view?this.document:entry?.document)&&revision===this.revision;
+  } catch { return false; }
+ }
  async select(section:SettingsSection,beforeLayout?:()=>void):Promise<void> {
   if(section==='campaign'&&!this.managers?.campaign)throw new Error('Campaign settings are not connected.');
   if((section==='campaign'||section==='combat')&&this.campaignAvailable===false)throw new Error('Campaign settings are not available on this page.');
-  const revision=++this.revision;
+  const revision=++this.revision;this.cancelPreparation();
   await this.ready;
   let editor=this.editors.get(section);
   if(!editor&&['appearance','translation','instructions'].includes(section)) {
@@ -82,23 +133,47 @@ export class SettingsHub {
    if(!view)throw new Error('Settings editor is not connected.');
    view.setVisible(false);this.window.contentView.addChildView(view);
    const url=section==='appearance'?'fables-desktop://settings/':section==='translation'?'fables-desktop://settings/translation.html':'fables-desktop://settings/host-instructions.html';
-   editor={view,ready:view.webContents.loadURL(url)};this.editors.set(section,editor);
+   const entry={view,ready:Promise.resolve(),document:0};
+   view.webContents.on('did-navigate',()=>{entry.document++;if(this.preparing?.view===view)this.cancelPreparation();});
+   editor=entry;entry.ready=view.webContents.loadURL(url);this.editors.set(section,entry);
   }
   await editor?.ready;
   if(section==='combat')await this.refreshCombat();
   if(this.window.isDestroyed()||revision!==this.revision)return;
-  if(this.section!==section&&(this.section==='campaign'||section==='campaign'))this.campaignBounds=undefined;this.section=section;this.visible=true;this.update();
+  if(this.section==='campaign'&&section!=='campaign'&&!editor) {
+   this.preparing={section,revision,view:this.view,url:SETTINGS_HUB_URL};this.update();
+   let ready=await this.rendered(section,revision);
+   if(ready&&this.bounds&&this.view.getVisible()) {
+    // Resize the prepared, visible hub while the native Campaign still paints
+    // underneath. Its narrow prior surface is not an expanded ready frame.
+    if(this.preparing?.revision===revision)this.preparing.paintBounds={...this.bounds};
+    this.view.setBounds(this.bounds);
+    ready=await this.rendered(section,revision,this.view,SETTINGS_HUB_URL,this.bounds);
+   }
+   if(this.preparing?.revision===revision)this.preparing=undefined;
+   if(!ready){if(revision===this.revision){if(this.bounds)this.layout(this.bounds);this.update();}return;}
+  }
+  if(section==='appearance'&&editor) {
+   this.preparing={section,revision,view:editor.view,url:'fables-desktop://settings/'};
+   const ready=await this.rendered(section,revision,editor.view,'fables-desktop://settings/');
+   if(this.preparing?.revision===revision)this.preparing=undefined;
+   if(!ready)return;
+  }
+  if(this.section!==section&&(this.section==='campaign'||section==='campaign'))this.campaignBounds=undefined;this.section=section;this.visible=true;if(section==='campaign')this.update();
   // The outer dock commits the website strip before the native Campaign
   // adapter measures/mounts its content. Standalone callers need no callback.
   if(section==='campaign')this.campaignRetained=true;
   beforeLayout?.();
   if(this.bounds)this.layout(this.bounds);
+  if(section!=='campaign')this.update();
   (editor?.view.webContents??this.view.webContents).focus();
  }
  refreshCampaign():void {if(this.visible&&this.section==='campaign'&&this.bounds){this.campaignBounds=undefined;this.layout(this.bounds);}}
- setVisible(visible:boolean):void {if(!visible){this.revision++;this.releaseCampaign();}this.visible=visible;this.view.setVisible(visible);for(const [section,editor]of this.editors)editor.view.setVisible(visible&&section===this.section);}
+ setVisible(visible:boolean):void {if(!visible){this.revision++;this.cancelPreparation();this.releaseCampaign();}this.visible=visible;this.view.setVisible(visible);for(const [section,editor]of this.editors)editor.view.setVisible(visible&&section===this.section);}
  layout(bounds:Rectangle):void {
-  this.bounds=bounds;this.view.setBounds(this.section==='campaign'?{...bounds,width:Math.min(126,bounds.width)}:bounds);this.view.setVisible(this.visible);
+  const painting=this.preparing?.paintBounds;
+  if(painting&&Object.keys(bounds).some(key=>bounds[key as keyof Rectangle]!==painting[key as keyof Rectangle])){this.revision++;this.cancelPreparation();}
+  this.bounds=bounds;this.view.setBounds(this.section==='campaign'&&!this.preparing?.paintBounds?{...bounds,width:Math.min(126,bounds.width)}:bounds);this.view.setVisible(this.visible);
   const navWidth=Math.min(126,bounds.width);
   const editorBounds={x:bounds.x+navWidth,y:bounds.y,width:Math.max(0,bounds.width-navWidth),height:bounds.height};
   for(const [section,editor]of this.editors){editor.view.setBounds(editorBounds);editor.view.setVisible(this.visible&&section===this.section);}
