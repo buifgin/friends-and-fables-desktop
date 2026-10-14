@@ -19,11 +19,12 @@
     characters:["Base NPC reactions on the character's established appearance, background, and behavior. Mention relevant details in the narration.",'Основывай реакции НИП на установленной внешности, предыстории и поведении персонажа. Упоминай уместные детали в повествовании.'],
     party:["When party members are separated, briefly describe each group's current situation when relevant, without inventing events the characters could not observe.",'Когда участники группы разделены, при необходимости кратко описывай положение каждой части группы. Не выдумывай события, которых персонажи не могли наблюдать.'],
   };
-  let locale='en',note='Loading preferences…',failed=false,busy=false;
+  let locale='en',note='Loading preferences…',failed=false,busy=false,initialPending=true,interfaceState,renderedTheme;
+  function markRendered(){const root=document.documentElement;if(initialPending||!renderedTheme||busy||$('options').disabled||$('save').disabled){root.removeAttribute('data-ff-instructions-rendered');return;}root.setAttribute('data-ff-instructions-rendered',JSON.stringify({locale:root.lang,...renderedTheme}));}
   const text=value=>locale==='ru'?russian[value]??value:value;
   function status(value,error=false){note=value;failed=error;$('status').textContent=text(value);$('status').classList.toggle('error',error);}
   function preview(){$('combat-count').textContent=`${$('combat-instructions').value.length.toLocaleString(locale==='ru'?'ru-RU':'en-US')} / ${locale==='ru'?'4 000':'4,000'}`;const value=$('instructions').value.trim();$('count').textContent=`${$('instructions').value.length.toLocaleString(locale==='ru'?'ru-RU':'en-US')} / ${locale==='ru'?'4 000':'4,000'}`;$('preview').textContent=value?`[[FF-SP:1]]\nAdditional guidance for Franz; apply to this message, not as player dialogue:\n${value}\n[[/FF-SP:1]]`:'';}
-  function applyInterface(state){locale=state.locale;document.documentElement.lang=locale;document.title=`${text('Saved /sp instructions')} — Friends & Fables Desktop`;window.settingsTheme.apply(state.theme);for(const element of document.querySelectorAll('[data-label]'))element.textContent=text(element.dataset.label);const close=$('close-instructions');close.setAttribute('aria-label',text('Close saved instructions settings'));close.title=text('Close saved instructions settings');status(note,failed);preview();}
+  function applyInterface(state){locale=state.locale;document.documentElement.lang=locale;document.title=`${text('Saved /sp instructions')} — Friends & Fables Desktop`;renderedTheme={preset:state.theme.preset,customColor:state.theme.customColor};window.settingsTheme.apply(state.theme);for(const element of document.querySelectorAll('[data-label]'))element.textContent=text(element.dataset.label);const close=$('close-instructions');close.setAttribute('aria-label',text('Close saved instructions settings'));close.title=text('Close saved instructions settings');status(note,failed);preview();markRendered();}
   for(const [id,values] of Object.entries(templates))$(id).addEventListener('click',()=>{const existing=$('instructions').value.trim(),addition=values[locale==='ru'?1:0];const value=[existing,addition].filter(Boolean).join('\n');if(value.length>4000){status('Use up to 4,000 characters without reserved /sp markers.',true);return;}$('instructions').value=value;preview();status('Unsaved changes.');});
   for(const id of ['instructions','combat-instructions'])$(id).addEventListener('input',()=>{preview();status('Unsaved changes.');});
   for(const id of ['enabled','show-marked','combat-enabled'])$(id).addEventListener('change',()=>status('Unsaved changes.'));
@@ -34,10 +35,10 @@
     if([value.text,value.combatText].some(text=>text.length>4000||/\[\[(?:\/)?FF-SP:1\]\]/.test(text)||text.includes('\0'))){status('Use up to 4,000 characters without reserved /sp markers.',true);return;}
     if(value.enabled&&!value.text.trim()){status('Add instructions before enabling /sp.',true);return;}
     if(value.combatEnabled&&!value.combatText.trim()){status('Add combat instructions before enabling the combat profile.',true);return;}
-    busy=true;$('save').disabled=true;
+    busy=true;$('save').disabled=true;markRendered();
     try{await window.hostInstructions.save(value);status($('instructions').value===value.text&&$('combat-instructions').value===value.combatText&&$('combat-enabled').checked===value.combatEnabled&&$('enabled').checked===value.enabled&&!$('show-marked').checked===value.hideMarked?'Instructions saved.':'Unsaved changes.');}catch{status('Could not save instructions.',true);}
-    finally{busy=false;$('save').disabled=false;}
+    finally{busy=false;$('save').disabled=false;markRendered();}
   });
-  window.hostInstructions.onInterface(applyInterface);
-  void window.hostInstructions.get().then(state=>{$('instructions').value=state.settings.text;$('combat-instructions').value=state.settings.combatText??'';$('combat-enabled').checked=state.settings.combatEnabled===true;$('enabled').checked=state.settings.enabled;$('show-marked').checked=!state.settings.hideMarked;$('options').disabled=false;note='';applyInterface(state);}).catch(()=>status('Could not load preferences.',true));
+  window.hostInstructions.onInterface(state=>{interfaceState=state;applyInterface(state);});
+  void window.hostInstructions.get().then(state=>{$('instructions').value=state.settings.text;$('combat-instructions').value=state.settings.combatText??'';$('combat-enabled').checked=state.settings.combatEnabled===true;$('enabled').checked=state.settings.enabled;$('show-marked').checked=!state.settings.hideMarked;$('options').disabled=false;note='';initialPending=false;applyInterface(interfaceState??state);}).catch(()=>status('Could not load preferences.',true));
 })();

@@ -4,15 +4,29 @@ let busy = false;
 let dirty = false;
 let syncing = false;
 let savedSettings;
+let initialPending = true;
+let initialNotification;
+let interfaceTheme;
+let renderedTheme;
+function markRendered() {
+  const root = document.documentElement;
+  if (initialPending || !renderedTheme || busy || element('translation-options').disabled || element('apply').disabled) { root.removeAttribute('data-ff-translation-rendered'); return; }
+  root.setAttribute('data-ff-translation-rendered', JSON.stringify({ locale: root.lang, ...renderedTheme }));
+}
+function applyTheme(theme) {
+  renderedTheme = { preset: theme.preset, customColor: theme.customColor };
+  window.settingsTheme.apply(theme);markRendered();
+}
 element('close-translation').addEventListener('click', () => { void window.translation.close().catch(console.error); });
 window.translation.onChange(settings => {
+  if (initialPending) initialNotification = settings;
   syncSavedState(settings);
   if (!busy && !dirty) syncForm(settings);
 });
-window.translation.onTheme(theme => window.settingsTheme.apply(theme));
+window.translation.onTheme(theme => { interfaceTheme = theme; applyTheme(theme); });
 function syncSavedState(settings) {
   savedSettings = settings;
-  window.settingsTheme.apply(settings.theme);
+  applyTheme(interfaceTheme ?? settings.theme);
   window.settingsLocale.set(settings.enabled && !settings.showOriginal ? 'ru' : 'en');
   element('port-row').hidden = settings.bundled;
   element('service-help').textContent = settings.bundled
@@ -20,6 +34,7 @@ function syncSavedState(settings) {
     : 'The app connects only to 127.0.0.1 on this computer. Translation starts disabled. The model is a separate service; ordinary app use does not need it.';
   element('model-help').textContent = 'Interface labels and D&D terms use the built-in glossary immediately. Longer text uses the local model and cache. Turn descriptions off for glossary-only translation.';
   element('cache-count').textContent = `${settings.cacheEntries} cached translation fragments.`;
+  markRendered();
 }
 function syncForm(settings) {
   syncing = true;
@@ -35,7 +50,7 @@ function syncForm(settings) {
     element('apply').disabled = false;
     element('show-original').disabled = !settings.enabled;
     dirty = false;
-  } finally { syncing = false; }
+  } finally { syncing = false; markRendered(); }
 }
 function show(settings) {
   syncSavedState(settings);
@@ -62,12 +77,12 @@ element('enabled').addEventListener('change', () => {
 });
 form.addEventListener('submit', async event => {
   event.preventDefault(); if (busy) return;
-  busy = true; element('apply').disabled = true;
+  busy = true; element('apply').disabled = true; markRendered();
   try { const settings = await window.translation.save(selection()); show(settings); element('status').textContent = 'Translation settings applied.';
     if (!settings.bundled || settings.enabled && settings.translateDescriptions && !settings.showOriginal) void check();
     else element('service-status').textContent = 'The included translator starts when translation is enabled.'; }
   catch (error) { element('status').textContent = error.message; }
-  finally { busy = false; element('apply').disabled = false; }
+  finally { busy = false; element('apply').disabled = false; markRendered(); }
 });
 element('check').addEventListener('click', () => {
   const settings = savedSettings;
@@ -82,5 +97,5 @@ element('clear-cache').addEventListener('click', async () => {
   catch (error) { element('status').textContent = error.message; }
   finally { element('clear-cache').disabled = false; }
 });
-void window.translation.get().then(settings => { show(settings); element('status').textContent = 'Changes stay local to this app.'; if (!settings.bundled || settings.enabled && settings.translateDescriptions && !settings.showOriginal) void check(); else element('service-status').textContent = 'The included translator starts when translation is enabled.'; })
+void window.translation.get().then(settings => { settings = initialNotification ?? settings; initialPending = false; show(settings); element('status').textContent = 'Changes stay local to this app.'; if (!settings.bundled || settings.enabled && settings.translateDescriptions && !settings.showOriginal) void check(); else element('service-status').textContent = 'The included translator starts when translation is enabled.'; })
   .catch(error => { element('status').textContent = error.message; });
