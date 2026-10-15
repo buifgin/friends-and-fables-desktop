@@ -1064,3 +1064,4 @@ for (const [entity,forms] of Object.entries({ ...entities, world:{object:'мир
   add(`no ${plural} published yet!`, `Пока ничего не опубликовано в разделе «${forms.many[0].toUpperCase()+forms.many.slice(1)}»!`);
 }
 add('discover and like your first one shot!', 'Найдите короткое приключение и отметьте «Нравится»!');
+add('reconnecting...', 'Восстановление соединения…');
