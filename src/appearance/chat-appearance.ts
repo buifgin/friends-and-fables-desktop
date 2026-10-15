@@ -210,6 +210,9 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   function releaseScrollFeed(): void {
     restoreScrollStyles(); scrollResize?.disconnect(); scrollResize = null; scrollSize = null;
     scrollFeed = null; scrollTried = false; scrollSelectionYield = false;
+    // A retired feed may never deliver scrollend/pointerup. Its intent must not
+    // suspend anchoring on the next native surface.
+    scrollYield = false; scrollGesture = false; scrollSeen = false;
   }
   function selectedInFeed(): boolean {
     const selection = window.getSelection();
@@ -217,11 +220,13 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       || !!document.activeElement && scrollFeed.contains(document.activeElement) && document.activeElement.matches('input,textarea,[contenteditable="true"]'));
   }
   function preferScrollAnchor(): void {
-    if (disposed || scrollYield || scrollGesture) return;
+    if (disposed) return;
     const route = location.pathname + location.search;
     if (route !== scrollRoute) { releaseScrollFeed(); scrollRoute = route; }
-    if (!/\/play\/?$/.test(location.pathname) || new URLSearchParams(location.search).get('view') && new URLSearchParams(location.search).get('view') !== 'play') { restoreScrollStyles(); return; }
     if (scrollFeed && !scrollFeed.isConnected) releaseScrollFeed();
+    if (!/\/play\/?$/.test(location.pathname) || new URLSearchParams(location.search).get('view') && new URLSearchParams(location.search).get('view') !== 'play') { restoreScrollStyles(); return; }
+    // Yield only to intent belonging to the still-current connected feed.
+    if (scrollYield || scrollGesture) return;
     if (!scrollFeed && !scrollTried) {
       scrollTried = true;
       let node = document.querySelector<HTMLElement>('[id^="event-message-card-"]')?.parentElement;
