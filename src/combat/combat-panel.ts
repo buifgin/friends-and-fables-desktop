@@ -623,6 +623,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (picker?.querySelector('button:has(.lucide-x)')?.contains(event.target) && !otherLayer()) pending = false;
     const next = dice?.contains(event.target) ? 'skills' : action?.contains(event.target) ? 'actions' : null;
     if (!next || internalLaunch || otherLayer() || settingsClosing?.isConnected) return;
+    if (picker && mode === next) { event.preventDefault(); event.stopImmediatePropagation(); close(); return; }
     settingsSuppressed = false;
     // Observe before native handlers; do not cancel or replace their event.
     if (picker || reserved) close(true);
