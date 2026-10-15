@@ -17,7 +17,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   const oldHighlight=CSS.highlights.get(highlightName);
   const memo = new Map<string,string>();
   const marked = new Map<Element,string|null>();
-  const blanked = new Map<Element,{overlay:HTMLElement;position:string;priority:string;minHeight:string;minHeightPriority:string;busy:string|null}>();
+  const blanked = new Map<Element,{overlay:HTMLElement;position:string;priority:string;positionApplied?:{value:string;priority:string};minHeight:string;minHeightPriority:string;minHeightState:'pending'|'owned'|'released';minHeightApplied?:{value:string;priority:string};busy:string|null}>();
   let completed=0;
   const status=document.createElement('div');status.setAttribute('data-ff-translation-status','true');status.setAttribute('data-ff-translation-ignore','true');status.setAttribute('role','status');status.setAttribute('aria-live','polite');
   status.style.cssText='position:fixed;right:12px;bottom:12px;z-index:2147483000;display:none;align-items:center;gap:8px;padding:7px 10px;border:1px solid hsl(var(--border,0 0% 40%));border-radius:8px;background:hsl(var(--background,0 0% 8%));color:hsl(var(--foreground,0 0% 96%));box-shadow:0 2px 8px #0004;font:12px system-ui;pointer-events:none';
@@ -55,7 +55,15 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   function reveal(element:Element):void {
     const previous=blanked.get(element);if(!previous)return;
     previewSizes.unobserve(previous.overlay);previous.overlay.remove();element.removeAttribute('data-ff-translation-blank');
-    if(element instanceof HTMLElement){element.style.setProperty('position',previous.position,previous.priority);element.style.removeProperty('--ff-translation-ink');element.style.setProperty('min-height',previous.minHeight,previous.minHeightPriority);}
+    if(element instanceof HTMLElement){
+      const restoreOwned=(property:string,value:string,priority:string,applied:{value:string;priority:string}|undefined):void=>{
+        if(!applied||element.style.getPropertyValue(property)!==applied.value||element.style.getPropertyPriority(property)!==applied.priority)return;
+        if(value)element.style.setProperty(property,value,priority);else element.style.removeProperty(property);
+      };
+      restoreOwned('position',previous.position,previous.priority,previous.positionApplied);
+      element.style.removeProperty('--ff-translation-ink');
+      if(previous.minHeightState==='owned')restoreOwned('min-height',previous.minHeight,previous.minHeightPriority,previous.minHeightApplied);
+    }
     if(previous.busy===null)element.removeAttribute('aria-busy');else element.setAttribute('aria-busy',previous.busy);
     blanked.delete(element);
   }
@@ -87,11 +95,21 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
   }
   function fitPreview(element:Element,overlay:HTMLElement):void {
     const record=blanked.get(element);if(!record || !(element instanceof HTMLElement))return;
+    const currentValue=element.style.getPropertyValue('min-height'),currentPriority=element.style.getPropertyPriority('min-height');
+    if(record.minHeightState==='released')return;
+    const owned=record.minHeightApplied;
+    if(record.minHeightState==='owned'&&(!owned||currentValue!==owned.value||currentPriority!==owned.priority)
+      ||record.minHeightState==='pending'&&(currentValue!==record.minHeight||currentPriority!==record.minHeightPriority)){
+      record.minHeightState='released';return;
+    }
     const computed=getComputedStyle(element);
     const extra=computed.boxSizing==='border-box' ? ['paddingTop','paddingBottom','borderTopWidth','borderBottomWidth'].reduce((sum,key)=>sum+(parseFloat(computed[key as keyof CSSStyleDeclaration] as string)||0),0) : 0;
     const height=Math.ceil(overlay.getBoundingClientRect().height+extra);
     const value=`max(${record.minHeight||'0px'}, ${height}px)`;
-    if(element.style.getPropertyValue('min-height')!==value)element.style.setProperty('min-height',value,'important');
+    if(currentValue!==value||currentPriority!=='important'){
+      element.style.setProperty('min-height',value,'important');
+      record.minHeightState='owned';record.minHeightApplied={value:element.style.getPropertyValue('min-height'),priority:element.style.getPropertyPriority('min-height')};
+    }
   }
   const previewSizes=new ResizeObserver(records=>{
     if(disposed)return;
@@ -119,8 +137,9 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     for(const element of hiddenParents)if(!blanked.has(element)&&element instanceof HTMLElement){
       const overlay=document.createElement('span');overlay.setAttribute('data-ff-translation-placeholder','true');overlay.setAttribute('data-ff-translation-ignore','true');overlay.setAttribute('aria-label','Переводится');overlay.setAttribute('role','status');
       const position=element.style.getPropertyValue('position'),priority=element.style.getPropertyPriority('position');
-      blanked.set(element,{overlay,position,priority,minHeight:element.style.getPropertyValue('min-height'),minHeightPriority:element.style.getPropertyPriority('min-height'),busy:element.getAttribute('aria-busy')});
-      element.style.setProperty('--ff-translation-ink',ink.get(element)??'currentColor');if(getComputedStyle(element).position==='static')element.style.position='relative';
+      const minHeight=element.style.getPropertyValue('min-height'),minHeightPriority=element.style.getPropertyPriority('min-height');
+      const record:{overlay:HTMLElement;position:string;priority:string;positionApplied?:{value:string;priority:string};minHeight:string;minHeightPriority:string;minHeightState:'pending'|'owned'|'released';minHeightApplied?:{value:string;priority:string};busy:string|null}={overlay,position,priority,minHeight,minHeightPriority,minHeightState:'pending',busy:element.getAttribute('aria-busy')};blanked.set(element,record);
+      element.style.setProperty('--ff-translation-ink',ink.get(element)??'currentColor');if(getComputedStyle(element).position==='static'){element.style.position='relative';record.positionApplied={value:element.style.getPropertyValue('position'),priority:element.style.getPropertyPriority('position')};}
       element.setAttribute('data-ff-translation-blank','true');element.setAttribute('aria-busy','true');element.append(overlay);previewSizes.observe(overlay);
     }
     for(const [element,{overlay}] of blanked){
