@@ -3,7 +3,7 @@ const fs=require('node:fs/promises'),path=require('node:path'),os=require('node:
 // Export the browser scenario for syntax/offline inspection without launching Electron.
 async function scrollScenario(configure,settings){
  const check=(value,message)=>{if(!value)throw Error(message);},frame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),settle=async()=>{await frame();await frame();};
- const feed=document.getElementById('feed');
+ let feed=document.getElementById('feed');
  const card=(id,height,text,roll=false)=>{const row=document.createElement('div');row.id='event-'+id;const container=document.createElement('div');container.id='event-container-'+id;const body=document.createElement('div');body.id='event-message-card-'+id;body.style.height=height+'px';body.className='card';body.innerHTML=(roll?'<svg id="d8" width="18" height="18"></svg>':'')+'<div class="prose"><p></p></div>';body.querySelector('p').textContent=text;container.append(body);row.append(container);feed.append(row);return {row,container,body};};
  const top=document.createElement('div');top.style.height='520px';feed.append(top);
  const older=[document.createElement('div'),document.createElement('div')];for(const node of older)feed.append(node);
@@ -16,6 +16,11 @@ async function scrollScenario(configure,settings){
  const readPosition=()=>{feed.scrollTop+=gm.row.getBoundingClientRect().top-feed.getBoundingClientRect().top+30;};
  const clear=async()=>{choices.replaceChildren();for(const node of older)node.replaceChildren();await settle();readPosition();await settle();};
  const hydrate=()=>{for(const node of older){const result=document.createElement('div');result.style.height='82px';result.textContent='Native earlier result';node.append(result);}const branch=document.createElement('div');branch.style.height='82px';branch.textContent='Damage / Rolled';choices.append(branch);};
+ const nativeResizeObserver=window.ResizeObserver,resizeOwners=new Map();
+ window.ResizeObserver=class extends nativeResizeObserver{
+  observe(target,...options){resizeOwners.set(target,this);super.observe(target,...options);}
+  disconnect(){for(const [target,owner] of resizeOwners)if(owner===this)resizeOwners.delete(target);super.disconnect();}
+ };
  readPosition();configure(settings);await settle();await frame();
  const before=snapshot(),nativeRoll=roll.body,nativeText=roll.body.querySelector('p').firstChild;
  check(before.gm.y<before.feed.y&&before.gm.bottom>before.feed.y,'Fixture GM must be partially visible');
@@ -28,6 +33,32 @@ async function scrollScenario(configure,settings){
  check(Math.abs(after.rollY-before.rollY)<=.5&&Math.abs(after.glyph.y-before.glyph.y)<=.5,'Late82px native branch shifted reading roll/glyph: '+JSON.stringify({before,after}));
  check(roll.body===nativeRoll&&roll.body.querySelector('p').firstChild===nativeText&&after.text===before.text&&after.gmHeight===before.gmHeight&&after.branch===82,'Anchor mitigation changed native content/identity or concealed branch');
  const cases=[{name:'late-branch',before,after}];
+ // React may retire a scrolling feed before its final scrollend reaches document.
+ // The new surface must not inherit wheel/touch/pointer intent from that feed.
+ for(const type of ['wheel','touchstart','pointerdown']){
+  await clear();check(gm.row.style.getPropertyValue('overflow-anchor')==='none','Replacement precondition: reading anchor inactive');
+  feed.dispatchEvent(type==='pointerdown'?new PointerEvent(type,{bubbles:true}):new Event(type,{bubbles:true}));
+  feed.scrollTop+=1;feed.dispatchEvent(new Event('scroll'));
+  check(gm.row.style.getPropertyValue('overflow-anchor')==='','Active '+type+' intent did not release preference');
+  const retired=feed,replacement=feed.cloneNode(false);
+  replacement.append(...feed.childNodes);retired.replaceWith(replacement);feed=replacement;readPosition();
+  await settle();await frame();
+  check(!resizeOwners.has(retired),'Retired '+type+' feed retained ResizeObserver');
+  check(resizeOwners.has(feed),'Replacement '+type+' feed was not observed');
+  check(gm.row.style.getPropertyValue('overflow-anchor')==='none','Replacement '+type+' feed retained stale scroll intent');
+  const replacementBefore=snapshot();hydrate();await settle();const replacementAfter=snapshot();
+  check(Math.abs(replacementAfter.rollY-replacementBefore.rollY)<=.5&&Math.abs(replacementAfter.glyph.y-replacementBefore.glyph.y)<=.5,'Replacement '+type+' feed shifted native roll/glyph: '+JSON.stringify({before:replacementBefore,after:replacementAfter}));
+  check(roll.body===nativeRoll&&roll.body.querySelector('p').firstChild===nativeText&&replacementAfter.branch===82,'Replacement '+type+' changed native message identity/branch');
+  cases.push({name:'feed-replacement-'+type,before:replacementBefore.rollY,after:replacementAfter.rollY});
+ }
+ // A client-side route transition can precede popstate while the old feed yields.
+ await clear();feed.dispatchEvent(new Event('wheel',{bubbles:true}));feed.scrollTop+=1;feed.dispatchEvent(new Event('scroll'));
+ history.replaceState({},'', '/replacement/play');document.dispatchEvent(new Event('ff-desktop-translation-ready'));readPosition();await settle();await frame();
+ check(gm.row.style.getPropertyValue('overflow-anchor')==='none','Route transition retained prior feed scroll intent');
+ const routeBefore=snapshot();hydrate();await settle();const routeAfter=snapshot();
+ check(Math.abs(routeAfter.rollY-routeBefore.rollY)<=.5&&Math.abs(routeAfter.glyph.y-routeBefore.glyph.y)<=.5,'Route transition shifted native reading roll/glyph');cases.push({name:'route-during-intent',before:routeBefore.rollY,after:routeAfter.rollY});
+ history.replaceState({},'', '/fixture/play');window.dispatchEvent(new Event('popstate'));
+ window.ResizeObserver=nativeResizeObserver;
  // Trusted native wheel/key/touch/pointer intent is covered through the same
  // capture listeners; fixtures dispatch intent to test precedence without OS input.
  for(const type of ['wheel','touchstart','pointerdown','keydown']){
