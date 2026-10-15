@@ -192,6 +192,112 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     const gaps = Array.from(snapshots.values()).filter(snapshot => snapshot.gapAt !== undefined);
     if (gaps.length) snapshotTimer = window.setTimeout(() => snapshotMessages(), Math.max(1, Math.min(...gaps.map(snapshot => 4000 - (now - snapshot.gapAt!)))));
   }
+  // Prefer a fully visible result over a partially visible preceding narration.
+  // Chromium performs the scroll adjustment; this controller never replays an old
+  // scrollTop over wheel/touch/selection or native navigation.
+  let scrollFeed: HTMLElement | null = null, scrollTried = false, scrollFrame = 0;
+  let scrollYield = false, scrollGesture = false, scrollSeen = false, scrollSelectionYield = false;
+  let scrollResize: ResizeObserver | null = null, scrollSize: { width: number; height: number } | null = null;
+  let scrollRoute = location.pathname + location.search;
+  const scrollStyles = new Map<HTMLElement, { value: string; priority: string }>();
+  function restoreScrollStyles(): void {
+    for (const [node, previous] of scrollStyles) {
+      if (node.style.getPropertyValue('overflow-anchor') !== 'none' || node.style.getPropertyPriority('overflow-anchor') !== 'important') continue;
+      if (previous.value) node.style.setProperty('overflow-anchor', previous.value, previous.priority); else node.style.removeProperty('overflow-anchor');
+    }
+    scrollStyles.clear();
+  }
+  function releaseScrollFeed(): void {
+    restoreScrollStyles(); scrollResize?.disconnect(); scrollResize = null; scrollSize = null;
+    scrollFeed = null; scrollTried = false; scrollSelectionYield = false;
+  }
+  function selectedInFeed(): boolean {
+    const selection = window.getSelection();
+    return !!scrollFeed && (!!selection && !selection.isCollapsed && (!!selection.anchorNode && scrollFeed.contains(selection.anchorNode) || !!selection.focusNode && scrollFeed.contains(selection.focusNode))
+      || !!document.activeElement && scrollFeed.contains(document.activeElement) && document.activeElement.matches('input,textarea,[contenteditable="true"]'));
+  }
+  function preferScrollAnchor(): void {
+    if (disposed || scrollYield || scrollGesture) return;
+    const route = location.pathname + location.search;
+    if (route !== scrollRoute) { releaseScrollFeed(); scrollRoute = route; }
+    if (!/\/play\/?$/.test(location.pathname) || new URLSearchParams(location.search).get('view') && new URLSearchParams(location.search).get('view') !== 'play') { restoreScrollStyles(); return; }
+    if (scrollFeed && !scrollFeed.isConnected) releaseScrollFeed();
+    if (!scrollFeed && !scrollTried) {
+      scrollTried = true;
+      let node = document.querySelector<HTMLElement>('[id^="event-message-card-"]')?.parentElement;
+      for (let depth = 0; node && depth < 12; depth++, node = node.parentElement) {
+        if (node.clientHeight > 0 && /^(auto|scroll)$/.test(getComputedStyle(node).overflowY)) {
+          scrollFeed = node; scrollSize = { width: node.clientWidth, height: node.clientHeight };
+          scrollResize = new ResizeObserver(() => {
+            if (!scrollFeed?.isConnected) { releaseScrollFeed(); return; }
+            const size = { width: scrollFeed.clientWidth, height: scrollFeed.clientHeight };
+            if (scrollSize?.width === size.width && scrollSize?.height === size.height) return;
+            scrollSize = size; rebaseScrollAnchor();
+          });
+          scrollResize.observe(node); break;
+        }
+      }
+    }
+    if (!scrollFeed || selectedInFeed()) { restoreScrollStyles(); return; }
+    const bounds = scrollFeed.getBoundingClientRect(), top = Math.max(0, bounds.top), bottom = Math.min(innerHeight, bounds.bottom);
+    const cards = Array.from(scrollFeed.querySelectorAll<HTMLElement>('[id^="event-message-card-"]')).slice(-40);
+    const fullyVisible = cards.filter(card => { const r = card.getBoundingClientRect(); return r.height > 0 && r.top >= top && r.bottom <= bottom; });
+    const preferred = fullyVisible.find(card => card.querySelector('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) ?? fullyVisible[0];
+    const desired = new Set<HTMLElement>();
+    if (preferred) for (const card of cards.slice(0, cards.indexOf(preferred))) {
+      const id = /^event-message-card-(\d+)$/.exec(card.id)?.[1], row = id ? document.getElementById(`event-${id}`) : null;
+      if (row && scrollFeed.contains(row) && row.contains(card)) desired.add(row);
+    }
+    for (const [node, previous] of scrollStyles) if (!desired.has(node)) {
+      if (node.style.getPropertyValue('overflow-anchor') === 'none' && node.style.getPropertyPriority('overflow-anchor') === 'important') {
+        if (previous.value) node.style.setProperty('overflow-anchor', previous.value, previous.priority); else node.style.removeProperty('overflow-anchor');
+      }
+      scrollStyles.delete(node);
+    }
+    for (const node of desired) {
+      if (!scrollStyles.has(node)) scrollStyles.set(node, { value: node.style.getPropertyValue('overflow-anchor'), priority: node.style.getPropertyPriority('overflow-anchor') });
+      if (node.style.getPropertyValue('overflow-anchor') !== 'none' || node.style.getPropertyPriority('overflow-anchor') !== 'important') node.style.setProperty('overflow-anchor', 'none', 'important');
+    }
+  }
+  function rebaseScrollAnchor(): void {
+    restoreScrollStyles(); cancelAnimationFrame(scrollFrame);
+    scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; preferScrollAnchor(); });
+  }
+  function scrollIntent(event: Event): void {
+    if (!scrollFeed || !(event.target instanceof Node) || !scrollFeed.contains(event.target)) return;
+    if (event instanceof KeyboardEvent && !['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key)) return;
+    scrollYield = true; scrollSeen = false;
+    if (event.type === 'touchstart' || event.type === 'pointerdown') scrollGesture = true;
+    rebaseScrollAnchor();
+    cancelAnimationFrame(scrollFrame);
+    scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; if (!scrollSeen && !scrollGesture) { scrollYield = false; preferScrollAnchor(); } });
+  }
+  function feedScrolled(event: Event): void {
+    if (event.target !== scrollFeed) return;
+    if (scrollYield || scrollGesture) { scrollSeen = true; restoreScrollStyles(); } else preferScrollAnchor();
+  }
+  function scrollFinished(event: Event): void {
+    if (event.type === 'scrollend' ? event.target !== scrollFeed : !scrollGesture && !scrollYield) return;
+    scrollGesture = false; scrollYield = false; rebaseScrollAnchor();
+  }
+  function scrollSelection(): void {
+    if (!scrollFeed) return;
+    const selection = window.getSelection();
+    if (!scrollSelectionYield && !(selection?.anchorNode && scrollFeed.contains(selection.anchorNode) || selection?.focusNode && scrollFeed.contains(selection.focusNode))) return;
+    if (selectedInFeed()) { scrollSelectionYield = true; restoreScrollStyles(); }
+    else if (scrollSelectionYield) { scrollSelectionYield = false; rebaseScrollAnchor(); }
+  }
+  function scrollMutations(records: MutationRecord[]): void {
+    if (scrollFeed && !scrollFeed.isConnected) releaseScrollFeed();
+    const relevant = records.some(record => {
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      if (!target || target.closest('[data-ff-desktop-message-snapshot],svg,button,input,textarea,select')) return false;
+      if (scrollFeed?.contains(target) && (target.closest('[id^="event-container-"]') || record.type === 'childList' && Array.from(record.addedNodes).some(node => node instanceof Element && /^event-\d+$/.test(node.id)))) return true;
+      if (!scrollFeed && record.type === 'childList' && Array.from(record.addedNodes).some(node => node instanceof Element && (node.id.startsWith('event-message-card-') || !!node.querySelector('[id^="event-message-card-"]')))) { scrollTried = false; return true; }
+      return false;
+    });
+    if (relevant) preferScrollAnchor();
+  }
   function outside(event: PointerEvent): void {
     if (!(event.target instanceof Element) || event.target.closest('[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]')) return;
     if (expandedComposer && !expandedComposer.contains(event.target)) closeExpanded();
@@ -452,15 +558,21 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       }
     }
     if (cards.size || detached) snapshotMessages(cards, changedBodies);
+    scrollMutations(records);
     if (records.some(record => record.type !== 'characterData' || record.target.parentElement?.closest('svg[id="d20"]'))) schedule();
   });
   observer.observe(document.documentElement, {
     childList: true, subtree: true, attributes: true, characterData: true,
     attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state', 'data-panel', 'data-panel-group-id', 'data-panel-id', 'data-panel-size', 'style', 'hidden', 'aria-hidden', 'data-ff-translation-blank', 'data-ff-translation-pending', 'data-ff-desktop-hidden-instructions'],
   });
-  function translationReady(): void { clearSnapshots(); snapshotMessages(); }
-  function routeChanged(): void { clearSnapshots(); snapshotCampaign = undefined; snapshotMessages(); schedule(); }
+  function translationReady(): void { clearSnapshots(); snapshotMessages(); rebaseScrollAnchor(); }
+  function routeChanged(): void { clearSnapshots(); snapshotCampaign = undefined; snapshotMessages(); releaseScrollFeed(); scrollYield = false; scrollGesture = false; rebaseScrollAnchor(); schedule(); }
   document.addEventListener('ff-desktop-translation-ready', translationReady);
+  for (const type of ['wheel','touchstart','pointerdown','keydown']) document.addEventListener(type, scrollIntent, { capture: true, passive: true });
+  document.addEventListener('scroll', feedScrolled, true); document.addEventListener('scrollend', scrollFinished, true);
+  document.addEventListener('selectionchange', scrollSelection);
+  for (const type of ['touchend','touchcancel','pointerup','pointercancel']) window.addEventListener(type, scrollFinished, true);
+  window.addEventListener('resize', rebaseScrollAnchor);
   window.addEventListener('pointerdown', outside, true);
   window.addEventListener('keydown', onEscape, true);
   window.addEventListener('popstate', routeChanged);
@@ -468,7 +580,11 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   host[key] = { dispose() {
     disposed = true; observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(snapshotTimer);
     closeExpanded(); for (const button of expandButtons.values()) button.remove();
-    clearSnapshots();
+    clearSnapshots(); releaseScrollFeed(); cancelAnimationFrame(scrollFrame);
+    for (const type of ['wheel','touchstart','pointerdown','keydown']) document.removeEventListener(type, scrollIntent, true);
+    document.removeEventListener('scroll', feedScrolled, true); document.removeEventListener('scrollend', scrollFinished, true); document.removeEventListener('selectionchange', scrollSelection);
+    for (const type of ['touchend','touchcancel','pointerup','pointercancel']) window.removeEventListener(type, scrollFinished, true);
+    window.removeEventListener('resize', rebaseScrollAnchor);
     document.removeEventListener('ff-desktop-translation-ready', translationReady);
     window.removeEventListener('pointerdown', outside, true); window.removeEventListener('keydown', onEscape, true);
     window.removeEventListener('popstate', routeChanged);
@@ -476,6 +592,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     clearMarks();
   } };
   scan();
+  preferScrollAnchor();
   queueMicrotask(() => queueMicrotask(() => snapshotMessages()));
 }
 
