@@ -207,6 +207,19 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
    await until("document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
    await settle(locale+' encounter opens Attacks');
    assert.equal(await js("document.querySelector('[data-ff-combat-docked]').dataset.ffCombatPanelMode"),'actions');
+   // Exercise the real composer entry independently of the dock controls.
+   // Its native handler always opens a dialog, so the same-trigger close must
+   // consume the repeat click rather than immediately launching Actions again.
+   await click('#close',locale+' close encounter Actions',0);
+   const composerOpens=await js('opens');
+   await click('#attacks',locale+' composer Attack opens Actions');
+   assert.equal(await js("document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode"),'actions');
+   assert.equal(await js('opens'),composerOpens+1,locale+' composer Attack opens exactly once');
+   await click('#attacks',locale+' composer Attack toggles Actions closed',0);
+   assert.equal(await js("document.querySelector('[data-ff-combat-open]')"),null,locale+' same composer Attack click releases the combat reservation');
+   assert.equal(await js('opens'),composerOpens+1,locale+' close gesture does not invoke the native opener again');
+   await click('#attacks',locale+' composer Attack reopens Actions');
+   assert.equal(await js('opens'),composerOpens+2,locale+' composer Attack opens again after close');
    await click('[data-ff-combat-mode=skills]',locale+' Attacks -> Dice');
    assert.equal(await js("document.querySelector('[data-ff-combat-docked]').dataset.ffCombatPanelMode"),'skills');
    await assertHeadingPaint(locale+' Actions -> Dice');
