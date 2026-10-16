@@ -30,7 +30,8 @@ function fixture({ unrelated = false, wrongIdentity = false, expandedRail = fals
   const body = new Element(), head = new Element(), background = new Element(), workspace = new Element(), editor = new Element(), gear = new Element(), overlay = new Element();
   body.append(background); background.append(workspace); workspace.append(editor);
   if (expandedRail) { gear.caption = new Element(); gear.textContent = 'Настройки'; }
-  const dialogs = [], listeners = new Map(), microtasks = [];
+  const dialogs = [], listeners = new Map(), microtasks = [],frames=new Map(),timers=new Map();let nextId=0;
+  const requestAnimationFrame=callback=>{const id=++nextId;frames.set(id,callback);return id;},cancelAnimationFrame=id=>frames.delete(id),setTimeout=callback=>{const id=++nextId;timers.set(id,callback);return id;},clearTimeout=id=>timers.delete(id);
   let clicks = 0, closes = 0, observe; const opened=[];
   const dialog = new Element(); dialog.setAttribute('role','dialog'); dialog.setAttribute('aria-modal','true'); dialog.setAttribute('data-state','open');
   dialog.__reactFiber$fixture = { type:'div', memoizedProps: { role:'dialog' }, child: { type: wrongIdentity ? function Other(){} : function NativeCampaign(){return 'Campaign Settings';}, memoizedProps:{campaignId:'01a0d854-78d5-7064-ae41-f63d561c8e01',isHost:true} } };
@@ -39,13 +40,14 @@ function fixture({ unrelated = false, wrongIdentity = false, expandedRail = fals
   close.click = () => { closes++; dialog.remove(); dialogs.splice(dialogs.indexOf(dialog),1); if (!dialogs.length) { body.style.removeProperty('pointer-events'); body.style.removeProperty('overflow'); background.removeAttribute('aria-hidden'); } };
   gear.click = () => { assert.equal(gear.getAttribute('data-ff-native-campaign-launch'),'true'); clicks++; body.append(overlay); body.append(dialog); dialog.previousElementSibling = overlay; dialogs.push(dialog); body.style.setProperty('pointer-events','none'); body.style.setProperty('overflow','hidden'); background.setAttribute('aria-hidden','true'); };
   if (unrelated) { const other = new Element(); other.setAttribute('role','dialog'); body.append(other); dialogs.push(other); }
-  const document = {body,head,createElement:()=>new Element(),querySelector:q=>q.startsWith('aside') ? expandedRail ? null : gear : editor, querySelectorAll:q=>q.startsWith('aside') && expandedRail ? [gear] : dialogs.filter(d=>d.isConnected),addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
+  const document = {visibilityState:'visible',body,head,createElement:()=>new Element(),querySelector:q=>q.startsWith('aside') ? expandedRail ? null : gear : editor, querySelectorAll:q=>q.startsWith('aside') && expandedRail ? [gear] : dialogs.filter(d=>d.isConnected),addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
   const location = {origin:'https://play.fables.gg',pathname:'/01a0d854-78d5-7064-ae41-f63d561c8e01/play',search:''};
-  const window = {open:(...args)=>opened.push(args),setInterval:()=>1,addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
-  const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,HTMLButtonElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block'}),queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
+  const window = {setTimeout,open:(...args)=>opened.push(args),setInterval:()=>1,addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
+  const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,HTMLButtonElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block',visibility:'visible'}),requestAnimationFrame,cancelAnimationFrame,setTimeout,clearTimeout,queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
+  dialog.getBoundingClientRect=()=>{const css=head.children[0]?.textContent??'';return {x:0,y:0,width:Number(/width:([\d.]+)px!important/.exec(css)?.[1]??0),height:Number(/height:([\d.]+)px!important/.exec(css)?.[1]??0)};};
   const configure = (show,w=400,h=700,palette)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${w},${h},${JSON.stringify(palette)})`,context);
   const flush = ()=>{while(microtasks.length) microtasks.shift()();};
-  return {configure,flush,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,gear,get clicks(){return clicks;},get closes(){return closes;}};
+  return {configure,flush,paint(){const batch=Array.from(frames.values());frames.clear();for(const callback of batch)callback();flush();},frames,timers,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,gear,get clicks(){return clicks;},get closes(){return closes;}};
 }
 test('off is inert; repeated layouts preserve native form and close once',()=>{
   const f=fixture(); f.configure(false); assert.equal(f.head.children.length,0); assert.equal(f.clicks,0);
@@ -168,4 +170,34 @@ test('Campaign content is keyboard focusable while mounted and restores native t
 
 test('Campaign launches through the expanded native labelled Settings row without replacing it',()=>{
  const f=fixture({expandedRail:true}),nativeRow=f.gear;f.configure(true);assert.equal(f.clicks,1);assert.equal(f.gear,nativeRow);f.configure('suspend');f.configure(true);assert.equal(f.clicks,1);f.configure(false);assert.equal(f.closes,1);assert.equal(f.gear,nativeRow);
+});
+
+test('native Campaign converts reserved DIP dimensions to the current CSS viewport and reflows on website zoom',async()=>{
+ const f=fixture();f.window.innerHeight=700;let opening=f.configure(true,400,700);f.paint();f.paint();assert.equal(await opening,true);
+ f.window.innerHeight=800;f.listeners.get('resize')();f.flush();let css=f.head.children[0].textContent;
+ assert.equal(Number(/height:([\d.]+)px!important/.exec(css)[1]),800,'A zoomed website still fills its CSS viewport');
+ assert.ok(Math.abs(Number(/width:([\d.]+)px!important/.exec(css)[1])-400*800/700)<.01,'Reserved native width is converted with the same scale');
+ opening=f.configure(true,450,750);f.paint();f.paint();assert.equal(await opening,true);css=f.head.children[0].textContent;assert.equal(Number(/height:([\d.]+)px!important/.exec(css)[1]),800);assert.ok(Math.abs(Number(/width:([\d.]+)px!important/.exec(css)[1])-480)<.01);assert.equal(f.clicks,1);f.configure(false);
+});
+
+test('native readiness waits for asynchronous adoption and two target geometry paint frames, then cancels promptly',async()=>{
+ const f=fixture(),mount=f.gear.click;f.gear.click=()=>{};
+ let done=false;const opening=f.configure(true).then(value=>{done=true;return value});f.paint();f.paint();await Promise.resolve();assert.equal(done,false,'Missing native form is never ready');
+ f.gear.setAttribute('data-ff-native-campaign-launch','true');mount();f.gear.removeAttribute('data-ff-native-campaign-launch');f.scan();f.paint();await Promise.resolve();assert.equal(done,false,'One painted frame is insufficient');f.paint();assert.equal(await opening,true);assert.equal(f.frames.size,0);assert.equal(f.timers.size,0);
+ const waiting=f.configure(true);f.window.__friendsFablesDesktopCampaignPanel.cancelPending();assert.equal(await waiting,false);assert.equal(f.frames.size,0);assert.equal(f.timers.size,0);assert.equal(f.closes,0,'Cancelling readiness preserves the native form/draft');f.configure(false);
+});
+
+test('closing a requested but not yet mounted Campaign closes its exact late native dialog before docking',async()=>{
+ const f=fixture(),mount=f.gear.click;f.gear.click=()=>{};const opening=f.configure(true);f.configure(false);assert.equal(await opening,false);assert.equal(f.frames.size,0);assert.equal(f.timers.size,1,'Only the bounded late-mount retirement deadline remains');assert.equal(f.closes,0);
+ f.gear.setAttribute('data-ff-native-campaign-launch','true');mount();f.gear.removeAttribute('data-ff-native-campaign-launch');f.scan();assert.equal(f.closes,1);assert.equal(f.dialog.isConnected,false);assert.equal(f.head.children.length,0);assert.equal(f.window.__friendsFablesDesktopCampaignPanel,undefined);
+});
+
+test('a cancelled pending launch retires on its deadline and cannot close a fresh native gear launch',async()=>{
+ for(const reason of ['deadline','new-gear-click']){
+  const f=fixture(),mount=f.gear.click;f.gear.click=()=>{};const opening=f.configure(true);f.configure(false);assert.equal(await opening,false);
+  if(reason==='deadline'){const [id,expire]=f.timers.entries().next().value;f.timers.delete(id);expire();}
+  else f.listeners.get('click')({target:f.gear});
+  assert.equal(f.window.__friendsFablesDesktopCampaignPanel,undefined,reason+' clears retired controller');assert.equal(f.frames.size,0);assert.equal(f.timers.size,0);assert.equal(f.head.children.length,0);
+  f.gear.setAttribute('data-ff-native-campaign-launch','true');mount();f.gear.removeAttribute('data-ff-native-campaign-launch');f.scan();assert.equal(f.closes,0,'A fresh dialog after ownership retirement is not cancelled');assert.equal(f.dialog.isConnected,true);
+ }
 });
