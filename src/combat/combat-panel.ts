@@ -26,7 +26,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       if (reserved || picker) close(true); requested = name; schedule();
     }); controls.append(button);
   }
-  let reserved = false, pending = false, pendingReopened = false, internalLaunch = false;
+  let reserved = false, pending = false, pendingReopened = false, internalLaunch = false, reopenDeadline = 0;
   let settingsSuppressed = false, settingsClosing: HTMLElement | null = null;
   let retiringPicker: HTMLElement | null = null, retirementDeadline = 0;
   let retiringClose: HTMLElement | null = null, retiringHeading: HTMLElement | null = null;
@@ -229,7 +229,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   function release(nativeRemoved = false, keepLayout = false): void {
     clearReadiness();
     suspendModal(nativeRemoved); restoreFiltered();
-    pending = false; pendingReopened = false;
+    pending = false; pendingReopened = false; reopenDeadline = 0;
     // A mode switch keeps only already-owned layout until native exit/adoption.
     // Modal locks still return to the native layer during its close animation.
     if (keepLayout) { updateControls(); return; }
@@ -338,15 +338,15 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     }
     return observed ?? !!action;
   }
-  function open(nextMode: 'actions' | 'skills' = 'actions'): void {
+  function open(nextMode: 'actions' | 'skills' = 'actions'): boolean {
     attempted = true;
     const trigger = nextMode === 'skills' ? dice : action;
-    if (!trigger || nextMode === 'actions' && !encounter || otherLayer() || picker) return;
+    if (!trigger?.isConnected || trigger.disabled || nextMode === 'actions' && !encounter || otherLayer() || picker) return false;
     mode = nextMode; launched = nextMode; rememberBackground();
     bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
     internalLaunch = true;
     try { trigger.click(); } finally { internalLaunch = false; }
-    schedule();
+    schedule(); return true;
   }
   function dock(): void {
     if (!picker || modalActive || otherLayer()) return;
@@ -602,7 +602,10 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     controls.hidden = !play || !dice;
     syncRail(play && !!dice);
     if (picker && !picker.isConnected) {
-      if (pending) { suspendModal(true); restoreFiltered(); } else release(true);
+      if (pending) {
+        suspendModal(true); restoreFiltered();
+        if (!reopenDeadline) reopenDeadline = Date.now() + 5000;
+      } else release(true);
       picker = null;
     }
     if (!now && encounter && (picker || reserved)) close();
@@ -635,17 +638,24 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const awaitingDice = launched === 'skills' || requested === 'skills';
     const found = skills ?? (!awaitingDice ? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? ''))) : undefined);
     if (settingsClosing && !settingsClosing.isConnected) settingsClosing = null;
-    if (found && found !== retiringPicker && found !== settingsClosing && !preexisting.has(found)) { clearReadiness(); picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
+    if (found && found !== retiringPicker && found !== settingsClosing && !preexisting.has(found)) { clearReadiness(); reopenDeadline = 0; picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     filterAdventure();
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
     syncNativeTurn();
     updateControls();
+    // Native capabilities can disappear during React's submit commit. Keep
+    // that wait bounded, including a dispatched click that never mounts, but
+    // leave nested native result layers in control until they finish.
+    if (reopenDeadline && Date.now() >= reopenDeadline && !picker && !otherLayer()) {
+      release(true); launched = null; attempted = true;
+    }
     if (requested && !picker && !otherLayer()) { const next = requested; requested = null; open(next); }
     else if (pending && reserved && !picker && !pendingReopened && !otherLayer()) {
       // Native checks append their result to chat after unmounting the input.
-      // Reopen once without giving back the reservation; never retry a missing
-      // or deferred native capability, and let result/nested layers finish first.
-      pendingReopened = true; open(mode);
+      // Consume the one-shot only for an actual native click. A temporarily
+      // missing/disabled launcher may recover before the bounded deadline; a
+      // dispatched click that fails to mount is never retried.
+      pendingReopened = open(mode);
     }
     else if (!settingsSuppressed && now && !attempted && !reserved && !pending && !found && !otherLayer()) open();
   }
