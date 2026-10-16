@@ -33,8 +33,25 @@ let window,passed=false;const timeout=setTimeout(()=>app.exit(1),20000);
  await js(`(${configureCombatPanel.toString()})(true,'en',${JSON.stringify(combatPanelCss)})`);
  await until("!!document.querySelector('[data-ff-combat-docked]')");await settled();
  const trustedSubmit=async()=>{const point=await js("(()=>{const b=document.querySelector('[data-ff-combat-docked] button[type=submit]'),r=b.getBoundingClientRect(),x=Math.round(r.x+r.width/2),y=Math.round(r.y+r.height/2);return{x,y,hit:b.contains(document.elementFromPoint(x,y))}})()");assert(point.hit,'native submit hit target');for(const type of ['mouseDown','mouseUp'])window.webContents.sendInputEvent({type,button:'left',clickCount:1,x:point.x,y:point.y});await settled()};
- if(process.env.FABLES_COMBAT_CHAT_FOCUS==='reopen'){
+ const reopenFocus=process.env.FABLES_COMBAT_CHAT_FOCUS;
+ if(reopenFocus?.startsWith('reopen')){
   const fullscreen=new Promise(resolve=>window.once('enter-full-screen',resolve));window.setFullScreen(true);await fullscreen;await settled();
+  if(reopenFocus!=='reopen'){
+   assert.ok(['reopen-missing','reopen-no-mount'].includes(reopenFocus),'known bounded native reopen mode');
+   await js(`window.reopenClicks=0;window.originalTrigger=document.getElementById('attack');window.originalNativeOpen=originalTrigger.onclick;window.submittedForm=document.querySelector('[data-ff-combat-docked] form');submittedForm.querySelector('input').value='Retained submitted draft';submittedForm.onsubmit=event=>{event.preventDefault();submits.push(event.isTrusted);${reopenFocus==='reopen-missing'?'originalTrigger.remove()':"originalTrigger.onclick=()=>{reopenClicks++}"};submittedForm.closest('[role=dialog]').remove()};true`);
+   await trustedSubmit();
+   if(reopenFocus==='reopen-no-mount')await until('reopenClicks===1');
+   const released=await js(`new Promise((resolve,reject)=>{const start=performance.now(),root=document.documentElement;const finish=()=>{if(root.hasAttribute('data-ff-combat-open'))return;observer.disconnect();clearTimeout(timer);resolve({elapsed:performance.now()-start,opens,clicks:reopenClicks,trusted:submits.at(-1),docked:!!document.querySelector('[data-ff-combat-docked]'),reserved:root.getAttribute('data-ff-combat-open'),chat:document.querySelector('#chat').hasAttribute('data-ff-combat-chat'),submittedDraft:submittedForm.querySelector('input').value,draft:document.querySelector('.tiptap').textContent})};const observer=new MutationObserver(finish),timer=setTimeout(()=>{observer.disconnect();reject(Error('Blank pending native reservation survived bounded missing/failed capability deadline'))},6100);observer.observe(root,{attributes:true,attributeFilter:['data-ff-combat-open']});finish()})`);
+   console.log('Bounded native reopen '+reopenFocus,JSON.stringify(released));
+   assert.ok(released.elapsed<=6100,'blank reservation cleanup remains bounded');
+   assert.deepEqual({...released,elapsed:0},{elapsed:0,opens:1,clicks:reopenFocus==='reopen-no-mount'?1:0,trusted:true,docked:false,reserved:null,chat:false,submittedDraft:'Retained submitted draft',draft:'Unsent composer draft'},'missing native capability releases only owned layout without losing drafts or retrying dispatched clicks');
+   // Restoring capability after cleanup must not resurrect the cancelled
+   // pending submission. A fresh user launch remains available separately.
+   await js('originalTrigger.onclick=originalNativeOpen;if(!originalTrigger.isConnected)composer.append(originalTrigger);composer.append(document.createComment("native capability restored after bound"));true');await settled();
+   assert.equal(await js('opens'),1,'late capability restoration never reopens expired submission');
+   assert.equal(await js('reopenClicks'),reopenFocus==='reopen-no-mount'?1:0,'failed actual native dispatch is never retried');
+   await js('window.__friendsFablesDesktopCombatPanel.dispose();window.__friendsFablesDesktopChatAppearance.dispose()');passed=true;return;
+  }
   await js("window.restoreLauncher=false;const panel=document.querySelector('[data-ff-combat-docked]'),trigger=document.getElementById('attack');panel.querySelector('form').onsubmit=event=>{event.preventDefault();submits.push(event.isTrusted);trigger.remove();panel.remove();setTimeout(()=>{composer.append(trigger);restoreLauncher=true},120)};true");
   await trustedSubmit();await until('restoreLauncher');await settled();
   const state=await js("({opens,trusted:submits.at(-1),docked:!!document.querySelector('[data-ff-combat-docked]'),reserved:document.documentElement.getAttribute('data-ff-combat-open'),launcher:!!document.getElementById('attack')?.isConnected,draft:document.querySelector('.tiptap').textContent})");

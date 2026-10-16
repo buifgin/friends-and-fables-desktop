@@ -4,7 +4,7 @@ const path=require('node:path');
 const cases=[
  ...['guards','readiness','paint'].map(mode=>['combat-switch-smoke.cjs',{FABLES_COMBAT_SWITCH_FOCUS:mode}]),
  ['combat-chat-follow-smoke.cjs',{}],
- ['combat-chat-follow-smoke.cjs',{FABLES_COMBAT_CHAT_FOCUS:'reopen'}],
+ ...['reopen','reopen-missing','reopen-no-mount'].map(mode=>['combat-chat-follow-smoke.cjs',{FABLES_COMBAT_CHAT_FOCUS:mode}]),
 ];
 for(const [fixture,environment] of cases){
  const result=spawnSync(process.execPath,[path.join(__dirname,'run-electron-test.cjs'),path.join(__dirname,'../tests/combat',fixture)],{stdio:'inherit',env:{...process.env,FABLES_COMBAT_SWITCH_FOCUS:'',FABLES_COMBAT_CHAT_FOCUS:'',...environment}});
