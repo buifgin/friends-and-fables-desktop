@@ -672,6 +672,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   function submitting(event: Event): void {
     if (picker && event.target instanceof HTMLFormElement && picker.contains(event.target)) {
+      if (event.isTrusted) (window as unknown as { __friendsFablesDesktopChatAppearance?: { followAfterSubmit(): void } }).__friendsFablesDesktopChatAppearance?.followAfterSubmit();
       pending = true; pendingReopened = false; attempted = true;
     }
   }
