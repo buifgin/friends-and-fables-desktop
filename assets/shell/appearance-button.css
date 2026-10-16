@@ -8,4 +8,4 @@ nav svg{width:16px;height:16px;display:block;margin:0;fill:none;stroke:currentCo
 /* Desktop launcher is retired; hidden transport stays for trusted bridge compatibility. */
 #library,#music-controls{display:none!important}
 
-body{pointer-events:none}nav{height:0}
+.retired-appearance-launcher{pointer-events:none}.retired-appearance-launcher nav{height:0}
