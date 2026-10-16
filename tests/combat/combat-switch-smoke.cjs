@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const http = require('node:http');
 const { app, BrowserWindow, session } = require('electron');
+const focusedMode = process.env.FABLES_COMBAT_SWITCH_FOCUS;
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '..', '..');
 const controllers = ['Panel', 'Workspace', 'Shortcuts', 'Corrections'].map(name => require(path.join(root, 'dist/combat/combat-' + name.toLowerCase()))['configureCombat' + name]);
 const { combatPanelCss } = require(path.join(root, 'dist/combat/combat-panel-style'));
@@ -51,6 +52,12 @@ function launch(dice){
  }
  function detail(){form.hidden=false;form.querySelector('button[type=submit]').innerHTML='<svg id="d20"><title>Die art</title></svg><span>Roll</span>';content.innerHTML='<button id="back" type="button"><svg class="lucide-chevron-left"></svg>List</button><div class="text-center absolute">Roll Acrobatics Check</div><button type="button" role="combobox">Normal</button>';content.querySelector('#back').onclick=list}
  if(dice){panel.querySelector('h2').className='hidden';const description=document.createElement('p');description.id='native-description';description.className='hidden';description.textContent='Description';panel.insertBefore(description,form);list()}
+ if(window.lateReadyMode){
+   if(dice){form.hidden=true;content.innerHTML='<h3>Loading</h3><button type="button">Pending</button>'}
+   else panel.querySelector('h2').firstChild.data='Loading';
+ }
+ if(window.rightNative){panel.style.left='720px';panel.style.right='20px';panel.style.width='300px'}
+ window.latestPanel=panel;window.latestMount=performance.now();
  let lastFocused;
  const focusIn=e=>{if(panel.contains(e.target))lastFocused=e.target;else (lastFocused||panel).focus()};
  const focusOut=e=>{if(e.relatedTarget&&!panel.contains(e.relatedTarget))(lastFocused||panel).focus()};
@@ -58,12 +65,13 @@ function launch(dice){
  const focusObserver=new MutationObserver(records=>{if(document.activeElement===document.body&&records.some(r=>r.removedNodes.length))panel.focus()});focusObserver.observe(panel,{childList:true,subtree:true});
  document.addEventListener('focusin',focusIn);document.addEventListener('focusout',focusOut);
  let closing=false,closeObserver;
- const finishClose=()=>{closeObserver?.disconnect();focusObserver.disconnect();document.removeEventListener('focusin',focusIn);document.removeEventListener('focusout',focusOut);panel.remove();overlay.remove();document.body.style.pointerEvents='';document.body.style.overflow='';document.querySelector('#campaign').removeAttribute('aria-hidden');window.onNativeUnmount?.(panel)};
+ const finishClose=()=>{closeObserver?.disconnect();focusObserver.disconnect();document.removeEventListener('focusin',focusIn);document.removeEventListener('focusout',focusOut);panel.remove();overlay.remove();window.latestUnmount=performance.now();document.body.style.pointerEvents='';document.body.style.overflow='';document.querySelector('#campaign').removeAttribute('aria-hidden');window.onNativeUnmount?.(panel)};
  // Live Radix/store trace retained the old Actions dialog with data-state=open
  // for66ms after Close, then mounted Dice116ms after the composer click.
  const close=()=>{if(closing)return;closing=true;window.transitionCloses++;if(window.refuseClose){window.closingPanel=panel;window.finishRefusedClose=finishClose;return}if(window.delayedTransition){window.closingPanel=panel;closeObserver=new MutationObserver(()=>{if(panel.hasAttribute('data-ff-combat-docked'))window.transitionRedocks.push(panel.dataset.ffCombatPanelMode)});closeObserver.observe(panel,{attributes:true,attributeFilter:['data-ff-combat-docked']});setTimeout(finishClose,70)}else finishClose()};panel.querySelector('#close').onclick=close;
  document.body.append(overlay,panel);document.body.style.pointerEvents='none';document.body.style.overflow='hidden';document.querySelector('#campaign').setAttribute('aria-hidden','true');
- (dice?content.querySelector('input'):form.querySelector('input')).focus();
+ (dice?content.querySelector('input')||panel:form.querySelector('input')).focus();
+ window.onNativeMount?.(panel);
 }
 document.querySelector('#dice').onclick=()=>{if(window.dropDiceLaunch)return;if(window.delayedTransition)setTimeout(()=>launch(true),120);else launch(true)};document.querySelector('#attacks').onclick=()=>launch(false);
 // Count actual observer deliveries. A runaway chain is disconnected only in
@@ -75,6 +83,7 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 (async () => {
  if (process.env.FABLES_TEST_PROFILE_DIR) app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
  await app.whenReady();
+ if(!focusedMode){
  server=http.createServer(async(req,res)=>{
    res.setHeader('content-type','application/json');
    if(req.url==='/languages'){res.end(JSON.stringify([{code:'en',targets:['ru']}]));return;}
@@ -86,13 +95,13 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  manager=new TranslationManager(path.join(app.getPath('userData'),'combat-switch-translation'),null);
  await manager.initialize();
- const preferences={...structuredClone(DEFAULT_TRANSLATION),translateDescriptions:true,preservedNames:['Friends & Fables','Franz'],hideUntranslated:true,dynamicTranslationLayout:true,port:server.address().port};
+ }
  const site = session.fromPartition('combat-switch-fixture');
  site.protocol.handle('https', () => new Response(html, { headers: { 'content-type': 'text/html' } }));
  window = new BrowserWindow({ show: false, width: 1100, height: 760, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
  window.webContents.on('console-message',details=>{if(details.level==='error'||details.level===3)console.error('Fixture renderer:',details.message)});
  window.webContents.on('render-process-gone',(_event,details)=>console.error('Fixture renderer exited:',JSON.stringify(details)));
- manager.attach(window.webContents);
+ manager?.attach(window.webContents);
  await window.loadURL('https://play.fables.gg/fixture/play');
  window.showInactive();window.webContents.focus();
  const js = source => window.webContents.executeJavaScript(source);
@@ -106,6 +115,77 @@ new (require('node:vm').Script)(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
  const until = async expression => { for(let n=0;n<100;n++){if(await js('window.rendererErrors?.length'))throw Error('Native renderer error: '+JSON.stringify(await js('window.rendererErrors')));if(await js(expression))return;await new Promise(resolve=>setTimeout(resolve,10));}throw Error('Timed out: '+expression); };
  await until("document.visibilityState==='visible' && document.hasFocus()");
  await js(`(()=>{const style=document.createElement('style');style.textContent=${JSON.stringify(themeCss(appearance)+chatCss(appearance,null))};document.head.append(style)})()`);
+ if(focusedMode){
+   // Observe the real product interval; never replace its callback or cadence.
+   await js(`(()=>{const original=window.setInterval;window.panelTicks=0;window.setInterval=function(callback,delay,...args){if(delay===500&&String(callback).includes('queueMicrotask(scan)')){window.panelIntervalFound=true;return original.call(this,function(...values){callback.apply(this,values);window.panelTicks++;window.afterPanelTick?.()},delay,...args)}return original.call(this,callback,delay,...args)}})()`);
+   await js(`(${controllers[0].toString()})(true,'en',${JSON.stringify(combatPanelCss)})`);
+   assert.equal(await js('panelIntervalFound'),true,'Measured the unchanged real Combat Panel 500ms interval');
+
+   if(focusedMode==='guards'){
+     await js("window.lateReadyMode=true;document.querySelector('#dice').click()");
+     await until('!!window.latestPanel?.isConnected');
+     const guard=await js(`new Promise(resolve=>{
+       const panel=latestPanel,form=panel.querySelector('form'),editor=originalEditor,draft=form.querySelector('input');draft.value='route native draft';
+       history.pushState({},'', '/another/play');window.dispatchEvent(new PopStateEvent('popstate'));
+       // Let the route scan drain before only Text.data makes the old-route
+       // candidate semantically recognizable. It must retain native ownership.
+       queueMicrotask(()=>queueMicrotask(()=>{
+         panel.querySelector('h3').firstChild.data='Skills';panel.querySelector('section button').firstChild.data='Acrobatics Check';
+         window.afterPanelTick=()=>{window.afterPanelTick=null;queueMicrotask(()=>resolve({docked:panel.hasAttribute('data-ff-combat-docked'),marked:panel.hasAttribute('data-ff-combat-panel'),firstDock:panel.hasAttribute('data-ff-combat-first-dock'),modal:panel.getAttribute('aria-modal'),style:panel.getAttribute('style'),bodyPointer:document.body.style.pointerEvents,bodyOverflow:document.body.style.overflow,sameForm:panel.querySelector('form')===form,sameEditor:document.querySelector('.tiptap')===editor,draft:draft.value,rolls}))};
+       }));
+     })`);
+     console.log('Pending candidate route cancellation '+JSON.stringify(guard));
+     assert.deepEqual(guard,{docked:false,marked:false,firstDock:false,modal:'true',style:null,bodyPointer:'none',bodyOverflow:'hidden',sameForm:true,sameEditor:true,draft:'route native draft',rolls:0},'Route cancellation leaves unknown old-route native dialog untouched even after text readiness/fallback');
+     await js("latestPanel.querySelector('#close').click();window.__friendsFablesDesktopCombatPanel.dispose()");
+     clearTimeout(timeout);window.close();app.quit();return;
+   }
+   const failures=[];
+   for(const kind of focusedMode==='paint'?['skills']:['skills','actions']){
+     for(const locale of focusedMode==='paint'?['en']:['en','ru']){
+       await js(`window.__friendsFablesDesktopCombatPanel.update(${JSON.stringify(locale)},${JSON.stringify(combatPanelCss)});window.lateReadyMode=${focusedMode!=='paint'};window.rightNative=${focusedMode==='paint'};true`);
+       if(kind==='skills'&&focusedMode!=='paint'){
+         await js("window.lateReadyMode=false;document.querySelector('#attacks').click()");
+         await until("document.querySelector('[data-ff-combat-docked]')?.dataset.ffCombatPanelMode==='actions'");
+         await js("window.lateReadyMode=true;window.delayedTransition=true;true");
+       }
+       if(focusedMode==='paint')await js(`window.onNativeMount=panel=>{window.incomingNativeRect=panel.getBoundingClientRect().toJSON();const form=panel.querySelector('form'),frames=[];window.incomingPaint=new Promise(resolve=>{const frame=()=>{const r=panel.getBoundingClientRect(),s=getComputedStyle(panel);frames.push({x:r.x,width:r.width,left:s.left,transition:s.transition,transform:s.transform,docked:panel.hasAttribute('data-ff-combat-docked'),expected:Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ff-combat-rail-width')),animations:panel.getAnimations().map(a=>({time:a.currentTime,timing:a.effect.getComputedTiming()})),sameForm:panel.querySelector('form')===form});if(frames.length<3)requestAnimationFrame(frame);else resolve(frames)};requestAnimationFrame(frame)})};true`);
+       // Native clicks preserve launch authorization; only the fixture's native
+       // mount differs. No translation/controller observer can wake readiness.
+       await js(`window.latestPanel=null;window.latestClick=performance.now();document.querySelector(${JSON.stringify(kind==='skills'?'#dice':'#attacks')}).click()`);
+       await until('!!window.latestPanel?.isConnected');
+       if(focusedMode==='paint'){
+         const frames=await js('incomingPaint');
+         assert.equal(await js('incomingNativeRect.x'),720,'Native node starts at a deliberate right-side rectangle before semantic adoption');
+         console.log('Recognized incoming first paint '+JSON.stringify(frames));
+         for(const frame of frames){assert.equal(frame.docked,true,'positively recognized incoming native node docks before paint');assert.ok(Math.abs(frame.x-frame.expected)<=2,'first visible recognized incoming frame is left: '+JSON.stringify(frame));assert.equal(frame.sameForm,true)}
+       }else{
+         const result=await js(`new Promise((resolve,reject)=>{
+           const panel=latestPanel,form=panel.querySelector('form'),draft=form.querySelector('input'),editor=originalEditor;
+           const heading=panel.querySelector('${kind==='skills'?'h3':'h2'}').firstChild,button=panel.querySelector('section button')?.firstChild;
+           draft.value='late native draft';const trace={kind:${JSON.stringify(kind)},locale:${JSON.stringify(locale)},click:latestClick,oldUnmount:window.latestUnmount,mount:latestMount};
+           const timer=setTimeout(()=>{observer.disconnect();window.afterPanelTick=null;reject(Error('Text readiness measurement timed out'))},1600);
+           const finish=()=>{if(!panel.hasAttribute('data-ff-combat-docked'))return;observer.disconnect();clearTimeout(timer);window.afterPanelTick=null;trace.marker=performance.now();trace.markerTick=panelTicks;trace.samePanel=latestPanel===panel;trace.sameForm=panel.querySelector('form')===form;trace.draft=draft.value;trace.sameEditor=document.querySelector('.tiptap')===editor;trace.editor=editor.textContent;trace.rolls=rolls;resolve(trace)};
+           const observer=new MutationObserver(finish);observer.observe(panel,{attributes:true,attributeFilter:['data-ff-combat-docked']});
+           // Resolve text after a witnessed real fallback invocation has fully
+           // drained its scan, leaving almost one full real interval to prove
+           // that characterData delivery, rather than polling, caused docking.
+           window.afterPanelTick=()=>{window.afterPanelTick=null;queueMicrotask(()=>{trace.text=performance.now();trace.textTick=panelTicks;heading.data=${JSON.stringify(kind==='skills'?(locale==='ru'?'Навыки':'Skills'):(locale==='ru'?'Выберите действие':'Choose Action'))};if(button)button.data=${JSON.stringify(locale==='ru'?'Проверка акробатики':'Acrobatics Check')};queueMicrotask(finish)})};
+         })`);
+         console.log('CharacterData-only readiness '+JSON.stringify({...result,textToMarkerMs:result.marker-result.text}));
+         if(result.markerTick!==result.textTick)failures.push(kind+'/'+locale+' required fallback after text mutation: '+JSON.stringify(result));
+         assert.equal(result.samePanel&&result.sameForm&&result.sameEditor,true,'late native shell/form/editor identity retained');assert.equal(result.draft,'late native draft');assert.equal(result.editor,'composer draft');assert.equal(result.rolls,0);
+       }
+       await js("window.delayedTransition=false;window.lateReadyMode=false;latestPanel.querySelector('#close').click();window.latestPanel=null;true");
+       await until("!document.querySelector('[role=dialog]')");
+     }
+   }
+   assert.deepEqual(failures,[],'CharacterData readiness must dock before the next real fallback invocation');
+   await js('window.__friendsFablesDesktopCombatPanel.dispose()');
+   assert.equal(await js('rolls'),0);
+   console.log('Focused combat '+focusedMode+' fixture passed');clearTimeout(timeout);window.close();app.quit();return;
+ }
+
+ const preferences={...structuredClone(DEFAULT_TRANSLATION),translateDescriptions:true,preservedNames:['Friends & Fables','Franz'],hideUntranslated:true,dynamicTranslationLayout:true,port:server.address().port};
  const applyAppearance = async locale => {
    await js(`(${configureChatAppearance.toString()})(${JSON.stringify(appearance)})`);
    for(let i=0;i<controllers.length;i++) await js(`(${controllers[i].toString()})(true,${JSON.stringify(locale)}${i===0?','+JSON.stringify(combatPanelCss):''})`);
