@@ -6,7 +6,7 @@ import { borderCss } from './borders';
 // Targets are based on the public play-route components.
 export function configureChatAppearance(settings: AppearanceSettings): void {
   const key = '__friendsFablesDesktopChatAppearance';
-  const host = window as unknown as Record<string, { dispose(): void } | undefined>;
+  const host = window as unknown as Record<string, { dispose(): void; followAfterSubmit(): void } | undefined>;
   host[key]?.dispose();
 
 
@@ -193,12 +193,47 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     if (gaps.length) snapshotTimer = window.setTimeout(() => snapshotMessages(), Math.max(1, Math.min(...gaps.map(snapshot => 4000 - (now - snapshot.gapAt!)))));
   }
   // Prefer a fully visible result over a partially visible preceding narration.
-  // Chromium performs the scroll adjustment; this controller never replays an old
-  // scrollTop over wheel/touch/selection or native navigation.
+  // Chromium keeps older reading anchors. Only an already-pinned reader receives
+  // a finite tail correction when native content grows; manual intent cancels it.
   let scrollFeed: HTMLElement | null = null, scrollTried = false, scrollFrame = 0;
   let scrollYield = false, scrollGesture = false, scrollSeen = false, scrollSelectionYield = false;
   let scrollResize: ResizeObserver | null = null, scrollSize: { width: number; height: number } | null = null;
   let scrollRoute = location.pathname + location.search;
+  let tailPinned = false, tailFrame = 0;
+  let tailResize: ResizeObserver | null = null;
+  const tailSizes = new Map<HTMLElement, number>();
+  function atTail(): boolean {
+    return !!scrollFeed && scrollFeed.scrollHeight - scrollFeed.clientHeight - scrollFeed.scrollTop <= 1;
+  }
+  function cancelTail(): void { cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false; }
+  function followTail(): void {
+    if (!tailPinned || tailFrame || scrollYield || scrollGesture || selectedInFeed()) return;
+    const feed = scrollFeed, route = scrollRoute;
+    tailFrame = requestAnimationFrame(() => {
+      tailFrame = 0;
+      if (disposed || !feed?.isConnected || feed !== scrollFeed || route !== location.pathname + location.search
+        || !tailPinned || scrollYield || scrollGesture || selectedInFeed()) return;
+      feed.scrollTop = Math.max(0, feed.scrollHeight - feed.clientHeight);
+    });
+  }
+  // Called only by the adapter path that validated a trusted current form submit.
+  function followAfterSubmit(): void {
+    if (disposed || !/\/play\/?$/.test(location.pathname)
+      || new URLSearchParams(location.search).get('view') && new URLSearchParams(location.search).get('view') !== 'play') return;
+    preferScrollAnchor();
+    if (!scrollFeed?.isConnected || scrollYield || scrollGesture || selectedInFeed()) return;
+    cancelTail(); tailPinned = true; followTail();
+  }
+  function observeTail(): void {
+    if (!scrollFeed || !tailResize) return;
+    const list = scrollFeed.querySelector<HTMLElement>('#events-list');
+    const last = Array.from((list ?? scrollFeed).children).filter((node): node is HTMLElement => node instanceof HTMLElement && /^event-\d+$/.test(node.id)).at(-1);
+    const owners = new Set([list, last].filter((node): node is HTMLElement => !!node));
+    for (const node of tailSizes.keys()) if (!owners.has(node)) { tailResize.unobserve(node); tailSizes.delete(node); }
+    for (const node of owners) if (!tailSizes.has(node)) {
+      tailSizes.set(node, node.getBoundingClientRect().height); tailResize.observe(node);
+    }
+  }
   const scrollStyles = new Map<HTMLElement, { value: string; priority: string }>();
   function restoreScrollStyles(): void {
     for (const [node, previous] of scrollStyles) {
@@ -208,6 +243,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     scrollStyles.clear();
   }
   function releaseScrollFeed(): void {
+    cancelTail(); tailResize?.disconnect(); tailResize = null; tailSizes.clear();
     restoreScrollStyles(); scrollResize?.disconnect(); scrollResize = null; scrollSize = null;
     scrollFeed = null; scrollTried = false; scrollSelectionYield = false;
     // A retired feed may never deliver scrollend/pointerup. Its intent must not
@@ -233,11 +269,25 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       for (let depth = 0; node && depth < 12; depth++, node = node.parentElement) {
         if (node.clientHeight > 0 && /^(auto|scroll)$/.test(getComputedStyle(node).overflowY)) {
           scrollFeed = node; scrollSize = { width: node.clientWidth, height: node.clientHeight };
+          tailPinned = atTail() && !selectedInFeed();
+          tailResize = new ResizeObserver(entries => {
+            if (!scrollFeed?.isConnected) { releaseScrollFeed(); return; }
+            let grew = false;
+            for (const entry of entries) {
+              const owner = entry.target as HTMLElement, previous = tailSizes.get(owner);
+              if (previous === undefined) continue;
+              const height = owner.getBoundingClientRect().height;
+              if (height > previous + .5) grew = true;
+              tailSizes.set(owner, height);
+            }
+            if (grew) followTail();
+          });
+          observeTail();
           scrollResize = new ResizeObserver(() => {
             if (!scrollFeed?.isConnected) { releaseScrollFeed(); return; }
             const size = { width: scrollFeed.clientWidth, height: scrollFeed.clientHeight };
             if (scrollSize?.width === size.width && scrollSize?.height === size.height) return;
-            scrollSize = size; rebaseScrollAnchor();
+            scrollSize = size; rebaseScrollAnchor(); followTail();
           });
           scrollResize.observe(node); break;
         }
@@ -271,37 +321,45 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   function scrollIntent(event: Event): void {
     if (!scrollFeed || !(event.target instanceof Node) || !scrollFeed.contains(event.target)) return;
     if (event instanceof KeyboardEvent && !['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '].includes(event.key)) return;
-    scrollYield = true; scrollSeen = false;
+    cancelTail(); scrollYield = true; scrollSeen = false;
     if (event.type === 'touchstart' || event.type === 'pointerdown') scrollGesture = true;
     rebaseScrollAnchor();
     cancelAnimationFrame(scrollFrame);
-    scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; if (!scrollSeen && !scrollGesture) { scrollYield = false; preferScrollAnchor(); } });
+    scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; if (!scrollSeen && !scrollGesture) { scrollYield = false; tailPinned = atTail() && !selectedInFeed(); preferScrollAnchor(); } });
   }
   function feedScrolled(event: Event): void {
     if (event.target !== scrollFeed) return;
-    if (scrollYield || scrollGesture) { scrollSeen = true; restoreScrollStyles(); } else preferScrollAnchor();
+    if (scrollYield || scrollGesture) { scrollSeen = true; restoreScrollStyles(); } else {
+      // A layout/native anchoring scroll while a correction is pending must not
+      // discard the pre-growth pin. Intent listeners cancel that correction first.
+      if (!tailFrame) tailPinned = atTail() && !selectedInFeed();
+      preferScrollAnchor();
+    }
   }
   function scrollFinished(event: Event): void {
     if (event.type === 'scrollend' ? event.target !== scrollFeed : !scrollGesture && !scrollYield) return;
-    scrollGesture = false; scrollYield = false; rebaseScrollAnchor();
+    const navigated = scrollGesture || scrollYield;
+    scrollGesture = false; scrollYield = false;
+    if (navigated) tailPinned = atTail() && !selectedInFeed();
+    rebaseScrollAnchor();
   }
   function scrollSelection(): void {
     if (!scrollFeed) return;
     const selection = window.getSelection();
     if (!scrollSelectionYield && !(selection?.anchorNode && scrollFeed.contains(selection.anchorNode) || selection?.focusNode && scrollFeed.contains(selection.focusNode))) return;
-    if (selectedInFeed()) { scrollSelectionYield = true; restoreScrollStyles(); }
-    else if (scrollSelectionYield) { scrollSelectionYield = false; rebaseScrollAnchor(); }
+    if (selectedInFeed()) { cancelTail(); scrollSelectionYield = true; restoreScrollStyles(); }
+    else if (scrollSelectionYield) { scrollSelectionYield = false; tailPinned = atTail(); rebaseScrollAnchor(); }
   }
   function scrollMutations(records: MutationRecord[]): void {
     if (scrollFeed && !scrollFeed.isConnected) releaseScrollFeed();
     const relevant = records.some(record => {
       const target = record.target instanceof Element ? record.target : record.target.parentElement;
       if (!target || target.closest('[data-ff-desktop-message-snapshot],svg,button,input,textarea,select')) return false;
-      if (scrollFeed?.contains(target) && (target.closest('[id^="event-container-"]') || record.type === 'childList' && Array.from(record.addedNodes).some(node => node instanceof Element && /^event-\d+$/.test(node.id)))) return true;
+      if (scrollFeed?.contains(target) && (target.closest('[id^="event-container-"],[id^="event-"]') || record.type === 'childList' && Array.from(record.addedNodes).some(node => node instanceof Element && /^event-\d+$/.test(node.id)))) return true;
       if (!scrollFeed && record.type === 'childList' && Array.from(record.addedNodes).some(node => node instanceof Element && (node.id.startsWith('event-message-card-') || !!node.querySelector('[id^="event-message-card-"]')))) { scrollTried = false; return true; }
       return false;
     });
-    if (relevant) preferScrollAnchor();
+    if (relevant) { preferScrollAnchor(); observeTail(); followTail(); }
   }
   function outside(event: PointerEvent): void {
     if (!(event.target instanceof Element) || event.target.closest('[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]')) return;
@@ -582,7 +640,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   window.addEventListener('keydown', onEscape, true);
   window.addEventListener('popstate', routeChanged);
   window.addEventListener('storage', schedule);
-  host[key] = { dispose() {
+  host[key] = { followAfterSubmit, dispose() {
     disposed = true; observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(snapshotTimer);
     closeExpanded(); for (const button of expandButtons.values()) button.remove();
     clearSnapshots(); releaseScrollFeed(); cancelAnimationFrame(scrollFrame);
