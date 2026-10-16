@@ -32,6 +32,31 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   let retiringClose: HTMLElement | null = null, retiringHeading: HTMLElement | null = null;
   let retiringMode: 'actions' | 'skills' | null = null, retiringHeadingText = '';
   let retiringOwner: Fiber | undefined;
+  // Text observation only bridges a pending launch's short native loading
+  // phase. Seeing a candidate never grants semantic ownership or docking.
+  let readinessMode: 'actions' | 'skills' | null = null, readinessDeadline = 0, readinessTimer = 0;
+  let readinessCandidates: HTMLElement[] = [];
+  const readinessObserver = new MutationObserver(() => {
+    if (!disposed && launched && Date.now() <= readinessDeadline) schedule();
+  });
+  function clearReadiness(reset = true): void {
+    readinessObserver.disconnect(); readinessCandidates = [];
+    window.clearTimeout(readinessTimer); readinessTimer = 0;
+    if (reset) { readinessMode = null; readinessDeadline = 0; }
+  }
+  function observeReadiness(dialogs: HTMLElement[]): void {
+    if (!launched || picker || settingsSuppressed || settingsClosing?.isConnected) { clearReadiness(); return; }
+    if (readinessMode !== launched) {
+      clearReadiness(); readinessMode = launched; readinessDeadline = Date.now() + 5000;
+      readinessTimer = window.setTimeout(() => clearReadiness(false), 5000);
+    }
+    if (Date.now() >= readinessDeadline) { clearReadiness(false); return; }
+    const candidates = dialogs.filter(dialog => dialog.parentElement === document.body
+      && dialog !== retiringPicker && dialog !== settingsClosing && !preexisting.has(dialog));
+    if (candidates.length === readinessCandidates.length && candidates.every((dialog, index) => dialog === readinessCandidates[index])) return;
+    readinessObserver.disconnect(); readinessCandidates = candidates;
+    for (const candidate of candidates) readinessObserver.observe(candidate, { characterData: true, subtree: true });
+  }
   const railBefore = ['--ff-combat-rail-width', '--ff-combat-rail-top', '--ff-combat-controls-bottom'].map(name => [name, document.documentElement.style.getPropertyValue(name), document.documentElement.style.getPropertyPriority(name)]);
   const railWritten = new Map<string, string>();
   let mountedRail: HTMLElement | null = null, mountedRailAside: HTMLElement | null = null;
@@ -202,6 +227,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     modalUndo = []; modalActive = false;
   }
   function release(nativeRemoved = false, keepLayout = false): void {
+    clearReadiness();
     suspendModal(nativeRemoved); restoreFiltered();
     pending = false; pendingReopened = false;
     // A mode switch keeps only already-owned layout until native exit/adoption.
@@ -327,6 +353,11 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     // A proven replacement ends the handoff deadline; its layout entries stay
     // independent from the detached old picker's conditional cleanup.
     retirementDeadline = 0;
+    const firstDock = !picker.hasAttribute('data-ff-combat-docked');
+    const firstDockBefore = picker.getAttribute('data-ff-combat-first-dock');
+    // Commit the proven incoming node at its final dock position before its
+    // first paint. Later intended left transitions and native animations stay.
+    if (firstDock) picker.setAttribute('data-ff-combat-first-dock', '');
     attribute(picker, 'data-ff-combat-docked', '', true); attribute(picker, 'data-ff-combat-panel', '', true);
     attribute(picker, 'data-ff-combat-panel-mode', mode, true);
     const heading = Array.from(picker.querySelectorAll<HTMLElement>('h2')).find(node => /^(Choose Action|Выберите действие)$/i.test(node.textContent?.trim() ?? ''));
@@ -350,6 +381,13 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       if (!root || root.closest('form,[role="dialog"]')) continue;
       for (let node: HTMLElement | null = root; node && node !== document.body; node = node.parentElement) {
         if (node.getAttribute('aria-hidden') === 'true' && hiddenBefore.has(node) && hiddenBefore.get(node) !== 'true') attribute(node, 'aria-hidden', null);
+      }
+    }
+    if (firstDock) {
+      picker.getBoundingClientRect();
+      if (picker.getAttribute('data-ff-combat-first-dock') === '') {
+        if (firstDockBefore === null) picker.removeAttribute('data-ff-combat-first-dock');
+        else picker.setAttribute('data-ff-combat-first-dock', firstDockBefore);
       }
     }
     modalActive = true; updateControls();
@@ -552,7 +590,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       }
     }
     const nextRoute = location.pathname + location.search;
-    if (route !== nextRoute) { if (picker || reserved) close(); route = nextRoute; encounter = false; attempted = false; requested = null; }
+    if (route !== nextRoute) { clearReadiness(); if (picker || reserved) close(); route = nextRoute; encounter = false; attempted = false; launched = null; requested = null; }
     const play = /\/play\/?$/.test(location.pathname) && (!new URLSearchParams(location.search).has('view') || new URLSearchParams(location.search).get('view') === 'play');
     const editor = document.querySelector<HTMLElement>('.tiptap[contenteditable="true"]');
     let composer = editor?.parentElement ?? null;
@@ -570,8 +608,9 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (!now && encounter && (picker || reserved)) close();
     if (now !== encounter) { encounter = now; attempted = false; }
     updateControls();
-    if (!play || !composer) { if (reserved || picker) close(); return; }
+    if (!play || !composer) { clearReadiness(); if (reserved || picker) close(); return; }
     const dialogs = Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).filter(visible);
+    observeReadiness(dialogs);
     if (!dialogs.length && !picker) rememberBackground();
     const skills = (launched === 'skills' || reserved && mode === 'skills') ? dialogs.find(dialog => {
       if (preexisting.has(dialog)) return false;
@@ -596,7 +635,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     const awaitingDice = launched === 'skills' || requested === 'skills';
     const found = skills ?? (!awaitingDice ? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? ''))) : undefined);
     if (settingsClosing && !settingsClosing.isConnected) settingsClosing = null;
-    if (found && found !== retiringPicker && found !== settingsClosing && !preexisting.has(found)) { picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
+    if (found && found !== retiringPicker && found !== settingsClosing && !preexisting.has(found)) { clearReadiness(); picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     filterAdventure();
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
     syncNativeTurn();
@@ -645,7 +684,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   host[key] = {
     closeForSettings,
     update(value, nextCss) { language = value; if (style.textContent !== nextCss) style.textContent = nextCss; labels(); schedule(); },
-    dispose() { disposed = true; observer.disconnect(); clearInterval(timer); if (picker || reserved) close();
+    dispose() { disposed = true; clearReadiness(); observer.disconnect(); clearInterval(timer); if (picker || reserved) close();
       document.removeEventListener('ff-spell-helper-change', schedule);
       document.removeEventListener('wheel', wheelGate);
       document.removeEventListener('focusin', focusGate); document.removeEventListener('focusout', focusGate);

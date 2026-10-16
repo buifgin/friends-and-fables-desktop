@@ -157,6 +157,8 @@ export const combatPanelCss = `
     scrollbar-gutter: stable;
   }
 
+  [data-ff-combat-first-dock] { transition-property: none !important; }
+
   html[data-ff-combat-open="true"] [data-ff-combat-panel],
   html[data-ff-combat-open="true"] [data-ff-combat-docked] {
     left: var(--ff-combat-rail-width) !important;
