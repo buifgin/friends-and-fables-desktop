@@ -10,7 +10,7 @@ import type { SettingsSection, CombatPreferences, CombatSettingsAdapter } from '
 import type { GeneralSettings } from './general-settings';
 import { themeBackground } from '../appearance/themes';
 export const SETTINGS_HUB_URL='fables-desktop://settings/settings-hub.html';
-export interface CampaignSettingsAdapter { show(bounds: Rectangle): void | Promise<void>; suspend(bounds:Rectangle): void; hide(): void; }
+export interface CampaignSettingsAdapter { show(bounds: Rectangle): void | boolean | Promise<void | boolean>; suspend(bounds:Rectangle): void; hide(): void; }
 export interface SettingsManagers { translation: TranslationManager; instructions: HostInstructionsManager; campaign?: CampaignSettingsAdapter; combat?: CombatSettingsAdapter; }
 // Navigation has no feature bridge. Each editor retains its own manager, preload,
 // exact URL and main-frame authorization; hidden editors are never reloaded.
@@ -31,6 +31,7 @@ export class SettingsHub {
  private campaignAvailable?:boolean;
  private campaignBounds?:Rectangle;
  private campaignRetained=false;
+ private preparingCampaign?:{revision:number;bounds:Rectangle};
  constructor(private window:BrowserWindow,private appearance:AppearanceManager,private general:GeneralSettings,private close:()=>void,private generalChanged:()=>void,private navigate:(section:SettingsSection)=>Promise<void>) {
   this.view=new WebContentsView({webPreferences:{partition:'fables-appearance',preload:path.join(__dirname,'settings-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false,webSecurity:true}});
   window.contentView.addChildView(this.view);this.view.setVisible(false);
@@ -91,6 +92,8 @@ export class SettingsHub {
   }
  }
  private cancelPreparation():void {
+  const native=this.preparingCampaign;this.preparingCampaign=undefined;
+  if(native){const navWidth=Math.min(126,native.bounds.width);this.managers?.campaign?.suspend({x:native.bounds.x+navWidth,y:native.bounds.y,width:Math.max(0,native.bounds.width-navWidth),height:native.bounds.height});}
   const pending=this.preparing;this.preparing=undefined;pending?.restoreThrottling?.();
   if(pending?.paintEditor&&!this.window.isDestroyed()&&!pending.view.webContents.isDestroyed()){pending.view.setVisible(false);this.window.contentView.addChildView(pending.view);}
   const contents=pending?.view.webContents;
@@ -185,11 +188,34 @@ export class SettingsHub {
    if(!ready){if(this.preparing?.revision===revision)this.cancelPreparation();return;}
    if(this.preparing?.revision===revision){if(this.preparing.paintEditor)this.window.contentView.addChildView(editor.view);this.preparing.restoreThrottling?.();this.preparing=undefined;}
   }
-  if(this.section!==section&&(this.section==='campaign'||section==='campaign'))this.campaignBounds=undefined;this.section=section;this.visible=true;if(section==='campaign')this.update();
+  let campaignPrepared=false;
+  if(section==='campaign'&&this.section!=='campaign'&&this.bounds) {
+   // First paint the full outgoing Settings surface before changing the website
+   // viewport. Keep that surface over the native form through mount and paint.
+   this.visible=true;
+   if(beforeLayout){
+    this.preparing={section:this.section,revision,view:this.view,url:SETTINGS_HUB_URL,paintBounds:{...this.bounds}};
+    this.layout(this.bounds);this.update();const painted=await this.rendered(this.section,revision,this.view,SETTINGS_HUB_URL,this.bounds);
+    if(this.preparing?.revision===revision)this.preparing=undefined;
+    if(!painted)return;
+   }
+   if(revision!==this.revision||this.window.isDestroyed())return;
+   const pending={revision,bounds:{...this.bounds}};this.preparingCampaign=pending;
+   this.campaignRetained=true;
+   beforeLayout?.();campaignPrepared=true;
+   const navWidth=Math.min(126,this.bounds.width),nativeBounds={x:this.bounds.x+navWidth,y:this.bounds.y,width:Math.max(0,this.bounds.width-navWidth),height:this.bounds.height};
+   this.campaignBounds={...nativeBounds};
+   let ready=false;
+   try {ready=await this.managers?.campaign?.show(nativeBounds)!==false;}catch(error){console.error(error);}
+   if(this.preparingCampaign!==pending||revision!==this.revision||this.window.isDestroyed())return;
+   this.preparingCampaign=undefined;
+   if(!ready){this.managers?.campaign?.suspend(nativeBounds);return;}
+  }
+  if(!campaignPrepared&&this.section!==section&&(this.section==='campaign'||section==='campaign'))this.campaignBounds=undefined;this.section=section;this.visible=true;if(section==='campaign')this.update();
   // The outer dock commits the website strip before the native Campaign
   // adapter measures/mounts its content. Standalone callers need no callback.
   if(section==='campaign')this.campaignRetained=true;
-  beforeLayout?.();
+  if(!campaignPrepared)beforeLayout?.();
   if(this.bounds)this.layout(this.bounds);
   if(section!=='campaign')this.update();
   (editor?.view.webContents??this.view.webContents).focus();
@@ -197,13 +223,15 @@ export class SettingsHub {
  refreshCampaign():void {if(this.visible&&this.section==='campaign'&&this.bounds){this.campaignBounds=undefined;this.layout(this.bounds);}}
  setVisible(visible:boolean):void {if(!visible){this.revision++;this.cancelPreparation();this.releaseCampaign();}this.visible=visible;this.view.setVisible(visible);for(const [section,editor]of this.editors)editor.view.setVisible(visible&&section===this.section);}
  layout(bounds:Rectangle):void {
+  const nativePreparation=this.preparingCampaign;
+  if(nativePreparation&&Object.keys(bounds).some(key=>bounds[key as keyof Rectangle]!==nativePreparation.bounds[key as keyof Rectangle])){this.revision++;this.cancelPreparation();}
   const painting=this.preparing?.paintBounds;
   if(painting&&Object.keys(bounds).some(key=>bounds[key as keyof Rectangle]!==painting[key as keyof Rectangle])){this.revision++;this.cancelPreparation();}
   this.bounds=bounds;this.view.setBounds(this.section==='campaign'&&(!this.preparing?.paintBounds||this.preparing.paintEditor)?{...bounds,width:Math.min(126,bounds.width)}:bounds);this.view.setVisible(this.visible);
   const navWidth=Math.min(126,bounds.width);
   const editorBounds={x:bounds.x+navWidth,y:bounds.y,width:Math.max(0,bounds.width-navWidth),height:bounds.height};
   for(const [section,editor]of this.editors){editor.view.setBounds(editorBounds);editor.view.setVisible(this.visible&&(section===this.section||this.preparing?.paintEditor===true&&this.preparing.view===editor.view));}
-  if(this.visible&&this.campaignRetained&&(!this.campaignBounds||Object.keys(editorBounds).some(key=>editorBounds[key as keyof Rectangle]!==this.campaignBounds![key as keyof Rectangle]))) {
+  if(this.visible&&this.campaignRetained&&!this.preparingCampaign&&(!this.campaignBounds||Object.keys(editorBounds).some(key=>editorBounds[key as keyof Rectangle]!==this.campaignBounds![key as keyof Rectangle]))) {
    this.campaignRetained=true;
    this.campaignBounds={...editorBounds};
    const adapter=this.managers?.campaign;

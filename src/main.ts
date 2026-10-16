@@ -155,18 +155,28 @@ function createWindow(): void {
   websiteContents = view.webContents;
   const dock = appearance.attachMain(mainWindow, view);
   settingsDock = dock;
-  let campaignUpdates = Promise.resolve();
+  let campaignUpdates:Promise<unknown> = Promise.resolve();
+  let campaignRequest=0;
   let campaignDocument=0;
   view.webContents.on('did-navigate',()=>{campaignDocument++;});
-  const updateCampaignPanel = (show: boolean | 'suspend', width = 0, height = 0): Promise<void> => {
-    const expectedURL=view.webContents.getURL(),expectedDocument=campaignDocument;
-    campaignUpdates = campaignUpdates.catch(console.error).then(async () => {
-      if (view.webContents.isDestroyed() || view.webContents.getURL()!==expectedURL || campaignDocument!==expectedDocument || !expectedURL) return;
-      const url = new URL(view.webContents.getURL());
-      if (url.origin !== 'https://play.fables.gg' || !/^\/[0-9a-f-]{36}\/play\/?$/i.test(url.pathname)) return;
-      await view.webContents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))})`);
+  const updateCampaignPanel = (show: boolean | 'suspend', width = 0, height = 0): Promise<boolean> => {
+    const request=++campaignRequest,contents=view.webContents;
+    if(contents.isDestroyed())return Promise.resolve(false);
+    const expectedURL=contents.getURL(),expectedDocument=campaignDocument;
+    let allowed=false;
+    try {const url=new URL(expectedURL);allowed=url.origin==='https://play.fables.gg'&&/^\/[0-9a-f-]{36}\/play\/?$/i.test(url.pathname);}catch{}
+    if(!allowed)return Promise.resolve(false);
+    // A pending paint wait cannot block a newer hide/suspend in this document.
+    void contents.executeJavaScript('window.__friendsFablesDesktopCampaignPanel?.cancelPending?.(); true').catch(()=>{});
+    const update=campaignUpdates.catch(console.error).then(async () => {
+      if(request!==campaignRequest||contents.isDestroyed()||contents.getURL()!==expectedURL||campaignDocument!==expectedDocument)return false;
+      const previous=contents.getBackgroundThrottling();
+      if(show===true)contents.setBackgroundThrottling(false);
+      try {return await contents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))})`)===true;}
+      finally {if(show===true&&!contents.isDestroyed())contents.setBackgroundThrottling(previous);}
     });
-    return campaignUpdates;
+    campaignUpdates=update;
+    return update;
   };
   const combatCampaign = (): string | null => {
     if (view.webContents.isDestroyed()) return null;

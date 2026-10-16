@@ -303,3 +303,34 @@ test('retired preparation cannot restore throttling over a newer owner on the sa
  const f=externalWaitFixture('translation');await f.hub.select('general');let opening=f.hub.select('translation');await flush();f.mark({locale:'en',preset:'custom',customColor:'#234567'});await flush();const editor=f.created[0],restore=f.hub.preparing.restoreThrottling;
  f.hub.setVisible(false);await opening;assert.equal(editor.webContents.getBackgroundThrottling(),true);await f.hub.select('general');opening=f.hub.select('translation');await flush();assert.equal(editor.webContents.getBackgroundThrottling(),false);restore();assert.equal(editor.webContents.getBackgroundThrottling(),false,'Old idempotent cleanup cannot overwrite current preparation');f.tick();f.tick();await opening;assert.deepEqual(editor.webContents.throttlingWrites,[false,true,false,true]);
 });
+
+test('incoming Campaign keeps the outgoing section and full coverage until the actual native adapter is ready',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let finishShow,started=false;
+ const ready=new Promise(resolve=>finishShow=resolve);
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show(){started=true;return ready;},suspend(){},hide(){}}});
+ await f.hub.select('general');const selecting=f.hub.select('campaign');await new Promise(resolve=>setImmediate(resolve));
+ try {assert.equal(started,true);assert.equal(f.hub.currentSection(),'general','A pending native mount must not commit Campaign');assert.equal(f.hub.view.bounds.width,580,'Outgoing Settings continues covering the whole panel');}
+ finally {finishShow(true);await selecting;}
+ assert.equal(f.hub.currentSection(),'campaign');assert.equal(f.hub.view.bounds.width,126);
+});
+
+for(const cancel of ['hidden','newer-section','unavailable','resize'])test('incoming Campaign cannot commit stale native readiness after '+cancel,async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let finishShow,suspends=0;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show:()=>new Promise(resolve=>finishShow=resolve),suspend(){suspends++;},hide(){}}});
+ await f.hub.select('general');const selecting=f.hub.select('campaign');await new Promise(resolve=>setImmediate(resolve));
+ if(cancel==='hidden')f.hub.setVisible(false);
+ if(cancel==='newer-section')await f.hub.select('music');
+ if(cancel==='unavailable')f.hub.setCampaignAvailable(false);
+ if(cancel==='resize')f.hub.layout({x:0,y:32,width:620,height:740});
+ assert.ok(suspends>0,'Cancelling pending native readiness immediately suspends the adapter so its wait can release');finishShow(true);await selecting;assert.notEqual(f.hub.currentSection(),'campaign','Cancelled native readiness cannot select Campaign');if(cancel==='hidden')assert.equal(f.hub.view.getVisible(),false);
+});
+
+test('hiding during the outgoing surface paint phase cancels its owned wait before native Campaign launch',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let finish,showCalls=0,cancelled=false;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show(){showCalls++;},suspend(){},hide(){}}});await f.hub.select('general');
+ f.hub.view.webContents.executeJavaScript=source=>{if(source.startsWith('(()=>{const wait=')&&!source.includes('wait.expected=')){cancelled=true;finish(false);return Promise.resolve(true);}return new Promise(resolve=>finish=resolve);};
+ const selecting=f.hub.select('campaign',()=>{});await new Promise(resolve=>setImmediate(resolve));f.hub.setVisible(false);
+ try {assert.equal(cancelled,true,'Closing Settings immediately disconnects the outgoing paint observer and RAF');}
+ finally {finish(false);await selecting;}
+ assert.equal(showCalls,0);assert.equal(f.hub.currentSection(),'general');assert.equal(f.hub.view.getVisible(),false);
+});

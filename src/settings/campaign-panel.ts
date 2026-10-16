@@ -1,19 +1,22 @@
 export interface CampaignPanelPalette { background:string; foreground:string; border:string; accent:string; panel:string; selected:string; }
 
 // Serialized into the website: all runtime dependencies must remain local.
-export function configureNativeCampaignPanel(show: boolean | 'suspend', width: number, height: number, palette?:CampaignPanelPalette): void {
-  type Controller = { update(width: number, height: number, palette?:CampaignPanelPalette): void; suspend(width: number,height: number,palette?:CampaignPanelPalette): void; dispose(): void };
+export function configureNativeCampaignPanel(show: boolean | 'suspend', width: number, height: number, palette?:CampaignPanelPalette): Promise<boolean> {
+  type Controller = { update(width: number, height: number, palette?:CampaignPanelPalette): void; suspend(width: number,height: number,palette?:CampaignPanelPalette): void; dispose(): void; ready(): Promise<boolean>; cancelPending(): void };
   type Fiber = { type?: unknown; memoizedProps?: Record<string, unknown>; return?: Fiber; child?: Fiber; sibling?: Fiber };
   const key = '__friendsFablesDesktopCampaignPanel';
   const host = window as unknown as Record<string, Controller | undefined>;
-  if (host[key]) { if (show === 'suspend') host[key]!.suspend(width,height,palette); else if (show) host[key]!.update(width, height, palette); else host[key]!.dispose(); return; }
-  if (show !== true) return;
+  if (host[key]) { if (show === 'suspend') { host[key]!.suspend(width,height,palette); return Promise.resolve(false); } if (show) { host[key]!.update(width, height, palette); return host[key]!.ready(); } host[key]!.dispose(); return Promise.resolve(false); }
+  if (show !== true) return Promise.resolve(false);
   const match = /^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/play\/?$/i.exec(location.pathname);
-  if (location.origin !== 'https://play.fables.gg' || !match) return;
+  if (location.origin !== 'https://play.fables.gg' || !match) return Promise.resolve(false);
   const campaignId = match[1].toLowerCase();
   let disposed = false, queued = false, attempted = false, panel: HTMLElement | null = null;
   let panelWidth = width, panelHeight = height, modalActive = false;
-  let desktopPalette=palette, sectionSuspended=false;
+  let desktopPalette=palette, sectionSuspended=false, closingRequested=false;
+  let retirementTimer=0,launchGear:HTMLElement|null=null;
+  let cssWidth=0,cssHeight=0,pendingReady:((ready:boolean)=>void)|undefined;
+  const cancelPending=():void=>{pendingReady?.(false);};
   const route = location.pathname + location.search;
   // Snapshot only after the previous dock has natively unmounted: its temporary
   // modal locks and accessibility attributes are not Campaign's initial state.
@@ -27,7 +30,13 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend', width: n
   function dimensions(): void {
     panelWidth = Number.isFinite(panelWidth) ? Math.max(0, Math.round(panelWidth)) : 0;
     panelHeight = Number.isFinite(panelHeight) ? Math.max(0, Math.round(panelHeight)) : 0;
-    style.textContent = `[data-ff-campaign-panel]{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;transform:none!important;translate:none!important;width:${panelWidth}px!important;height:${panelHeight}px!important;min-width:0!important;max-width:${panelWidth}px!important;max-height:${panelHeight}px!important;box-sizing:border-box!important;border:1px solid!important;border-radius:8px!important;overflow:hidden!important;animation:none!important;transition:none!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full{overflow:hidden!important;min-height:0!important;flex:1 1 0%!important;height:100%!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full{padding:0!important;height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;box-sizing:border-box!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto > div.mx-auto{padding:28px 32px!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto{overflow:auto!important;min-height:0!important;flex:1 1 0%!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior:contain!important;scrollbar-width:thin!important;scrollbar-color:color-mix(in srgb,currentColor 35%,transparent) transparent!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto::-webkit-scrollbar{width:6px;height:6px}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto::-webkit-scrollbar-track{background:transparent}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto::-webkit-scrollbar-thumb{background:color-mix(in srgb,currentColor 35%,transparent);border-radius:6px}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto > div.mx-auto > div:first-child > div > h3.font-header{font-size:30px!important;font-weight:650!important;letter-spacing:-.04em!important;line-height:1.2!important;margin:0!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto > div.mx-auto > div:first-child > div > h3.font-header::before{content:"FRIENDS & FABLES DESKTOP";display:block;margin:0 0 12px;color:var(--ff-campaign-accent,currentColor);font-size:10px;font-weight:400;letter-spacing:.15em;line-height:1.5;text-transform:uppercase}[data-ff-campaign-panel] > button:has(> .lucide-x){position:absolute!important;top:12px!important;right:12px!important;display:grid!important;place-items:center!important;width:34px!important;height:34px!important;padding:0!important;border:1px solid var(--ff-campaign-border,currentColor)!important;border-radius:50%!important;background:transparent!important;color:inherit!important;font-size:0!important;line-height:0!important;opacity:1!important}[data-ff-campaign-panel] > button:has(> .lucide-x) > .lucide-x{display:block!important;width:18px!important;height:18px!important}[data-ff-campaign-panel] > button:has(> .lucide-x):hover{border-color:var(--ff-campaign-accent,currentColor)!important;background:var(--ff-campaign-button,var(--ff-campaign-border,currentColor))!important;color:inherit!important}[data-ff-campaign-panel] > button:has(> .lucide-x):focus-visible{outline:2px solid var(--ff-campaign-accent,currentColor)!important;outline-offset:2px!important}[data-ff-campaign-workspace]{padding-left:${panelWidth}px!important;box-sizing:border-box!important;min-width:0!important}`;
+    // The adapter supplies native DIP. Campaign fills the website viewport,
+    // whose native height is the same as the reserved Settings content height.
+    // Derive CSS units from that viewport so website zoom remains untouched.
+    const viewportHeight=window.visualViewport?.height??window.innerHeight;
+    cssHeight=Number.isFinite(viewportHeight)&&viewportHeight>0?viewportHeight:panelHeight;
+    cssWidth=panelHeight>0?panelWidth*cssHeight/panelHeight:0;
+    style.textContent = `[data-ff-campaign-panel]{position:fixed!important;left:0!important;top:0!important;right:auto!important;bottom:auto!important;transform:none!important;translate:none!important;width:${cssWidth}px!important;height:${cssHeight}px!important;min-width:0!important;max-width:${cssWidth}px!important;max-height:${cssHeight}px!important;box-sizing:border-box!important;border:1px solid!important;border-radius:8px!important;overflow:hidden!important;animation:none!important;transition:none!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full{overflow:hidden!important;min-height:0!important;flex:1 1 0%!important;height:100%!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full{padding:0!important;height:100%!important;min-height:0!important;display:flex!important;flex-direction:column!important;box-sizing:border-box!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto > div.mx-auto{padding:28px 32px!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto{overflow:auto!important;min-height:0!important;flex:1 1 0%!important;overflow-x:hidden!important;overflow-y:auto!important;overscroll-behavior:contain!important;scrollbar-width:thin!important;scrollbar-color:color-mix(in srgb,currentColor 35%,transparent) transparent!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto::-webkit-scrollbar{width:6px;height:6px}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto::-webkit-scrollbar-track{background:transparent}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto::-webkit-scrollbar-thumb{background:color-mix(in srgb,currentColor 35%,transparent);border-radius:6px}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto > div.mx-auto > div:first-child > div > h3.font-header{font-size:30px!important;font-weight:650!important;letter-spacing:-.04em!important;line-height:1.2!important;margin:0!important}[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto > div.mx-auto > div:first-child > div > h3.font-header::before{content:"FRIENDS & FABLES DESKTOP";display:block;margin:0 0 12px;color:var(--ff-campaign-accent,currentColor);font-size:10px;font-weight:400;letter-spacing:.15em;line-height:1.5;text-transform:uppercase}[data-ff-campaign-panel] > button:has(> .lucide-x){position:absolute!important;top:12px!important;right:12px!important;display:grid!important;place-items:center!important;width:34px!important;height:34px!important;padding:0!important;border:1px solid var(--ff-campaign-border,currentColor)!important;border-radius:50%!important;background:transparent!important;color:inherit!important;font-size:0!important;line-height:0!important;opacity:1!important}[data-ff-campaign-panel] > button:has(> .lucide-x) > .lucide-x{display:block!important;width:18px!important;height:18px!important}[data-ff-campaign-panel] > button:has(> .lucide-x):hover{border-color:var(--ff-campaign-accent,currentColor)!important;background:var(--ff-campaign-button,var(--ff-campaign-border,currentColor))!important;color:inherit!important}[data-ff-campaign-panel] > button:has(> .lucide-x):focus-visible{outline:2px solid var(--ff-campaign-accent,currentColor)!important;outline-offset:2px!important}[data-ff-campaign-workspace]{padding-left:${cssWidth}px!important;box-sizing:border-box!important;min-width:0!important}`;
     // The native dialog is a flex column. Its h-full wrappers otherwise keep
     // their content-sized minimum, so hiding the outer overflow clips the bottom.
     const content = '[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto > div.mx-auto';
@@ -121,7 +130,7 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend', width: n
       const gear = document.querySelector<HTMLButtonElement>('aside button:has(svg.lucide-settings)')
         ?? Array.from(document.querySelectorAll<HTMLElement>('aside > div.flex.flex-col.relative.z-10 > div.font-body.group.flex.flex-row')).find(node => !!node.querySelector(':scope > .font-header') && /^(Settings|Настройки)$/.test(node.textContent?.trim() ?? ''));
       if (!gear || gear instanceof HTMLButtonElement && gear.disabled) return;
-      attempted = true;
+      attempted = true;launchGear=gear;
       for (const node of document.querySelectorAll('[role="dialog"]')) existing.add(node);
       bodyBefore = ['pointer-events', 'overflow'].map(name => [name, document.body.style.getPropertyValue(name), document.body.style.getPropertyPriority(name)]);
       for (const node of document.body.children) if (node instanceof HTMLElement) beforeAria.set(node, node.getAttribute('aria-hidden'));
@@ -139,8 +148,29 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend', width: n
         if (chat) attr(chat, 'data-ff-campaign-workspace', '', layoutUndo);
       }
     }
+    if(panel&&closingRequested){dispose();return;}
     if (panel) { if (otherLayer()) { if (modalActive) suspend(); } else dock(); }
   }
+  function ready():Promise<boolean> {
+    cancelPending();
+    return new Promise(resolve=>{
+      let frame=0,timer=0,painted=0,finished=false;
+      const finish=(value:boolean):void=>{if(finished)return;finished=true;cancelAnimationFrame(frame);clearTimeout(timer);if(pendingReady===finish)pendingReady=undefined;resolve(value);};
+      pendingReady=finish;
+      const advance=():void=>{
+        if(disposed||sectionSuspended||location.pathname+location.search!==route){finish(false);return;}
+        const rect=panel?.isConnected?panel.getBoundingClientRect():null;
+        const visible=panel&&getComputedStyle(panel).visibility!=='hidden'&&getComputedStyle(panel).display!=='none';
+        if(document.visibilityState==='visible'&&visible&&modalActive&&rect&&Math.abs(rect.x)<1&&Math.abs(rect.y)<1&&Math.abs(rect.width-cssWidth)<1&&Math.abs(rect.height-cssHeight)<1)painted++;else painted=0;
+        if(painted>=2){finish(true);return;}
+        frame=requestAnimationFrame(advance);
+      };
+      frame=requestAnimationFrame(advance);timer=window.setTimeout(()=>finish(false),1500);
+    });
+  }
+  function retirePending():void {if(!closingRequested)return;dispose(true);if(host[key]===controller)delete host[key];}
+  function newLaunch(event:Event):void {if(closingRequested&&event.target instanceof Node&&launchGear?.contains(event.target))retirePending();}
+  function resize():void {dimensions();schedule();}
   function schedule(): void { if (!queued && !disposed) { queued = true; queueMicrotask(scan); } }
   document.addEventListener('ff-spell-helper-change', schedule);
   const observer = new MutationObserver(schedule);
@@ -148,7 +178,12 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend', width: n
   const timer = window.setInterval(schedule, 500);
   function dispose(retainClosed = false): void {
     if (disposed) { if (!retainClosed) delete host[key]; return; }
-    disposed = true;
+    // React can mount the already requested native dialog after Settings closes.
+    // Keep this existing ownership observer for one bounded late-mount window.
+    // A new click on the original gear retires this owner before native launch;
+    // after the deadline a future dialog has no safe cancellation provenance.
+    if(!retainClosed&&attempted&&!panel){closingRequested=true;sectionSuspended=true;cancelPending();dimensions();if(!retirementTimer)retirementTimer=window.setTimeout(retirePending,1500);return;}
+    disposed = true;cancelPending();clearTimeout(retirementTimer);retirementTimer=0;document.removeEventListener('click',newLaunch,true);
     document.removeEventListener('ff-spell-helper-change', schedule); observer.disconnect(); clearInterval(timer);
     const owned = panel;
     suspend(!owned?.isConnected);
@@ -156,13 +191,15 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend', width: n
     style.remove(); panel = null;
     document.removeEventListener('wheel', wheelGate); document.removeEventListener('focusin', focusGate); document.removeEventListener('focusout', focusGate);
     document.removeEventListener('dismissableLayer.pointerDownOutside', outside, true); document.removeEventListener('dismissableLayer.focusOutside', outside, true);
-    window.removeEventListener('popstate', schedule); window.removeEventListener('resize', schedule);
+    window.removeEventListener('popstate', schedule); window.removeEventListener('resize', resize);
     if (!retainClosed) delete host[key];
     if (owned?.isConnected && owned.getAttribute('data-state') !== 'closed') owned.querySelector<HTMLButtonElement>('button:has(.lucide-x)')?.click();
   }
   document.addEventListener('wheel', wheelGate); document.addEventListener('focusin', focusGate); document.addEventListener('focusout', focusGate);
   document.addEventListener('dismissableLayer.pointerDownOutside', outside, true); document.addEventListener('dismissableLayer.focusOutside', outside, true);
-  window.addEventListener('popstate', schedule); window.addEventListener('resize', schedule);
-  host[key] = { update(nextWidth, nextHeight, nextPalette) { if (disposed) return; sectionSuspended=false; panelWidth = nextWidth; panelHeight = nextHeight;if(nextPalette)desktopPalette=nextPalette; dimensions(); schedule(); }, suspend(nextWidth,nextHeight,nextPalette) { if(disposed)return; sectionSuspended=true; panelWidth=nextWidth;panelHeight=nextHeight;if(nextPalette)desktopPalette=nextPalette;dimensions(); }, dispose };
-  dimensions(); scan();
+  window.addEventListener('popstate', schedule); window.addEventListener('resize', resize);
+  document.addEventListener('click',newLaunch,true);
+  const controller:Controller = { update(nextWidth, nextHeight, nextPalette) { if (disposed) return; cancelPending();clearTimeout(retirementTimer);retirementTimer=0;closingRequested=false;sectionSuspended=false; panelWidth = nextWidth; panelHeight = nextHeight;if(nextPalette)desktopPalette=nextPalette; dimensions(); schedule(); }, suspend(nextWidth,nextHeight,nextPalette) { if(disposed)return; cancelPending();sectionSuspended=true; panelWidth=nextWidth;panelHeight=nextHeight;if(nextPalette)desktopPalette=nextPalette;dimensions(); }, dispose,ready,cancelPending };
+  host[key]=controller;
+  dimensions(); scan();return ready();
 }
