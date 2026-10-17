@@ -204,6 +204,26 @@ for(const cancel of ['newer-section','hidden','unavailable','closed','resize','n
  if(cancel==='not-painted'||cancel==='paint-error')assert.equal(f.hub.view.bounds.width,126,'Failure restores prior committed geometry');
 });
 
+test('superseding expanded General paint with a cold editor restores committed Campaign during load',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){},hide(){}}});await f.hub.select('campaign');
+ let finishPaint,finishLoad,lastSection;
+ f.hub.view.webContents.send=(channel,state)=>{if(channel==='settings-hub:update')lastSection=state.section;};
+ f.hub.view.webContents.executeJavaScript=source=>{
+  if(source.startsWith('(()=>{const wait=')){finishPaint(false);return Promise.resolve(true);}
+  return source.includes('const advance=')?new Promise(resolve=>finishPaint=resolve):Promise.resolve(true);
+ };
+ const general=f.hub.select('general');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.hub.view.bounds.width,580);assert.equal(lastSection,'general');
+ const create=f.hub.appearance.createPanel;f.hub.appearance.createPanel=()=>{const view=create();view.webContents.loadURL=url=>{view.webContents.mainFrame.url=url;return new Promise(resolve=>finishLoad=resolve);};return view;};
+ const appearance=f.hub.select('appearance');await new Promise(resolve=>setImmediate(resolve));await general;
+ try {
+  assert.equal(f.hub.currentSection(),'campaign');assert.equal(f.hub.hasRetainedCampaign(),true);assert.equal(f.created[0].visible,false);
+  assert.equal(f.hub.view.bounds.width,126,'Canceled General must not remain expanded while the next editor loads');
+  assert.equal(lastSection,'campaign','Canceled General renderer state must return to the committed section');
+ } finally {f.hub.setVisible(false);finishLoad();await appearance;}
+});
+
 test('same-bounds layout and Campaign refresh preserve expanded preparation until visible paint completes',async()=>{
  const f=fixture(),trace=[],manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};f.hub.configure({translation:manager,instructions:manager,campaign:{show(){},suspend(){trace.push('suspend');},hide(){}}});await f.hub.select('campaign');let finishPaint;
  f.hub.view.webContents.executeJavaScript=source=>source.includes('const advance=')?new Promise(resolve=>finishPaint=resolve):Promise.resolve(true);
