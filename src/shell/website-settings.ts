@@ -174,8 +174,26 @@ export function configureWebsiteSettings(enabled:boolean, locale:'en'|'ru', acce
       return links.some(path=>path==='/'||path==='/home')&&links.includes('/campaigns');
     });
     if(!nav){home?.remove();home=undefined;return;}
-    if(home?.parentElement!==nav){home?.remove();home=document.createElement('button');home.type='button';home.dataset.ffDesktopSettingsLauncher='';const native=nav.querySelector<HTMLAnchorElement>('a[href]');if(native)home.className=native.className;home.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();if(location.origin==='https://play.fables.gg'&&!campaign())window.open('fables-desktop://settings/open-global','_blank');});nav.append(home);}
-    if(home.textContent!==text('Settings'))home.textContent=text('Settings');home.setAttribute('aria-label',text('Settings'));
+    const nativeLinks=Array.from(nav.querySelectorAll<HTMLAnchorElement>('a[href]'));
+    const normalizePath=(path:string)=>path.replace(/\/+$/,'')||'/';
+    const currentPath=normalizePath(location.pathname),homePaths=new Set(['/','/home']);
+    const current=nativeLinks.find(link=>{
+      try{const path=normalizePath(new URL(link.href).pathname);return path===currentPath||(homePaths.has(path)&&homePaths.has(currentPath));}catch{return false;}
+    });
+    const native=nativeLinks.find(link=>link!==current)??nativeLinks[0];
+    if(home?.parentElement!==nav){
+      home?.remove();home=document.createElement('button');home.type='button';home.dataset.ffDesktopSettingsLauncher='';home.style.border='0';
+      home.addEventListener('click',event=>{event.preventDefault();event.stopPropagation();if(location.origin==='https://play.fables.gg'&&!campaign())window.open('fables-desktop://settings/open-global','_blank');});nav.append(home);
+    }
+    // Match an ordinary inactive row, never the route's selected link.
+    if(native)home.className=native.className;
+    let spacer=home.firstElementChild as HTMLSpanElement|null;
+    if(!spacer){spacer=document.createElement('span');spacer.setAttribute('aria-hidden','true');home.prepend(spacer);}
+    const nativeIcon=native?.querySelector<SVGSVGElement>('svg');
+    if(nativeIcon){const iconStyle=getComputedStyle(nativeIcon);spacer.style.width=iconStyle.width;spacer.style.height=iconStyle.height;spacer.style.flex='0 0 auto';}
+    if(home.lastChild?.nodeType===Node.TEXT_NODE){if(home.lastChild.textContent!==text('Settings'))home.lastChild.textContent=text('Settings');}
+    else home.append(document.createTextNode(text('Settings')));
+    home.setAttribute('aria-label',text('Settings'));
   }
   function mount():void {frame=0;if(!active)return;if(location.origin!=='https://play.fables.gg'){cleanup();return;}if(campaign()){home?.remove();home=undefined;mountMusic();}else{unmountMusic();mountHome();}}
   function schedule():void {if(active&&!frame)frame=requestAnimationFrame(mount);}
