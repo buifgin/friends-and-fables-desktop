@@ -11,6 +11,7 @@ window.releaseMount=()=>{mountAllowed=true;mount()};document.querySelector('#gea
 const scripts={
  frame:`new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Visible RAF budget')),1500);requestAnimationFrame(()=>{clearTimeout(timer);resolve(true)})})`,
  snapshot:`(()=>{const n=document.querySelector('#native'),r=n?.getBoundingClientRect(),s=n&&getComputedStyle(n);return {innerWidth,innerHeight,visibility:document.visibilityState,mountPending:launchPending,mounts:nativeMounts,node:!!n,adopted:!!n?.hasAttribute('data-ff-campaign-panel'),same:n===window.originalNative,fieldSame:n?.querySelector('textarea')===window.originalField,draft:n?.querySelector('textarea').value,display:s?.display,visibilityCss:s?.visibility,rect:r&&{x:r.x,y:r.y,width:r.width,height:r.height,right:r.right,bottom:r.bottom}}})()`,
+ hubIdentity:`(()=>{const h=document.querySelector('#general h1'),r=h.getBoundingClientRect();return {marker:document.documentElement.getAttribute('data-ff-settings-rendered'),generalHidden:document.querySelector('#general').hidden,contentHidden:document.querySelector('#content').hidden,heading:{x:r.x,y:r.y,width:r.width,height:r.height},paintGateReached:window.__ffFixtureGeneralPaintReached===true}})()`,
 };
 for(const source of Object.values(scripts))new vm.Script(source);
 new vm.Script(websiteHtml.match(/<script>([\s\S]*)<\/script>/)[1]);
@@ -26,7 +27,7 @@ if(!process.versions.electron){module.exports={websiteHtml,scripts};}else{
  registerAppearanceScheme();app.on('window-all-closed',()=>{});
  let window,profile,evidence,appearance,translation,website,dock;const samples=[],trace=[];
  const mode=process.env.FABLES_CAMPAIGN_LAYOUT_CASE||'geometry',locale=process.env.FABLES_CAMPAIGN_LAYOUT_LOCALE||'en';
- assert.ok(['geometry','incoming','first-open','cancel','outgoing-general','outgoing-translation','outgoing-appearance'].includes(mode));assert.ok(['en','ru'].includes(locale));
+ assert.ok(['geometry','incoming','first-open','cancel','cancel-outgoing','outgoing-general','outgoing-translation','outgoing-appearance'].includes(mode));assert.ok(['en','ru'].includes(locale));
  const timeout=setTimeout(()=>{console.error('Campaign layout bounded timeout');window?.destroy();app.exit(1)},30000);
  const js=(c,s)=>{new vm.Script(s);return c.executeJavaScript(s)};
  const frame=c=>js(c,scripts.frame);
@@ -52,6 +53,30 @@ if(!process.versions.electron){module.exports={websiteHtml,scripts};}else{
   website.webContents.setZoomLevel(0);await select('campaign');await settled();assertGeometry(await assertComposed('zoom0','Campaign'));assertIdentity(samples.at(-1));
   for(const level of [-.5,.5,0]){website.webContents.setZoomLevel(level);await until(website.webContents,`Math.abs(innerHeight-${website.getBounds().height}/Math.pow(1.2,${level}))<2`);await frame(website.webContents);const state=await sample('zoom'+level);assertIdentity(state);assertGeometry(state);await assertComposed('zoom'+level+'-paint','Campaign')}
   window.setContentSize(1100,900);await until(website.webContents,`innerHeight<900`);await until(website.webContents,`Math.abs(innerHeight-${website.getBounds().height})<2`);assert.equal(await updates,true,'Resized native adapter reaches its actual geometry/paint readiness');await frame(website.webContents);await frame(website.webContents);const resized=await sample('resized');assertIdentity(resized);assertGeometry(resized);await assertComposed('resized-paint','Campaign');
+ }else if(mode==='cancel-outgoing'){
+  await select('campaign');await settled();const control=await assertComposed('cancel-outgoing-control','Campaign');assertIdentity(control);assertGeometry(control);
+  const sentinel={x:control.website.x+205,y:control.website.y+17};assert.deepEqual(color(await capture('cancel-outgoing-child-sentinel'),sentinel.x,sentinel.y),[33,122,77]);
+  const hub=dock.hub,contents=hub.view.webContents,execute=contents.executeJavaScript.bind(contents),create=appearance.createPanel.bind(appearance);
+  function headingGlyphs(image,rect){if(rect.width<=0||rect.height<=0)return 0;const crop=image.crop({x:Math.ceil(rect.x+hub.bounds.x),y:Math.ceil(rect.y+hub.bounds.y),width:Math.floor(rect.width),height:Math.floor(rect.height)}),pixels=crop.toBitmap(),counts=new Map();for(let i=0;i<pixels.length;i+=4){const value=pixels.readUInt32LE(i);counts.set(value,(counts.get(value)||0)+1);}return pixels.length/4-Math.max(...counts.values());}
+  let releaseLoad,loadReached=false,heldPaintCalls=0;
+  const loadGate=new Promise(resolve=>releaseLoad=resolve);
+  // Delay only the existing readiness acceptance. Actual General DOM/layout/RAF
+  // continue painting; cancellation still runs the unchanged wait.finish(false).
+  contents.executeJavaScript=(source,...args)=>{if(source.includes('const advance=')&&source.includes('data-ff-settings-rendered')){assert.ok(source.includes('if(paintFrames>=2)'));heldPaintCalls++;source=source.replace('const advance=()=>{','const advance=()=>{window.__ffFixtureGeneralPaintReached=true;').replace('if(paintFrames>=2)','if(paintFrames>=2&&!window.__ffFixtureHoldGeneralPaint)');new vm.Script(source);}return execute(source,...args);};
+  appearance.createPanel=parent=>{const view=create(parent),load=view.webContents.loadURL.bind(view.webContents);view.webContents.loadURL=async(...args)=>{loadReached=true;await loadGate;return load(...args);};return view;};
+  let general,opening;const observations=[];
+  try {
+   await js(contents,'window.__ffFixtureHoldGeneralPaint=true;window.__ffFixtureGeneralPaintReached=false;true');general=dock.openSection('general');
+   await until(contents,'window.__ffFixtureGeneralPaintReached===true');assert.equal(heldPaintCalls,1);assert.equal(hub.currentSection(),'campaign');assert.equal(hub.view.getBounds().width,hub.bounds.width);
+   await frame(contents);await frame(contents);const prepared=await js(contents,scripts.hubIdentity);assert.equal(prepared.generalHidden,false);assert.equal(prepared.contentHidden,false);assert.match(prepared.marker,/:general$/);
+   const heldImage=await capture('cancel-outgoing-general-prepared');assert.notDeepEqual(color(heldImage,sentinel.x,sentinel.y),[33,122,77],'Prepared General actually covers native Campaign sentinel');assert.ok(headingGlyphs(heldImage,prepared.heading)>20,'Prepared General heading actually paints composed glyphs');
+   opening=dock.openSection('appearance');for(let i=0;i<100&&!loadReached;i++)await new Promise(resolve=>setTimeout(resolve,10));assert.equal(loadReached,true,'New cold Appearance reaches exact local load gate');await general;
+   for(let i=0;i<2;i++){await frame(contents);const state=await js(contents,scripts.hubIdentity),record=await sample('cancel-outgoing-held-'+i),image=await capture('cancel-outgoing-held-'+i);assertIdentity(record);observations.push({...state,hubWidth:hub.view.getBounds().width,nativePixel:color(image,sentinel.x,sentinel.y),generalGlyphs:headingGlyphs(image,state.heading),appearanceVisible:hub.editors.get('appearance').view.getVisible()});record.hubIdentity=observations.at(-1);console.log('Campaign canceled outgoing identity '+JSON.stringify(record.hubIdentity));assert.equal(record.selected,'campaign');assert.equal(observations.at(-1).appearanceVisible,false);}
+  } finally {
+   contents.executeJavaScript=execute;appearance.createPanel=create;await js(contents,'window.__ffFixtureHoldGeneralPaint=false;true');releaseLoad();await Promise.allSettled([general,opening].filter(Boolean));
+  }
+  assert.equal(hub.currentSection(),'appearance');const editor=hub.editors.get('appearance').view;assert.equal(editor.getVisible(),true);await frame(editor.webContents);assertIdentity(await sample('cancel-outgoing-final-appearance'));
+  for(const state of observations){assert.deepEqual(state.nativePixel,[33,122,77],'Canceled General must uncover painted committed Campaign during cold Appearance load');assert.equal(state.hubWidth,126);assert.match(state.marker,/:campaign$/);assert.equal(state.generalHidden,true);}
  }else if(mode==='cancel'){
   await select('general');await js(website.webContents,'mountAllowed=false;true');const opening=dock.openSection('campaign');await until(website.webContents,'launchPending');const started=performance.now();dock.hide();let budget;try{await Promise.race([opening,new Promise((_,reject)=>budget=setTimeout(()=>reject(Error('Cancelled native readiness blocks the queue')),500))])}finally{clearTimeout(budget)}assert.ok(performance.now()-started<500);await updates;await js(website.webContents,'releaseMount();true');await until(website.webContents,`!document.querySelector('#native')`);await frame(website.webContents);const record=await sample('cancelled-late-mount');assert.equal(dock.isOpen(),false);assert.equal(record.native.node,false,'A cancelled async native mount never survives as a stray modal');assert.equal(await js(website.webContents,'window.__friendsFablesDesktopCampaignPanel===undefined'),true);
  }else if(mode==='first-open'){

@@ -99,6 +99,12 @@ export class SettingsHub {
   const contents=pending?.view.webContents;
   if(!pending||!contents||contents.isDestroyed()||contents.getURL()!==pending.url)return;
   void contents.executeJavaScript(`(()=>{const wait=window.__friendsFablesSettingsPaintWait;if(wait?.revision===${pending.revision})wait.finish(false);return true})()`).catch(()=>{});
+  if(pending.view===this.view&&pending.paintBounds&&!pending.paintEditor&&this.section==='campaign'&&!this.window.isDestroyed()) {
+   // A newer cold editor can await its load before any layout runs. Retire the
+   // canceled expanded hub now so the committed native Campaign stays painted.
+   if(this.bounds)this.view.setBounds({...this.bounds,width:Math.min(126,this.bounds.width)});
+   this.update();
+  }
  }
  private async rendered(section:SettingsSection,revision:number,view=this.view,url=SETTINGS_HUB_URL,paintBounds?:Rectangle):Promise<boolean> {
   const contents=view.webContents;
