@@ -89,7 +89,41 @@ async function scrollScenario(configure,settings){
  check([...feed.querySelectorAll('[id^="event-"]')].every(node=>node===gm.row||node.style.getPropertyValue('overflow-anchor')!=='none'),'Dispose retained owned overflow-anchor styles');feed.scrollTop+=following.row.getBoundingClientRect().top-feed.getBoundingClientRect().top-60;await frame();const disposedY=following.body.getBoundingClientRect().y;hydrate();await settle();check(Math.abs(following.body.getBoundingClientRect().y-disposedY)<=.5,'Disposed controller retained stale reading correction');cases.push({name:'dispose'});
  return {passed:true,cases};
 }
-module.exports={scrollScenario};
+
+// B06: native play stack has an independently positioned composer/footer over
+// the feed. Keep the existing hidden-composer reserve while the native footer
+// opens late: its layout must not silently cover the pinned last text glyph.
+async function occlusionScenario(configure,settings){
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+ const settle=async()=>{await frame();await frame();await frame();};
+ const check=(value,message)=>{if(!value)throw Error(message);};
+ window.__friendsFablesDesktopChatAppearance?.dispose();
+ document.body.innerHTML='<style>body{margin:0}#chat{position:relative;width:720px;height:480px;margin:40px}#chat>#feed.feed{width:100%;height:100%;margin:0}.feed{box-sizing:border-box;height:100%;overflow-y:auto;padding-bottom:64px;overflow-anchor:auto}#native-footer{position:absolute;bottom:0;left:0;right:0;z-index:10;background:#123;padding:8px;box-sizing:border-box}#composer{height:120px}#composer[hidden]{display:none}#native-footer p{margin:0;line-height:24px}.prose p{margin:0;line-height:24px}.native-row{padding:8px;box-sizing:border-box;min-height:72px}</style><section id="chat" class="flex-1 h-full w-full"><main id="feed" class="feed"><div id="events-list"></div></main><footer id="native-footer" class="absolute bottom-0 left-0 right-0"><div id="composer" class="grid relative bg-gray-800/80" hidden><div class="tiptap" contenteditable="true">Preserve native draft.</div><button type="button" aria-label="Roll dice">Dice</button></div><p>Native turn controls</p><p>Native footer</p></footer></section>';
+ const feed=document.getElementById('feed'),list=document.getElementById('events-list'),footer=document.getElementById('native-footer'),composer=document.getElementById('composer'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
+ const add=(id,text)=>{const row=document.createElement('div');row.id='event-'+id;row.className='native-row';row.innerHTML='<div id="event-container-'+id+'"><div id="event-message-card-'+id+'"><div class="prose"><p></p></div></div></div>';row.querySelector('p').textContent=text;list.append(row);return row;};
+ for(let i=1;i<=12;i++)add(i,'Earlier native narration '+i);
+ let tail=add(100,'Final ordinary reply.\nFinal visible glyph.');tail.querySelector('p').style.whiteSpace='pre-line';
+ const tailCard=tail.querySelector('[id^="event-message-card-"]'),tailText=tail.querySelector('p').firstChild;
+ const glyph=node=>{const range=document.createRange();range.selectNodeContents(node);const rects=range.getClientRects();const r=rects[rects.length-1];return {top:r.top,bottom:r.bottom,height:r.height};};
+ const geometry=()=>({scrollTop:feed.scrollTop,scrollHeight:feed.scrollHeight,clientHeight:feed.clientHeight,feedBottom:feed.getBoundingClientRect().bottom,footerTop:footer.getBoundingClientRect().top,lastGlyph:glyph(tailText),composerHidden:composer.hidden});
+ feed.scrollTop=feed.scrollHeight-feed.clientHeight;configure(settings);await settle();
+ const before=geometry();check(before.lastGlyph.bottom<=before.footerTop+.5,'Occlusion fixture not initially pinned/unobstructed: '+JSON.stringify(before));
+ // Native composer opens without resizing the scroll feed/content border box.
+ // No fake scroll/submit/API call tells the adapter that a new event arrived.
+ composer.hidden=false;await settle();
+ const opened=geometry();
+ const fullyVisible=opened.lastGlyph.bottom<=Math.min(opened.feedBottom,opened.footerTop)+.5;
+ const retained=tail.querySelector('[id^="event-message-card-"]')===tailCard&&tail.querySelector('p').firstChild===tailText&&draft.firstChild===draftNode&&draft.textContent==='Preserve native draft.';
+ // Manual intent must still win over a late ordinary message, even with footer.
+ const older=document.getElementById('event-message-card-7').querySelector('p').firstChild;
+ feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-200}));feed.scrollTop-=200;feed.dispatchEvent(new Event('scroll'));await settle();
+ const manualBefore=glyph(older).top;add(101,'Late ordinary message after manual navigation.');await settle();const manualAfter=glyph(older).top;
+ const manualPreserved=Math.abs(manualAfter-manualBefore)<=.5;
+ feed.dispatchEvent(new Event('scrollend'));composer.hidden=true;await settle();
+ const result={passed:fullyVisible&&retained&&manualPreserved,case:'native-composer-footer-occlusion',before,opened,fullyVisible,retained,manualPreserved,manualBefore,manualAfter};
+ window.__friendsFablesDesktopChatAppearance?.dispose();return result;
+}
+module.exports={scrollScenario,occlusionScenario};
 if(process.versions.electron){
  const {app,BrowserWindow,session}=require('electron');app.on('window-all-closed',()=>{});
  let window,profile,passed=false;const timer=setTimeout(()=>{console.error('Chat scroll fixture timed out');app.exit(1)},30000);
@@ -98,6 +132,7 @@ if(process.versions.electron){
   const root=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'../..'),{configureChatAppearance}=require(path.join(root,'dist/appearance/chat-appearance')),{DEFAULT_APPEARANCE}=require(path.join(root,'dist/appearance/themes'));
   const site=session.fromPartition('chat-scroll');site.protocol.handle('https',()=>new Response('<!doctype html><style>body{margin:0}#feed{position:relative;height:400px;width:600px;overflow-y:scroll;overflow-anchor:auto;margin-top:40px}.card{box-sizing:border-box;padding:10px}.prose p{margin:0;line-height:24px}</style><main id="feed"></main>',{headers:{'Content-Type':'text/html'}}));
   window=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});await window.loadURL('https://play.fables.gg/fixture/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
-  const result=await window.webContents.executeJavaScript(`(${scrollScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);assert.equal(result.passed,true);console.log('Chat scroll anchor fixture passed',JSON.stringify(result));passed=true;
+  const scenarios=process.env.FABLES_CHAT_SCROLL_CASE==='occlusion'?[occlusionScenario]:[scrollScenario,occlusionScenario];
+  for(const scenario of scenarios){const result=await window.webContents.executeJavaScript(`(${scenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);console.log('Chat scroll anchor fixture result',JSON.stringify(result));assert.equal(result.passed,true,'Native chat glyph/footer or manual-intent contract failed');}passed=true;
  }catch(error){console.error('Chat scroll anchor fixture failed:',error);}finally{clearTimeout(timer);window?.destroy();if(profile)await fs.rm(profile,{recursive:true,force:true});app.exit(passed?0:1);}})().catch(error=>{console.error(error);app.exit(1)});
 }

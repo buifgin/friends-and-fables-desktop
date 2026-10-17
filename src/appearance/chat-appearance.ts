@@ -19,6 +19,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   type NativeEvent = { id?: number | null; role?: string; content?: string; campaign_id?: string; character_id?: number | string | null; isOptimistic?: boolean };
   type Snapshot = { clone: HTMLElement; at: number; gapAt?: number; card: HTMLElement; event?: NativeEvent; signature?: string; optimistic: boolean;
     body: HTMLElement; text: string; anchorNode?: Text; anchorTop?: number; height: number; width: number; top: number; left: number; overlay?: HTMLElement;
+    translationPreview?: boolean;
     geometry?: { card: HTMLElement; properties: Map<string, { value: string; priority: string; applied: string }> } };
   const snapshots = new Map<string, Snapshot>();
   let snapshotCampaign: string | undefined;
@@ -78,7 +79,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     while ((node = walker.nextNode())) if (node.textContent?.trim()) return node as Text;
     return;
   }
-  function safeClone(body: HTMLElement): { clone: HTMLElement; anchorNode?: Text } | undefined {
+  function safeClone(body: HTMLElement, translationPreview = false): { clone: HTMLElement; anchorNode?: Text } | undefined {
     const clone = body.cloneNode(true) as HTMLElement;
     // Pair text nodes before sanitization removes hidden/interactive descendants.
     // The first surviving clone text then identifies its exact native source.
@@ -91,7 +92,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
     const sourceNodes = [body, ...body.querySelectorAll<HTMLElement>('*')];
     const cloneNodes = [clone, ...clone.querySelectorAll<HTMLElement>('*')];
-    const excluded = '[data-ff-desktop-hidden-instructions],[data-ff-desktop-sp-draft],[data-ff-translation-placeholder],script,style,button,input,textarea,select,iframe,video,audio';
+    const excluded = '[data-ff-desktop-hidden-instructions],[data-ff-desktop-sp-draft],script,style,button,input,textarea,select,iframe,video,audio' + (translationPreview ? '' : ',[data-ff-translation-placeholder]');
     for (let index = 0; index < sourceNodes.length; index++) {
       const source = sourceNodes[index], copy = cloneNodes[index];
       if (source.matches(excluded) || !visible(source)) { if (index === 0) return; copy.remove(); continue; }
@@ -100,7 +101,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
     for (const paragraph of clone.querySelectorAll('p')) if (/^\s*\[\[FF-SP:1\]\][\s\S]*\[\[\/FF-SP:1\]\]\s*$/.test(paragraph.textContent ?? '')) paragraph.remove();
     const text = clone.textContent?.trim() ?? '';
-    if (!text || /\[\[\/?FF-SP:1\]\]/.test(text.replace(/\\/g, ''))) return;
+    if ((!text && !(translationPreview && clone.querySelector('[data-ff-translation-dot]'))) || /\[\[\/?FF-SP:1\]\]/.test(text.replace(/\\/g, ''))) return;
     const anchor = firstText(clone);
     return { clone, anchorNode: anchor ? sources.get(anchor) : undefined };
   }
@@ -154,6 +155,26 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       let old = snapshots.get(card.id);
       const pending = !!body && (!!body.closest('[data-ff-translation-blank],[data-ff-translation-pending]') || !!body.querySelector('[data-ff-translation-blank],[data-ff-translation-pending],[data-ff-translation-placeholder]'));
       const concealedNarration = role === 'gm' && !!body && Array.from(body.querySelectorAll('p,div,blockquote,ul,ol,pre')).some(element => !visible(element));
+      if (pending && body && visible(card) && visible(body) && currentSignature) {
+        if (old) removeOverlay(old);
+        snapshots.delete(card.id);
+        // Retain only what the real translator already painted, including its
+        // pending dot. Hidden source text and interactive descendants never enter.
+        const preview = body.querySelector<HTMLElement>('[data-ff-translation-placeholder][data-ff-translation-ignore]');
+        const safe = preview && preview.textContent!.length <= 20000 ? safeClone(preview, true) : undefined;
+        if (safe && preview) {
+          const rect = card.getBoundingClientRect(), shown = preview.getBoundingClientRect(), style = getComputedStyle(card);
+          const anchor = safe.anchorNode ? textTop(safe.anchorNode) : undefined;
+          if (rect.height > 0 && rect.height <= 4000 && shown.width > 0 && shown.height > 0) snapshots.set(card.id, {
+            clone: safe.clone, anchorNode: safe.anchorNode, anchorTop: anchor !== undefined ? anchor - rect.top : undefined,
+            at: now, card, event, body, text: '', signature: currentSignature, optimistic: false, translationPreview: true,
+            height: rect.height, width: shown.width, top: shown.top - rect.top - (parseFloat(style.borderTopWidth) || 0), left: shown.left - rect.left - (parseFloat(style.borderLeftWidth) || 0),
+          });
+        }
+        // A pending body must never resurrect a matching temporary English copy.
+        for (const [id, snapshot] of snapshots) if (snapshot.optimistic && snapshot.signature === currentSignature) { removeOverlay(snapshot); snapshots.delete(id); }
+        continue;
+      }
       if (!visible(card) || !body || !visible(body) || pending || concealedNarration) {
         if (old) removeOverlay(old); snapshots.delete(card.id);
         // A pending confirmed body must also invalidate its matching temporary
@@ -177,6 +198,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
           optimistic: role === 'player' && event?.isOptimistic === true && event.id == null && card.id === 'event-message-card-null' && !!currentSignature,
           height: rect.height, width: bodyRect.width, top: bodyRect.top - rect.top - (parseFloat(style.borderTopWidth) || 0), left: bodyRect.left - rect.left - (parseFloat(style.borderLeftWidth) || 0) });
       } else {
+        if (old?.translationPreview && !(window as unknown as Record<string, unknown>).__friendsFablesDesktopTranslation) { removeOverlay(old); snapshots.delete(card.id); old = undefined; }
         if (!old && role === 'player' && event?.role === 'player' && typeof event.id === 'number' && Number.isSafeInteger(event.id) && event.id > 0 && card.id === `event-message-card-${event.id}` && currentSignature && event.isOptimistic !== true) {
           const candidates = Array.from(snapshots.entries()).filter(([, snapshot]) => snapshot.optimistic && !snapshot.card.isConnected && snapshot.signature === currentSignature);
           if (candidates.length === 1) {
@@ -199,6 +221,43 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   let scrollYield = false, scrollGesture = false, scrollSeen = false, scrollSelectionYield = false;
   let scrollResize: ResizeObserver | null = null, scrollSize: { width: number; height: number } | null = null;
   let scrollRoute = location.pathname + location.search;
+  let scrollFooter: HTMLElement | null = null;
+  let tailSpace: { node: HTMLElement; value: string; priority: string; baseline: number; applied?: string } | null = null;
+  function releaseTailSpace(): void {
+    if (tailSpace?.applied && tailSpace.node.style.getPropertyValue('padding-bottom') === tailSpace.applied && tailSpace.node.style.getPropertyPriority('padding-bottom') === 'important') {
+      if (tailSpace.value) tailSpace.node.style.setProperty('padding-bottom', tailSpace.value, tailSpace.priority); else tailSpace.node.style.removeProperty('padding-bottom');
+    }
+    tailSpace = null; scrollFooter = null;
+  }
+  function updateTailSpace(): void {
+    if (!scrollFeed?.isConnected) return;
+    const chat = scrollFeed.closest<HTMLElement>('.flex-1.h-full.w-full');
+    const bounds = scrollFeed.getBoundingClientRect();
+    // Only a bottom overlay inside this native chat stack may reserve space.
+    // Unrelated panels, dialogs and in-flow footers retain native geometry.
+    const footer = Array.from(chat?.querySelectorAll<HTMLElement>('footer,[class~="absolute"][class~="bottom-0"],[class~="fixed"][class~="bottom-0"]') ?? []).slice(0, 12).filter(node => {
+      if (scrollFeed!.contains(node) || node.closest('form,[role="dialog"],aside,[data-sidebar]')) return false;
+      const style = getComputedStyle(node), rect = node.getBoundingClientRect();
+      return ['absolute', 'fixed'].includes(style.position) && style.visibility !== 'hidden' && style.display !== 'none' && rect.height > 0
+        && rect.bottom >= bounds.bottom - .5 && rect.top < bounds.bottom && rect.left <= bounds.left + bounds.width / 2 && rect.right >= bounds.left + bounds.width / 2;
+    }).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0] ?? null;
+    if (footer !== scrollFooter) { if (scrollFooter) scrollResize?.unobserve(scrollFooter); scrollFooter = footer; if (footer) scrollResize?.observe(footer); }
+    if (!tailSpace) tailSpace = { node: scrollFeed, value: scrollFeed.style.getPropertyValue('padding-bottom'), priority: scrollFeed.style.getPropertyPriority('padding-bottom'), baseline: parseFloat(getComputedStyle(scrollFeed).paddingBottom) || 0 };
+    if (tailSpace.applied && (scrollFeed.style.getPropertyValue('padding-bottom') !== tailSpace.applied || scrollFeed.style.getPropertyPriority('padding-bottom') !== 'important')) {
+      // A newer native inline owner wins; adopt its reserve before measuring.
+      tailSpace = { node: scrollFeed, value: scrollFeed.style.getPropertyValue('padding-bottom'), priority: scrollFeed.style.getPropertyPriority('padding-bottom'), baseline: parseFloat(getComputedStyle(scrollFeed).paddingBottom) || 0 };
+    }
+    const overlap = footer ? Math.max(0, bounds.bottom - footer.getBoundingClientRect().top) : 0;
+    const desired = Math.max(tailSpace.baseline, Math.ceil(overlap));
+    if (desired <= tailSpace.baseline) {
+      if (tailSpace.applied) { const retainedFooter = scrollFooter; releaseTailSpace(); scrollFooter = retainedFooter; followTail(); }
+      return;
+    }
+    const value = `${desired}px`;
+    if (scrollFeed.style.getPropertyValue('padding-bottom') !== value || scrollFeed.style.getPropertyPriority('padding-bottom') !== 'important') {
+      scrollFeed.style.setProperty('padding-bottom', value, 'important'); tailSpace.applied = scrollFeed.style.getPropertyValue('padding-bottom'); followTail();
+    }
+  }
   let tailPinned = false, tailFrame = 0;
   let tailResize: ResizeObserver | null = null;
   const tailSizes = new Map<HTMLElement, number>();
@@ -244,7 +303,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   }
   function releaseScrollFeed(): void {
     cancelTail(); tailResize?.disconnect(); tailResize = null; tailSizes.clear();
-    restoreScrollStyles(); scrollResize?.disconnect(); scrollResize = null; scrollSize = null;
+    releaseTailSpace(); restoreScrollStyles(); scrollResize?.disconnect(); scrollResize = null; scrollSize = null;
     scrollFeed = null; scrollTried = false; scrollSelectionYield = false;
     // A retired feed may never deliver scrollend/pointerup. Its intent must not
     // suspend anchoring on the next native surface.
@@ -285,16 +344,17 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
           observeTail();
           scrollResize = new ResizeObserver(() => {
             if (!scrollFeed?.isConnected) { releaseScrollFeed(); return; }
+            updateTailSpace();
             const size = { width: scrollFeed.clientWidth, height: scrollFeed.clientHeight };
             if (scrollSize?.width === size.width && scrollSize?.height === size.height) return;
             scrollSize = size; rebaseScrollAnchor(); followTail();
           });
-          scrollResize.observe(node); break;
+          scrollResize.observe(node); updateTailSpace(); break;
         }
       }
     }
     if (!scrollFeed || selectedInFeed()) { restoreScrollStyles(); return; }
-    const bounds = scrollFeed.getBoundingClientRect(), top = Math.max(0, bounds.top), bottom = Math.min(innerHeight, bounds.bottom);
+    const bounds = scrollFeed.getBoundingClientRect(), top = Math.max(0, bounds.top), bottom = Math.min(innerHeight, bounds.bottom, scrollFooter?.getBoundingClientRect().top ?? Infinity);
     const cards = Array.from(scrollFeed.querySelectorAll<HTMLElement>('[id^="event-message-card-"]')).slice(-40);
     const fullyVisible = cards.filter(card => { const r = card.getBoundingClientRect(); return r.height > 0 && r.top >= top && r.bottom <= bottom; });
     const preferred = fullyVisible.find(card => card.querySelector('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) ?? fullyVisible[0];
@@ -352,6 +412,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   }
   function scrollMutations(records: MutationRecord[]): void {
     if (scrollFeed && !scrollFeed.isConnected) releaseScrollFeed();
+    if (scrollFeed && records.some(record => record.target instanceof Element && (scrollFooter?.contains(record.target) || record.type === 'childList' && Array.from(record.removedNodes).some(node => node.contains(scrollFooter))))) updateTailSpace();
     const relevant = records.some(record => {
       const target = record.target instanceof Element ? record.target : record.target.parentElement;
       if (!target || target.closest('[data-ff-desktop-message-snapshot],svg,button,input,textarea,select')) return false;
