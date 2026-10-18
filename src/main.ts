@@ -159,12 +159,14 @@ function createWindow(): void {
   let campaignRequest=0;
   let campaignDocument=0;
   view.webContents.on('did-navigate',()=>{campaignDocument++;});
-  const updateCampaignPanel = (show: boolean | 'suspend', width = 0, height = 0): Promise<boolean> => {
+  const updateCampaignPanel = (show: boolean | 'suspend' | 'reserve', width = 0, height = 0, offset = 0): Promise<boolean> => {
     const request=++campaignRequest,contents=view.webContents;
     if(contents.isDestroyed())return Promise.resolve(false);
     const expectedURL=contents.getURL(),expectedDocument=campaignDocument;
     let allowed=false;
-    try {const url=new URL(expectedURL);allowed=url.origin==='https://play.fables.gg'&&/^\/[0-9a-f-]{36}\/play\/?$/i.test(url.pathname);}catch{}
+    // Owned cleanup must still run after same-origin SPA route departure.
+    // Every operation that can reserve or mount remains Campaign-only.
+    try {const url=new URL(expectedURL);allowed=url.origin==='https://play.fables.gg'&&!url.username&&!url.password&&(show===false||/^\/[0-9a-f-]{36}\/play\/?$/i.test(url.pathname));}catch{}
     if(!allowed)return Promise.resolve(false);
     // A pending paint wait cannot block a newer hide/suspend in this document.
     void contents.executeJavaScript('window.__friendsFablesDesktopCampaignPanel?.cancelPending?.(); true').catch(()=>{});
@@ -172,7 +174,7 @@ function createWindow(): void {
       if(request!==campaignRequest||contents.isDestroyed()||contents.getURL()!==expectedURL||campaignDocument!==expectedDocument)return false;
       const previous=contents.getBackgroundThrottling();
       if(show===true)contents.setBackgroundThrottling(false);
-      try {return await contents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))})`)===true;}
+      try {return await contents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))},${offset})`)===true;}
       finally {if(show===true&&!contents.isDestroyed())contents.setBackgroundThrottling(previous);}
     });
     campaignUpdates=update;
@@ -196,8 +198,9 @@ function createWindow(): void {
       return view.webContents.executeJavaScript(`(()=>{const controller=window.__friendsFablesDesktopCombatFlow;if(!controller)throw new Error('Combat settings are not ready.');return controller.setPreferences(${JSON.stringify(value)});})()`);
     },
   }, campaign: {
-    show: bounds => updateCampaignPanel(true, bounds.width, bounds.height),
-    suspend: bounds => { void updateCampaignPanel('suspend',bounds.width,bounds.height).catch(console.error); },
+    reserve: bounds => updateCampaignPanel('reserve', bounds.width, bounds.height, bounds.x),
+    show: bounds => updateCampaignPanel(true, bounds.width, bounds.height, bounds.x),
+    suspend: bounds => { void updateCampaignPanel('suspend',bounds.width,bounds.height,bounds.x).catch(console.error); },
     hide: () => { void updateCampaignPanel(false).catch(console.error); },
   } });
   let settingsCampaignRoute:string|null=null;

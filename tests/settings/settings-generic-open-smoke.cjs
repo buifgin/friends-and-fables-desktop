@@ -31,7 +31,7 @@ void (async () => {
   });
   void app.whenReady().then(async () => {
     await session.fromPartition('persist:friends-and-fables').protocol.handle('https', () => new Response(
-      '<!doctype html><title>Offline Settings routing</title><input id="native-draft" value="Keep this native draft">',
+      '<!doctype html><title>Offline Settings routing</title><section id="chat" class="flex-1 h-full w-full"><div id="events-list"></div><div class="tiptap" contenteditable="true">Fixture composer</div><input id="native-draft" value="Keep this native draft"></section>',
       { headers: { 'Content-Type': 'text/html' } }));
     await until(() => dock && webContents.getAllWebContents().some(c => !c.isDestroyed() && c.getURL() === 'https://play.fables.gg/'), 'actual main website');
     const site = webContents.getAllWebContents().find(c => !c.isDestroyed() && c.getURL() === 'https://play.fables.gg/');
@@ -65,6 +65,38 @@ void (async () => {
     assert.equal(editor.webContents.id, editorId);
     assert.equal(await editor.webContents.executeJavaScript("document.querySelector('#theme-name').value"), 'Keep this editor draft');
     assert.equal(await site.executeJavaScript("document.getElementById('native-draft').value"), 'Keep this native draft');
+    await dock.flushSettings();
+    dock.hide();
+    await until(() => site.executeJavaScript("!window.__friendsFablesDesktopCampaignPanel"), 'previous owned reservation removed');
+    const execute = site.executeJavaScript.bind(site);
+    let releaseAck, reachedAck = false, held = false;
+    const ack = new Promise(resolve => { releaseAck = resolve; });
+    site.executeJavaScript = (source, ...args) => {
+      const result = execute(source, ...args);
+      if (!held && source.includes(')("reserve",')) {
+        held = true;
+        return result.then(async value => { reachedAck = true; await ack; return value; });
+      }
+      return result;
+    };
+    try {
+      const opening = dock.openSection('general');
+      await until(() => reachedAck, 'real main reserve response held after renderer installation');
+      assert.equal(dock.isOpen(), false, 'An initial reserve cannot promote Settings before acknowledgement');
+      assert.equal(await execute("!!document.querySelector('[data-ff-campaign-workspace]')"), true);
+      await execute("history.pushState({}, '', '/home');true");
+      await until(() => dock.hub.campaignAvailable === false, 'real main observes off-Campaign SPA route');
+      releaseAck();
+      await opening;
+      await until(() => execute("!document.querySelector('[data-ff-campaign-workspace]') && !window.__friendsFablesDesktopCampaignPanel"), 'owned pending reservation cleaned on off-Campaign route');
+      assert.equal(dock.isOpen(), false);
+      assert.equal(dock.hub.isVisible(), false);
+      assert.equal(dock.general.lastSettingsSection, 'appearance', 'Canceled pending section cannot replace the last successful selection');
+      assert.equal(await execute("document.getElementById('native-draft').value"), 'Keep this native draft');
+    } finally {
+      releaseAck();
+      site.executeJavaScript = execute;
+    }
     await dock.flushSettings();
     finished = true;
     dock.hide();

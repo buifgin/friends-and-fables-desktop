@@ -27,6 +27,8 @@ export class AppearanceDock {
   private ready: Promise<void>;
 
   private opened = false;
+  private opening = false;
+  private openingSection?:SettingsSection;
   private inset = 0;
   private width: number;
   private revision = 0;
@@ -36,7 +38,7 @@ export class AppearanceDock {
     this.windowControls = new WindowControls(window, manager);
     this.generalReady=this.general.initialize().then(()=>this.layout());
     this.hub=new SettingsHub(window,manager,this.general,()=>this.hide(),()=>{this.barOverride=false;this.barManualHidden=false;this.layout();},section=>this.openSection(section));
-    setSettingsEscape(window,()=>{if(!this.opened)return false;if(this.hub.currentSection()==='campaign'&&this.website.webContents.isFocused())return false;this.hide();return true;});
+    setSettingsEscape(window,()=>{if(!this.opened&&!this.opening)return false;if(this.opened&&this.hub.currentSection()==='campaign'&&this.website.webContents.isFocused())return false;this.hide();return true;});
     setQuickBarToggle(window,()=>{
       if(window.isFullScreen()&&this.general.hideDesktopTopbarInFullscreen)this.barOverride=!this.barOverride;
       else this.barManualHidden=!this.barManualHidden;
@@ -101,11 +103,11 @@ export class AppearanceDock {
     }
   }
   refreshCampaign():void { this.hub.refreshCampaign(); }
-  closeCampaign(): void { if (this.opened && this.hub.currentSection() === 'campaign') this.hide(); }
+  closeCampaign(): void { if (this.opening?this.openingSection==='campaign':this.opened&&this.hub.currentSection()==='campaign') this.hide(); }
 
   async flushSettings(): Promise<void> { await this.generalReady; await this.general.flush(); }
   configureSettings(managers: SettingsManagers): void { this.hub.configure(managers); }
-  async toggle(): Promise<void> { if (this.opened) this.hide(); else await this.openSettings(); }
+  async toggle(): Promise<void> { if (this.opened||this.opening) this.hide(); else await this.openSettings(); }
   async openSettings():Promise<void> {
     const revision=this.revision;
     await this.generalReady;
@@ -118,15 +120,16 @@ export class AppearanceDock {
     const revision=++this.revision;
     await this.generalReady;
     if(revision!==this.revision||this.window.isDestroyed())return;
-    await this.hub.select(section,()=>{
+    this.opening=true;this.openingSection=section;
+    try {await this.hub.select(section,()=>{
       if(revision!==this.revision||this.window.isDestroyed())return;
       this.opened=true;this.layout();
-    });
-    if(revision!==this.revision||this.window.isDestroyed()){return;}
+    });}finally{if(revision===this.revision){this.opening=false;this.openingSection=undefined;}}
+    if(revision!==this.revision||this.window.isDestroyed()||!this.hub.isVisible()){return;}
     this.opened=true;this.layout();this.update();
   }
   hide(): void {
-    this.revision++; this.opened = false;
+    this.revision++; this.opened = false;this.opening=false;this.openingSection=undefined;
     this.hub.setVisible(false);
     if (!this.window.isDestroyed()) { this.layout(); this.update(); }
     if (!this.website.webContents.isDestroyed()) this.website.webContents.focus();
@@ -146,11 +149,10 @@ export class AppearanceDock {
     const inset = barVisible ? Math.max(this.inset,32) : 0;
     const geometry=settingsGeometry(width,height,this.width,inset);
     const panelWidth = this.opened ? geometry.panel.width : 0;
-    // Native Campaign settings paint inside the website; its adapter reserves
-    // the content strip. Keep those website bounds while other editors cover
-    // the retained native form; only closing Settings releases the strip.
-    const campaign=this.opened&&this.hub.hasRetainedCampaign();
-    const websiteX=campaign?geometry.navigation.width:panelWidth;
+    // The renderer owns the entire horizontal reservation on Campaign routes.
+    // Keep native website bounds full width for every reserved Settings section.
+    const campaign=this.opened&&(this.hub.hasCampaignReservation()||this.hub.hasRetainedCampaign());
+    const websiteX=campaign?0:panelWidth;
     this.website.setBounds({x:websiteX,y:inset,width:Math.max(0,width-websiteX),height:Math.max(0,height-inset)});
     this.hub.layout(geometry.panel);this.hub.setVisible(this.opened);
     this.windowControls.layout(width, 0);this.windowControls.setVisible(barVisible);
