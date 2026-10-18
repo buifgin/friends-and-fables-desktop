@@ -76,12 +76,12 @@ test('route availability hides campaign sections and rejects unavailable campaig
  f.hub.setCampaignAvailable(true);await f.hub.select('campaign');assert.equal(shown.length,1);
 });
 
-test('outer website geometry commits before Campaign adapter mounts and active theme refresh does not reopen',async()=>{
+test('renderer Campaign geometry is ready before dock promotion and active theme refresh does not reopen',async()=>{
  const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},trace=[];
  f.hub.configure({translation:manager,instructions:manager,campaign:{suspend(){},show:b=>trace.push(['show',b]),hide:()=>trace.push(['hide'])}});
  await f.hub.select('campaign',()=>trace.push(['website-strip-committed']));
- assert.deepEqual(trace.map(x=>x[0]),['website-strip-committed','show']);
- f.hub.refreshCampaign();assert.deepEqual(trace.map(x=>x[0]),['website-strip-committed','show','show']);
+ assert.deepEqual(trace.map(x=>x[0]),['show','website-strip-committed']);
+ f.hub.refreshCampaign();assert.deepEqual(trace.map(x=>x[0]),['show','website-strip-committed','show']);
  await f.hub.select('campaign');assert.equal(trace.length,3,'Repeated selection preserves mounted native section');
  await f.hub.select('general');f.hub.refreshCampaign();assert.equal(trace.length,3,'Off-section theme update cannot mount Campaign');
 });
@@ -134,7 +134,7 @@ test('actual Settings dock keeps website bounds across native Campaign cross-swi
  dock.generalReady=initialized;dock.hub.select=select;dock.hide();
 
  await dock.openSection('general');assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});
- await dock.openSection('campaign');const reserved={...website.bounds};assert.deepEqual(reserved,{x:126,y:32,width:1154,height:768});
+ await dock.openSection('campaign');const reserved={...website.bounds};assert.deepEqual(reserved,{x:0,y:32,width:1280,height:768});
  history.length=0;
  for(const section of ['translation','general']){await dock.openSection(section);await dock.openSection('campaign');}
  assert.ok(history.length>0);assert.ok(history.every(b=>JSON.stringify(b)===JSON.stringify(reserved)),'Every actual dock layout preserves reserved website bounds');
@@ -142,6 +142,16 @@ test('actual Settings dock keeps website bounds across native Campaign cross-swi
  await dock.openSection('general');dock.hide();assert.deepEqual(website.bounds,{x:0,y:32,width:1280,height:768});assert.equal(trace.filter(x=>x[0]==='dispose').length,1);
  await dock.openSection('campaign');await dock.openSection('general');await dock.setCampaignAvailable(false);
  assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});assert.equal(trace.filter(x=>x[0]==='dispose').length,2);dock.hide();assert.equal(trace.filter(x=>x[0]==='dispose').length,2);
+ // An old native close delivery must not cancel an unrelated new local opening.
+ await dock.setCampaignAvailable(true);await dock.openSection('campaign');const deliverOldClose=()=>dock.closeCampaign();dock.hide();
+ const appearanceEditor=dock.hub.editors.get('appearance')??null;
+ if(!appearanceEditor){await dock.open();dock.hide();}
+ const local=dock.hub.editors.get('appearance').view.webContents,execute=local.executeJavaScript;let releaseLocal;
+ local.executeJavaScript=()=>new Promise(resolve=>releaseLocal=resolve);
+ const localOpening=dock.openSection('appearance');await new Promise(resolve=>setImmediate(resolve));const releasePaint=releaseLocal;
+ try {deliverOldClose();assert.equal(dock.opening,true,'Delayed native close cannot cancel a newer Appearance opening');}
+ finally {releasePaint({ready:true,locale:'en',preset:'custom',customColor:'#234567'});await localOpening;local.executeJavaScript=execute;}
+ assert.equal(dock.isOpen(),true);assert.equal(dock.hub.currentSection(),'appearance');dock.hide();
  await dock.openSection('music');dock.hide();await dock.openSettings();assert.equal(dock.hub.currentSection(),'music','Real generic entrypoint reopens the committed section');dock.hide();await dock.open();assert.equal(dock.hub.currentSection(),'appearance','Explicit Appearance opening keeps feature semantics');dock.hide();
 });
 
@@ -387,4 +397,48 @@ test('failed and canceled preparation cannot replace remembered committed sectio
  let release;f.hub.view.webContents.executeJavaScript=source=>{if(source.includes('wait.finish(false)')&&!source.startsWith('new Promise')){release?.(false);return Promise.resolve(true);}return new Promise(resolve=>release=resolve);};
  const pending=f.hub.select('campaign',()=>{});await new Promise(resolve=>setImmediate(resolve));
  f.hub.setVisible(false);release(false);await pending;assert.deepEqual(f.remembered,['general']);
+});
+
+for(const section of ['general','appearance'])test('first '+section+' paints its actual surface before passive reservation and dock promotion',async()=>{
+ const f=fixture(),trace=[],manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let finishReserve;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{reserve:b=>{trace.push(['reserve',b]);assert.equal(f.hub.view.getVisible(),true);assert.equal(f.hub.preparing.section,section);assert.equal(f.hub.preparing.staged,true);if(section==='appearance')assert.equal(f.created[0].getVisible(),true);return new Promise(resolve=>finishReserve=resolve);},show(){throw Error('Local section must not launch Campaign');},suspend(){},hide(){}}});
+ const opening=f.hub.select(section,()=>trace.push(['promote']));await flush();assert.equal(trace.length,1);assert.equal(f.hub.hasCampaignReservation(),false);assert.deepEqual(f.remembered,[]);finishReserve(true);await opening;assert.equal(f.hub.hasCampaignReservation(),true);assert.deepEqual(trace.map(x=>x[0]),['reserve','promote']);assert.deepEqual(f.remembered,[section]);
+ f.hub.layout({...f.hub.bounds});f.hub.layout({...f.hub.bounds});assert.equal(trace.length,2,'Unchanged layout does not enqueue reserve over native preparation');
+});
+for(const ending of ['hidden','unavailable','resize','navigation','destroyed','closed'])test('pending passive reservation cannot revive after '+ending,async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let finishReserve,hides=0,promoted=0;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{reserve:()=>new Promise(resolve=>finishReserve=resolve),show(){throw Error('Unexpected launch');},suspend(){},hide(){hides++;}}});
+ const opening=f.hub.select('general',()=>promoted++);await flush();assert.equal(typeof finishReserve,'function');
+ if(ending==='hidden')f.hub.setVisible(false);if(ending==='unavailable')f.hub.setCampaignAvailable(false);if(ending==='resize')f.hub.layout({x:0,y:32,width:620,height:740});if(ending==='navigation')f.hub.view.webContents.emit('did-navigate');if(ending==='destroyed'){f.hub.view.webContents.destroyed=true;f.hub.view.webContents.emit('destroyed');}if(ending==='closed')f.window.emit('closed');
+ finishReserve(true);await opening;assert.equal(hides,1,'Cancel invalidates exactly the pending adapter request');assert.equal(promoted,0);assert.equal(f.hub.hasCampaignReservation(),false);assert.deepEqual(f.remembered,[]);assert.equal(f.hub.view.getVisible(),false);
+});
+test('stale reservation result cannot hide or replace a newer reserved section',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},pending=[];let hides=0;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{reserve:()=>new Promise(resolve=>pending.push(resolve)),show(){},suspend(){},hide(){hides++;}}});
+ const older=f.hub.select('general');await flush();const newer=f.hub.select('music');await flush();assert.equal(pending.length,2);pending[1](true);await newer;const before=hides;pending[0](false);await older;assert.equal(hides,before);assert.equal(f.hub.currentSection(),'music');assert.equal(f.hub.hasCampaignReservation(),true);assert.deepEqual(f.remembered,['music']);
+});
+test('direct first Campaign stages only Campaign navigation, remembers only after native readiness',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let finishShow;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{reserve(){throw Error('No passive gutter before direct native adoption');},show:()=>new Promise(resolve=>finishShow=resolve),suspend(){},hide(){}}});
+ const opening=f.hub.select('campaign');await flush();const sender=f.hub.view.webContents;assert.equal(handlers.get('settings-hub:get')({sender,senderFrame:sender.mainFrame}).section,'campaign');assert.equal(f.hub.view.bounds.width,126);assert.equal(f.created.length,0);assert.deepEqual(f.remembered,[]);finishShow(true);await opening;assert.equal(f.hub.hasCampaignReservation(),true);assert.deepEqual(f.remembered,['campaign']);
+});
+
+test('failed native readiness preserves General and direct failure falls back to General',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let shows=0;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{reserve:async()=>false,show:()=>{shows++;return false;},suspend(){},hide(){}}});
+ await f.hub.select('campaign');assert.equal(shows,1,'Unavailable native workspace is handled through actual adapter readiness');assert.equal(f.hub.currentSection(),'general');assert.equal(f.hub.hasCampaignReservation(),false);assert.deepEqual(f.remembered,['general']);assert.equal(f.hub.view.bounds.width,580);
+ await f.hub.select('campaign');assert.equal(f.hub.currentSection(),'general');assert.deepEqual(f.remembered,['general'],'Failed incoming Campaign preserves the committed General section');
+});
+
+test('unsupported passive workspace preserves native Campaign capability and commits full website before mount',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},trace=[];let finishShow;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{reserve:async()=>false,show:b=>{trace.push(['show',b]);return new Promise(resolve=>finishShow=resolve);},suspend(){},hide(){}}});
+ await f.hub.select('general');assert.equal(f.hub.hasCampaignReservation(),false);assert.equal(f.hub.view.bounds.width,580);
+ const opening=f.hub.select('campaign',()=>trace.push(['layout',f.hub.hasRetainedCampaign()]));await flush();assert.deepEqual(trace.map(row=>row[0]),['layout','show']);assert.equal(trace[0][1],true);assert.equal(trace[1][1].x,126);assert.equal(f.hub.currentSection(),'general');assert.equal(f.hub.view.bounds.width,580);finishShow(true);await opening;assert.equal(f.hub.currentSection(),'campaign');assert.equal(f.hub.view.bounds.width,126);assert.deepEqual(f.remembered,['general','campaign']);
+});
+
+test('direct Campaign without passive workspace opens native form with its own navigation',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let finishShow;const trace=[];
+ f.hub.configure({translation:manager,instructions:manager,campaign:{reserve:async()=>false,show:b=>{trace.push(['show',b]);return new Promise(resolve=>finishShow=resolve);},suspend(){},hide(){}}});
+ const opening=f.hub.select('campaign',()=>trace.push(['layout']));await flush();assert.equal(f.hub.view.bounds.width,126);assert.equal(f.created.length,0);assert.deepEqual(trace.map(row=>row[0]),['show']);assert.equal(trace[0][1].x,126);assert.equal(trace[0][1].width,454);assert.deepEqual(f.remembered,[]);finishShow(true);await opening;assert.equal(f.hub.currentSection(),'campaign');assert.deepEqual(f.remembered,['campaign']);
 });
