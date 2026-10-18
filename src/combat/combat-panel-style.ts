@@ -604,6 +604,14 @@ export function combatPanelAppearanceCss(
   const attackSurface = `${customizedSurface}[data-ff-combat-panel-mode="actions"]`;
   const cardSurfaces = `${attackSurface} :is(.relative.rounded-lg.border.bg-card.shadow-sm.w-full, .relative.group.rounded-lg.border.bg-card.p-4, .group.rounded-lg.border.bg-card, label.flex.items-center.space-x-3.rounded.border.p-4.clickable:has(> [role="checkbox"]), textarea[name="message"])`;
   const attackMessageField = `${attackSurface} textarea[name="message"]`;
+  const attackFieldCandidates = ':is(input:not([type]), input[type="text"], input[type="number"], input[type="search"], input[type="email"], input[type="url"], input[type="tel"], input[type="password"], select, textarea:not([name="message"]), [role="combobox"])';
+  const attackFields = `${attackSurface} ${attackFieldCandidates}`;
+  const attackFieldColors = settings.enabled ? `
+    ${attackFields} {
+      background: ${cardFill} !important;
+      color: hsl(var(--foreground, 0 0% 96%)) !important;
+    }
+  ` : '';
   const buttonHoverOpacity = buttonOpacity === 0 ? .28 : Math.min(1, buttonOpacity + .2);
   const border = settings.enabled && settings.customizeBorder ? `
     ${customizedSurface} { border-right-color: ${hex(settings.borderColor ?? '', '#555555')} !important; }
@@ -753,6 +761,7 @@ export function combatPanelAppearanceCss(
     ${border}
     ${buttonColors}
     ${buttonOpacityCss}
+    ${attackFieldColors}
     ${spacing}
   `;
 }
