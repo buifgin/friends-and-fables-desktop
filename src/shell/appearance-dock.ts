@@ -117,6 +117,7 @@ export class AppearanceDock {
     if(this.window.isDestroyed())return;
     const revision=++this.revision;
     await this.generalReady;
+    if(revision!==this.revision||this.window.isDestroyed())return;
     await this.hub.select(section,()=>{
       if(revision!==this.revision||this.window.isDestroyed())return;
       this.opened=true;this.layout();

@@ -110,7 +110,7 @@ test('route unavailability releases a retained Campaign while a different sectio
 test('actual Settings dock keeps website bounds across native Campaign cross-switches and restores full width on close/departure',async()=>{
  handlers.clear();
  class Controls{sync(){}layout(){}setVisible(){}raise(){}}
- class General{hideDesktopTopbarInFullscreen=false;saveSection(section){this.lastSettingsSection=section;return Promise.resolve();}initialize(){return Promise.resolve();}flush(){return Promise.resolve();}}
+ class General{hideDesktopTopbarInFullscreen=false;saved=[];saveSection(section){this.saved.push(section);this.lastSettingsSection=section;return Promise.resolve();}initialize(){return Promise.resolve();}flush(){return Promise.resolve();}}
  Module._load=function(name,...args){
   if(name==='electron')return {WebContentsView:View,ipcMain:{handle:(n,f)=>handlers.set(n,f),removeHandler:n=>handlers.delete(n)}};
   if(name==='./window-controls')return {WindowControls:Controls};
@@ -124,6 +124,15 @@ test('actual Settings dock keeps website bounds across native Campaign cross-swi
  const dock=new AppearanceDock(window,website,appearance),trace=[],manager={createPanel:()=>new View(),getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};
  dock.configureSettings({translation:manager,instructions:manager,campaign:{show:b=>trace.push(['show',b]),suspend:b=>trace.push(['suspend',b]),hide:()=>trace.push(['dispose'])}});
  const early=dock.openSettings();dock.hide();await early;assert.equal(dock.isOpen(),false,'Hide cancels a generic open still awaiting persisted preference initialization');
+ await dock.generalReady;
+ const pending=dock.openSettings();await Promise.resolve();dock.hide();await pending;
+ assert.equal(dock.isOpen(),false);assert.equal(dock.hub.view.getVisible(),false,'Hide between generic and section initialization awaits keeps the hub hidden');assert.deepEqual(dock.general.saved,[],'Canceled generic opening cannot persist a section');
+ const initialized=dock.generalReady;let releaseInitialize;dock.generalReady=new Promise(resolve=>releaseInitialize=resolve);
+ const selected=[],select=dock.hub.select.bind(dock.hub);dock.hub.select=(section,...args)=>{selected.push(section);return select(section,...args);};
+ const older=dock.openSection('general'),newer=dock.openSection('music');releaseInitialize();await Promise.all([older,newer]);
+ assert.deepEqual(selected,['music'],'Only the newest explicit request may enter hub selection after initialization');assert.equal(dock.hub.currentSection(),'music');assert.deepEqual(dock.general.saved,['music'],'The older explicit request cannot persist a superseded section');
+ dock.generalReady=initialized;dock.hub.select=select;dock.hide();
+
  await dock.openSection('general');assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});
  await dock.openSection('campaign');const reserved={...website.bounds};assert.deepEqual(reserved,{x:126,y:32,width:1154,height:768});
  history.length=0;
