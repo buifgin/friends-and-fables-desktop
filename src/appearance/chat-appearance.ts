@@ -172,9 +172,9 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
             height: rect.height, width: shown.width, top: shown.top - rect.top - (parseFloat(style.borderTopWidth) || 0), left: shown.left - rect.left - (parseFloat(style.borderLeftWidth) || 0),
           });
         }
-        // Invalidate temporary English copies, while retaining the real translator
-        // preview and its optimistic association for the confirmed hydration gap.
-        for (const [id, snapshot] of snapshots) if (snapshot.optimistic && !snapshot.translationPreview && snapshot.signature === currentSignature) { removeOverlay(snapshot); snapshots.delete(id); }
+        // Retain only this card's real preview. A confirmed pending body consumes
+        // every matching temporary association, including translated previews.
+        for (const [id, snapshot] of snapshots) if (id !== card.id && snapshot.optimistic && snapshot.signature === currentSignature) { removeOverlay(snapshot); snapshots.delete(id); }
         continue;
       }
       if (!visible(card) || !body || !visible(body) || pending || concealedNarration) {
