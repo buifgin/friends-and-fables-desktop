@@ -105,7 +105,13 @@ export class AppearanceDock {
 
   async flushSettings(): Promise<void> { await this.generalReady; await this.general.flush(); }
   configureSettings(managers: SettingsManagers): void { this.hub.configure(managers); }
-  async toggle(): Promise<void> { if (this.opened) this.hide(); else await this.open(); }
+  async toggle(): Promise<void> { if (this.opened) this.hide(); else await this.openSettings(); }
+  async openSettings():Promise<void> {
+    const revision=this.revision;
+    await this.generalReady;
+    if(revision!==this.revision||this.window.isDestroyed())return;
+    await this.openSection(this.hub.resolveSettingsSection());
+  }
   async open(refresh = false): Promise<void> { await this.openSection('appearance'); if(refresh)await this.manager.refreshPanel(); }
   async openSection(section:SettingsSection):Promise<void> {
     if(this.window.isDestroyed())return;

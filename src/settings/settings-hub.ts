@@ -18,6 +18,7 @@ export class SettingsHub {
  readonly view: WebContentsView;
  private editors = new Map<SettingsSection,{view:WebContentsView;ready:Promise<void>;document:number}>();
  private section:SettingsSection='appearance';
+ private lastCommittedSection?:SettingsSection;
  private visible=false;
  private revision=0;
  private renderRevision=0;
@@ -73,6 +74,13 @@ export class SettingsHub {
   this.update();
  }
  private state(){const {preset,customColor}=this.appearance.getSettings();return {section:this.preparing?.view===this.view?this.preparing.section:this.section,renderRevision:this.renderRevision,locale:this.appearance.getLocale(),theme:{preset,customColor},campaignAvailable:!!this.managers?.campaign&&this.campaignAvailable!==false,combat:this.combat,hideDesktopTopbarInFullscreen:this.general.hideDesktopTopbarInFullscreen};}
+ resolveSettingsSection():SettingsSection {
+  const remembered=this.lastCommittedSection??this.general.lastSettingsSection;
+  const campaign=!!this.managers?.campaign&&this.campaignAvailable!==false;
+  if(!remembered)return campaign?'campaign':'general';
+  if(remembered==='campaign'&&!campaign||remembered==='combat'&&(!campaign||!this.managers?.combat))return 'general';
+  return remembered;
+ }
  currentSection():SettingsSection{return this.section;}
  hasRetainedCampaign():boolean{return this.campaignRetained;}
  private releaseCampaign():void {if(this.campaignRetained)this.managers?.campaign?.hide();this.campaignRetained=false;this.campaignBounds=undefined;}
@@ -224,6 +232,8 @@ export class SettingsHub {
   if(!campaignPrepared)beforeLayout?.();
   if(this.bounds)this.layout(this.bounds);
   if(section!=='campaign')this.update();
+  this.lastCommittedSection=section;
+  void this.general.saveSection(section).catch(console.error);
   (editor?.view.webContents??this.view.webContents).focus();
  }
  refreshCampaign():void {if(this.visible&&this.section==='campaign'&&this.bounds){this.campaignBounds=undefined;this.layout(this.bounds);}}
