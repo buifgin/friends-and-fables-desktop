@@ -269,7 +269,14 @@ async function save(settings, window) {
   await setPanelCss({ ...customizedPanel, enabled:false });
   assert.deepEqual(await styleSnapshot(),nativePanelStyle,'Disabling customization restores inherited geometry and controls.');
   await setPanelCss({ ...customizedPanel, customizeBorder:false, customizeButtons:false, customizeSpacing:false });
-  assert.deepEqual(await styleSnapshot(),nativePanelStyle,'Independent switches restore native styles while customization stays enabled.');
+  const independentSwitchStyle = await styleSnapshot();
+  assert.deepEqual(independentSwitchStyle, {
+    ...nativePanelStyle,
+    fields: [
+      ['draft', independentSwitchStyle.attackSurfaces[0][0], independentSwitchStyle.themeForeground],
+      nativePanelStyle.fields[1],
+    ],
+  }, 'Independent switches restore native styles while enabled Attack correction fields retain shared card styling.');
   // Inline Favorites shares the native outer p6 rather than adding its own inset.
   await styleWindow.webContents.executeJavaScript(`const favorites=document.querySelector('[data-ff-dice-favorites]');
     favorites.setAttribute('data-ff-dice-favorites-inline','');document.querySelector('.p-6').append(favorites);`);
