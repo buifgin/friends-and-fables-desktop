@@ -167,12 +167,14 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
           const anchor = safe.anchorNode ? textTop(safe.anchorNode) : undefined;
           if (rect.height > 0 && rect.height <= 4000 && shown.width > 0 && shown.height > 0) snapshots.set(card.id, {
             clone: safe.clone, anchorNode: safe.anchorNode, anchorTop: anchor !== undefined ? anchor - rect.top : undefined,
-            at: now, card, event, body, text: '', signature: currentSignature, optimistic: false, translationPreview: true,
+            at: now, card, event, body, text: '', signature: currentSignature,
+            optimistic: role === 'player' && event?.isOptimistic === true && event.id == null && card.id === 'event-message-card-null', translationPreview: true,
             height: rect.height, width: shown.width, top: shown.top - rect.top - (parseFloat(style.borderTopWidth) || 0), left: shown.left - rect.left - (parseFloat(style.borderLeftWidth) || 0),
           });
         }
-        // A pending body must never resurrect a matching temporary English copy.
-        for (const [id, snapshot] of snapshots) if (snapshot.optimistic && snapshot.signature === currentSignature) { removeOverlay(snapshot); snapshots.delete(id); }
+        // Invalidate temporary English copies, while retaining the real translator
+        // preview and its optimistic association for the confirmed hydration gap.
+        for (const [id, snapshot] of snapshots) if (snapshot.optimistic && !snapshot.translationPreview && snapshot.signature === currentSignature) { removeOverlay(snapshot); snapshots.delete(id); }
         continue;
       }
       if (!visible(card) || !body || !visible(body) || pending || concealedNarration) {

@@ -123,6 +123,7 @@ async function handoffScenario(configure,settings,install,dictionary,local,kind)
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
  const check=(value,message)=>{if(!value)throw Error(`Handoff ${kind}: ${message}`);};
  const campaign='01a0d854-78d5-7064-ae41-f63d561c8e01',token=`handoff-${kind}`;
+ const negative=kind==='foreign-author';
  const source=kind==='russian'?'Мой герой осторожно подходит к тихой башне.':'The amber river curves beneath the silent tower.';
  document.body.innerHTML='<main id="feed"><div id="events-list"></div></main><section class="grid relative"><div class="tiptap" contenteditable="true">Preserve the native draft.</div></section>';
  const list=document.getElementById('events-list'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
@@ -132,7 +133,7 @@ async function handoffScenario(configure,settings,install,dictionary,local,kind)
   const row=document.createElement('div');row.id=`event-${id}`;
   row.innerHTML=`<div id="event-container-${id}"><div class="card" id="event-message-card-${id}"><div class="author">Мира</div><div class="prose"><div class="space-y-4 whitespace-normal"><p></p></div></div></div></div>`;
   const card=row.querySelector('.card'),body=card.querySelector('.prose'),paragraph=body.querySelector('p'),text=paragraph.appendChild(document.createTextNode(content));
-  const event={id,role:'player',content:source,campaign_id:campaign,character_id:42,...(id===null?{isOptimistic:true}:{})};
+  const event={id,role:'player',content:source,campaign_id:campaign,character_id:id!==null&&negative?99:42,...(id===null?{isOptimistic:true}:{})};
   card.__reactFiber$fixture={memoizedProps:{event}};list.append(row);return {row,card,body,paragraph,text};
  };
  const visible=element=>{for(let node=element;node;node=node.parentElement){const s=getComputedStyle(node);if(s.display==='none'||s.visibility==='hidden'||s.opacity==='0'||s.contentVisibility==='hidden')return false;}return true;};
@@ -156,7 +157,7 @@ async function handoffScenario(configure,settings,install,dictionary,local,kind)
  if(kind!=='russian'){
   await new Promise(resolve=>setTimeout(resolve,220));
   const request=controller.collect().nodes.filter(node=>node.text===source);check(request.length===1,'optimistic prose did not request real translation');
-  if(kind==='partial'){
+  if(kind==='partial'||negative){
    const partial='Готовая часть. Pending remainder.';
    controller.finish(token,request.map(node=>({id:node.id,version:node.version,text:partial,complete:false,pending:[{start:partial.indexOf('Pending'),end:partial.length}]})));
   }
@@ -174,8 +175,11 @@ async function handoffScenario(configure,settings,install,dictionary,local,kind)
  }
  controller.dispose();window.__friendsFablesDesktopChatAppearance.dispose();
  const clean=!document.querySelector('[data-ff-translation-blank],[data-ff-translation-pending],[data-ff-translation-placeholder],[data-ff-desktop-message-snapshot]');
- const retained=frames.every(s=>s.sameBody&&s.sameText&&s.nativeCount===1&&s.draftSame),nonblank=frames.every(s=>s.glyph||s.progress),hiddenEnglish=frames.every(s=>!s.englishVisible);
- return {passed:retained&&nonblank&&hiddenEnglish&&clean,case:'player-optimistic-confirmed-translation-handoff',kind,frames,retained,nonblank,hiddenEnglish,clean};
+ const retained=frames.every(s=>s.sameBody&&s.sameText&&s.nativeCount===1&&s.draftSame);
+ const gaps=frames.filter(s=>s.stage.startsWith('confirmed-gap-'));
+ const association=negative?gaps.every(s=>!s.glyph&&!s.progress&&s.presentation==='native'):gaps.every(s=>s.glyph||s.progress);
+ const nonblank=frames.filter(s=>!negative||!s.stage.startsWith('confirmed-gap-')).every(s=>s.glyph||s.progress),hiddenEnglish=frames.every(s=>!s.englishVisible);
+ return {passed:retained&&nonblank&&hiddenEnglish&&clean&&association,case:'player-optimistic-confirmed-translation-handoff',kind,frames,retained,nonblank,hiddenEnglish,clean,association};
 }
 module.exports={continuityScenario,firstPaintScenario,handoffScenario};
 if(process.versions.electron){
@@ -190,13 +194,14 @@ if(process.versions.electron){
   window=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
   await window.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
   const settings={...DEFAULT_APPEARANCE,preset:'website',messages:{...DEFAULT_APPEARANCE.messages,enabled:true}};
-  if(process.env.FABLES_CHAT_TRANSLATION_SCENARIO==='handoff'){
-   const results=[];for(const kind of ['pending','partial','russian']){
+  {
+   const results=[];for(const kind of ['pending','partial','russian','foreign-author']){
     const result=await window.webContents.executeJavaScript(`(${handoffScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()},${JSON.stringify(kind)})`);
     results.push(result);console.log('Player handoff translation result',JSON.stringify(result));
    }
    assert(results.every(result=>result.passed),'Player optimistic-confirmed translated presentation became blank or lost identity');passed=true;
-  }else{
+  }
+  if(process.env.FABLES_CHAT_TRANSLATION_SCENARIO!=='handoff'){
   for(const dynamic of [true,false])for(const role of ['player','dm']){
    const first=await window.webContents.executeJavaScript(`(${firstPaintScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()},${dynamic},${JSON.stringify(role)})`);
    console.log('Initial chat translation result',JSON.stringify(first));assert.equal(first.passed,true,'Initial native translated chat presentation became blank or lost identity');
