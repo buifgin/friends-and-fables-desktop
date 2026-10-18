@@ -4,7 +4,7 @@ class Contents extends EventEmitter{constructor(){super();this.mainFrame={origin
 class View{constructor(options){this.options=options;this.webContents=new Contents();}setVisible(v){this.visible=v;}getVisible(){return this.visible;}setBounds(b){this.bounds=b;}setBackgroundColor(){}}
 const original=Module._load;Module._load=function(name,...args){if(name==='electron')return {WebContentsView:View,ipcMain:{handle:(n,f)=>handlers.set(n,f),removeHandler:n=>handlers.delete(n)}};return original.call(this,name,...args);};
 const {SettingsHub,SETTINGS_HUB_URL}=require('../../dist/settings/settings-hub');Module._load=original;
-function fixture(){handlers.clear();const window=new EventEmitter();window.contentView={children:[],addChildView(view,index){const old=this.children.indexOf(view);if(old>=0){this.children.splice(old,1);this.children.push(view);}else this.children.splice(index??this.children.length,0,view);},removeChildView(view){this.children.splice(this.children.indexOf(view),1);}};window.isDestroyed=()=>false;window.isFullScreen=()=>false;const created=[];const appearance={getLocale:()=> 'en',getSettings:()=>({preset:'custom',customColor:'#234567'}),createPanel:()=>{const v=new View();created.push(v);return v;}};let hub,closed=0;hub=new SettingsHub(window,appearance,{hideDesktopTopbarInFullscreen:false,save:async()=>{}},()=>{closed++;hub.setVisible(false);},()=>{},s=>hub.select(s));const manager={createPanel:()=>{const v=new View();created.push(v);return v;},getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};hub.configure({translation:manager,instructions:manager});hub.layout({x:0,y:32,width:580,height:700});return {hub,window,created,get closed(){return closed;}};}
+function fixture(){handlers.clear();const window=new EventEmitter();window.contentView={children:[],addChildView(view,index){const old=this.children.indexOf(view);if(old>=0){this.children.splice(old,1);this.children.push(view);}else this.children.splice(index??this.children.length,0,view);},removeChildView(view){this.children.splice(this.children.indexOf(view),1);}};window.isDestroyed=()=>false;window.isFullScreen=()=>false;const created=[];const appearance={getLocale:()=> 'en',getSettings:()=>({preset:'custom',customColor:'#234567'}),createPanel:()=>{const v=new View();created.push(v);return v;}};const remembered=[];const general={hideDesktopTopbarInFullscreen:false,save:async()=>{},saveSection:async section=>{remembered.push(section);general.lastSettingsSection=section;}};let hub,closed=0;hub=new SettingsHub(window,appearance,general,()=>{closed++;hub.setVisible(false);},()=>{},s=>hub.select(s));const manager={createPanel:()=>{const v=new View();created.push(v);return v;},getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};hub.configure({translation:manager,instructions:manager});hub.layout({x:0,y:32,width:580,height:700});return {hub,window,created,general,remembered,get closed(){return closed;}};}
 test('section switches retain editor view identity and unsaved state',async()=>{const f=fixture();await f.hub.select('appearance');const first=f.created[0];first.webContents.unsaved='draft';await f.hub.select('translation');assert.equal(first.visible,false);await f.hub.select('appearance');assert.equal(f.created.length,2);assert.equal(first.visible,true);assert.equal(first.webContents.unsaved,'draft');assert.deepEqual(first.bounds,{x:126,y:32,width:454,height:700});f.hub.setVisible(false);assert.ok(f.created.every(v=>!v.visible));});
 test('navigation IPC rejects website, subframe, wrong route and invalid section',async()=>{const {hub}=fixture(),invoke=handlers.get('settings-hub:get');const sender=hub.view.webContents;const event={sender,senderFrame:sender.mainFrame};assert.equal(invoke(event).section,'appearance');assert.deepEqual(invoke(event).theme,{preset:'custom',customColor:'#234567'},'The hub receives the selected theme for palette rendering.');assert.throws(()=>invoke({sender:new Contents(),senderFrame:sender.mainFrame}));assert.throws(()=>invoke({sender,senderFrame:{...sender.mainFrame}}));const old=sender.mainFrame.url;sender.mainFrame.url=SETTINGS_HUB_URL+'?bypass';assert.throws(()=>invoke(event));sender.mainFrame.url=old;assert.throws(()=>handlers.get('settings-hub:select')(event,'../translation'));assert.throws(()=>invoke({sender,senderFrame:null}));});
 test('campaign cannot open without native adapter and music creates no player',async()=>{const f=fixture();await assert.rejects(f.hub.select('campaign'),/not connected/);await f.hub.select('music');assert.equal(f.created.length,0);});
@@ -110,7 +110,7 @@ test('route unavailability releases a retained Campaign while a different sectio
 test('actual Settings dock keeps website bounds across native Campaign cross-switches and restores full width on close/departure',async()=>{
  handlers.clear();
  class Controls{sync(){}layout(){}setVisible(){}raise(){}}
- class General{hideDesktopTopbarInFullscreen=false;initialize(){return Promise.resolve();}flush(){return Promise.resolve();}}
+ class General{hideDesktopTopbarInFullscreen=false;saveSection(section){this.lastSettingsSection=section;return Promise.resolve();}initialize(){return Promise.resolve();}flush(){return Promise.resolve();}}
  Module._load=function(name,...args){
   if(name==='electron')return {WebContentsView:View,ipcMain:{handle:(n,f)=>handlers.set(n,f),removeHandler:n=>handlers.delete(n)}};
   if(name==='./window-controls')return {WindowControls:Controls};
@@ -123,6 +123,7 @@ test('actual Settings dock keeps website bounds across native Campaign cross-swi
  const appearance={getLocale:()=> 'en',getSettings:()=>({preset:'custom',customColor:'#234567',appearancePanelWidth:580}),createPanel:()=>new View()};
  const dock=new AppearanceDock(window,website,appearance),trace=[],manager={createPanel:()=>new View(),getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};
  dock.configureSettings({translation:manager,instructions:manager,campaign:{show:b=>trace.push(['show',b]),suspend:b=>trace.push(['suspend',b]),hide:()=>trace.push(['dispose'])}});
+ const early=dock.openSettings();dock.hide();await early;assert.equal(dock.isOpen(),false,'Hide cancels a generic open still awaiting persisted preference initialization');
  await dock.openSection('general');assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});
  await dock.openSection('campaign');const reserved={...website.bounds};assert.deepEqual(reserved,{x:126,y:32,width:1154,height:768});
  history.length=0;
@@ -132,6 +133,7 @@ test('actual Settings dock keeps website bounds across native Campaign cross-swi
  await dock.openSection('general');dock.hide();assert.deepEqual(website.bounds,{x:0,y:32,width:1280,height:768});assert.equal(trace.filter(x=>x[0]==='dispose').length,1);
  await dock.openSection('campaign');await dock.openSection('general');await dock.setCampaignAvailable(false);
  assert.deepEqual(website.bounds,{x:580,y:32,width:700,height:768});assert.equal(trace.filter(x=>x[0]==='dispose').length,2);dock.hide();assert.equal(trace.filter(x=>x[0]==='dispose').length,2);
+ await dock.openSection('music');dock.hide();await dock.openSettings();assert.equal(dock.hub.currentSection(),'music','Real generic entrypoint reopens the committed section');dock.hide();await dock.open();assert.equal(dock.hub.currentSection(),'appearance','Explicit Appearance opening keeps feature semantics');dock.hide();
 });
 
 test('Campaign remains committed until the exact local renderer completes target state',async()=>{
@@ -353,4 +355,27 @@ test('hiding during the outgoing surface paint phase cancels its owned wait befo
  try {assert.equal(cancelled,true,'Closing Settings immediately disconnects the outgoing paint observer and RAF');}
  finally {finish(false);await selecting;}
  assert.equal(showCalls,0);assert.equal(f.hub.currentSection(),'general');assert.equal(f.hub.view.getVisible(),false);
+});
+
+test('generic Settings resolves committed section before reopening and keeps explicit navigation',async()=>{
+ const f=fixture();assert.equal(f.hub.resolveSettingsSection(),'general');
+ const manager={setSettingsOpener(){},getSettings:()=>({enabled:false,showOriginal:false})};
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show:()=>true,suspend(){},hide(){}}});
+ assert.equal(f.hub.resolveSettingsSection(),'campaign','First Campaign entry preserves its current default');
+ await f.hub.select('appearance');f.hub.setVisible(false);
+ await f.hub.select(f.hub.resolveSettingsSection());assert.equal(f.hub.currentSection(),'appearance');
+ await f.hub.select('music');assert.equal(f.hub.resolveSettingsSection(),'music','Explicit feature selection commits and remembers itself');
+ await f.hub.select('campaign');f.hub.setCampaignAvailable(false);assert.equal(f.hub.resolveSettingsSection(),'general');
+ f.general.lastSettingsSection='combat';assert.equal(f.hub.resolveSettingsSection(),'general');
+});
+test('failed and canceled preparation cannot replace remembered committed section',async()=>{
+ const f=fixture();await f.hub.select('general');
+ f.hub.view.webContents.executeJavaScript=()=>Promise.resolve(false);
+ const manager={setSettingsOpener(){},getSettings:()=>({enabled:false,showOriginal:false})};
+ f.hub.configure({translation:manager,instructions:manager,campaign:{show:()=>false,suspend(){},hide(){}}});
+ await f.hub.select('campaign',()=>{});assert.deepEqual(f.remembered,['general']);
+ f.hub.view.webContents.executeJavaScript=()=>Promise.resolve(true);await f.hub.select('campaign',()=>{});assert.deepEqual(f.remembered,['general'],'Native readiness failure cannot be remembered');
+ let release;f.hub.view.webContents.executeJavaScript=source=>{if(source.includes('wait.finish(false)')&&!source.startsWith('new Promise')){release?.(false);return Promise.resolve(true);}return new Promise(resolve=>release=resolve);};
+ const pending=f.hub.select('campaign',()=>{});await new Promise(resolve=>setImmediate(resolve));
+ f.hub.setVisible(false);release(false);await pending;assert.deepEqual(f.remembered,['general']);
 });

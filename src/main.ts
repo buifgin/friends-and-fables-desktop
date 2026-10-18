@@ -62,13 +62,13 @@ function configureWebsiteContents(contents: WebContents, window: BrowserWindow, 
     const current=new URL(contents.getURL()||'about:blank');
     if(contents===websiteContents&&settingsDock&&current.origin==='https://play.fables.gg'
       &&url==='fables-desktop://settings/open-global'){
-      void settingsDock.openSection('general').catch(console.error);
+      void settingsDock.openSettings().catch(console.error);
       return {action:'deny'};
     }
     if (contents === websiteContents && settingsDock && current.origin === 'https://play.fables.gg'
       && /^\/[0-9a-f-]{36}\/play\/?$/i.test(current.pathname)) {
       if (url === 'fables-desktop://settings/open-campaign') {
-        void settingsDock.openSection('campaign').catch(console.error);
+        void settingsDock.openSettings().catch(console.error);
         return { action: 'deny' };
       }
       if (url === 'fables-desktop://settings/close-campaign') {
