@@ -56,6 +56,10 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
     // their content-sized minimum, so hiding the outer overflow clips the bottom.
     const content = '[data-ff-campaign-panel] > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto > div.mx-auto';
     style.textContent += `${content} > div:first-child{padding:0!important;border:0!important;background:transparent!important;box-shadow:none!important}${content} > div:first-child > div{padding:0!important}${content} > div:first-child > div:first-child{margin-bottom:22px!important;gap:14px!important}${content} > div:first-child > div:last-child{gap:18px!important}[data-ff-campaign-panel]{font:14px system-ui,-apple-system,"Segoe UI",sans-serif!important;line-height:1.5!important}[data-ff-campaign-panel] *{box-sizing:border-box;font-family:inherit!important}[data-ff-campaign-panel] :is(label,h3.font-medium){font-size:13px!important;font-weight:600!important;line-height:1.5!important}[data-ff-campaign-panel] p{font-size:13px!important;line-height:1.5!important}[data-ff-campaign-panel] :is(.text-xs,.text-muted-foreground){font-size:12px!important;line-height:1.5!important}`;
+    // Native rating labels share a column; w-14 clips the longer EN/RU glyphs.
+    // Match the captured rating topology only, leaving other fixed labels alone.
+    const ratingRow = '[data-ff-campaign-panel] div.flex.items-center[class~="gap-1.5"]:has(> span.w-14 + div.flex[class~="gap-0.5"] > .rounded-full)';
+    style.textContent += `${ratingRow} > span.w-14{width:7em!important;min-width:max-content!important;flex-shrink:0!important}`;
     if(sectionSuspended)style.textContent+='[data-ff-campaign-panel]{visibility:hidden!important;pointer-events:none!important}';
     const p=desktopPalette;
     // Only app-generated CSS colors are accepted; never interpolate arbitrary CSS.
