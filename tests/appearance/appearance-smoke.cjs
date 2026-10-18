@@ -164,6 +164,10 @@ async function save(settings, window) {
   const nativePanelStyle = await styleSnapshot();
   assert.equal(nativePanelStyle.messageInActionForm,true,'The native message textarea fixture belongs to the Attack form inside the dock.');
   assert.equal(nativePanelStyle.chatOutsideDock,true,'The separate normal chat composer remains outside the Attack dock.');
+  const assertCorrectionField = (snapshot, expectedBackground, label) => {
+    assert.deepEqual(snapshot.fields[0], ['draft', expectedBackground, snapshot.themeForeground], `${label}: the Attack correction draft shares the card fill and theme foreground.`);
+    assert.deepEqual(snapshot.fields[1], nativePanelStyle.fields[1], `${label}: the ordinary outside field retains its native fill, text color and value.`);
+  };
   const targetPalette = await styleWindow.webContents.executeJavaScript(`[
     getComputedStyle(document.getElementById('primary-probe')).color,
     getComputedStyle(document.getElementById('primary-foreground-probe')).color
@@ -199,6 +203,7 @@ async function save(settings, window) {
     const attack=await styleSnapshot();
     const expected=alpha===1?'rgb(18, 52, 86)':`rgba(18, 52, 86, ${alpha})`;
     for(const index of [0,1,2,3,4]) assert.equal(attack.attackSurfaces[index][0],expected,`Weapon, spell, target, message and selected summary backgrounds share ${alpha} opacity.`);
+    assertCorrectionField(attack, expected, `Card background opacity ${alpha}`);
     for(const index of [0,1,2,3,4]) {
       assert.equal(attack.attackSurfaces[index][1],attack.themeForeground,'Attack surfaces use the fixture theme foreground token at every background opacity.');
       assert(contrastRatio(attack.attackSurfaces[index][1], 'rgb(18, 52, 86)', attack.pageBackground, alpha) >= 4.5,
@@ -228,7 +233,9 @@ async function save(settings, window) {
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','skills')");
   const nonAttack=await styleWindow.webContents.executeJavaScript("['weapon-card','spell-card','target-card','attack-message-field','summary-card'].map(id=>getComputedStyle(document.getElementById(id)).backgroundColor)");
   assert.deepEqual(nonAttack,rawPanelStyle.attackSurfaces.map(surface=>surface[0]),'Attack card/target/message backgrounds do not leak into Skills mode.');
-  assert.deepEqual(await styleSnapshot().then(snapshot=>snapshot.outsideChat),nativePanelStyle.outsideChat,'The normal chat textarea remains unchanged in Skills mode.');
+  const nonAttackStyle = await styleSnapshot();
+  assert.deepEqual(nonAttackStyle.fields[0],nativePanelStyle.fields[0],'Attack correction fields retain their native fill in Skills mode.');
+  assert.deepEqual(nonAttackStyle.outsideChat,nativePanelStyle.outsideChat,'The normal chat textarea remains unchanged in Skills mode.');
   await styleWindow.webContents.executeJavaScript("document.querySelector('[data-ff-combat-docked]').setAttribute('data-ff-combat-panel-mode','actions')");
   await setPanelCss(customizedPanel);
   assert.deepEqual(customPanelStyle.gaps,['24px','24px']);
@@ -237,7 +244,7 @@ async function save(settings, window) {
   assert.deepEqual(await styleWindow.webContents.executeJavaScript(`[
     document.querySelector('[data-ff-combat-body]'),document.querySelector('[data-ff-dice-favorite-tiles]')
   ].map(n=>getComputedStyle(n).padding)`),['0px','0px'],'Body wrappers and Favorites inner lists do not double custom padding.');
-  assert.deepEqual(customPanelStyle.fields,nativePanelStyle.fields,'Drafts and native field fills remain intact.');
+  assertCorrectionField(customPanelStyle, customPanelStyle.attackSurfaces[0][0], 'Enabled Attack appearance');
   const blackMenuSettings = { ...customizedPanel, buttonBackground: '#000000' };
   await setPanelCss(blackMenuSettings);
   assert.equal((await styleSnapshot()).buttons[3][0], 'rgb(0, 0, 0)', 'A menu-like button follows the selected opaque panel button color when transparency is off.');
@@ -251,7 +258,7 @@ async function save(settings, window) {
   assert.deepEqual(transparentPanelStyle.nativeControls,customPanelStyle.nativeControls,'Zero button alpha preserves the target checkbox and generic checkbox/switch states, including the selected generic border color.');
   assert.deepEqual(transparentPanelStyle.buttons[4], nativePanelStyle.buttons[4], 'Outside buttons are not affected.');
   assert.equal(transparentPanelStyle.buttons[2][3], '0.5', 'Disabled state opacity is preserved.');
-  assert.deepEqual(transparentPanelStyle.fields, nativePanelStyle.fields, 'Checkbox inputs, text and drafts are not restyled.');
+  assertCorrectionField(transparentPanelStyle, transparentPanelStyle.attackSurfaces[0][0], 'Transparent button styling');
   await setPanelCss({ ...blackMenuSettings, buttonBackgroundOpacity: .5 });
   const halfOpacityPanelStyle = await styleSnapshot();
   for (const button of halfOpacityPanelStyle.buttons.slice(0,4)) assert.equal(button[0], 'rgba(0, 0, 0, 0.5)', 'Half alpha is rendered for every left-panel button category.');
