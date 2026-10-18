@@ -22,7 +22,7 @@ async function until(predicate, label) {
   }
 }
 void (async () => {
-  profile = await fs.mkdtemp(path.join(os.tmpdir(), 'ff-settings-main-'));
+  profile = process.env.FABLES_TEST_PROFILE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'ff-settings-main-'));
   app.setPath('userData', profile);
   app.on('window-all-closed', () => {});
   app.on('will-quit', () => {
