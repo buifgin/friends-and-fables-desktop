@@ -55,6 +55,16 @@ void (async () => {
     assert.equal(editor.webContents.id, editorId);
     assert.equal(await editor.webContents.executeJavaScript("document.querySelector('#theme-name').value"), 'Keep this editor draft');
     assert.equal(await site.executeJavaScript("document.getElementById('native-draft').value"), 'Keep this native draft');
+    dock.hide();
+    await site.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play');
+    await until(() => !site.isLoading(), 'offline campaign document');
+    await site.executeJavaScript("window.open('fables-desktop://settings/open-campaign','_blank');true");
+    await until(() => dock.isOpen(), 'generic campaign handler opened Settings');
+    assert.equal(dock.hub.currentSection(), 'appearance', 'Campaign generic Settings also retains the last successful section');
+    assert.equal(editor.getVisible(), true);
+    assert.equal(editor.webContents.id, editorId);
+    assert.equal(await editor.webContents.executeJavaScript("document.querySelector('#theme-name').value"), 'Keep this editor draft');
+    assert.equal(await site.executeJavaScript("document.getElementById('native-draft').value"), 'Keep this native draft');
     await dock.flushSettings();
     finished = true;
     dock.hide();
