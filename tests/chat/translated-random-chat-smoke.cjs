@@ -200,7 +200,7 @@ if (process.argv.includes('--syntax')) {
     try {
       const code = sources(root);
       const editorScript = require('esbuild').buildSync({ stdin: { contents: "import {Editor} from '@tiptap/core';import StarterKit from '@tiptap/starter-kit';window.createRandomEditor=element=>new Editor({element,extensions:[StarterKit],content:'<p></p>'});", resolveDir: root }, bundle: true, write: false, platform: 'browser', format: 'iife', define: { 'process.env.NODE_ENV': '"production"' } }).outputFiles[0].text;
-      profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ff-translated-random-')); app.setPath('userData', profile); await app.whenReady();
+      profile = process.env.FABLES_TEST_PROFILE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'ff-translated-random-')); app.setPath('userData', profile); await app.whenReady();
       const site = session.fromPartition('translated-random-eight');
       site.protocol.handle('https', request => { assert.equal(new URL(request.url).hostname, 'play.fables.gg'); return new Response('<!doctype html><meta charset="utf-8"><style>body{margin:0;color:#ddd;background:#222}#chat{position:relative;height:620px;width:850px;margin:20px}#feed{box-sizing:border-box;height:100%;overflow-y:auto;padding-bottom:160px}.card{position:relative;padding:8px}.author{height:18px}.prose p{margin:0;line-height:24px}#footer{position:absolute;bottom:0;left:0;right:0;height:120px;background:#123}.tiptap{min-height:32px}#composer{position:relative}</style><body></body>', { headers: { 'Content-Type': 'text/html' } }); });
       window = new BrowserWindow({ show: false, width: 1000, height: 800, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
@@ -216,6 +216,6 @@ if (process.argv.includes('--syntax')) {
       }
       const result = await step('finish', '__random.finish()'); assert.equal(result.passed, true); console.log('Translated random result', JSON.stringify(result)); passed = true;
     } catch (error) { console.error('Translated random fixture failed', { stage }, error); }
-    finally { clearTimeout(deadline); window?.destroy(); if (profile) fs.rmSync(profile, { recursive: true, force: true }); app.exit(passed ? 0 : 1); }
+    finally { clearTimeout(deadline); window?.destroy(); if (profile && !process.env.FABLES_TEST_PROFILE_DIR) fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); app.exit(passed ? 0 : 1); }
   })().catch(error => { console.error(error); app.exit(1); });
 }

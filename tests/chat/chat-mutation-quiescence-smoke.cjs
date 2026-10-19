@@ -171,7 +171,7 @@ if (process.versions.electron) {
   const deadline = setTimeout(() => { console.error('Mutation quiescence hard 15s deadline'); window?.destroy(); app.exit(1); }, 15000);
   (async () => {
     try {
-      profile = await fs.mkdtemp(path.join(os.tmpdir(), 'ff-mutation-quiescence-')); app.setPath('userData', profile); await app.whenReady();
+      profile = process.env.FABLES_TEST_PROFILE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'ff-mutation-quiescence-')); app.setPath('userData', profile); await app.whenReady();
       const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '../..'), code = sources(root);
       const scenario = process.env.FABLES_MUTATION_SCENARIO || 'workload';
       assert(['workload', 'stable-instructions'].includes(scenario), 'Unknown mutation scenario');
@@ -189,6 +189,6 @@ if (process.versions.electron) {
       }
       passed = true;
     } catch (error) { console.error('Mutation quiescence fixture failed:', error); }
-    finally { clearTimeout(deadline); window?.destroy(); if (profile) await fs.rm(profile, { recursive: true, force: true }); app.exit(passed ? 0 : 1); }
+    finally { clearTimeout(deadline); window?.destroy(); if (profile && !process.env.FABLES_TEST_PROFILE_DIR) await fs.rm(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); app.exit(passed ? 0 : 1); }
   })().catch(error => { console.error(error); app.exit(1); });
 }
