@@ -106,6 +106,30 @@ card.__reactFiber$fixture.memoizedState={memoizedState:remounted,next:null};wind
  aliasID=109241645;sameReferenceInput=false;insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:event(aliasID)});flush();
  if(!sameReferenceInput||ids().filter(id=>id===aliasID).length!==1)throw Error('Batched overlapping confirmation duplicated event');
  const settledWrites=writes;for(let i=0;i<3;i++){window.dispatchEvent(new Event('click'));flush();}if(writes!==settledWrites)throw Error('Duplicate correction did not quiesce');batch=false;
+ // Recovery must reject lookalike authoritative updates. Independent same-ref
+ // duplicate packing may still run: assert no restored history, not input identity.
+ const rejectRecovery=(label,change)=>{
+  query.setData(beforeOverlap,{updatedAt:123,manual:true});const current=query.state.data;let incoming;
+  insertEventIntoQueryData({queryClient:{setQueryData(_key,update){incoming=update(current);}},campaignId:campaign,newEvent:event(109241643)});
+  change(incoming,current);query.setData(incoming,{updatedAt:123,manual:true});
+  if(capturedIDs.some(id=>ids().includes(id)))throw Error('Unsupported overlap restored current prefix: '+label);
+ };
+ rejectRecovery('changed prefix row',incoming=>{incoming.pages[0].data[0]={...incoming.pages[0].data[0],message:'authoritative edit'};});
+ rejectRecovery('changed prefix metadata',incoming=>{incoming.pages[0].nativeFlag='changed';});
+ rejectRecovery('changed temporary metadata',incoming=>{incoming.pages[1].nativeFlag='changed';});
+ rejectRecovery('changed corresponding cursor',incoming=>{incoming.pages[1].previousCursor--;});
+ rejectRecovery('changed both inherited cursors',incoming=>{incoming.pages[1].previousCursor--;incoming.pages[2].previousCursor--;});
+ rejectRecovery('changed parameter',incoming=>{incoming.pageParams[0]={cursor:109241641,direction:'forward'};});
+ rejectRecovery('different alias objects',incoming=>{incoming.pages[2].data[0]={...incoming.pages[2].data[0]};});
+ rejectRecovery('different alias IDs',incoming=>{incoming.pages[2].data[0]=event(109241644);});
+ rejectRecovery('later invalid prefix order',incoming=>{incoming.pages[0].data.reverse();});
+ // A real removal/refetch replaces current data; the adapter has no archive.
+ query.setData({pages:beforeOverlap.pages.slice(1),pageParams:beforeOverlap.pageParams.slice(1)},{updatedAt:123,manual:true});
+ query.setData(overlapIncoming,{updatedAt:123,manual:true});if(capturedIDs.some(id=>ids().includes(id)))throw Error('Deleted current prefix resurrected');
+ query.setData({pages:[server(200,214)],pageParams:[{cursor:215,direction:'backward'}]},{updatedAt:123,manual:true});
+ query.setData(overlapIncoming,{updatedAt:123,manual:true});if(capturedIDs.some(id=>ids().includes(id)))throw Error('Refetched current prefix resurrected from archive');
+ const extraTemporary={...beforeOverlap,pages:[...beforeOverlap.pages,beforeOverlap.pages.at(-1)],pageParams:[...beforeOverlap.pageParams,null]};
+ query.setData(extraTemporary,{updatedAt:123,manual:true});query.setData(overlapIncoming,{updatedAt:123,manual:true});if(capturedIDs.some(id=>ids().includes(id)))throw Error('Extra pending shape restored unsupported prefix');
  const appendPage=rows=>({data:rows,previousCursor:109198198,nextCursor:undefined,hasPreviousPage:true,hasNextPage:false});
  const passthrough=(input,label)=>{const before=writes;query.setData(input,{updatedAt:123,manual:true});if(query.latestArgs[0]!==input||writes!==before+1)throw Error('Unsupported duplicate shape changed: '+label);};
  const shared=event(109241639);

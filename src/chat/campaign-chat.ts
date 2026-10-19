@@ -130,6 +130,26 @@ export function configureCampaignChatPages(enabled: boolean): void {
         // still-current suffix rows, never archived or edited/deleted history.
         if (incoming && current && Array.isArray(incoming.pages) && Array.isArray(incoming.pageParams) && Array.isArray(current.pages) && Array.isArray(current.pageParams) && incoming.pages.length === 3 && incoming.pageParams.length === 3 && current.pages.length === 4 && current.pageParams.length === 4 && temporary(current.pages[3], current.pageParams[3]) && incoming.pageParams[2] === null) {
           const sameRows = (a: Page, b: Page): boolean => Array.isArray(a?.data) && Array.isArray(b?.data) && a.data.length === b.data.length && a.data.every((row, index) => row === b.data[index]);
+          const sameMetadata = (a: Page, b: Page): boolean => {
+            const keys = Object.keys(a).filter(key => key !== 'data');
+            return keys.length === Object.keys(b).filter(key => key !== 'data').length && keys.every(key => Object.hasOwn(b, key) && a[key] === b[key]);
+          };
+          const tail = current.pages[1], pending = current.pages[2], firstAlias = incoming.pages[1], lastAlias = incoming.pages[2];
+          const row = firstAlias?.data?.[0], prior = tail?.data?.at(-1);
+          if (temporary(pending, current.pageParams[2]) && current.pageParams[1] === null && incoming.pageParams.every(param => param === null)
+            && tail && tail.direction === undefined && tail.hasPreviousPage === true && tail.hasNextPage === false
+            && sameRows(incoming.pages[0], tail) && sameMetadata(incoming.pages[0], tail)
+            && firstAlias?.data?.length === 1 && lastAlias?.data?.length === 1 && row === lastAlias.data[0]
+            && row && typeof row.id === 'number' && Number.isSafeInteger(row.id) && row.id > 0 && row.isOptimistic !== true
+            && prior && typeof prior.id === 'number' && row.id > prior.id
+            && sameMetadata(firstAlias, pending) && sameMetadata(lastAlias, current.pages[3]) && sameMetadata(pending, current.pages[3])
+            && tail.previousCursor === pending.previousCursor && tail.nextCursor === pending.nextCursor) {
+            // The native insertion helper trims its oldest page after resolving
+            // both pending pages to one event. Recover only the still-current
+            // prefix, with unchanged suffix rows/metadata proving this transition.
+            const recovered = pack({ ...incoming, pages: [current.pages[0], ...incoming.pages], pageParams: [current.pageParams[0], ...incoming.pageParams] });
+            if (recovered.pages.length <= 3) candidate = recovered;
+          }
           const last = incoming.pages[2], previous = current.pages[2]?.data?.at(-1);
           if (sameRows(incoming.pages[0], current.pages[1]) && sameRows(incoming.pages[1], current.pages[2]) && last?.data?.length === 1 && last.direction === undefined && last.hasPreviousPage === true && last.hasNextPage === false && previous && typeof previous.id === 'number' && typeof last.data[0]?.id === 'number' && Number.isSafeInteger(last.data[0].id) && last.data[0].id > previous.id && last.data[0].isOptimistic !== true) {
             const recovered = pack({ ...incoming, pages: [current.pages[0], ...incoming.pages], pageParams: [...current.pageParams.slice(0, 3), null] });
