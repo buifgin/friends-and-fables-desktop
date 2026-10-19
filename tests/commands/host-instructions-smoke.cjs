@@ -20,6 +20,42 @@ window.formEditor=new Editor({...options,element:document.getElementById('form-c
 document.getElementById('send').addEventListener('click',()=>{window.sent.push({html:window.draftHTML,json:window.editor.getJSON()});const article=document.createElement('article');article.className='prose';article.innerHTML=window.draftHTML;window.originalNodes.push(article.lastElementChild.firstChild);document.getElementById('feed').append(article)});
 document.getElementById('editor-content').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();document.getElementById('send').click()}},true);
 `,resolveDir:path.join(__dirname, '..', '..')},bundle:true,write:false,platform:'browser',format:'iife',define:{'process.env.NODE_ENV':'"production"'}}).outputFiles[0].text;
+
+// Runs against the already installed production hiding controller. Every wait is
+// a finite task boundary; no new production observer or native nodes are replaced.
+async function instructionMarkerPreservation() {
+ const check=(value,message)=>{if(!value)throw Error(`Instruction preservation: ${message}`)};
+ const settle=async()=>{await new Promise(resolve=>setTimeout(resolve,0));await new Promise(resolve=>setTimeout(resolve,0));};
+ const controller=window.__friendsFablesDesktopInstructionHiding;
+ check(controller,'production hiding controller missing');
+ const article=document.createElement('article');article.className='prose';
+ const originals=[null,'false','true'];
+ const paragraphs=originals.map(value=>{const p=document.createElement('p');p.textContent='[[FF-SP:1]] Preserve raw guidance. [[/FF-SP:1]]';if(value!==null)p.setAttribute('data-ff-translation-ignore',value);article.append(p);return {p,text:p.firstChild,original:value};});
+ const split=document.createElement('div');split.innerHTML='<p>[[FF-SP:1]]</p><ul><li>Split guidance.</li></ul><p>[[/FF-SP:1]]</p>';article.append(split);
+ const splitNodes=[...split.children],closing=split.lastElementChild,closingText=closing.firstChild;
+ const excluded=document.createElement('div');excluded.innerHTML='<p><code>[[FF-SP:1]] literal example [[/FF-SP:1]]</code></p><pre><p>[[FF-SP:1]] code block [[/FF-SP:1]]</p></pre><p>[[FF-SP:1]] incomplete</p>';article.append(excluded);
+ document.getElementById('feed').append(article);controller.setEnabled(true);await settle();
+ const marked=node=>node.getAttribute('data-ff-desktop-instruction-block')==='true'&&node.getAttribute('data-ff-translation-ignore')==='true';
+ const retained=()=>paragraphs.every(({p,text})=>p.firstChild===text&&text.isConnected)&&closing.firstChild===closingText;
+ try {
+  check(paragraphs.every(({p})=>marked(p)&&getComputedStyle(p).display==='none')&&splitNodes.every(marked),'complete/split blocks not hidden');
+  check(!excluded.querySelector('[data-ff-desktop-instruction-block]'),'coded or incomplete blocks marked');
+  let writes=0;const observer=new MutationObserver(records=>{writes+=records.length;});observer.observe(article,{subtree:true,attributes:true,attributeFilter:['data-ff-desktop-instruction-block','data-ff-desktop-hidden-instructions','data-ff-translation-ignore']});
+  try {const inert=document.createElement('div');document.body.append(inert);await settle();inert.append(document.createComment('unrelated'));await settle();check(writes===0,'stable markers rewritten by unrelated childList');inert.remove();await settle();check(writes===0,'stable markers rewritten by unrelated removal');}finally{observer.disconnect();}
+  controller.setEnabled(false);await settle();check(paragraphs.every(({p})=>marked(p)&&!p.hasAttribute('data-ff-desktop-hidden-instructions')&&getComputedStyle(p).display!=='none'),'review toggle did not reveal raw ignored guidance');
+  check(paragraphs.every(({p})=>p.textContent==='[[FF-SP:1]] Preserve raw guidance. [[/FF-SP:1]]')&&retained(),'review toggle changed native text/identity');
+  controller.setEnabled(true);await settle();check(paragraphs.every(({p})=>p.hasAttribute('data-ff-desktop-hidden-instructions')),'hide toggle did not reapply');
+  for(const {text} of paragraphs)text.data='Обычный повторно используемый абзац.';closingText.data='Incomplete ending';await settle();
+  check(paragraphs.every(({p,original})=>!p.hasAttribute('data-ff-desktop-instruction-block')&&!p.hasAttribute('data-ff-desktop-hidden-instructions')&&p.getAttribute('data-ff-translation-ignore')===original),'ceased blocks did not restore null/false/true ignore values');
+  check(splitNodes.every(node=>!node.hasAttribute('data-ff-desktop-instruction-block')&&!node.hasAttribute('data-ff-translation-ignore')),'incomplete split retained markers');
+  for(const {text} of paragraphs)text.data='[[FF-SP:1]] Reused guidance. [[/FF-SP:1]]';closingText.data='[[/FF-SP:1]]';await settle();
+  check(paragraphs.every(({p})=>marked(p))&&splitNodes.every(marked)&&retained(),'reused complete blocks lost markers/native identity');
+  for(const {text} of paragraphs)text.data='Обычный повторно используемый абзац снова.';await settle();
+  check(paragraphs.every(({p,original})=>p.getAttribute('data-ff-translation-ignore')===original),'reuse lost original ignore value');
+  return {passed:true,originalIgnoreValues:originals,stableMarkerWrites:writes,nativeIdentity:retained()};
+ } finally {article.remove();controller.setEnabled(true);await settle();}
+}
+
 const html='<!doctype html><html><meta charset="utf-8"><body><div class="flex flex-col bg-gray-800/80 relative" id="composer"><button aria-label="More actions">More actions</button><div id="editor-content"></div><button role="combobox" id="mode">Manual</button><button id="send" aria-label="Send message">Send</button></div><div id="feed"></div><form><div class="grid relative"><div id="working-context-bar-spacer"></div><div id="form-content"></div></div></form><script src="/editor.js"></script></body></html>';
 (async()=>{
  profile=process.env.FABLES_TEST_PROFILE_DIR||await mkdtemp(path.join(os.tmpdir(),'fables-sp-test-'));app.setPath('userData',profile);await app.whenReady();
@@ -72,6 +108,7 @@ const html='<!doctype html><html><meta charset="utf-8"><body><div class="flex fl
  await host.save({...host.getSettings(),hideMarked:true});await until(()=>js("document.querySelector('#split-block ul').hasAttribute('data-ff-desktop-hidden-instructions')"));assert.equal(await js("getComputedStyle(document.getElementById('ordinary-after')).display==='none'"),false);assert.equal(await js("document.querySelectorAll('#incomplete [data-ff-desktop-hidden-instructions]').length"),0,'Unbalanced markers do not hide unrelated messages.');
  await js("{const article=document.createElement('article');article.className='prose';article.id='inline-code';article.innerHTML='<p>[[FF-SP:1]]<br>Use <code>literal code</code> in guidance.<br>[[/FF-SP:1]]</p><p><code>[[FF-SP:1]] literal example [[/FF-SP:1]]</code></p>';document.getElementById('feed').append(article)}");
  await until(()=>js("document.querySelector('#inline-code p:first-child').hasAttribute('data-ff-desktop-hidden-instructions')"));assert.equal(await js("document.querySelector('#inline-code p:last-child').hasAttribute('data-ff-desktop-hidden-instructions')"),false,'Literal marker examples in code remain visible.');
+ stage='instruction marker preservation';const markerPreservation=await js(`(${instructionMarkerPreservation.toString()})()`);console.log('Instruction marker preservation',JSON.stringify(markerPreservation));assert.equal(markerPreservation.passed,true);
  forged=new BrowserWindow({show:false,webPreferences:{partition:'fables-appearance',preload:path.join(appRoot,'dist/commands/host-instructions-preload.js'),sandbox:true,contextIsolation:true,nodeIntegration:false}});await forged.loadURL(HOST_INSTRUCTIONS_URL);
  assert.match(await forged.webContents.executeJavaScript("window.hostInstructions.get().then(()=> 'allowed',error=>error.message)"),/only in the app settings/);assert.match(await forged.webContents.executeJavaScript("window.hostInstructions.save({}).then(()=> 'allowed',error=>error.message)"),/only in the app settings/);assert.match(await forged.webContents.executeJavaScript("window.hostInstructions.close().then(()=> 'allowed',error=>error.message)"),/only in the app settings/);forged.destroy();forged=null;
  if(process.env.FABLES_SP_SCREENSHOT){settingsWindow.show();await writeFile(process.env.FABLES_SP_SCREENSHOT,(await settingsWindow.webContents.capturePage()).toPNG());}
