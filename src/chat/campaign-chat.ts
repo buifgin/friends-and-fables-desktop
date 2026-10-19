@@ -30,17 +30,42 @@ export function configureCampaignChatPages(enabled: boolean): void {
     if (!data || !Array.isArray(data.pages) || !Array.isArray(data.pageParams) || data.pages.length !== data.pageParams.length || data.pages.length > 4) return data;
     // Null parameters are the captured native append shape. Genuine server
     // requests have cursor/direction objects and are never repacked.
-    let previous = -Infinity;
+    let previous = -Infinity, previousPage = -1;
+    let previousRow: EventRow | undefined;
+    const checkedPages: Page[] = [], checkedParams: unknown[] = [];
+    let changed = false;
+    const sameAppendBoundary = (left: number, right: number, id: number): boolean => {
+      if (left + 1 !== right || id <= 0) return false;
+      const a = data.pages[left], b = data.pages[right];
+      const cursor = (value: unknown): boolean => typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= id;
+      return data.pageParams[left] === null && data.pageParams[right] === null
+        && a.direction === undefined && b.direction === undefined && a.hasPreviousPage && b.hasPreviousPage
+        && !a.hasNextPage && !b.hasNextPage && a.previousCursor === b.previousCursor && cursor(a.previousCursor)
+        && a.nextCursor === b.nextCursor && (a.nextCursor === undefined || cursor(a.nextCursor));
+    };
     for (const [index, page] of data.pages.entries()) {
       if (!page || !Array.isArray(page.data) || page.data.length > 15 || typeof page.hasPreviousPage !== 'boolean' || typeof page.hasNextPage !== 'boolean') return data;
-      if (index === data.pages.length - 1 && temporary(page, data.pageParams[index])) continue;
-      for (const row of page.data) {
-        if (!row || row.isOptimistic === true || typeof row.id !== 'number' || !Number.isSafeInteger(row.id) || row.id <= previous) return data;
-        previous = row.id;
+      if (index === data.pages.length - 1 && temporary(page, data.pageParams[index])) {
+        checkedPages.push(page); checkedParams.push(data.pageParams[index]); continue;
+      }
+      let rows: EventRow[] | undefined;
+      for (const [offset, row] of page.data.entries()) {
+        if (!row || row.isOptimistic === true || typeof row.id !== 'number' || !Number.isSafeInteger(row.id)) return data;
+        if (row.id <= previous) {
+          // Native confirmation can assign one event object to multiple pending
+          // pages. Only that proven boundary alias is safe to discard; a later
+          // conflicting/unsupported row still rejects the entire candidate.
+          if (row.id !== previous || row !== previousRow || !sameAppendBoundary(previousPage, index, row.id)) return data;
+          rows ??= page.data.slice(0, offset); changed = true; previousPage = index; continue;
+        }
+        rows?.push(row); previous = row.id; previousRow = row; previousPage = index;
+      }
+      if (!rows || rows.length) {
+        checkedPages.push(rows ? { ...page, data: rows } : page); checkedParams.push(data.pageParams[index]);
       }
     }
+    if (changed) data = { ...data, pages: checkedPages, pageParams: checkedParams };
     const pages: Page[] = [], pageParams: unknown[] = [];
-    let changed = false;
     for (let index = 0; index < data.pages.length;) {
       const first = data.pages[index];
       if (temporary(first, data.pageParams[index]) || data.pageParams[index] !== null || first.direction !== undefined || first.data.length === 0 || !first.hasPreviousPage) {

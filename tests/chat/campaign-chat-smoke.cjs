@@ -48,10 +48,10 @@ card.__reactFiber$fixture.memoizedState={memoizedState:remounted,next:null};wind
 // previousCursor109198198; captured duplicate639 appears in both append pages.
 {
  const a={default:{warn(){}}},t={CAMPAIGN_EVENTS_PAGE_SIZE:15},s={eventsQueries:{campaign:id=>['events',id]}};
- let sameReferenceInput=false;
+ let sameReferenceInput=false,aliasID=109241639;
  const queryClient={setQueryData(key,update){
   if(key[0]!=='events'||key[1]!==campaign)throw Error('Native insertion targeted wrong query');
-  const incoming=update(query.state.data),copies=incoming.pages.flatMap(page=>page.data).filter(row=>row.id===109241639);
+  const incoming=update(query.state.data),copies=incoming.pages.flatMap(page=>page.data).filter(row=>row.id===aliasID);
   if(copies.length===2)sameReferenceInput=sameReferenceInput||copies[0]===copies[1];
   return query.setData(incoming,{updatedAt:123,manual:true});
  }};
@@ -78,6 +78,44 @@ card.__reactFiber$fixture.memoizedState={memoizedState:remounted,next:null};wind
  if(actual.includes(109241640))throw Error('Duplicate correction invented uncaptured event640');
  insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:later});
  if(ids().filter(id=>id===109241641).length!==1)throw Error('Repeated native confirmation duplicated confirmed event');
+ // The next overlap inherits numeric cursors produced by the correction,
+ // rather than resetting every append to the first round's undefined endpoint.
+ const inherited=query.state.data.pages.at(-1);
+ if(!Number.isSafeInteger(inherited.nextCursor))throw Error('Corrected tail has no numeric cursor to exercise');
+ for(const message of ['third pending','fourth pending']){
+  const old=query.state.data,tail=old.pages.at(-1),temporary={data:[{id:null,isOptimistic:true,message}],nextCursor:tail.nextCursor,previousCursor:tail.previousCursor,hasNextPage:false,hasPreviousPage:true};
+  query.setData({pages:[...old.pages,temporary],pageParams:[...old.pageParams,null]},{updatedAt:123,manual:true});
+ }
+ aliasID=109241643;sameReferenceInput=false;const overlap=event(aliasID);
+ insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:overlap});
+ if(!sameReferenceInput||ids().filter(id=>id===aliasID).length!==1)throw Error('Repeated overlapping confirmation with inherited numeric cursors duplicated event');
+ if(query.latestArgs[0].pages.flatMap(page=>page.data).find(row=>row.id===aliasID)!==overlap)throw Error('Adapter replaced the incoming confirmed event object');
+ // Native helper truncation has authority; never restore its discarded server page.
+ if(ids().includes(capturedIDs[0]))throw Error('Duplicate correction resurrected native-truncated history');
+ batch=true;
+ for(const message of ['fifth pending','sixth pending']){
+  const old=query.state.data,tail=old.pages.at(-1),temporary={data:[{id:null,isOptimistic:true,message}],nextCursor:tail.nextCursor,previousCursor:tail.previousCursor,hasNextPage:false,hasPreviousPage:true};
+  query.setData({pages:[...old.pages,temporary],pageParams:[...old.pageParams,null]},{updatedAt:123,manual:true});flush();
+ }
+ aliasID=109241645;sameReferenceInput=false;insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:event(aliasID)});flush();
+ if(!sameReferenceInput||ids().filter(id=>id===aliasID).length!==1)throw Error('Batched overlapping confirmation duplicated event');
+ const settledWrites=writes;for(let i=0;i<3;i++){window.dispatchEvent(new Event('click'));flush();}if(writes!==settledWrites)throw Error('Duplicate correction did not quiesce');batch=false;
+ const appendPage=rows=>({data:rows,previousCursor:109198198,nextCursor:undefined,hasPreviousPage:true,hasNextPage:false});
+ const passthrough=(input,label)=>{const before=writes;query.setData(input,{updatedAt:123,manual:true});if(query.latestArgs[0]!==input||writes!==before+1)throw Error('Unsupported duplicate shape changed: '+label);};
+ const shared=event(109241639);
+ passthrough({pages:[appendPage([shared]),appendPage([{...shared}])],pageParams:[null,null]},'equal contents but different references');
+ passthrough({pages:[appendPage([shared]),appendPage([{...shared,message:'newer edited version'}])],pageParams:[null,null]},'conflicting edit');
+ passthrough({pages:[appendPage([shared]),appendPage([{...shared,deleted_at:'2026-10-19T00:00:00Z'}])],pageParams:[null,null]},'conflicting deleted version');
+ passthrough({pages:[{...appendPage([shared]),direction:'backward'},appendPage([shared])],pageParams:[{cursor:109241640,direction:'backward'},null]},'genuine server refetch');
+ passthrough({pages:[appendPage([shared,shared])],pageParams:[null]},'within one page');
+ passthrough({pages:[appendPage([shared]),appendPage([]),appendPage([shared])],pageParams:[null,null,null]},'nonadjacent pages');
+ passthrough({pages:[appendPage([shared]),{...appendPage([shared]),previousCursor:109198197}],pageParams:[null,null]},'different previous cursor');
+ passthrough({pages:[appendPage([shared]),{...appendPage([shared]),nextCursor:109198198}],pageParams:[null,null]},'different next cursor');
+ passthrough({pages:[appendPage([shared]),appendPage([shared,event(109241638)])],pageParams:[null,null]},'later descending row rejects candidate atomically');
+ passthrough({pages:[appendPage([shared]),appendPage([shared,{...event(109241641),isOptimistic:true}])],pageParams:[null,null]},'later unsupported row rejects candidate atomically');
+ passthrough({pages:[appendPage([shared]),appendPage([shared]),appendPage([{...shared,deleted_at:'2026-10-19T00:00:00Z'}])],pageParams:[null,null,null]},'later conflicting duplicate rejects candidate atomically');
+ const deleted={pages:[server(200,214)],pageParams:[{cursor:215,direction:'backward'}]};query.setData(deleted,{updatedAt:123,manual:true});
+ if(ids().some(id=>id>=109086365))throw Error('Refetch/delete restored previously removed duplicate history');
  query.setData({pages:[server(100,114)],pageParams:[{cursor:115,direction:'backward'}]},{updatedAt:123,manual:true});
 }
 append(115);append(116);append(117);
