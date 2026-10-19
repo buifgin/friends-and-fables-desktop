@@ -49,7 +49,7 @@ export function configureInstructionHiding(enabled: boolean): void {
   function launcher(target:EventTarget|null):HTMLElement|null{
     if(!(target instanceof Element)||!/\/play\/?$/.test(location.pathname))return null;
     const root=target.closest<HTMLElement>('[class~="bg-gray-800/80"]')??target.closest<HTMLElement>('.grid.relative');
-    if(!root?.querySelector('#working-context-bar-spacer,button[aria-label="Roll dice"],button[aria-label="Бросить кости"],button[aria-label="More actions"]')||root.closest('form,[role="dialog"],.bottom-full'))return null;
+    if(!root?.querySelector('#working-context-bar-spacer,button[aria-label="Roll dice"],button[aria-label="Бросить кости"],button[aria-label="More actions"],button[aria-label="Другие действия"]')||root.closest('form,[role="dialog"],.bottom-full'))return null;
     const editor=root.querySelector<HTMLElement>('.tiptap[contenteditable="true"]');
     return editor?.textContent?.trim()==='/sp'&&!editor.querySelector('code,pre')?editor:null;
   }

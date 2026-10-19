@@ -214,7 +214,7 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
         // The current normal and combat input has no working-context spacer.
         // Find its own action surface, rather than an unrelated outer grid.
         const root = element.closest<HTMLElement>('[class~="bg-gray-800/80"]') ?? element.closest<HTMLElement>('.grid.relative');
-        if (root && root.querySelector('#working-context-bar-spacer,button[aria-label="Roll dice"],button[aria-label="Бросить кости"],button[aria-label="More actions"]') && editorFor(element)) found.set(root, element);
+        if (root && root.querySelector('#working-context-bar-spacer,button[aria-label="Roll dice"],button[aria-label="Бросить кости"],button[aria-label="More actions"],button[aria-label="Другие действия"]') && editorFor(element)) found.set(root, element);
       }
     }
     for (const [root, entry] of entries) {

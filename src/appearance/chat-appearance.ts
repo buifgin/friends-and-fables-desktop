@@ -518,7 +518,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       const native = editor?.closest('[class~="bg-gray-800/80"]');
       const root = anchor.closest('[class~="bg-gray-800/80"]') ?? (native && grid?.contains(native) ? native : grid);
       if (root && !anchor.closest('form,[role="dialog"],[class~="bottom-full"]') && !inCharacterForm(anchor)
-        && root.querySelector('.tiptap[contenteditable="true"]') && root.querySelector('[aria-label="Roll dice"],[aria-label="Бросить кости"],[aria-label="More actions"]')) composers.add(root);
+        && root.querySelector('.tiptap[contenteditable="true"]') && root.querySelector('[aria-label="Roll dice"],[aria-label="Бросить кости"],[aria-label="More actions"],[aria-label="Другие действия"]')) composers.add(root);
     }
     const contextRoots = new Set<Element>();
     const contextExpanded = new Set<Element>();
