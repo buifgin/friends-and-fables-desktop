@@ -48,11 +48,12 @@ card.__reactFiber$fixture.memoizedState={memoizedState:remounted,next:null};wind
 // previousCursor109198198; captured duplicate639 appears in both append pages.
 {
  const a={default:{warn(){}}},t={CAMPAIGN_EVENTS_PAGE_SIZE:15},s={eventsQueries:{campaign:id=>['events',id]}};
- let sameReferenceInput=false,aliasID=109241639;
+ let sameReferenceInput=false,aliasID=109241639,overlapIncoming;
  const queryClient={setQueryData(key,update){
   if(key[0]!=='events'||key[1]!==campaign)throw Error('Native insertion targeted wrong query');
   const incoming=update(query.state.data),copies=incoming.pages.flatMap(page=>page.data).filter(row=>row.id===aliasID);
   if(copies.length===2)sameReferenceInput=sameReferenceInput||copies[0]===copies[1];
+  if(aliasID===109241643)overlapIncoming=incoming;
   return query.setData(incoming,{updatedAt:123,manual:true});
  }};
  const insertEventIntoQueryData=({queryClient:e,campaignId:r,newEvent:i})=>{i&&(!i.monster&&"monster_instance"in i&&i.monster_instance&&(i.monster=i.monster_instance),e.setQueryData(s.eventsQueries.campaign(r),e=>{if(!e?.pages?.length)return{pages:[{data:[i]}],pageParams:[{cursor:void 0,direction:"backward"}]};let s=!1,n=e.pages.map(e=>{let a=e.data.map(e=>null!==i.id&&null!==e.id&&e.id===i.id||null!==i.id&&null===e.id||null!==i.id&&null===e.id&&e.character_id===i.character_id&&"talk"===e.command_used&&"talk"===i.command_used&&"Sending audio..."===e.content?(s=!0,i):e);return{...e,data:a}});if(!s){let e=n[n.length-1];if(!e)return{pages:[{data:[i]}],pageParams:[{cursor:void 0,direction:"backward"}]};e.data||(e.data=[]),e.data.some(e=>null!==i.id&&e.id===i.id)?a.default.warn("Event already exists in last page, skipping",{functionName:"insertEventIntoQueryData",campaignId:r,newEventId:i.id}):e.data.length>=t.CAMPAIGN_EVENTS_PAGE_SIZE?n.push({data:[i]}):e.data.push(i)}if(n.length>3){let e=n.length-3;n.splice(0,e)}let l=e.pageParams.slice(-n.length);for(;l.length<n.length;)l.unshift({cursor:void 0,direction:"backward"});return{pages:n,pageParams:l}}))};
@@ -86,12 +87,17 @@ card.__reactFiber$fixture.memoizedState={memoizedState:remounted,next:null};wind
   const old=query.state.data,tail=old.pages.at(-1),temporary={data:[{id:null,isOptimistic:true,message}],nextCursor:tail.nextCursor,previousCursor:tail.previousCursor,hasNextPage:false,hasPreviousPage:true};
   query.setData({pages:[...old.pages,temporary],pageParams:[...old.pageParams,null]},{updatedAt:123,manual:true});
  }
+ const beforeOverlap=query.state.data,priorConfirmed=ids().filter(id=>id!==null),overlapServer=beforeOverlap.pages[0],overlapParam=beforeOverlap.pageParams[0];
+ if(beforeOverlap.pages.length!==4||priorConfirmed.length!==17)throw Error('Retention prerequisite lost current17confirmed plus two temporary pages');
  aliasID=109241643;sameReferenceInput=false;const overlap=event(aliasID);
  insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:overlap});
  if(!sameReferenceInput||ids().filter(id=>id===aliasID).length!==1)throw Error('Repeated overlapping confirmation with inherited numeric cursors duplicated event');
  if(query.latestArgs[0].pages.flatMap(page=>page.data).find(row=>row.id===aliasID)!==overlap)throw Error('Adapter replaced the incoming confirmed event object');
- // Native helper truncation has authority; never restore its discarded server page.
- if(ids().includes(capturedIDs[0]))throw Error('Duplicate correction resurrected native-truncated history');
+ // The server page is still in current data at this exact transition.
+ // Retaining it below capacity is not restoring previously archived history.
+ const afterOverlap=ids();console.log('Still-current retention diagnostic: '+JSON.stringify({before:beforeOverlap.pages.map(page=>page.data.map(row=>row.id)),incoming:overlapIncoming.pages.map(page=>page.data.map(row=>row.id)),after:query.state.data.pages.map(page=>page.data.map(row=>row.id)),priorConfirmed:priorConfirmed.length,uniqueAfter:new Set(afterOverlap).size}));
+ if(!priorConfirmed.every(id=>afterOverlap.includes(id))||afterOverlap.length!==18||new Set(afterOverlap).size!==18)throw Error('Overlapping confirmation discarded still-current history below capacity: '+afterOverlap);
+ if(query.state.data.pages[0].data!==overlapServer.data||query.state.data.pageParams[0]!==overlapParam)throw Error('Still-current server data/parameter identity changed during overlapping retention');
  batch=true;
  for(const message of ['fifth pending','sixth pending']){
   const old=query.state.data,tail=old.pages.at(-1),temporary={data:[{id:null,isOptimistic:true,message}],nextCursor:tail.nextCursor,previousCursor:tail.previousCursor,hasNextPage:false,hasPreviousPage:true};
