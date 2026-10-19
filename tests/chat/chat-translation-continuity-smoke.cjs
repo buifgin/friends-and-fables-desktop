@@ -194,17 +194,20 @@ async function handoffScenario(configure,settings,install,dictionary,local,kind)
 // and the content/card column; .prose initially contains an empty renderer DIV.
 // Evidence: chat-association-one.json frames 1/3/4; native-chat-81.js eC/ej/oA
 // retained under the ignored live-campaign/post-audit task evidence (see REPORT).
-async function atomicFirstPresentationScenario(configure,settings,install,dictionary,local){
+async function atomicFirstPresentationScenario(configure,settings,install,dictionary,local,options={}){
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
- const token='atomic-russian-player',source='Мой герой осторожно подходит к тихой башне.';
+ const {role='player',sourceEmpty=false,translated=true,dynamic=true,english=false}=options;
+ const token='atomic-'+role,source=english?'The amber river curves beneath the silent tower.':'Мой герой осторожно подходит к тихой башне.';
  document.body.innerHTML='<main id="feed"><div id="events-list"></div></main><section class="grid relative"><div class="tiptap" contenteditable="true">Preserve the native draft.</div></section>';
  const list=document.getElementById('events-list'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
- configure(settings);install(token,dictionary,true,[],local,true,true);
+ configure(settings);if(translated)install(token,dictionary,true,[],local,true,dynamic);
  const row=document.createElement('div');row.id='event-152';
  row.innerHTML='<div id="event-container-152" style="display:flex;gap:8px"><div class="native-avatar-column" style="width:40px;flex:none"><div class="native-avatar" style="width:40px;height:40px;background:rgb(90,100,110)"></div></div><div class="native-content-column"><div class="card" id="event-message-card-152" style="border:1px solid rgb(110,120,130)"><div class="author">Мира</div><div class="prose"><div class="space-y-4 whitespace-normal"></div></div></div></div></div>';
  const container=row.firstElementChild,card=row.querySelector('.card'),avatar=row.querySelector('.native-avatar'),body=card.querySelector('.prose'),renderer=body.firstElementChild;
- const event={id:152,role:'player',content:source,campaign_id:'01a0d854-78d5-7064-ae41-f63d561c8e01',character_id:42};
+ if(role==='dm'){const thoughts=document.createElement('div');thoughts.className='mt-2 mb-2';thoughts.innerHTML='<button aria-expanded="false" data-state="closed">Thoughts</button><div hidden data-state="closed"><div class="text-sm italic bg-muted/30 p-3 rounded-md text-foreground-muted">Native reasoning detail.</div></div>';body.before(thoughts);}
+ const event={id:152,role,processed:true,reasoning:role==='dm'?'Native reasoning detail.':null,command_used:role==='dm'?'encounter_player_turn_action_response':'talk',content:sourceEmpty?'':source,campaign_id:'01a0d854-78d5-7064-ae41-f63d561c8e01',character_id:42};
  card.__reactFiber$fixture={memoizedProps:{event}};list.append(row);
+ const neighbor=document.createElement('div');neighbor.style.height='16px';list.append(neighbor);
  const visible=element=>{for(let node=element;node;node=node.parentElement){const s=getComputedStyle(node);if(s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse'||Number(s.opacity)===0||s.contentVisibility==='hidden')return false;}return true;};
  const ink=s=>s.color!=='transparent'&&s.color!=='rgba(0, 0, 0, 0)'&&s.webkitTextFillColor!=='transparent'&&s.webkitTextFillColor!=='rgba(0, 0, 0, 0)';
  const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};};
@@ -217,18 +220,25 @@ async function atomicFirstPresentationScenario(configure,settings,install,dictio
   const dot=presented.querySelector('[data-ff-translation-dot]'),dotStyle=dot&&getComputedStyle(dot,'::after');
   const progress=!!dot&&visible(dot)&&ink(dotStyle)&&!!dotStyle.content&&dotStyle.content!=='none'&&dotStyle.content!=='""';
   const value={stage,rowVisible:visible(row),containerVisible:visible(container),avatarVisible:visible(avatar),cardVisible:visible(card),bodyVisible:visible(body),glyph,progress,
-   nativeBodyEmpty:!body.textContent.trim(),sameRow:list.firstElementChild===row,sameContainer:row.firstElementChild===container,sameAvatar:row.querySelector('.native-avatar')===avatar,
+   englishVisible:/[A-Za-z]{2,}/.test(presented.textContent??'')&&glyph,nativeBodyEmpty:!body.textContent.trim(),sameRow:list.firstElementChild===row,sameContainer:row.firstElementChild===container,sameAvatar:row.querySelector('.native-avatar')===avatar,
    sameCard:row.querySelector('.card')===card,sameBody:card.querySelector('.prose')===body,sameRenderer:body.firstElementChild===renderer,
    sameNativeText:!text||paragraph.firstChild===text&&text.isConnected,draftSame:draft.firstChild===draftNode&&draft.textContent==='Preserve the native draft.',at:performance.now()};
-  if(geometry)value.geometry={row:rect(row),avatar:rect(avatar),card:rect(card),body:rect(body)};
+  if(geometry)value.geometry={row:rect(row),avatar:rect(avatar),card:rect(card),body:rect(body),neighborGap:neighbor.getBoundingClientRect().top-row.getBoundingClientRect().bottom};
   frames.push(value);return value;
  };
  // Both empty paints belong to acceptance: unlike the older authorOnly sample.
  await frame();sample('native-empty-first-paint',true);
  await frame();sample('native-empty-second-paint');
- paragraph=document.createElement('p');text=document.createTextNode('Мой герой');paragraph.append(text);renderer.append(paragraph);
+ event.content=source;paragraph=document.createElement('p');text=document.createTextNode(english?source:'Мой герой');paragraph.append(text);renderer.append(paragraph);
  await frame();sample('native-first-chunk');
- text.data=source;await frame();const final=sample('native-complete',true);
+ let requestCount=0;
+ if(english&&translated){
+  await new Promise(resolve=>setTimeout(resolve,220));
+  const controller=window.__friendsFablesDesktopTranslation,requests=controller.collect().nodes.filter(node=>node.text===source);requestCount=requests.length;
+  if(requestCount!==1)throw Error('Atomic English prose did not enter actual translation controller');
+  controller.finish(token,requests.map(node=>({id:node.id,version:node.version,text:'Река огибает тихую башню.',complete:true})));
+ }else text.data=source;
+ await frame();const final=sample('native-complete',true);
  // Only one finite glyph Range, after the mutation window, proves native ink.
  const range=document.createRange();range.selectNodeContents(text);const glyphRect=range.getClientRects()[0];
  const nativeGlyph=!!glyphRect&&glyphRect.width>0&&glyphRect.height>0&&visible(paragraph)&&ink(getComputedStyle(paragraph));range.detach();
@@ -236,10 +246,65 @@ async function atomicFirstPresentationScenario(configure,settings,install,dictio
  const atomic=frames.every(s=>(!s.avatarVisible&&!s.cardVisible)||s.glyph||s.progress);
  const revealed=final.avatarVisible&&final.cardVisible&&final.glyph&&nativeGlyph;
  const noFakePending=!card.querySelector('[data-ff-translation-placeholder],[data-ff-translation-pending],[data-ff-translation-dot]');
- window.__friendsFablesDesktopTranslation.dispose();window.__friendsFablesDesktopChatAppearance.dispose();
- return {passed:retained&&atomic&&revealed&&noFakePending,case:'atomic-first-presentation-russian-player',contract:'new-UX-not-translator-cause',dynamic:true,role:'player',frames,retained,atomic,revealed,nativeGlyph,noFakePending};
+ const geometryStable=Math.abs(frames[0].geometry.neighborGap-final.geometry.neighborGap)<1;
+ const cleanGate=!container.hasAttribute('inert')&&!container.style.getPropertyValue('opacity');
+ const sourceHidden=!english||!translated||frames.filter(s=>s.stage==='native-first-chunk').every(s=>!s.englishVisible);
+ // First presentation is latched. Later native hydration cannot hide the row.
+ const completed=text.data;text.data='';await frame();const hydration=sample('presented-native-hydration');
+ const neverRehidden=hydration.avatarVisible&&hydration.cardVisible;
+ text.data=completed;await frame();
+ window.__friendsFablesDesktopTranslation?.dispose();window.__friendsFablesDesktopChatAppearance.dispose();
+ return {passed:retained&&atomic&&revealed&&noFakePending&&sourceHidden&&neverRehidden&&geometryStable&&cleanGate,case:'atomic-first-presentation-russian-player',contract:'new-UX-not-translator-cause',dynamic,role,sourceEmpty,translated,english,frames,retained,atomic,revealed,nativeGlyph,noFakePending,sourceHidden,neverRehidden,geometryStable,cleanGate,requestCount};
 }
-module.exports={continuityScenario,firstPaintScenario,handoffScenario,atomicFirstPresentationScenario};
+// Bounded ownership/cleanup controls use real appearance, no fake pending state.
+async function firstPresentationPreservationScenario(configure,settings){
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),settle=async()=>{await frame();await frame();};
+ const check=(value,message)=>{if(!value)throw Error('First presentation preservation: '+message);};
+ document.body.innerHTML='<main id="feed"><div id="events-list"></div></main><div class="tiptap" contenteditable="true">Retained draft</div>';
+ const list=document.getElementById('events-list'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
+ let id=200;
+ const make=(changes={},extra='')=>{
+  const event={id:++id,role:'dm',command_used:'talk',content:'',campaign_id:location.pathname.split('/')[1],...changes};
+  const wrapper=document.createElement('div');wrapper.id='event-'+id;
+  wrapper.innerHTML=`<div id="event-container-${id}"><div class="avatar" style="height:40px;width:40px"></div><div class="card" id="event-message-card-${id}"><div class="author">Franz<button type="button">Menu</button></div><div class="prose"><div></div></div>${extra}</div></div>`;
+  const row=wrapper.firstElementChild,card=row.querySelector('.card'),renderer=card.querySelector('.prose>div');
+  card.__reactFiber$fixture={memoizedProps:{event}};
+  return {wrapper,row,card,event,renderer,mount(){list.append(wrapper);return this;}};
+ };
+ const existing=make().mount();configure(settings);await settle();
+ check(!existing.row.style.opacity,'existing empty row was hidden');
+ const styled=make();styled.row.style.setProperty('opacity','.65','important');styled.mount();await settle();
+ check(styled.row.style.opacity==='0'&&styled.row.inert,'new empty row not gated/noninteractive');
+ draft.focus();styled.card.querySelector('button').focus();check(document.activeElement===draft,'invisible menu received focus');
+ styled.renderer.append(document.createTextNode('Первая часть.'));await settle();
+ check(styled.row.style.opacity==='0.65'&&styled.row.style.getPropertyPriority('opacity')==='important'&&!styled.row.inert,'prior style/interaction not restored at first text');
+ styled.renderer.textContent='';await settle();check(styled.row.style.opacity==='0.65'&&!styled.row.inert,'presented hydration was gated again');
+ const native=make().mount();await settle();native.row.style.opacity='.4';native.row.setAttribute('inert','native-owner');await settle();
+ check(native.row.style.opacity==='0.4'&&native.row.getAttribute('inert')==='native-owner','newer native declarations overwritten');
+ const hidden=make();hidden.row.style.opacity='0';hidden.mount();await settle();check(!hidden.row.inert,'native hidden row was claimed');
+ hidden.row.style.opacity='1';await settle();check(hidden.row.style.opacity==='0'&&hidden.row.inert,'native-hidden new row exposed empty shell on reveal');hidden.renderer.textContent='Готово.';await settle();check(hidden.row.style.opacity==='1'&&!hidden.row.inert,'native opacity was not restored');
+ const detached=make();detached.row.style.opacity='.7';detached.mount();await settle();detached.wrapper.remove();await settle();
+ check(detached.row.style.opacity==='0.7'&&!detached.row.inert,'detached row retained owned gate');
+ const exclusions=[{command_used:'roll_attack'},{command_used:'outcome'},{command_used:'scene_generation'},{command_used:'unknown_future_command'},{role:'npc'},{attachments:[{}]},{processed:false,reasoning:'active'},{tool_calls:[{}]},{events_roll:{}}].map(change=>make(change).mount());
+ const loading=make({},'<div role="progressbar">Loading</div>').mount(),image=make();image.renderer.append(document.createElement('img'));image.mount();
+ const thoughts=make({processed:false,reasoning:null},'<div class="mt-2 mb-2"><button aria-expanded="false">Thoughts</button><div hidden>Reasoning loading...</div></div>').mount();
+ const expanded=make({processed:true,reasoning:'Native reasoning detail.'},'<div><button aria-expanded="true">Thoughts</button><div data-state="open"><div class="text-sm italic bg-muted/30 p-3 rounded-md text-foreground-muted">Native reasoning detail.</div></div></div>').mount();
+ const busy=make();busy.renderer.setAttribute('aria-busy','true');busy.mount();
+ const nativeInert=make();nativeInert.row.setAttribute('inert','native-inert');nativeInert.mount();
+ await settle();check([...exclusions,loading,image,busy,nativeInert,thoughts,expanded].every(item=>!item.row.style.opacity),'legitimate nonprose/loading/unknown row was gated');
+ const route=make();route.row.style.opacity='.8';route.mount();await settle();
+ const url=location.href;history.pushState({},'',location.pathname+'?view=settings');dispatchEvent(new PopStateEvent('popstate'));await settle();
+ check(route.row.style.opacity==='0.8'&&!route.row.inert,'route cleanup failed');
+ history.replaceState({},'',url);dispatchEvent(new PopStateEvent('popstate'));await settle();check(route.row.style.opacity==='0.8','route return hid existing row');
+ const disposed=make();disposed.row.style.setProperty('opacity','.3','important');disposed.mount();await settle();
+ check(disposed.row.style.opacity==='0','dispose prerequisite was not gated');
+ window.__friendsFablesDesktopChatAppearance.dispose();
+ check(disposed.row.style.opacity==='0.3'&&disposed.row.style.getPropertyPriority('opacity')==='important'&&!disposed.row.inert,'dispose cleanup failed');
+ check(native.row.style.opacity==='0.4'&&native.row.getAttribute('inert')==='native-owner','dispose overwrote native authority');
+ check(draft.firstChild===draftNode&&draft.textContent==='Retained draft','draft identity changed');
+ return {passed:true,case:'atomic-first-presentation-preservations',excluded:exclusions.length+6,styleAuthority:true,route:true,detach:true,dispose:true,inertFocus:true,existingHydration:true};
+}
+module.exports={continuityScenario,firstPaintScenario,handoffScenario,atomicFirstPresentationScenario,firstPresentationPreservationScenario};
 if(process.versions.electron){
  const {app,BrowserWindow,session}=require('electron');app.on('window-all-closed',()=>{});
  let window,profile,passed=false;const timer=setTimeout(()=>{console.error('Combined chat translation fixture timed out');app.exit(1);},30000);
@@ -252,10 +317,20 @@ if(process.versions.electron){
   window=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
   await window.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
   const settings={...DEFAULT_APPEARANCE,preset:'website',messages:{...DEFAULT_APPEARANCE.messages,enabled:true}};
-  if(process.env.FABLES_CHAT_TRANSLATION_SCENARIO==='atomic-first-presentation'){
+  const selected=process.env.FABLES_CHAT_TRANSLATION_SCENARIO;
+  if(!selected||selected==='atomic-first-presentation-matrix'){
+   const cases=[{}, {role:'dm',sourceEmpty:true}, {role:'dm',sourceEmpty:true,translated:false}, {english:true,dynamic:false}, {role:'dm',english:true}, {dynamic:false}, {translated:false}, {english:true,translated:false}];
+   for(const options of cases){
+    const result=await window.webContents.executeJavaScript(`(${atomicFirstPresentationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()},${JSON.stringify(options)})`);
+    console.log('Atomic first presentation matrix result',JSON.stringify(result));assert.equal(result.passed,true,'Atomic first presentation matrix failed');
+   }
+   const preservation=await window.webContents.executeJavaScript(`(${firstPresentationPreservationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)})`);
+   console.log('Atomic first presentation preservation result',JSON.stringify(preservation));assert.equal(preservation.passed,true);passed=true;
+  }
+  if(selected==='atomic-first-presentation'){
    const result=await window.webContents.executeJavaScript(`(${atomicFirstPresentationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()})`);
    console.log('Atomic first presentation result',JSON.stringify(result));assert.equal(result.passed,true,'New row painted avatar/border without native body glyph or real progress');passed=true;
-  }else{
+  }else if(selected!=='atomic-first-presentation-matrix'){
   {
    const results=[];for(const kind of ['pending','partial','russian','foreign-author','consumed-preview']){
     const result=await window.webContents.executeJavaScript(`(${handoffScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()},${JSON.stringify(kind)})`);
@@ -272,5 +347,5 @@ if(process.versions.electron){
   console.log('Combined chat translation result',JSON.stringify(result));assert.equal(result.passed,true,'Native pending chat presentation became blank or lost identity');passed=true;
   }
   }
- }catch(error){console.error('Combined chat translation fixture failed:',error);}finally{clearTimeout(timer);window?.destroy();if(profile)await fs.rm(profile,{recursive:true,force:true});app.exit(passed?0:1);}})().catch(error=>{console.error(error);app.exit(1);});
+ }catch(error){passed=false;console.error('Combined chat translation fixture failed:',error);}finally{clearTimeout(timer);window?.destroy();if(profile)await fs.rm(profile,{recursive:true,force:true});app.exit(passed?0:1);}})().catch(error=>{console.error(error);app.exit(1);});
 }
