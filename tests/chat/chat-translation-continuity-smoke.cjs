@@ -189,7 +189,57 @@ async function handoffScenario(configure,settings,install,dictionary,local,kind)
  const nonblank=frames.filter(s=>!forbidden(s)).every(s=>s.glyph||s.progress),hiddenEnglish=frames.every(s=>!s.englishVisible);
  return {passed:retained&&nonblank&&hiddenEnglish&&clean&&association,case:'player-optimistic-confirmed-translation-handoff',kind,frames,retained,nonblank,hiddenEnglish,clean,association};
 }
-module.exports={continuityScenario,firstPaintScenario,handoffScenario};
+// New atomic-first-presentation UX contract, not proof of translator causation.
+// Captured native shape: event-container owns an external desktop avatar sibling
+// and the content/card column; .prose initially contains an empty renderer DIV.
+// Evidence: chat-association-one.json frames 1/3/4; native-chat-81.js eC/ej/oA
+// retained under the ignored live-campaign/post-audit task evidence (see REPORT).
+async function atomicFirstPresentationScenario(configure,settings,install,dictionary,local){
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+ const token='atomic-russian-player',source='Мой герой осторожно подходит к тихой башне.';
+ document.body.innerHTML='<main id="feed"><div id="events-list"></div></main><section class="grid relative"><div class="tiptap" contenteditable="true">Preserve the native draft.</div></section>';
+ const list=document.getElementById('events-list'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
+ configure(settings);install(token,dictionary,true,[],local,true,true);
+ const row=document.createElement('div');row.id='event-152';
+ row.innerHTML='<div id="event-container-152" style="display:flex;gap:8px"><div class="native-avatar-column" style="width:40px;flex:none"><div class="native-avatar" style="width:40px;height:40px;background:rgb(90,100,110)"></div></div><div class="native-content-column"><div class="card" id="event-message-card-152" style="border:1px solid rgb(110,120,130)"><div class="author">Мира</div><div class="prose"><div class="space-y-4 whitespace-normal"></div></div></div></div></div>';
+ const container=row.firstElementChild,card=row.querySelector('.card'),avatar=row.querySelector('.native-avatar'),body=card.querySelector('.prose'),renderer=body.firstElementChild;
+ const event={id:152,role:'player',content:source,campaign_id:'01a0d854-78d5-7064-ae41-f63d561c8e01',character_id:42};
+ card.__reactFiber$fixture={memoizedProps:{event}};list.append(row);
+ const visible=element=>{for(let node=element;node;node=node.parentElement){const s=getComputedStyle(node);if(s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse'||Number(s.opacity)===0||s.contentVisibility==='hidden')return false;}return true;};
+ const ink=s=>s.color!=='transparent'&&s.color!=='rgba(0, 0, 0, 0)'&&s.webkitTextFillColor!=='transparent'&&s.webkitTextFillColor!=='rgba(0, 0, 0, 0)';
+ const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};};
+ let paragraph,text;
+ const frames=[];
+ const sample=(stage,geometry=false)=>{
+  const presented=card.querySelector('[data-ff-translation-placeholder]')||card.querySelector('[data-ff-desktop-message-snapshot]')||body;
+  const walker=document.createTreeWalker(presented,NodeFilter.SHOW_TEXT);let node,glyph=false;
+  while(node=walker.nextNode())if(node.data.trim()&&visible(node.parentElement)&&ink(getComputedStyle(node.parentElement)))glyph=true;
+  const dot=presented.querySelector('[data-ff-translation-dot]'),dotStyle=dot&&getComputedStyle(dot,'::after');
+  const progress=!!dot&&visible(dot)&&ink(dotStyle)&&!!dotStyle.content&&dotStyle.content!=='none'&&dotStyle.content!=='""';
+  const value={stage,rowVisible:visible(row),containerVisible:visible(container),avatarVisible:visible(avatar),cardVisible:visible(card),bodyVisible:visible(body),glyph,progress,
+   nativeBodyEmpty:!body.textContent.trim(),sameRow:list.firstElementChild===row,sameContainer:row.firstElementChild===container,sameAvatar:row.querySelector('.native-avatar')===avatar,
+   sameCard:row.querySelector('.card')===card,sameBody:card.querySelector('.prose')===body,sameRenderer:body.firstElementChild===renderer,
+   sameNativeText:!text||paragraph.firstChild===text&&text.isConnected,draftSame:draft.firstChild===draftNode&&draft.textContent==='Preserve the native draft.',at:performance.now()};
+  if(geometry)value.geometry={row:rect(row),avatar:rect(avatar),card:rect(card),body:rect(body)};
+  frames.push(value);return value;
+ };
+ // Both empty paints belong to acceptance: unlike the older authorOnly sample.
+ await frame();sample('native-empty-first-paint',true);
+ await frame();sample('native-empty-second-paint');
+ paragraph=document.createElement('p');text=document.createTextNode('Мой герой');paragraph.append(text);renderer.append(paragraph);
+ await frame();sample('native-first-chunk');
+ text.data=source;await frame();const final=sample('native-complete',true);
+ // Only one finite glyph Range, after the mutation window, proves native ink.
+ const range=document.createRange();range.selectNodeContents(text);const glyphRect=range.getClientRects()[0];
+ const nativeGlyph=!!glyphRect&&glyphRect.width>0&&glyphRect.height>0&&visible(paragraph)&&ink(getComputedStyle(paragraph));range.detach();
+ const retained=frames.every(s=>s.sameRow&&s.sameContainer&&s.sameAvatar&&s.sameCard&&s.sameBody&&s.sameRenderer&&s.sameNativeText&&s.draftSame);
+ const atomic=frames.every(s=>(!s.avatarVisible&&!s.cardVisible)||s.glyph||s.progress);
+ const revealed=final.avatarVisible&&final.cardVisible&&final.glyph&&nativeGlyph;
+ const noFakePending=!card.querySelector('[data-ff-translation-placeholder],[data-ff-translation-pending],[data-ff-translation-dot]');
+ window.__friendsFablesDesktopTranslation.dispose();window.__friendsFablesDesktopChatAppearance.dispose();
+ return {passed:retained&&atomic&&revealed&&noFakePending,case:'atomic-first-presentation-russian-player',contract:'new-UX-not-translator-cause',dynamic:true,role:'player',frames,retained,atomic,revealed,nativeGlyph,noFakePending};
+}
+module.exports={continuityScenario,firstPaintScenario,handoffScenario,atomicFirstPresentationScenario};
 if(process.versions.electron){
  const {app,BrowserWindow,session}=require('electron');app.on('window-all-closed',()=>{});
  let window,profile,passed=false;const timer=setTimeout(()=>{console.error('Combined chat translation fixture timed out');app.exit(1);},30000);
@@ -202,6 +252,10 @@ if(process.versions.electron){
   window=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
   await window.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
   const settings={...DEFAULT_APPEARANCE,preset:'website',messages:{...DEFAULT_APPEARANCE.messages,enabled:true}};
+  if(process.env.FABLES_CHAT_TRANSLATION_SCENARIO==='atomic-first-presentation'){
+   const result=await window.webContents.executeJavaScript(`(${atomicFirstPresentationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()})`);
+   console.log('Atomic first presentation result',JSON.stringify(result));assert.equal(result.passed,true,'New row painted avatar/border without native body glyph or real progress');passed=true;
+  }else{
   {
    const results=[];for(const kind of ['pending','partial','russian','foreign-author','consumed-preview']){
     const result=await window.webContents.executeJavaScript(`(${handoffScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()},${JSON.stringify(kind)})`);
@@ -216,6 +270,7 @@ if(process.versions.electron){
   }
   const result=await window.webContents.executeJavaScript(`(${continuityScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()})`);
   console.log('Combined chat translation result',JSON.stringify(result));assert.equal(result.passed,true,'Native pending chat presentation became blank or lost identity');passed=true;
+  }
   }
  }catch(error){console.error('Combined chat translation fixture failed:',error);}finally{clearTimeout(timer);window?.destroy();if(profile)await fs.rm(profile,{recursive:true,force:true});app.exit(passed?0:1);}})().catch(error=>{console.error(error);app.exit(1);});
 }
