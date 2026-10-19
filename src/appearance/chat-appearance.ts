@@ -39,6 +39,75 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
     return;
   }
+  // Only a newly mounted, trusted normal-prose row can wait for first ink.
+  // Existing/hydrating rows are already presented and never enter this gate.
+  const presentedRows = new WeakSet<Element>(document.querySelectorAll('[id^="event-message-card-"]'));
+  const firstRows = new Map<HTMLElement, { row: HTMLElement; value: string; priority: string; inert: string | null }>();
+  function releaseFirst(card: HTMLElement): void {
+    const owned = firstRows.get(card); if (!owned) return;
+    if (owned.row.style.getPropertyValue('opacity') === '0' && owned.row.style.getPropertyPriority('opacity') === 'important') {
+      if (owned.value) owned.row.style.setProperty('opacity', owned.value, owned.priority);
+      else owned.row.style.removeProperty('opacity');
+    }
+    if (owned.row.getAttribute('inert') === '') {
+      if (owned.inert === null) owned.row.removeAttribute('inert'); else owned.row.setAttribute('inert', owned.inert);
+    }
+    firstRows.delete(card);
+  }
+  function clearFirst(): void { for (const card of firstRows.keys()) releaseFirst(card); }
+  function firstPresentation(cards: Iterable<HTMLElement>, campaign: string): void {
+    for (const [card, owned] of firstRows) if (!card.isConnected || !owned.row.contains(card)) releaseFirst(card);
+    for (const card of cards) {
+      const owned = firstRows.get(card);
+      if (!owned && presentedRows.has(card)) continue;
+      const event = nativeEvent(card) as (NativeEvent & { command_used?: string | null; attachments?: unknown[]; reasoning?: unknown; processed?: boolean; tool_calls?: unknown; events_roll?: unknown }) | undefined;
+      const id = event?.id, suffix = id == null ? 'null' : String(id);
+      const row = card.closest<HTMLElement>(`[id="event-container-${suffix}"]`);
+      const body = card.querySelector<HTMLElement>('.prose');
+      // Native oq dispatches rolls/outcomes/scenes separately. Normal oB/oF
+      // prose includes these text commands; oM preserves DM Thoughts/loading.
+      const normal = event && (event.role === 'player' || event.role === 'dm') && event.campaign_id === campaign
+        && typeof event.content === 'string' && event.content.length <= 40000 && (id == null ? event.isOptimistic === true : Number.isSafeInteger(id) && id > 0)
+        && card.id === `event-message-card-${suffix}` && row?.closest('#events-list') && row.querySelectorAll('[id^="event-message-card-"]').length === 1
+        && (!event.command_used || ['talk','player_chat','cast_spell','encounter_player_turn_action_response'].includes(event.command_used)) && !event.attachments?.length && !(event.role === 'dm' && event.processed === false) && (event.tool_calls == null || Array.isArray(event.tool_calls) && event.tool_calls.length === 0) && !event.events_roll
+        && body && !row.querySelector('[role="progressbar"],[aria-busy="true"]:not(.prose):not([data-ff-translation-blank]),.custom-spin,.animate-spin,[data-reasoning],[data-loading],[data-attachment],[data-attachments],audio,video,iframe')
+        && !body.querySelector('img,svg,canvas,button,input,textarea,select,[contenteditable],a[download]');
+      if (!normal || !row || !body) { presentedRows.add(card); releaseFirst(card); continue; }
+      // Respect newer native opacity writes; ownership ends rather than fighting.
+      if (owned && (row !== owned.row || row.style.getPropertyValue('opacity') !== '0' || row.style.getPropertyPriority('opacity') !== 'important' || row.getAttribute('inert') !== '')) { presentedRows.add(card); releaseFirst(card); continue; }
+      const readable = (element: Element): boolean => {
+        for (let node: Element | null = element; node; node = node.parentElement) {
+          const style = getComputedStyle(node);
+          if (node.hasAttribute('hidden') || style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse'
+            || style.contentVisibility === 'hidden' || style.opacity === '0' && !(owned && node === row)) return false;
+        }
+        const style = getComputedStyle(element);
+        return style.color !== 'transparent' && style.color !== 'rgba(0, 0, 0, 0)' && style.webkitTextFillColor !== 'transparent' && style.webkitTextFillColor !== 'rgba(0, 0, 0, 0)';
+      };
+      // A collapsed static Thoughts header is not progress. Preserve genuine
+      // visible native reasoning content (oM), including expansion while waiting.
+      if (Array.from(row.querySelectorAll('[class~="bg-muted/30"][class~="italic"]')).some(element => element.textContent?.trim() && readable(element))) { presentedRows.add(card); releaseFirst(card); continue; }
+      let ready = false;
+      const walker = document.createTreeWalker(card.querySelector('[data-ff-desktop-message-snapshot]') ?? body, NodeFilter.SHOW_TEXT);
+      let node: Node | null;
+      while ((node = walker.nextNode())) if (node.textContent?.trim() && node.parentElement && readable(node.parentElement)) { ready = true; break; }
+      if (!ready) for (const dot of body.querySelectorAll('[data-ff-translation-dot]')) {
+        const style = getComputedStyle(dot, '::after');
+        if (readable(dot) && style.content && style.content !== 'none' && style.content !== '""') { ready = true; break; }
+      }
+      if (ready) { presentedRows.add(card); releaseFirst(card); continue; }
+      if (!owned) {
+        // Opacity preserves native layout and translation eligibility. Never
+        // claim native-hidden rows or overwrite a previous inline declaration.
+        if (!readable(row) || row.closest('[inert]') || row.contains(document.activeElement)) continue;
+        presentedRows.add(card);
+        firstRows.set(card, { row, value: row.style.getPropertyValue('opacity'), priority: row.style.getPropertyPriority('opacity'), inert: row.getAttribute('inert') });
+        row.style.setProperty('opacity', '0', 'important'); row.setAttribute('inert', '');
+      }
+    }
+    // Pending rows are bounded; already-seen rows remain latched in a WeakSet.
+    while (firstRows.size > 32) releaseFirst(firstRows.keys().next().value!);
+  }
   function signature(event: NativeEvent | undefined, campaign: string): string | undefined {
     if (!event || typeof event.content !== 'string' || !event.content.trim() || event.content.length > 40000 || event.campaign_id !== campaign) return;
     if (event.role === 'player' && !((typeof event.character_id === 'number' && Number.isSafeInteger(event.character_id) && event.character_id > 0) || (typeof event.character_id === 'string' && event.character_id.length > 0 && event.character_id.length < 128))) return;
@@ -135,8 +204,8 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     if (disposed) return;
     const campaign = /^\/([^/]+)\/play\/?$/.exec(location.pathname)?.[1];
     const view = new URLSearchParams(location.search).get('view');
-    if (!campaign || view && view !== 'play') { clearSnapshots(); snapshotCampaign = undefined; return; }
-    if (snapshotCampaign !== campaign) { clearSnapshots(); snapshotCampaign = campaign; }
+    if (!campaign || view && view !== 'play') { clearFirst(); clearSnapshots(); snapshotCampaign = undefined; return; }
+    if (snapshotCampaign !== campaign) { clearFirst(); clearSnapshots(); snapshotCampaign = campaign; }
     const now = Date.now();
     // Expire before matching so an old temporary message cannot bridge a new ID.
     for (const [id, snapshot] of snapshots) {
@@ -211,6 +280,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         if (old && (old.gapAt === undefined || now - old.gapAt < 4000)) showOverlay(old, card);
       }
     }
+    firstPresentation(cards ?? document.querySelectorAll<HTMLElement>('[id^="event-message-card-"]'), campaign);
     while (snapshots.size > 32) { const id = snapshots.keys().next().value!; removeOverlay(snapshots.get(id)!); snapshots.delete(id); }
     clearTimeout(snapshotTimer);
     const gaps = Array.from(snapshots.values()).filter(snapshot => snapshot.gapAt !== undefined);
@@ -678,21 +748,21 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
           if (node.matches(cardSelector)) add(node as HTMLElement, true);
           for (const mounted of node.querySelectorAll<HTMLElement>(cardSelector)) add(mounted, true);
         }
-      } else if (record.type === 'attributes' && ['class','style','hidden','aria-hidden','data-ff-translation-blank','data-ff-translation-pending'].includes(record.attributeName ?? '')) {
+      } else if (record.type === 'attributes' && ['class','style','hidden','inert','aria-hidden','data-ff-translation-blank','data-ff-translation-pending'].includes(record.attributeName ?? '')) {
         // A container can conceal every card without touching the prose itself.
         for (const descendant of target.querySelectorAll<HTMLElement>(cardSelector)) add(descendant, true);
       }
     }
-    if (cards.size || detached) snapshotMessages(cards, changedBodies);
+    if (cards.size || detached || firstRows.size) snapshotMessages(cards, changedBodies);
     scrollMutations(records);
     if (records.some(record => record.type !== 'characterData' || record.target.parentElement?.closest('svg[id="d20"]'))) schedule();
   });
   observer.observe(document.documentElement, {
     childList: true, subtree: true, attributes: true, characterData: true,
-    attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state', 'data-panel', 'data-panel-group-id', 'data-panel-id', 'data-panel-size', 'style', 'hidden', 'aria-hidden', 'data-ff-translation-blank', 'data-ff-translation-pending', 'data-ff-desktop-hidden-instructions'],
+    attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state', 'data-panel', 'data-panel-group-id', 'data-panel-id', 'data-panel-size', 'style', 'hidden', 'inert', 'aria-hidden', 'data-ff-translation-blank', 'data-ff-translation-pending', 'data-ff-desktop-hidden-instructions'],
   });
   function translationReady(): void { clearSnapshots(); snapshotMessages(); rebaseScrollAnchor(); }
-  function routeChanged(): void { clearSnapshots(); snapshotCampaign = undefined; snapshotMessages(); releaseScrollFeed(); scrollYield = false; scrollGesture = false; rebaseScrollAnchor(); schedule(); }
+  function routeChanged(): void { clearFirst(); for (const card of document.querySelectorAll('[id^="event-message-card-"]')) presentedRows.add(card); clearSnapshots(); snapshotCampaign = undefined; snapshotMessages(); releaseScrollFeed(); scrollYield = false; scrollGesture = false; rebaseScrollAnchor(); schedule(); }
   document.addEventListener('ff-desktop-translation-ready', translationReady);
   for (const type of ['wheel','touchstart','pointerdown','keydown']) document.addEventListener(type, scrollIntent, { capture: true, passive: true });
   document.addEventListener('scroll', feedScrolled, true); document.addEventListener('scrollend', scrollFinished, true);
@@ -706,7 +776,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   host[key] = { followAfterSubmit, dispose() {
     disposed = true; observer.disconnect(); cancelAnimationFrame(frame); clearTimeout(snapshotTimer);
     closeExpanded(); for (const button of expandButtons.values()) button.remove();
-    clearSnapshots(); releaseScrollFeed(); cancelAnimationFrame(scrollFrame);
+    clearFirst(); clearSnapshots(); releaseScrollFeed(); cancelAnimationFrame(scrollFrame);
     for (const type of ['wheel','touchstart','pointerdown','keydown']) document.removeEventListener(type, scrollIntent, true);
     document.removeEventListener('scroll', feedScrolled, true); document.removeEventListener('scrollend', scrollFinished, true); document.removeEventListener('selectionchange', scrollSelection);
     for (const type of ['touchend','touchcancel','pointerup','pointercancel']) window.removeEventListener(type, scrollFinished, true);
