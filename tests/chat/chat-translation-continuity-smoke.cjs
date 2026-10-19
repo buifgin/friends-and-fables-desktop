@@ -205,7 +205,7 @@ async function atomicFirstPresentationScenario(configure,settings,install,dictio
  row.innerHTML='<div id="event-container-152" style="display:flex;gap:8px"><div class="native-avatar-column" style="width:40px;flex:none"><div class="native-avatar" style="width:40px;height:40px;background:rgb(90,100,110)"></div></div><div class="native-content-column"><div class="card" id="event-message-card-152" style="border:1px solid rgb(110,120,130)"><div class="author">Мира</div><div class="prose"><div class="space-y-4 whitespace-normal"></div></div></div></div></div>';
  const container=row.firstElementChild,card=row.querySelector('.card'),avatar=row.querySelector('.native-avatar'),body=card.querySelector('.prose'),renderer=body.firstElementChild;
  if(role==='dm'){const thoughts=document.createElement('div');thoughts.className='mt-2 mb-2';thoughts.innerHTML='<button aria-expanded="false" data-state="closed">Thoughts</button><div hidden data-state="closed"><div class="text-sm italic bg-muted/30 p-3 rounded-md text-foreground-muted">Native reasoning detail.</div></div>';body.before(thoughts);}
- const event={id:152,role,processed:true,reasoning:role==='dm'?'Native reasoning detail.':null,command_used:role==='dm'?'encounter_player_turn_action_response':'talk',content:sourceEmpty?'':source,campaign_id:'01a0d854-78d5-7064-ae41-f63d561c8e01',character_id:42};
+ const event={id:152,role,processed:true,reasoning:role==='dm'?'Native reasoning detail.':null,command_used:role==='dm'?'encounter_player_turn_action_response':'talk',content:sourceEmpty?'':source,campaign_id:'01a0d854-78d5-7064-ae41-f63d561c8e01',character_id:42,...(options.emptyToolCalls?{tool_calls:[]}: {})};
  card.__reactFiber$fixture={memoizedProps:{event}};list.append(row);
  const neighbor=document.createElement('div');neighbor.style.height='16px';list.append(neighbor);
  const visible=element=>{for(let node=element;node;node=node.parentElement){const s=getComputedStyle(node);if(s.display==='none'||s.visibility==='hidden'||s.visibility==='collapse'||Number(s.opacity)===0||s.contentVisibility==='hidden')return false;}return true;};
@@ -254,7 +254,7 @@ async function atomicFirstPresentationScenario(configure,settings,install,dictio
  const neverRehidden=hydration.avatarVisible&&hydration.cardVisible;
  text.data=completed;await frame();
  window.__friendsFablesDesktopTranslation?.dispose();window.__friendsFablesDesktopChatAppearance.dispose();
- return {passed:retained&&atomic&&revealed&&noFakePending&&sourceHidden&&neverRehidden&&geometryStable&&cleanGate,case:'atomic-first-presentation-russian-player',contract:'new-UX-not-translator-cause',dynamic,role,sourceEmpty,translated,english,frames,retained,atomic,revealed,nativeGlyph,noFakePending,sourceHidden,neverRehidden,geometryStable,cleanGate,requestCount};
+ return {passed:retained&&atomic&&revealed&&noFakePending&&sourceHidden&&neverRehidden&&geometryStable&&cleanGate,case:'atomic-first-presentation-russian-player',contract:'new-UX-not-translator-cause',dynamic,role,sourceEmpty,translated,english,...(options.emptyToolCalls?{emptyToolCalls:true}: {}),frames,retained,atomic,revealed,nativeGlyph,noFakePending,sourceHidden,neverRehidden,geometryStable,cleanGate,requestCount};
 }
 // Bounded ownership/cleanup controls use real appearance, no fake pending state.
 async function firstPresentationPreservationScenario(configure,settings){
@@ -319,7 +319,7 @@ if(process.versions.electron){
   const settings={...DEFAULT_APPEARANCE,preset:'website',messages:{...DEFAULT_APPEARANCE.messages,enabled:true}};
   const selected=process.env.FABLES_CHAT_TRANSLATION_SCENARIO;
   if(!selected||selected==='atomic-first-presentation-matrix'){
-   const cases=[{}, {role:'dm',sourceEmpty:true}, {role:'dm',sourceEmpty:true,translated:false}, {english:true,dynamic:false}, {role:'dm',english:true}, {dynamic:false}, {translated:false}, {english:true,translated:false}];
+   const cases=[{}, {role:'dm',sourceEmpty:true}, {role:'dm',sourceEmpty:true,translated:false}, {english:true,dynamic:false}, {role:'dm',english:true}, {dynamic:false}, {translated:false}, {english:true,translated:false}, {role:'dm',sourceEmpty:true,emptyToolCalls:true}];
    for(const options of cases){
     const result=await window.webContents.executeJavaScript(`(${atomicFirstPresentationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()},${JSON.stringify(options)})`);
     console.log('Atomic first presentation matrix result',JSON.stringify(result));assert.equal(result.passed,true,'Atomic first presentation matrix failed');
@@ -327,7 +327,10 @@ if(process.versions.electron){
    const preservation=await window.webContents.executeJavaScript(`(${firstPresentationPreservationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)})`);
    console.log('Atomic first presentation preservation result',JSON.stringify(preservation));assert.equal(preservation.passed,true);passed=true;
   }
-  if(selected==='atomic-first-presentation'){
+  if(selected==='atomic-empty-tool-calls'){
+   const result=await window.webContents.executeJavaScript(`(${atomicFirstPresentationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()},${JSON.stringify({role:'dm',sourceEmpty:true,emptyToolCalls:true})})`);
+   console.log('Atomic empty tool calls result',JSON.stringify(result));assert.equal(result.passed,true,'Completed DM with zero tool calls painted an empty shell');passed=true;
+  }else if(selected==='atomic-first-presentation'){
    const result=await window.webContents.executeJavaScript(`(${atomicFirstPresentationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()})`);
    console.log('Atomic first presentation result',JSON.stringify(result));assert.equal(result.passed,true,'New row painted avatar/border without native body glyph or real progress');passed=true;
   }else if(selected!=='atomic-first-presentation-matrix'){
