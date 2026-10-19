@@ -73,7 +73,7 @@ async function quiescenceScenario(mode, code) {
       if (rect?.width > 0 && rect.height > 0) { glyph = { top: rect.top, left: rect.left }; break; }
     }
     const rect = item.card.getBoundingClientRect();
-    return { id: item.card.id, glyph, top: rect.top, height: rect.height, text: presented.textContent,
+    return { id: item.card.id, glyph, top: rect.top, left: rect.left, height: rect.height, text: presented.textContent,
       guidanceHidden: getComputedStyle(item.guidance).display === 'none', sourceVisible: !!item.extra && /[A-Za-z]{2,}/.test(item.extra.data) && visibleInk(item.extra.parentElement) };
   });
   let translation;
@@ -130,7 +130,7 @@ async function quiescenceScenario(mode, code) {
     const identity = items.every(item => item.card.querySelector('.prose') === item.body && item.paragraph.firstChild === item.text && item.text.isConnected && item.guidance.firstChild === item.guidanceText && item.guidance.isConnected);
     check(items.every(item => item.text.data === item.expectedText && (!item.extra || item.extra.data === 'Река огибает тихую башню.')), 'native Russian/original text or final translated fragment changed');
     const initialSeed = initialAnchors[0], finalSeed = finalAnchors[0];
-    check(finalSeed.glyph && Math.abs(initialSeed.height - finalSeed.height) <= 1 && Math.abs((initialSeed.glyph.top - initialSeed.top) - (finalSeed.glyph.top - finalSeed.top)) <= 1, 'unchanged seed card/glyph anchor shifted');
+    check(finalSeed.glyph && Math.abs(initialSeed.height - finalSeed.height) <= 1 && Math.abs((initialSeed.glyph.top - initialSeed.top) - (finalSeed.glyph.top - finalSeed.top)) <= 1 && Math.abs((initialSeed.glyph.left - initialSeed.left) - (finalSeed.glyph.left - finalSeed.left)) <= 1, 'unchanged seed card/glyph anchor shifted');
     check(identity && draft.firstChild === draftNode && draft.textContent === 'Preserve the native draft.', 'native card/body/Text/instruction/draft identity changed');
     check(finalAnchors.every(value => value.glyph && value.guidanceHidden && !value.sourceVisible), 'final ink/hidden-instruction/source policy failed');
     check(!list.querySelector('[data-ff-translation-placeholder],[data-ff-desktop-message-snapshot]'), 'settled presentation retained an overlay');
@@ -157,7 +157,7 @@ if (process.versions.electron) {
         const site = session.fromPartition(`mutation-quiescence-${mode}`);
         site.protocol.handle('https', () => new Response('<!doctype html><style>body{margin:0;color:#eee;background:#222}#feed{height:600px;overflow:auto}.card{position:relative;width:500px;padding:12px;box-sizing:border-box}.author{height:24px}.prose p{margin:0;line-height:24px}</style>', { headers: { 'Content-Type': 'text/html' } }));
         window = new BrowserWindow({ show: false, width: 1000, height: 800, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
-        window.webContents.on('console-message', (_event, details) => console.log('Mutation renderer', details.message));
+        window.webContents.on('console-message', event => { if (/^MUTATION-(?:STAGE|DIAGNOSTIC)\b/.test(event.message)) console.log(event.message); });
         await window.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play'); window.show(); window.focus(); window.webContents.focus(); assert(window.isVisible());
         const result = await window.webContents.executeJavaScript(`(${quiescenceScenario.toString()})(${JSON.stringify(mode)},${JSON.stringify(code)})`);
         console.log('Mutation quiescence result', JSON.stringify(result)); assert.equal(result.passed, true); window.destroy(); window = undefined;
