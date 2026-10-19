@@ -69,7 +69,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       const normal = event && (event.role === 'player' || event.role === 'dm') && event.campaign_id === campaign
         && typeof event.content === 'string' && event.content.length <= 40000 && (id == null ? event.isOptimistic === true : Number.isSafeInteger(id) && id > 0)
         && card.id === `event-message-card-${suffix}` && row?.closest('#events-list') && row.querySelectorAll('[id^="event-message-card-"]').length === 1
-        && (!event.command_used || ['talk','player_chat','cast_spell','encounter_player_turn_action_response'].includes(event.command_used)) && !event.attachments?.length && !(event.role === 'dm' && event.processed === false) && !event.tool_calls && !event.events_roll
+        && (!event.command_used || ['talk','player_chat','cast_spell','encounter_player_turn_action_response'].includes(event.command_used)) && !event.attachments?.length && !(event.role === 'dm' && event.processed === false) && (event.tool_calls == null || Array.isArray(event.tool_calls) && event.tool_calls.length === 0) && !event.events_roll
         && body && !row.querySelector('[role="progressbar"],[aria-busy="true"]:not(.prose):not([data-ff-translation-blank]),.custom-spin,.animate-spin,[data-reasoning],[data-loading],[data-attachment],[data-attachments],audio,video,iframe')
         && !body.querySelector('img,svg,canvas,button,input,textarea,select,[contenteditable],a[download]');
       if (!normal || !row || !body) { presentedRows.add(card); releaseFirst(card); continue; }
