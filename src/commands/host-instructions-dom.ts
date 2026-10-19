@@ -13,10 +13,7 @@ export function configureInstructionHiding(enabled: boolean): void {
       const value=parent.querySelector(':scope>.tiptap>p:last-child')?.textContent?.trim()??'';
       if(!value.startsWith('[[FF-SP:1]]')||!value.endsWith('[[/FF-SP:1]]'))parent.removeAttribute('data-ff-desktop-sp-draft');
     }
-    for(const element of document.querySelectorAll('[data-ff-desktop-instruction-block]')){
-      element.removeAttribute('data-ff-desktop-hidden-instructions');element.removeAttribute('data-ff-desktop-instruction-block');
-      const original=ignored.get(element);if(original===null)element.removeAttribute('data-ff-translation-ignore');else if(original!==undefined)element.setAttribute('data-ff-translation-ignore',original);ignored.delete(element);
-    }
+    const next=new Set<Element>();
     for(const root of document.querySelectorAll('.prose')) {
       if(root.closest('form'))continue;
       for(const first of root.querySelectorAll<HTMLElement>('p')) {
@@ -27,11 +24,23 @@ export function configureInstructionHiding(enabled: boolean): void {
           last=last.nextElementSibling;
           if(last){nodes.push(last);total+=last.textContent?.length??0;}
         }
-        if(last?.textContent?.trim().endsWith('[[/FF-SP:1]]'))for(const node of nodes){
-          if(!ignored.has(node))ignored.set(node,node.getAttribute('data-ff-translation-ignore'));node.setAttribute('data-ff-translation-ignore','true');node.setAttribute('data-ff-desktop-instruction-block','true');
-          if(hidden)node.setAttribute('data-ff-desktop-hidden-instructions','true');
-        }
+        if(last?.textContent?.trim().endsWith('[[/FF-SP:1]]'))for(const node of nodes)next.add(node);
       }
+    }
+    const mark=(element:Element,name:string,value:string|null):void=>{
+      if(element.getAttribute(name)===value)return;
+      if(value===null)element.removeAttribute(name);else element.setAttribute(name,value);
+    };
+    // Keep stable instruction markers intact. Their removal/reapplication wakes
+    // translation and message snapshot observers even on unrelated native writes.
+    for(const element of document.querySelectorAll('[data-ff-desktop-instruction-block]'))if(!next.has(element)){
+      mark(element,'data-ff-desktop-hidden-instructions',null);mark(element,'data-ff-desktop-instruction-block',null);
+      const original=ignored.get(element);if(original!==undefined)mark(element,'data-ff-translation-ignore',original);ignored.delete(element);
+    }
+    for(const element of next){
+      if(!ignored.has(element))ignored.set(element,element.getAttribute('data-ff-translation-ignore'));
+      mark(element,'data-ff-translation-ignore','true');mark(element,'data-ff-desktop-instruction-block','true');
+      mark(element,'data-ff-desktop-hidden-instructions',hidden?'true':null);
     }
   }
   const observer=new MutationObserver(()=>{if(!queued){queued=true;queueMicrotask(scan);}});
