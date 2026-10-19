@@ -40,6 +40,84 @@ const remounted=observerForQuery();card.__reactFiber$fixture.memoizedState={memo
 if(observer.active!==0||duplicate.active!==0||remounted.active!==1||listeners.size!==1)throw Error('Remount retained stale observer');
 card.__reactFiber$fixture.memoizedState=null;window.dispatchEvent(new Event('click'));if(listeners.size!==0)throw Error('Unmount retained observer');
 card.__reactFiber$fixture.memoizedState={memoizedState:remounted,next:null};window.dispatchEvent(new Event('click'));
+// Scoped duplicate reproduction: saved actual website insertion helper, copied
+// verbatim at author time (no website/native entry import). Source native-chat-60.js
+// line1, zero-based characters 361306..362439, SHA256 320ae5aff309fe8d8fa58d85f3e74f2dedba2e7be003c9502aa2b33e39f45f5c.
+// Helper SHA256 25bf30f20706840325adbd83caab2afd61934753b9c3f93b8640ced45c91b897. Its replacement branch assigns the SAME newEvent
+// to every null row. User19Oct append pages have params null/null and inherited
+// previousCursor109198198; captured duplicate639 appears in both append pages.
+{
+ const a={default:{warn(){}}},t={CAMPAIGN_EVENTS_PAGE_SIZE:15},s={eventsQueries:{campaign:id=>['events',id]}};
+ let sameReferenceInput=false,aliasID=109241639;
+ const queryClient={setQueryData(key,update){
+  if(key[0]!=='events'||key[1]!==campaign)throw Error('Native insertion targeted wrong query');
+  const incoming=update(query.state.data),copies=incoming.pages.flatMap(page=>page.data).filter(row=>row.id===aliasID);
+  if(copies.length===2)sameReferenceInput=sameReferenceInput||copies[0]===copies[1];
+  return query.setData(incoming,{updatedAt:123,manual:true});
+ }};
+ const insertEventIntoQueryData=({queryClient:e,campaignId:r,newEvent:i})=>{i&&(!i.monster&&"monster_instance"in i&&i.monster_instance&&(i.monster=i.monster_instance),e.setQueryData(s.eventsQueries.campaign(r),e=>{if(!e?.pages?.length)return{pages:[{data:[i]}],pageParams:[{cursor:void 0,direction:"backward"}]};let s=!1,n=e.pages.map(e=>{let a=e.data.map(e=>null!==i.id&&null!==e.id&&e.id===i.id||null!==i.id&&null===e.id||null!==i.id&&null===e.id&&e.character_id===i.character_id&&"talk"===e.command_used&&"talk"===i.command_used&&"Sending audio..."===e.content?(s=!0,i):e);return{...e,data:a}});if(!s){let e=n[n.length-1];if(!e)return{pages:[{data:[i]}],pageParams:[{cursor:void 0,direction:"backward"}]};e.data||(e.data=[]),e.data.some(e=>null!==i.id&&e.id===i.id)?a.default.warn("Event already exists in last page, skipping",{functionName:"insertEventIntoQueryData",campaignId:r,newEventId:i.id}):e.data.length>=t.CAMPAIGN_EVENTS_PAGE_SIZE?n.push({data:[i]}):e.data.push(i)}if(n.length>3){let e=n.length-3;n.splice(0,e)}let l=e.pageParams.slice(-n.length);for(;l.length<n.length;)l.unshift({cursor:void 0,direction:"backward"});return{pages:n,pageParams:l}}))};
+ const capturedIDs=[109086365,109086390,109086500,109086510,109086523,109086528,109086539,109086549,109086560,109086572,109086579,109087306,109087309,109087319,109198197];
+ const capturedServer={data:capturedIDs.map(event),hasPreviousPage:true,hasNextPage:false,previousCursor:capturedIDs[0],nextCursor:capturedIDs.at(-1),direction:'backward',nativeMetadata:{retained:true}};
+ const capturedParam={cursor:109198198,direction:'backward'};
+ query.setData({pages:[capturedServer],pageParams:[capturedParam]},{updatedAt:123,manual:true});
+ const retainedServer=query.state.data.pages[0],retainedParam=query.state.data.pageParams[0];
+ // Two actual onMutate-style appends before a confirmation. This is a bounded
+ // candidate path, not proof that the user's overlapping sequence was identical.
+ for(const message of ['first pending','second pending']){
+  const old=query.state.data,tail=old.pages.at(-1);if(tail.hasNextPage)throw Error('Native pending append unexpectedly blocked');
+  const temporary={data:[{id:null,isOptimistic:true,message}],nextCursor:undefined,previousCursor:109198198,hasNextPage:false,hasPreviousPage:true};
+  query.setData({pages:[...old.pages,temporary],pageParams:[...old.pageParams,null]},{updatedAt:123,manual:true});
+ }
+ const confirmed=event(109241639),later=event(109241641);
+ insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:confirmed});
+ if(!sameReferenceInput)throw Error('Saved native helper did not produce proven identical-reference duplicate input');
+ insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:later});
+ const actual=ids();console.log('Identical append duplicate diagnostic: '+JSON.stringify({sameReferenceInput,pages:query.state.data.pages.map(page=>page.data.map(row=>row.id)),unique:new Set(actual).size,rows:actual.length}));
+ if(actual.filter(id=>id===109241639).length!==1||actual.filter(id=>id===109241641).length!==1)throw Error('Identical confirmed event duplicated across adjacent native append pages: '+actual);
+ if(query.state.data.pages[0].data!==retainedServer.data||query.state.data.pageParams[0]!==retainedParam)throw Error('Duplicate correction changed genuine server page/parameter identity');
+ if(actual.includes(109241640))throw Error('Duplicate correction invented uncaptured event640');
+ insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:later});
+ if(ids().filter(id=>id===109241641).length!==1)throw Error('Repeated native confirmation duplicated confirmed event');
+ // The next overlap inherits numeric cursors produced by the correction,
+ // rather than resetting every append to the first round's undefined endpoint.
+ const inherited=query.state.data.pages.at(-1);
+ if(!Number.isSafeInteger(inherited.nextCursor))throw Error('Corrected tail has no numeric cursor to exercise');
+ for(const message of ['third pending','fourth pending']){
+  const old=query.state.data,tail=old.pages.at(-1),temporary={data:[{id:null,isOptimistic:true,message}],nextCursor:tail.nextCursor,previousCursor:tail.previousCursor,hasNextPage:false,hasPreviousPage:true};
+  query.setData({pages:[...old.pages,temporary],pageParams:[...old.pageParams,null]},{updatedAt:123,manual:true});
+ }
+ aliasID=109241643;sameReferenceInput=false;const overlap=event(aliasID);
+ insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:overlap});
+ if(!sameReferenceInput||ids().filter(id=>id===aliasID).length!==1)throw Error('Repeated overlapping confirmation with inherited numeric cursors duplicated event');
+ if(query.latestArgs[0].pages.flatMap(page=>page.data).find(row=>row.id===aliasID)!==overlap)throw Error('Adapter replaced the incoming confirmed event object');
+ // Native helper truncation has authority; never restore its discarded server page.
+ if(ids().includes(capturedIDs[0]))throw Error('Duplicate correction resurrected native-truncated history');
+ batch=true;
+ for(const message of ['fifth pending','sixth pending']){
+  const old=query.state.data,tail=old.pages.at(-1),temporary={data:[{id:null,isOptimistic:true,message}],nextCursor:tail.nextCursor,previousCursor:tail.previousCursor,hasNextPage:false,hasPreviousPage:true};
+  query.setData({pages:[...old.pages,temporary],pageParams:[...old.pageParams,null]},{updatedAt:123,manual:true});flush();
+ }
+ aliasID=109241645;sameReferenceInput=false;insertEventIntoQueryData({queryClient,campaignId:campaign,newEvent:event(aliasID)});flush();
+ if(!sameReferenceInput||ids().filter(id=>id===aliasID).length!==1)throw Error('Batched overlapping confirmation duplicated event');
+ const settledWrites=writes;for(let i=0;i<3;i++){window.dispatchEvent(new Event('click'));flush();}if(writes!==settledWrites)throw Error('Duplicate correction did not quiesce');batch=false;
+ const appendPage=rows=>({data:rows,previousCursor:109198198,nextCursor:undefined,hasPreviousPage:true,hasNextPage:false});
+ const passthrough=(input,label)=>{const before=writes;query.setData(input,{updatedAt:123,manual:true});if(query.latestArgs[0]!==input||writes!==before+1)throw Error('Unsupported duplicate shape changed: '+label);};
+ const shared=event(109241639);
+ passthrough({pages:[appendPage([shared]),appendPage([{...shared}])],pageParams:[null,null]},'equal contents but different references');
+ passthrough({pages:[appendPage([shared]),appendPage([{...shared,message:'newer edited version'}])],pageParams:[null,null]},'conflicting edit');
+ passthrough({pages:[appendPage([shared]),appendPage([{...shared,deleted_at:'2026-10-19T00:00:00Z'}])],pageParams:[null,null]},'conflicting deleted version');
+ passthrough({pages:[{...appendPage([shared]),direction:'backward'},appendPage([shared])],pageParams:[{cursor:109241640,direction:'backward'},null]},'genuine server refetch');
+ passthrough({pages:[appendPage([shared,shared])],pageParams:[null]},'within one page');
+ passthrough({pages:[appendPage([shared]),appendPage([]),appendPage([shared])],pageParams:[null,null,null]},'nonadjacent pages');
+ passthrough({pages:[appendPage([shared]),{...appendPage([shared]),previousCursor:109198197}],pageParams:[null,null]},'different previous cursor');
+ passthrough({pages:[appendPage([shared]),{...appendPage([shared]),nextCursor:109198198}],pageParams:[null,null]},'different next cursor');
+ passthrough({pages:[appendPage([shared]),appendPage([shared,event(109241638)])],pageParams:[null,null]},'later descending row rejects candidate atomically');
+ passthrough({pages:[appendPage([shared]),appendPage([shared,{...event(109241641),isOptimistic:true}])],pageParams:[null,null]},'later unsupported row rejects candidate atomically');
+ passthrough({pages:[appendPage([shared]),appendPage([shared]),appendPage([{...shared,deleted_at:'2026-10-19T00:00:00Z'}])],pageParams:[null,null,null]},'later conflicting duplicate rejects candidate atomically');
+ const deleted={pages:[server(200,214)],pageParams:[{cursor:215,direction:'backward'}]};query.setData(deleted,{updatedAt:123,manual:true});
+ if(ids().some(id=>id>=109086365))throw Error('Refetch/delete restored previously removed duplicate history');
+ query.setData({pages:[server(100,114)],pageParams:[{cursor:115,direction:'backward'}]},{updatedAt:123,manual:true});
+}
 append(115);append(116);append(117);
 if(ids().join(',')!==Array.from({length:18},(_,i)=>100+i).join(','))throw Error('Third native append evicted original messages: '+ids());
 const original=query.state.data.pages[0],originalEvent=original.data[0];
