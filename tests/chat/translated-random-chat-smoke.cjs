@@ -42,6 +42,7 @@ async function randomScenario(code, expectedDrafts) {
   const originalRemove = Element.prototype.remove;
   Element.prototype.remove = function () { counts[this.isConnected ? 'connectedRemovals' : 'detachedRemovals']++; return Reflect.apply(originalRemove, this, arguments); };
   let nextID = 140, pending;
+  const sendDiagnostic = { attempts: 0, lastGuard: null, lastError: null, keys: [] };
   const event = (id, bodySource = `Fixture archive ${id}.`, fullContent = bodySource, html) => ({ id, role: 'player', content: fullContent, bodySource, html, campaign_id: campaign, character_id: 42, ...(id === null ? { isOptimistic: true } : {}) });
   const page = (start, end, direction) => ({ data: Array.from({ length: end - start + 1 }, (_, i) => event(start + i)), hasPreviousPage: true, hasNextPage: false, previousCursor: start, nextCursor: end, ...(direction ? { direction } : {}) });
   const query = { queryKey: ['events', campaign], options: { maxPages: 3 }, state: { dataUpdatedAt: 123, data: { pages: [page(100, 114, 'backward'), page(115, 129), page(130, 139)], pageParams: [{ cursor: 115, direction: 'backward' }, null, null] } },
@@ -76,9 +77,19 @@ async function randomScenario(code, expectedDrafts) {
   }
   render();
   // Observe trusted keys before the production capture handler can stop them.
-  window.addEventListener('keydown', input => { if (input.key === 'Enter') trusted.push(input.isTrusted); }, true);
+  window.addEventListener('keydown', input => {
+    if (input.key !== 'Enter') return;
+    trusted.push(input.isTrusted);
+    const key = { trusted: input.isTrusted, target: input.target?.id || input.target?.className || input.target?.nodeName, editorTarget: editorElement.contains(input.target), defaultPreventedAtCapture: input.defaultPrevented };
+    if (sendDiagnostic.keys.length < 16) sendDiagnostic.keys.push(key);
+    queueMicrotask(() => { key.defaultPreventedAfterDispatch = input.defaultPrevented; });
+  }, true);
   function nativeSend() {
-    if (pending || send.disabled || !editor.getText().trim()) return;
+    sendDiagnostic.attempts++;
+    sendDiagnostic.lastGuard = pending ? 'native-pending' : send.disabled ? 'send-disabled' : !editor.getText().trim() ? 'empty-editor' : 'passed';
+    stage(`native-send-attempt-${sendDiagnostic.attempts}-${sendDiagnostic.lastGuard}`);
+    if (sendDiagnostic.lastGuard !== 'passed') return;
+    try {
     const json = editor.getJSON(), html = editor.getHTML(), fullContent = editor.getText();
     const sourceDoc = eval(`(${code.instruction})`)(json, null);
     const bodySource = (sourceDoc.content || []).flatMap(node => (node.content || []).map(child => child.text || '')).join('');
@@ -90,6 +101,7 @@ async function randomScenario(code, expectedDrafts) {
     const temporary = { data: [event(null, bodySource, fullContent, html)], previousCursor: 100, nextCursor: undefined, hasPreviousPage: true, hasNextPage: false };
     query.setData({ ...current, pages: [...current.pages, temporary], pageParams: [...current.pageParams, null] }, { updatedAt: 123, manual: true });
     window.__friendsFablesDesktopChatAppearance.followAfterSubmit();
+    } catch (error) { sendDiagnostic.lastError = { name: error.name, message: error.message, stack: error.stack }; console.error('RANDOM-DIAGNOSTIC native-send-error', JSON.stringify(sendDiagnostic.lastError)); throw error; }
   }
   send.addEventListener('click', nativeSend);
   document.getElementById('editor-content').addEventListener('keydown', input => { if (input.key === 'Enter' && !input.shiftKey) { check(input.isTrusted, 'synthetic native editor Enter'); input.preventDefault(); nativeSend(); } }, true);
@@ -124,7 +136,12 @@ async function randomScenario(code, expectedDrafts) {
   await settle(); feed.scrollTop = feed.scrollHeight - feed.clientHeight; await settle(); identities();
   const initialAnchor = anchor(cards.get(139)); check(initialAnchor.glyph, 'translated historical seed has no glyph');
   check(cards.get(139).text.data === 'Архивная запись 139.', 'known historical source was not translated through real local lookup');
+  const inputDiagnostic = label => {
+    const selection = window.getSelection();
+    return { label, send: { ...sendDiagnostic, keys: sendDiagnostic.keys.map(key => ({ ...key })) }, trusted: [...trusted], accepted: accepted.length, pending: pending || null, sendDisabled: send.disabled, editorJSON: editor.getJSON(), editorHTML: editor.getHTML(), editorText: editor.getText(), documentFocused: document.hasFocus(), activeElement: document.activeElement?.id || document.activeElement?.className || document.activeElement?.nodeName, editorConnected: editorElement.isConnected, selectionOwned: !!selection && editorElement.contains(selection.anchorNode) && editorElement.contains(selection.focusNode), commandStatus: document.querySelector('[data-ff-desktop-command-controls]')?.textContent, commandDraftMarker: editorElement.parentElement?.getAttribute('data-ff-desktop-sp-draft') };
+  };
   window.__random = {
+    diagnostic: inputDiagnostic,
     async prepare(content) {
       stage(`prepare-${accepted.length + 1}`); check(!pending, 'prior accepted send still pending');
       editor.commands.setContent(`<p>${content}</p>`); editor.commands.focus('end'); editorElement.dispatchEvent(new Event('input', { bubbles: true }));
@@ -133,7 +150,7 @@ async function randomScenario(code, expectedDrafts) {
       return { ready: true, accepted: accepted.length };
     },
     async sentReady() {
-      const deadline = performance.now() + 1000; while (!pending) { if (performance.now() >= deadline) throw Error('trusted Enter was not accepted'); await pause(4); }
+      const deadline = performance.now() + 1000; while (!pending) { if (performance.now() >= deadline) { console.error('RANDOM-DIAGNOSTIC first-send-timeout', JSON.stringify(inputDiagnostic('trusted-enter-not-accepted'))); throw Error('trusted Enter was not accepted'); } await pause(4); }
       await settle(); identities(); return { accepted: accepted.length, source: pending.bodySource };
     },
     async confirm() {
@@ -205,7 +222,7 @@ if (process.argv.includes('--syntax')) {
       site.protocol.handle('https', request => { assert.equal(new URL(request.url).hostname, 'play.fables.gg'); return new Response('<!doctype html><meta charset="utf-8"><style>body{margin:0;color:#ddd;background:#222}#chat{position:relative;height:620px;width:850px;margin:20px}#feed{box-sizing:border-box;height:100%;overflow-y:auto;padding-bottom:160px}.card{position:relative;padding:8px}.author{height:18px}.prose p{margin:0;line-height:24px}#footer{position:absolute;bottom:0;left:0;right:0;height:120px;background:#123}.tiptap{min-height:32px}#composer{position:relative}</style><body></body>', { headers: { 'Content-Type': 'text/html' } }); });
       window = new BrowserWindow({ show: false, width: 1000, height: 800, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
       const contents = window.webContents;
-      contents.on('console-message', event => { if (/^RANDOM-STAGE\b/.test(event.message)) { stage = event.message; console.log(event.message); } });
+      contents.on('console-message', event => { if (/^RANDOM-STAGE\b/.test(event.message)) { stage = event.message; console.log(event.message); } else if (/^RANDOM-DIAGNOSTIC\b/.test(event.message) || event.level === 'error' || event.level === 3) console.error('Random renderer', event.message); });
       const step = async (label, source) => { stage = label; console.log('Random native step', stage); return contents.executeJavaScript(source); };
       await contents.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play'); window.show(); window.focus(); contents.focus(); assert(window.isVisible());
       await step('editor-bootstrap', editorScript); await step('install', `(${randomScenario.toString()})(${JSON.stringify(code)},${JSON.stringify(drafts)})`);
