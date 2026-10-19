@@ -69,7 +69,9 @@ async function randomScenario(code, expectedDrafts) {
       }
       item.card.__reactFiber$fixture = { memoizedProps: { event: native }, memoizedState: hook, return: null };
       const value = blank.has(native.id) ? '' : native.bodySource;
-      if (item.text.data !== value) item.text.data = value;
+      // React owns the source prop, while translation owns its presentation.
+      // An unchanged native prop must not reset legitimately translated text.
+      if (item.nativeValue !== value) { if (item.text.data !== value) item.text.data = value; item.nativeValue = value; }
     }
   }
   render();
@@ -150,13 +152,21 @@ async function randomScenario(code, expectedDrafts) {
       check(accepted.every((entry, i) => entry.bodySource === expectedDrafts[i]), 'accepted random strings changed');
       const ids = query.state.data.pages.flatMap(item => item.data.map(row => row.id));
       check(accepted.every(entry => ids.includes(entry.id)) && ids.length <= 45 && query.state.data.pages.length <= 3, 'latest eight IDs/capacity eviction contract');
-      await pause(220); const request = translation.collect().nodes;
-      check(request.length === 2 && request.every(node => expectedDrafts.slice(6).includes(node.text)), `real prose gate expected only two random multiword requests, got ${JSON.stringify(request)}`);
+      const request = [], requestIDs = new Set(), readyDeadline = performance.now() + 1000;
+      while (request.length < 2) {
+        const collected = translation.collect().nodes;
+        check(collected.every(node => expectedDrafts.slice(6).includes(node.text) && !requestIDs.has(node.id)), `unexpected prose-gate request: ${JSON.stringify(collected)}`);
+        for (const node of collected) { request.push(node); requestIDs.add(node.id); }
+        check(request.length <= 2, 'prose gate produced more than two random requests');
+        if (request.length === 2) break;
+        if (performance.now() >= readyDeadline) throw Error(`real random translation request readiness timed out: ${JSON.stringify(request)}`);
+        await pause(4);
+      }
       stage('real-null-retry'); translation.finish(token, request.map(node => ({ id: node.id, version: node.version, text: null, complete: false, retry: true }))); await settle();
       stage('real-partial-whole-pending'); translation.finish(token, request.map(node => ({ id: node.id, version: node.version, text: node.text, complete: false, pending: [{ start: 0, end: node.text.length }] }))); await settle();
       // Re-collect marks real eligible entries waiting; the subsequent unchanged
       // poll must produce no second request and no connected presentation work.
-      const waiting = translation.collect().nodes; check(waiting.length === 2, 'real partial entries did not remain unfinished'); await settle();
+      const waiting = translation.collect().nodes; check(waiting.length === 2 && waiting.every(node => request.some(original => original.id === node.id && original.version === node.version)), 'real partial entries did not immediately become collectable with unchanged versions'); await settle();
       for (const entry of accepted.slice(6)) { const item = cards.get(entry.id); check(item.body.hasAttribute('data-ff-translation-blank') && item.body.querySelector('[data-ff-translation-dot]') && Array.from((function* () { for (let node = item.paragraph; node && item.body.contains(node); node = node.parentElement) yield node; })()).some(node => { const style = getComputedStyle(node); return style.opacity === '0' || style.color === 'transparent' || style.color === 'rgba(0, 0, 0, 0)'; }), 'actual pending random source lacks hidden-source/progress presentation'); }
       for (const entry of accepted.slice(0, 6)) check(cards.get(entry.id).text.data === entry.bodySource, 'single-token random text unexpectedly translated');
       editor.commands.setContent('<p>Сохранить родной черновик.</p>'); await settle(); const draftText = editorElement.querySelector('p').firstChild;
