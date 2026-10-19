@@ -15,7 +15,7 @@ function sources(root) {
     settings: { ...DEFAULT_APPEARANCE, preset: 'website', messages: { ...DEFAULT_APPEARANCE.messages, enabled: true } } };
 }
 
-async function quiescenceScenario(mode, code) {
+async function quiescenceScenario(mode, code, scenario = 'workload') {
   const translated = mode !== 'original-English', dynamic = mode === 'Russian-dynamic';
   const check = (condition, message) => { if (!condition) throw Error(`${mode}: ${message}`); };
   const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -24,7 +24,7 @@ async function quiescenceScenario(mode, code) {
   const campaign = '01a0d854-78d5-7064-ae41-f63d561c8e01', token = `quiescence-${mode}`;
   document.body.innerHTML = '<main id="feed"><div id="events-list"></div></main><section class="grid relative"><div class="tiptap" contenteditable="true">Preserve the native draft.</div></section>';
   const list = document.getElementById('events-list'), draft = document.querySelector('.tiptap'), draftNode = draft.firstChild;
-  const counters = { records: 0, childList: 0, characterData: 0, attributes: 0, connectedRemovals: 0, detachedRemovals: 0, instructionRemovals: 0, capHit: false };
+  const counters = { records: 0, childList: 0, characterData: 0, attributes: 0, instructionAttributes: 0, connectedRemovals: 0, detachedRemovals: 0, instructionRemovals: 0, capHit: false };
   let beats = 0;
   const heartbeat = setInterval(() => beats++, 25);
   // No writes, geometry or Range allocation in diagnostic callbacks. Stop this
@@ -33,6 +33,7 @@ async function quiescenceScenario(mode, code) {
     for (const record of records) {
       if (counters.records >= 4096) { counters.capHit = true; observer.disconnect(); break; }
       counters.records++; counters[record.type]++;
+      if (record.type === 'attributes' && ['data-ff-desktop-hidden-instructions', 'data-ff-desktop-instruction-block', 'data-ff-translation-ignore'].includes(record.attributeName)) counters.instructionAttributes++;
     }
   });
   observer.observe(list, { subtree: true, childList: true, characterData: true, attributes: true,
@@ -46,6 +47,7 @@ async function quiescenceScenario(mode, code) {
     return Reflect.apply(originalRemove, this, arguments);
   };
   const items = [], checkpoints = [], pendingChecks = [];
+  let stableInstructions;
   const counts = () => ({ ...counters, beats });
   const stable = (a, b) => ['records', 'connectedRemovals', 'detachedRemovals'].every(key => a[key] === b[key]);
   const card = (id, role, source, includeEnglish = false) => {
@@ -86,6 +88,27 @@ async function quiescenceScenario(mode, code) {
     const seed = card(1, 'player', translated ? 'Мой герой ждёт у тихой башни.' : 'My hero waits beside the silent tower.'); items.push(seed);
     await turn(); await turn(); const initialAnchors = anchors();
     check(initialAnchors.every(value => value.glyph && value.guidanceHidden), 'initial native text/instruction presentation');
+    // Establish quiescence first: installation, ResizeObserver and native scroll
+    // reactions must finish before an unrelated mutation becomes the sole input.
+    await turn(); await turn(); await pause(250); const settledSeed = counts();
+    await pause(250); check(stable(settledSeed, counts()), 'seed was not quiescent before unrelated input');
+    stage('stable-instructions-before-unrelated-change'); const beforeUnrelated = counts();
+    const unrelated = document.createElement('div'); document.body.append(unrelated);
+    await turn(); await turn();
+    // Empty/non-text content cannot become a translation request. This second
+    // outside-list childList change crosses its own actual frame/task boundary.
+    unrelated.append(document.createComment('inert fixture change'));
+    await turn(); await turn(); await pause(250);
+    const afterUnrelated = counts(), stableAnchors = anchors();
+    const seedIdentity = seed.card.querySelector('.prose') === seed.body && seed.paragraph.firstChild === seed.text && seed.guidance.firstChild === seed.guidanceText && seed.text.isConnected && draft.firstChild === draftNode && draft.textContent === 'Preserve the native draft.';
+    const firstAnchor = initialAnchors[0], stableAnchor = stableAnchors[0];
+    const seedAnchor = !!stableAnchor.glyph && Math.abs(firstAnchor.height - stableAnchor.height) <= 1 && Math.abs((firstAnchor.glyph.top - firstAnchor.top) - (stableAnchor.glyph.top - stableAnchor.top)) <= 1 && Math.abs((firstAnchor.glyph.left - firstAnchor.left) - (stableAnchor.glyph.left - stableAnchor.left)) <= 1;
+    stableInstructions = { beforeUnrelated, afterUnrelated, seedIdentity, seedAnchor, stableAnchors };
+    console.log('MUTATION-DIAGNOSTIC', mode, JSON.stringify({ phase: 'stable-instructions', ...stableInstructions }));
+    check(!counters.capHit, 'diagnostic record budget exhausted (not a causal product RED)');
+    check(afterUnrelated.instructionAttributes === beforeUnrelated.instructionAttributes && afterUnrelated.detachedRemovals === beforeUnrelated.detachedRemovals, 'unrelated childList changes rewrote stable instruction markers or sanitized clones');
+    check(seedIdentity && seedAnchor && stableAnchor.guidanceHidden, 'unrelated change disturbed native seed identity/ink/anchor');
+    if (scenario === 'stable-instructions') return { passed: true, mode, scenario, stableInstructions, counters: counts() };
     for (let pair = 0; pair < 6; pair++) {
       stage(`pair-${pair}-optimistic`);
       const source = translated ? `Мой герой осторожно подходит к башне номер ${pair + 1}.` : `My hero approaches the silent tower number ${pair + 1}.`;
@@ -134,8 +157,8 @@ async function quiescenceScenario(mode, code) {
     check(identity && draft.firstChild === draftNode && draft.textContent === 'Preserve the native draft.', 'native card/body/Text/instruction/draft identity changed');
     check(finalAnchors.every(value => value.glyph && value.guidanceHidden && !value.sourceVisible), 'final ink/hidden-instruction/source policy failed');
     check(!list.querySelector('[data-ff-translation-placeholder],[data-ff-desktop-message-snapshot]'), 'settled presentation retained an overlay');
-    return { passed: true, mode, workload: { pairs: 6, streamParts: 3, RussianPlayerSource: translated, mixedRussianNarration: translated }, initialAnchors, finalAnchors, identity, counters: counts(), checkpoints, pendingChecks };
-  } catch (error) { console.error('MUTATION-DIAGNOSTIC', mode, JSON.stringify({ counters: counts(), checkpoints, pendingChecks })); throw error; }
+    return { passed: true, mode, workload: { pairs: 6, streamParts: 3, RussianPlayerSource: translated, mixedRussianNarration: translated }, initialAnchors, finalAnchors, stableInstructions, identity, counters: counts(), checkpoints, pendingChecks };
+  } catch (error) { console.error('MUTATION-DIAGNOSTIC', mode, JSON.stringify({ counters: counts(), checkpoints, pendingChecks, stableInstructions })); throw error; }
   finally { observer.disconnect(); clearInterval(heartbeat); Element.prototype.remove = originalRemove; translation?.dispose(); window.__friendsFablesDesktopChatAppearance?.dispose(); }
 }
 module.exports = { sources, quiescenceScenario };
@@ -150,6 +173,8 @@ if (process.versions.electron) {
     try {
       profile = await fs.mkdtemp(path.join(os.tmpdir(), 'ff-mutation-quiescence-')); app.setPath('userData', profile); await app.whenReady();
       const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '../..'), code = sources(root);
+      const scenario = process.env.FABLES_MUTATION_SCENARIO || 'workload';
+      assert(['workload', 'stable-instructions'].includes(scenario), 'Unknown mutation scenario');
       const modes = process.env.FABLES_MUTATION_MODE ? [process.env.FABLES_MUTATION_MODE] : ['original-English', 'Russian-static', 'Russian-dynamic'];
       assert(modes.every(mode => ['original-English', 'Russian-static', 'Russian-dynamic'].includes(mode)), 'Unknown mutation mode');
       for (const mode of modes) {
@@ -159,7 +184,7 @@ if (process.versions.electron) {
         window = new BrowserWindow({ show: false, width: 1000, height: 800, webPreferences: { session: site, sandbox: true, contextIsolation: true, nodeIntegration: false } });
         window.webContents.on('console-message', event => { if (/^MUTATION-(?:STAGE|DIAGNOSTIC)\b/.test(event.message)) console.log(event.message); });
         await window.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play'); window.show(); window.focus(); window.webContents.focus(); assert(window.isVisible());
-        const result = await window.webContents.executeJavaScript(`(${quiescenceScenario.toString()})(${JSON.stringify(mode)},${JSON.stringify(code)})`);
+        const result = await window.webContents.executeJavaScript(`(${quiescenceScenario.toString()})(${JSON.stringify(mode)},${JSON.stringify(code)},${JSON.stringify(scenario)})`);
         console.log('Mutation quiescence result', JSON.stringify(result)); assert.equal(result.passed, true); window.destroy(); window = undefined;
       }
       passed = true;
