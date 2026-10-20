@@ -485,9 +485,9 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   function feedScrolled(event: Event): void {
     if (event.target !== scrollFeed) return;
     if (scrollYield || scrollGesture) { scrollSeen = true; restoreScrollStyles(); } else {
-      // A layout/native anchoring scroll while a correction is pending must not
-      // discard the pre-growth pin. Intent listeners cancel that correction first.
-      if (!tailFrame) tailPinned = atTail() && !selectedInFeed();
+      // Native smooth scrolling and anchoring do not revoke pinned intent.
+      // Manual intent and selection cancel it through their existing listeners.
+      if (!tailFrame) tailPinned = (tailPinned || atTail()) && !selectedInFeed();
       preferScrollAnchor();
     }
   }
