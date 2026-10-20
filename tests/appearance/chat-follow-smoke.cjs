@@ -169,8 +169,11 @@ async function footerCandidateBudgetScenario(configure,settings){
   const prefix=[...document.getElementById('chat').querySelectorAll('footer,[class~="absolute"][class~="bottom-0"],[class~="fixed"][class~="bottom-0"]')];
   if(crowded&&(prefix.length!==13||!prefix.slice(0,12).every(node=>feed.contains(node))||prefix[12]!==footer))throw Error('Captured twelve in-feed decorations must precede the real footer');
   feed.scrollTop=feed.scrollHeight-feed.clientHeight;if(enabled)configure(settings);await settle();
-  const older=history[7];let readerBefore=null;
-  if(manual){feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-400}));feed.scrollTop+=older.card.getBoundingClientRect().top-feed.getBoundingClientRect().top-60;await settle();feed.dispatchEvent(new Event('scrollend',{bubbles:true}));await settle();readerBefore=glyph(older.text);}
+  const older=history[3];let readerBefore=null;
+  if(manual){
+   const previousTop=feed.scrollTop;feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-400}));feed.scrollTop+=glyph(older.text).top-feed.getBoundingClientRect().top-60;await settle();feed.dispatchEvent(new Event('scrollend',{bubbles:true}));await settle();readerBefore=glyph(older.text);
+   if(feed.scrollTop>=previousTop-.5||feed.scrollHeight-feed.clientHeight-feed.scrollTop<=20||Math.abs(readerBefore.top-feed.getBoundingClientRect().top-60)>.5)throw Error('Manual footer case must actually navigate upward to the60px text anchor: '+JSON.stringify({previousTop,scrollTop:feed.scrollTop,readerBefore,feed:box(feed)}));
+  }
   const row=document.createElement('div');row.id='event-103';const card=document.createElement('div');card.className='bg-card border rounded-md damage';card.style.cssText='min-height:120px;display:flex;flex-direction:column;justify-content:flex-end';card.innerHTML='<strong>Target takes 6 damage</strong><p style="margin:0;line-height:24px">Final HP 14 / 20</p>';row.append(card);list.append(row);
   const finalText=card.querySelector('p').firstChild,nativeCardHeight=card.getBoundingClientRect().height;
   if(!enabled)feed.scrollTop=feed.scrollHeight-feed.clientHeight;
@@ -182,6 +185,7 @@ async function footerCandidateBudgetScenario(configure,settings){
   const follow=after.distanceToMax<=1,readerPreserved=!manual||Math.abs(readerAfter.top-readerBefore.top)<=.5&&after.distanceToMax>20;
   cases.push({mode,passed:identity&&unchangedHeights&&composer.hidden&&readerPreserved&&(manual||!enabled||fullyVisible&&follow),identity,unchangedHeights,composerHidden:composer.hidden,nativePadding,candidateCount:prefix.length,firstTwelveInsideFeed:prefix.slice(0,12).every(node=>feed.contains(node)),fullyVisible,follow,readerPreserved,readerBefore,readerAfter,after});
   window.__friendsFablesDesktopChatAppearance?.dispose();
+  const restoredPadding=getComputedStyle(feed).paddingBottom;cases.at(-1).restoredPadding=restoredPadding;cases.at(-1).passed=cases.at(-1).passed&&restoredPadding==='16px';
  }
  const control=cases.find(item=>item.mode==='off-crowded');
  if(!control.follow||control.fullyVisible||control.after.paddingBottom!=='16px')throw Error('Native OFF control must be pinned yet clipped with only16px reserve: '+JSON.stringify(control));
