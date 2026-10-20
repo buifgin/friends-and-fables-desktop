@@ -13,7 +13,14 @@ async function scrollScenario(configure,settings){
  const glyph=()=>{const range=document.createRange();range.selectNodeContents(roll.body.querySelector('p').firstChild);const r=range.getClientRects()[0];return {x:r.x,y:r.y,height:r.height};};
  const rect=node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom};};
  const snapshot=()=>({rollY:roll.body.getBoundingClientRect().y,glyph:glyph(),scroll:feed.scrollTop,gmHeight:gm.body.getBoundingClientRect().height,gm:rect(gm.body),narration:rect(gm.body.querySelector('.prose')),roll:rect(roll.body),feed:rect(feed),branch:choices.getBoundingClientRect().height,text:roll.body.textContent});
- const readPosition=()=>{feed.scrollTop+=gm.row.getBoundingClientRect().top-feed.getBoundingClientRect().top+30;};
+ // This helper establishes a manual reader position, not a native automatic
+ // scroll. Express that intent before moving, then finish the existing path.
+ const readPosition=()=>{
+  feed.dispatchEvent(new Event('wheel',{bubbles:true}));
+  feed.scrollTop+=gm.row.getBoundingClientRect().top-feed.getBoundingClientRect().top+30;
+  feed.dispatchEvent(new Event('scroll'));feed.dispatchEvent(new Event('scrollend'));
+  check(Math.abs(gm.row.getBoundingClientRect().top-feed.getBoundingClientRect().top+30)<=.5,'Reader setup did not reach the intended partial narration');
+ };
  const clear=async()=>{choices.replaceChildren();for(const node of older)node.replaceChildren();await settle();readPosition();await settle();};
  const hydrate=()=>{for(const node of older){const result=document.createElement('div');result.style.height='82px';result.textContent='Native earlier result';node.append(result);}const branch=document.createElement('div');branch.style.height='82px';branch.textContent='Damage / Rolled';choices.append(branch);};
  const nativeResizeObserver=window.ResizeObserver,resizeOwners=new Map();
