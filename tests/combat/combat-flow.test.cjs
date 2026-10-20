@@ -611,3 +611,12 @@ test('current EVENTS_SELECT projection retains without relation IDs or optional 
  f.attackEvent.events_roll={roll_type:'Damage',base_roll:0,total_roll:0};const roll=f.attackEvent.events_roll;insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,roll);
  for(const patch of [{event_id:999},{campaign_id:'other'},{modifier_value:NaN},{proficiency_bonus:'bad'},{modifier_stat:23},{vantage:'unknown'}]){const fresh=continuityFixture();Object.assign(fresh.f.attackEvent.events_roll,patch);fresh.insert({...fresh.f.attackEvent,events_roll:null});assert.equal(fresh.query.events()[0].events_roll,null);}
 });
+
+test('released binding is inert through a retained independent wrapper after provider ownership loss',()=>{
+ const {f,query,insert}=continuityFixture(),guard=query.client.setQueryData;
+ const independent=function(...args){return guard.apply(this,args)};query.client.setQueryData=independent;
+ const other=createNativeEventQuery(nativeFactory,'campaign-a',[f.attackEvent,f.dmEvent]);
+ const first=f.root.child,second={tag:10,memoizedProps:{value:other.client},return:f.root,child:first};first.return=second;f.root.child=second;
+ f.notify();assert.equal(f.preferences().automaticDamage,true,'Same campaign preference remains enabled');assert.equal(query.client.setQueryData,independent,'Independent wrapper retains ownership');
+ insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,null,'Released captured guard must bypass recognized native INSERT');assert.equal(query.writes.length,1);
+});

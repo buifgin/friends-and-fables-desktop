@@ -281,7 +281,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (descriptor && (!('value' in descriptor) || descriptor.writable !== true || descriptor.configurable !== true)) return;
     const binding: QueryBinding = { client, original, descriptor, campaign, wrapper: function(this: Native, ...args: any[]): any {
       const [key, updater] = args;
-      if (this !== client || disposed || !prefs.automaticDamage || location.pathname !== route || campaign !== binding.campaign
+      if (queryBinding !== binding || this !== client || disposed || !prefs.automaticDamage || location.pathname !== route || campaign !== binding.campaign
         || !Array.isArray(key) || key.length !== 2 || key[0] !== 'events' || key[1] !== binding.campaign
         || typeof updater !== 'function' || Function.prototype.toString.call(updater) !== nativeInsertSource) return original.apply(this, args);
       const forwarded = [...args];
