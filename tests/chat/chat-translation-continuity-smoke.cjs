@@ -304,7 +304,34 @@ async function firstPresentationPreservationScenario(configure,settings){
  check(draft.firstChild===draftNode&&draft.textContent==='Retained draft','draft identity changed');
  return {passed:true,case:'atomic-first-presentation-preservations',excluded:exclusions.length+6,styleAuthority:true,route:true,detach:true,dispose:true,inertFocus:true,existingHydration:true};
 }
-module.exports={continuityScenario,firstPaintScenario,handoffScenario,atomicFirstPresentationScenario,firstPresentationPreservationScenario};
+// Native oM retains collapsed Thoughts content outside .prose. Only native
+// attributes reveal the existing pane; there is no body Text/child mutation.
+async function reasoningRevealScenario(configure,settings){
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),settle=async()=>{await frame();await frame();};
+ document.body.innerHTML='<main id="feed"><div id="events-list"></div></main><div class="tiptap" contenteditable="true">Retained draft</div>';
+ const list=document.getElementById('events-list'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
+ configure(settings);
+ const wrapper=document.createElement('div');wrapper.id='event-301';
+ wrapper.innerHTML='<div id="event-container-301" style="display:flex"><div class="native-avatar" style="width:40px;height:40px;background:gray"></div><div class="card" id="event-message-card-301" style="border:1px solid gray"><div class="author">Franz</div><div class="mt-2 mb-2"><button aria-expanded="false" data-state="closed">Thoughts</button><div hidden data-state="closed"><div class="text-sm italic bg-muted/30 p-3 rounded-md text-foreground-muted">Native reasoning detail.</div></div></div><div class="prose"><div></div></div></div></div>';
+ const row=wrapper.firstElementChild,card=row.querySelector('.card'),avatar=row.querySelector('.native-avatar'),body=card.querySelector('.prose'),renderer=body.firstElementChild;
+ const button=card.querySelector('button'),pane=card.querySelector('[hidden]'),detail=pane.firstElementChild,reasoningNode=detail.firstChild;
+ card.__reactFiber$fixture={memoizedProps:{event:{id:301,role:'dm',command_used:'encounter_player_turn_action_response',content:'',campaign_id:location.pathname.split('/')[1],processed:true,reasoning:'Native reasoning detail.'}}};
+ list.append(wrapper);await settle();
+ const visible=element=>{for(let node=element;node;node=node.parentElement){const style=getComputedStyle(node);if(node.hidden||style.display==='none'||style.visibility==='hidden'||style.opacity==='0')return false;}return true;};
+ const geometry=()=>{const r=row.getBoundingClientRect();return {height:r.height,width:r.width};};
+ const before={gated:row.style.opacity==='0'&&row.inert,avatarVisible:visible(avatar),cardVisible:visible(card),bodyEmpty:!body.textContent.trim(),paneHidden:pane.hidden,geometry:geometry()};
+ // Native attribute-only disclosure, without calling a controller or dispatching
+ // synthetic click handlers. The prose and reasoning Text are never rewritten.
+ button.setAttribute('aria-expanded','true');button.setAttribute('data-state','open');pane.setAttribute('data-state','open');pane.hidden=false;
+ await settle();
+ const range=document.createRange();range.selectNodeContents(reasoningNode);const rect=range.getClientRects()[0];range.detach();
+ const after={avatarVisible:visible(avatar),cardVisible:visible(card),reasoningVisible:visible(detail)&&!!rect&&rect.width>0&&rect.height>0,bodyEmpty:!body.textContent.trim(),inert:row.inert,opacity:row.style.opacity,geometry:geometry()};
+ const retained=list.firstElementChild===wrapper&&wrapper.firstElementChild===row&&row.querySelector('.card')===card&&row.querySelector('.native-avatar')===avatar&&card.querySelector('.prose')===body&&body.firstElementChild===renderer&&pane.firstElementChild===detail&&detail.firstChild===reasoningNode&&draft.firstChild===draftNode&&draft.textContent==='Retained draft';
+ const revealed=after.avatarVisible&&after.cardVisible&&after.reasoningVisible&&!after.inert&&after.opacity==='';
+ window.__friendsFablesDesktopChatAppearance.dispose();
+ return {passed:before.gated&&before.paneHidden&&before.bodyEmpty&&after.bodyEmpty&&retained&&revealed,case:'atomic-attribute-only-native-reasoning-reveal',before,after,retained,revealed};
+}
+module.exports={continuityScenario,firstPaintScenario,handoffScenario,atomicFirstPresentationScenario,firstPresentationPreservationScenario,reasoningRevealScenario};
 if(process.versions.electron){
  const {app,BrowserWindow,session}=require('electron');app.on('window-all-closed',()=>{});
  let window,profile,passed=false;const timer=setTimeout(()=>{console.error('Combined chat translation fixture timed out');app.exit(1);},30000);
@@ -325,9 +352,14 @@ if(process.versions.electron){
     console.log('Atomic first presentation matrix result',JSON.stringify(result));assert.equal(result.passed,true,'Atomic first presentation matrix failed');
    }
    const preservation=await window.webContents.executeJavaScript(`(${firstPresentationPreservationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)})`);
-   console.log('Atomic first presentation preservation result',JSON.stringify(preservation));assert.equal(preservation.passed,true);passed=true;
+   console.log('Atomic first presentation preservation result',JSON.stringify(preservation));assert.equal(preservation.passed,true);
+   const reasoning=await window.webContents.executeJavaScript(`(${reasoningRevealScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)})`);
+   console.log('Atomic native reasoning reveal result',JSON.stringify(reasoning));assert.equal(reasoning.passed,true,'Attribute-only native reasoning reveal stayed gated');passed=true;
   }
-  if(selected==='atomic-empty-tool-calls'){
+  if(selected==='atomic-reasoning-reveal'){
+   const result=await window.webContents.executeJavaScript(`(${reasoningRevealScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)})`);
+   console.log('Atomic native reasoning reveal result',JSON.stringify(result));assert.equal(result.passed,true,'Attribute-only native reasoning reveal stayed gated');passed=true;
+  }else if(selected==='atomic-empty-tool-calls'){
    const result=await window.webContents.executeJavaScript(`(${atomicFirstPresentationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()},${JSON.stringify({role:'dm',sourceEmpty:true,emptyToolCalls:true})})`);
    console.log('Atomic empty tool calls result',JSON.stringify(result));assert.equal(result.passed,true,'Completed DM with zero tool calls painted an empty shell');passed=true;
   }else if(selected==='atomic-first-presentation'){

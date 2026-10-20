@@ -88,10 +88,11 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       // visible native reasoning content (oM), including expansion while waiting.
       if (Array.from(row.querySelectorAll('[class~="bg-muted/30"][class~="italic"]')).some(element => element.textContent?.trim() && readable(element))) { presentedRows.add(card); releaseFirst(card); continue; }
       let ready = false;
-      const walker = document.createTreeWalker(card.querySelector('[data-ff-desktop-message-snapshot]') ?? body, NodeFilter.SHOW_TEXT);
+      const presentedRoot = card.querySelector('[data-ff-desktop-message-snapshot]') ?? body;
+      const walker = document.createTreeWalker(presentedRoot, NodeFilter.SHOW_TEXT);
       let node: Node | null;
       while ((node = walker.nextNode())) if (node.textContent?.trim() && node.parentElement && readable(node.parentElement)) { ready = true; break; }
-      if (!ready) for (const dot of body.querySelectorAll('[data-ff-translation-dot]')) {
+      if (!ready) for (const dot of presentedRoot.querySelectorAll('[data-ff-translation-dot]')) {
         const style = getComputedStyle(dot, '::after');
         if (readable(dot) && style.content && style.content !== 'none' && style.content !== '""') { ready = true; break; }
       }
@@ -734,6 +735,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       if (!target || target.closest(owned)) continue;
       const card = target.closest<HTMLElement>(cardSelector);
       if (card) {
+        if (firstRows.has(card)) add(card);
         // Dice animations and unrelated author/header controls cannot change the
         // native prose. Card/ancestor concealment and prose mutations can.
         if (target.closest('svg') && !target.closest('.prose') || target.closest('button,input,textarea,select')) continue;
