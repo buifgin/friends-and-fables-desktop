@@ -325,6 +325,18 @@ test('historical, failed, unknown, text-based and mixed host choices stay visibl
  const mixed=flowFixture({prompt:true,hidePrompt:true});mixed.submit();mixed.pending();mixed.prompt.querySelector=()=>mixed.card;mixed.choice.accepted=true;mixed.choice.roll_result_id=107655730;mixed.notify();assert.equal(mixed.prompt.style.getPropertyValue('display'),'');
 });
 
+test('claimed hiding survives presentation absence but rejects a known conflicting request',()=>{
+ for(const conflict of [false,true]){
+  const f=flowFixture({prompt:true,hide:true,hidePrompt:true});f.submit();f.pending();f.choice.accepted=true;f.choice.roll_result_id=107655730;f.notify();
+  const lookup=f.context.document.getElementById,row=f.rows[1];
+  f.context.document.getElementById=value=>value===row.id?null:lookup(value);f.notify();
+  assert.equal(f.card.style.getPropertyValue('display'),'');assert.equal(f.prompt.style.getPropertyValue('display'),'');
+  if(conflict)f.dmEvent.request_id='known-competing-request';
+  f.context.document.getElementById=lookup;f.notify();
+  assert.equal(f.card.style.getPropertyValue('display'),conflict?'':'none');assert.equal(f.prompt.style.getPropertyValue('display'),conflict?'':'none');assert.equal(f.calls(),1);
+  if(conflict){f.dmEvent.request_id='request-new';f.notify();assert.equal(f.card.style.getPropertyValue('display'),'');assert.equal(f.prompt.style.getPropertyValue('display'),'','Positive conflicting authority still invalidates the claim');}
+ }
+});
 test('accepted prompt resolves a replacement committed t5 host and restores detached original',()=>{
  const f=flowFixture({prompt:true,hidePrompt:true});f.submit();f.pending();f.choice.accepted=true;f.choice.roll_result_id=107655730;f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'none');
  const next=new f.Element();next.id='';next.isConnected=true;next.querySelector=()=>null;f.rows[1].append(next);

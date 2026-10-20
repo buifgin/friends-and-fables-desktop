@@ -81,6 +81,31 @@ app.on('window-all-closed', () => {});
   await configure(); await until('!!window.__friendsFablesDesktopCombatFlow');
   assert.equal(await js("document.querySelector('[data-ff-combat-flow]')===null"), true);
   const setPreferences = (automaticDamage, hideIntermediateFranz = false, hideDamagePrompt = false) => js(`window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:'campaign-a',automaticDamage:${automaticDamage},hideIntermediateFranz:${hideIntermediateFranz},hideDamagePrompt:${hideDamagePrompt}})`);
+  const proofAbsenceContract=async()=>{
+    await setPreferences(true,true,true);
+    const before=await js("({calls,submits})");
+    await js("mode='hit';holdStreaming=false;delayDamageIdentity=false;delayDamageProps=false;done=false");
+    await nativeClick('#submit');await until(`calls===${before.calls+1}&&submits===${before.submits+1}&&done===true`);
+    await until("[...window.__friendsFablesDesktopCombatFlowOutcomes.values()].some(value=>value.eventId===sequence+1&&value.status==='accepted')");
+    await until("document.querySelector('#damage-prompt').style.display==='none'&&document.getElementById('event-message-card-'+(sequence+1)).style.display==='none'");
+    await js("window.proofAbsence={row:document.querySelector('.native-grid'),card:document.getElementById('event-message-card-'+(sequence+1)),prompt:document.querySelector('#damage-prompt'),damage:document.querySelector('[data-native-damage-result]'),reply:document.querySelector('#final-reply'),form:document.querySelector('form'),draft:document.querySelector('form input'),dm:currentDM,choice:currentChoice};proofAbsence.parent=proofAbsence.row.parentNode;proofAbsence.next=proofAbsence.row.nextSibling;proofAbsence.rowFiber=proofAbsence.row.__reactFiber$fixture;proofAbsence.outcomes=JSON.stringify([...window.__friendsFablesDesktopCombatFlowOutcomes]);proofAbsence.row.remove()");
+    // Cross a separately observed absence scan. No native props, Fiber objects,
+    // ownership IDs or callback results are replaced to simulate presentation loss.
+    await until("!proofAbsence.row.isConnected&&proofAbsence.card.style.display===''&&proofAbsence.prompt.style.display===''");
+    const absent=await js("({connected:proofAbsence.row.isConnected,narration:proofAbsence.card.style.display,prompt:proofAbsence.prompt.style.display,calls,actualDamageVisible:proofAbsence.damage.getClientRects().length>0,finalReplyVisible:proofAbsence.reply.getClientRects().length>0})");
+    console.log('COMBAT_PROOF_ABSENCE observed absent rescan',JSON.stringify(absent));
+    assert.equal(absent.calls,before.calls+1);assert.equal(absent.actualDamageVisible,true);assert.equal(absent.finalReplyVisible,true);
+    await js("proofAbsence.parent.insertBefore(proofAbsence.row,proofAbsence.next);new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))");
+    const restored=await js("({sameRow:document.querySelector('.native-grid')===proofAbsence.row,sameRowFiber:proofAbsence.row.__reactFiber$fixture===proofAbsence.rowFiber,sameDM:currentDM===proofAbsence.dm,sameChoice:currentChoice===proofAbsence.choice,outcomesUnchanged:JSON.stringify([...window.__friendsFablesDesktopCombatFlowOutcomes])===proofAbsence.outcomes,narrationHidden:proofAbsence.card.getClientRects().length===0,promptHidden:proofAbsence.prompt.getClientRects().length===0,actualDamageVisible:proofAbsence.damage.isConnected&&proofAbsence.damage.getClientRects().length>0,finalReplyVisible:proofAbsence.reply.isConnected&&proofAbsence.reply.getClientRects().length>0,sameForm:document.querySelector('form')===proofAbsence.form,sameDraft:document.querySelector('form input')===proofAbsence.draft,draft:proofAbsence.draft.value,calls})");
+    console.log('COMBAT_PROOF_ABSENCE same-row reinsertion',JSON.stringify(restored));
+    for(const field of ['sameRow','sameRowFiber','sameDM','sameChoice','outcomesUnchanged','actualDamageVisible','finalReplyVisible','sameForm','sameDraft'])assert.equal(restored[field],true,field+' remains unchanged across presentation absence');
+    assert.equal(restored.draft,'preserved native draft');assert.equal(restored.calls,before.calls+1,'Presentation absence never rolls Damage again');
+    assert.equal(restored.narrationHidden,true,'Still-owned narration re-hides after the same row returns');
+    assert.equal(restored.promptHidden,true,'Still-owned completed Damage prompt re-hides after the same row returns');
+  };
+  if(process.env.FABLES_COMBAT_SCENARIO==='proof-absence'){
+    await proofAbsenceContract();console.log('Combat proof-absence lifecycle contract passed');clearTimeout(watchdog);window.destroy();app.exit(0);return;
+  }
   await setPreferences(true);
   assert.equal(await js('calls'), 0, 'Historical choice remains manual after enabling');
   await setPreferences(true, true);
@@ -131,6 +156,7 @@ app.on('window-all-closed', () => {});
   assert.equal(await js('currentChoice.accepted'),null);assert.equal(await js('currentChoice.roll_result_id'),undefined);assert.equal(await js('currentNativeRollState().status'),'pending');
   assert.equal(await js('[...window.__friendsFablesDesktopCombatFlowOutcomes.values()].find(value=>value.eventId===sequence+1).status'),'claimed','Presentation fingerprint never forges native acceptance');
   assert.equal(await js("document.querySelector('#damage-prompt').getClientRects().length===0&&document.querySelector('[data-native-damage-result]').getClientRects().length>0"),true);
+  await proofAbsenceContract();
   await configure(false); assert.equal(await js("document.querySelector('[data-ff-combat-flow]')===null"), true);
   assert.equal(await js("document.querySelector('form input').value"), 'preserved native draft');
   console.log('Combat flow native fixture passed'); clearTimeout(watchdog); window.destroy(); app.exit(0);

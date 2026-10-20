@@ -299,6 +299,12 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     return found;
   }
+  function pruneAbsentLinks(): void {
+    // Loaded rows keep their proof. Retain only the 128 most recent absent
+    // rows (above three native 15-row pages), without a guessed grace timer.
+    const absent = [...linked.keys()].filter(eventId => !document.getElementById(`event-container-${eventId}`));
+    for (let index = 0; index < absent.length - 128; index++) linked.delete(absent[index]);
+  }
   function syncNarration(): void {
     if (!prefs.automaticDamage || !prefs.hideIntermediateFranz) { restore(); return; }
     const desired = new Set<HTMLElement>();
@@ -309,7 +315,11 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       const outcome = outcomes.get(proof.outcomeKey ?? '');
       if (outcome?.status === 'failed' || outcome?.status === 'unknown') { linked.delete(eventId); continue; }
       const row = document.getElementById(`event-container-${eventId}`);
-      if (!row || proof.campaign !== campaign || !encounterMatches(row, proof.encounter)) { linked.delete(eventId); continue; }
+      if (proof.campaign !== campaign) { linked.delete(eventId); continue; }
+      // A missing presentation row cannot disprove an already claimed action.
+      // Revalidate its full committed context when the same event returns.
+      if (!row) continue;
+      if (!encounterMatches(row, proof.encounter)) { linked.delete(eventId); continue; }
       const event = eventFor(row);
       if (event?.role !== 'dm' || event.request_id !== proof.request || event.campaign_id !== campaign) { linked.delete(eventId); continue; }
       const cards = Array.from(row.querySelectorAll<HTMLElement>('[id^="event-message-card-"]')).filter(card => card.id === `event-message-card-${eventId}`);
@@ -701,7 +711,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (disposed) return;
     syncRoute();
     if (!campaign) return;
-    try { observeNativeRolls(); observeOutcomes(); applyFlow(); syncNarration(); syncPrompts(); syncPresentation(); } catch { cancel(); restoreAll(); }
+    try { observeNativeRolls(); observeOutcomes(); applyFlow(); pruneAbsentLinks(); syncNarration(); syncPrompts(); syncPresentation(); } catch { cancel(); restoreAll(); }
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(sync); }
   // Mutation delivery precedes paint; RAF-only concealment permits a first-frame flash.
