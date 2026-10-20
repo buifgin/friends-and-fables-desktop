@@ -42,9 +42,16 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   // Only a newly mounted, trusted normal-prose row can wait for first ink.
   // Existing/hydrating rows are already presented and never enter this gate.
   const presentedRows = new WeakSet<Element>(document.querySelectorAll('[id^="event-message-card-"]'));
-  const firstRows = new Map<HTMLElement, { row: HTMLElement; value: string; priority: string; inert: string | null }>();
+  const firstRows = new Map<HTMLElement, { row: HTMLElement; value: string; priority: string; inert: string | null;
+    flow?: { wrapper: HTMLElement; properties: Map<string, { value: string; priority: string; applied: string }> } }>();
   function releaseFirst(card: HTMLElement): void {
     const owned = firstRows.get(card); if (!owned) return;
+    // Restore flow before revealing ink, without overwriting newer native writes.
+    if (owned.flow) for (const [name, previous] of owned.flow.properties) {
+      if (owned.flow.wrapper.style.getPropertyValue(name) !== previous.applied || owned.flow.wrapper.style.getPropertyPriority(name) !== 'important') continue;
+      if (previous.value) owned.flow.wrapper.style.setProperty(name, previous.value, previous.priority);
+      else owned.flow.wrapper.style.removeProperty(name);
+    }
     if (owned.row.style.getPropertyValue('opacity') === '0' && owned.row.style.getPropertyPriority('opacity') === 'important') {
       if (owned.value) owned.row.style.setProperty('opacity', owned.value, owned.priority);
       else owned.row.style.removeProperty('opacity');
@@ -74,7 +81,8 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         && !body.querySelector('img,svg,canvas,button,input,textarea,select,[contenteditable],a[download]');
       if (!normal || !row || !body) { presentedRows.add(card); releaseFirst(card); continue; }
       // Respect newer native opacity writes; ownership ends rather than fighting.
-      if (owned && (row !== owned.row || row.style.getPropertyValue('opacity') !== '0' || row.style.getPropertyPriority('opacity') !== 'important' || row.getAttribute('inert') !== '')) { presentedRows.add(card); releaseFirst(card); continue; }
+      if (owned && (row !== owned.row || row.style.getPropertyValue('opacity') !== '0' || row.style.getPropertyPriority('opacity') !== 'important' || row.getAttribute('inert') !== ''
+        || owned.flow && (row.parentElement !== owned.flow.wrapper || Array.from(owned.flow.properties).some(([name, previous]) => owned.flow!.wrapper.style.getPropertyValue(name) !== previous.applied || owned.flow!.wrapper.style.getPropertyPriority(name) !== 'important')))) { presentedRows.add(card); releaseFirst(card); continue; }
       const readable = (element: Element): boolean => {
         for (let node: Element | null = element; node; node = node.parentElement) {
           const style = getComputedStyle(node);
@@ -98,12 +106,26 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       }
       if (ready) { presentedRows.add(card); releaseFirst(card); continue; }
       if (!owned) {
-        // Opacity preserves native layout and translation eligibility. Never
+        // Opacity preserves translation eligibility and native subtree width. Never
         // claim native-hidden rows or overwrite a previous inline declaration.
         if (!readable(row) || row.closest('[inert]') || row.contains(document.activeElement)) continue;
         presentedRows.add(card);
         firstRows.set(card, { row, value: row.style.getPropertyValue('opacity'), priority: row.style.getPropertyPriority('opacity'), inert: row.getAttribute('inert') });
         row.style.setProperty('opacity', '0', 'important'); row.setAttribute('inert', '');
+        const wrapper = row.parentElement;
+        if (wrapper?.id === `event-${suffix}` && wrapper.parentElement?.id === 'events-list' && wrapper.children.length === 1) {
+          const properties = new Map<string, { value: string; priority: string; applied: string }>();
+          const own = (name: string, value: string): void => {
+            const previous = { value: wrapper.style.getPropertyValue(name), priority: wrapper.style.getPropertyPriority(name), applied: '' };
+            wrapper.style.setProperty(name, value, 'important'); previous.applied = wrapper.style.getPropertyValue(name); properties.set(name, previous);
+          };
+          // Clip only the zero-height outer wrapper: its native descendants keep
+          // measurable client rects and responsive width for real translation.
+          const listStyle = getComputedStyle(wrapper.parentElement), margin = getComputedStyle(wrapper).marginTop;
+          own('height', '0px'); own('min-height', '0px'); own('overflow-x', 'clip'); own('overflow-y', 'clip');
+          if (wrapper.previousElementSibling && listStyle.display === 'flex' && listStyle.flexDirection === 'column' && parseFloat(listStyle.rowGap) > 0) own('margin-top', `calc(${margin} - ${listStyle.rowGap})`);
+          firstRows.get(card)!.flow = { wrapper, properties };
+        }
       }
     }
     // Pending rows are bounded; already-seen rows remain latched in a WeakSet.
