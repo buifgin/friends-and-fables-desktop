@@ -76,7 +76,75 @@ async function followScenario(configure,settings,selected='all'){
  }
  return {passed:cases.filter(item=>item.adapter==='on').every(item=>item.passed),cases};
 }
-module.exports={followScenario};
+// Saved native-chat-81.js:704200-706100 scrolls to the first new event with
+// smooth behavior and a 100px top inset. This tests that public submit intent
+// survives native programmatic scrolling before a later standalone HP result.
+// It does not assert that the synthetic footer is the current site's exact DOM.
+async function submitNativeScrollScenario(configure,settings){
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+ const settle=async()=>{await frame();await frame();await frame();};
+ const box=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height};};
+ const glyph=node=>{const range=document.createRange();range.selectNodeContents(node);const rects=range.getClientRects(),r=rects[rects.length-1];range.detach();return r?{top:r.top,bottom:r.bottom,height:r.height}:null;};
+ const cases=[];
+ for(const manual of [false,true]){
+  const enabled=true;
+  window.__friendsFablesDesktopChatAppearance?.dispose();
+  document.body.innerHTML='<section id="chat" class="flex-1 h-full w-full"><main id="feed"><div id="events-list"></div></main><footer id="turn-controls" class="absolute bottom-0"><div id="composer" hidden><div class="tiptap" contenteditable="true">Preserve native draft.</div></div><button type="button">Show Input</button><button type="button">End turn Magnus</button><div>Native footer controls</div></footer></section>';
+  const feed=document.getElementById('feed'),list=document.getElementById('events-list'),footer=document.getElementById('turn-controls'),composer=document.getElementById('composer'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
+  const message=(id,height,text)=>{const row=document.createElement('div');row.id='event-'+id;row.innerHTML='<div id="event-container-'+id+'"><div id="event-message-card-'+id+'"><div class="prose"><p></p></div></div></div>';const card=row.firstElementChild.firstElementChild;card.style.minHeight=height+'px';card.querySelector('p').textContent=text;list.append(row);return {row,card,text:card.querySelector('p').firstChild};};
+  for(let id=1;id<=12;id++)message(id,90,'Earlier narration '+id);
+  const prior=message(100,160,'Earlier completed narration.');
+  feed.scrollTop=feed.scrollHeight-feed.clientHeight;
+  if(enabled)configure(settings);await settle();
+  const geometry=tail=>({scrollTop:feed.scrollTop,scrollHeight:feed.scrollHeight,clientHeight:feed.clientHeight,distanceToMax:feed.scrollHeight-feed.clientHeight-feed.scrollTop,feed:box(feed),footer:box(footer),tail:box(tail.card),composerHidden:composer.hidden});
+  const before=geometry(prior);
+  if(before.distanceToMax>1||before.tail.bottom>before.footer.top+.5)throw Error('Submit/native-scroll fixture not initially pinned/unobstructed: '+JSON.stringify(before));
+  // This is the validated adapter API, not a real campaign form submission.
+  window.__friendsFablesDesktopChatAppearance?.followAfterSubmit();
+  const submitted=message(101,120,'The submitted attack action.'),narration=message(102,360,'Franz narration before the delayed HP effect.');
+  await settle();const afterSubmit=geometry(narration);
+  // Native first-new-event alignment runs after the adapter's initial follow.
+  // Its saved calculation is copied here without timers or invented user input.
+  const startTop=feed.scrollTop,target=Math.max(0,Math.min(feed.scrollHeight-feed.clientHeight,startTop+submitted.row.getBoundingClientRect().top-feed.getBoundingClientRect().top-100));
+  if(startTop-target<20)throw Error('Native first-new-event scroll did not have a meaningful non-tail target');
+  let scrollEvents=0,scrollEnds=0;const scrolled=()=>scrollEvents++,ended=()=>scrollEnds++;
+  feed.addEventListener('scroll',scrolled);feed.addEventListener('scrollend',ended);
+  let scrollFrames=0;
+  try{
+   feed.scrollTo({top:target,behavior:'smooth'});
+   for(;scrollFrames<90;scrollFrames++){await frame();if(scrollEvents&&scrollEnds&&Math.abs(feed.scrollTop-target)<=1)break;}
+   if(scrollFrames===90)throw Error('Native smooth scroll did not finish at its first-new-event target: '+JSON.stringify({target,actual:feed.scrollTop,scrollEvents,scrollEnds}));
+  }finally{feed.removeEventListener('scroll',scrolled);feed.removeEventListener('scrollend',ended);}
+  const afterNative=geometry(narration);
+  if(afterNative.distanceToMax<=20)throw Error('Native alignment failed to leave a non-tail viewport');
+  const older=document.getElementById('event-message-card-8'),readerText=older.querySelector('p').firstChild;
+  let readerBefore=null;
+  if(manual){
+   feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-400}));
+   feed.scrollTo({top:feed.scrollTop+older.getBoundingClientRect().top-feed.getBoundingClientRect().top-60,behavior:'instant'});
+   await settle();readerBefore=glyph(readerText);
+  }
+  // The delayed result has an event wrapper, but no message-card/container.
+  const row=document.createElement('div');row.id='event-103';
+  const card=document.createElement('div');card.className='bg-card border rounded-md damage';card.style.minHeight='64px';
+  card.innerHTML='<strong>Target takes 6 damage</strong><div class="hp">HP 14 / 20</div>';row.append(card);list.append(row);
+  const hp=card.querySelector('.hp'),hpText=hp.firstChild;
+  await settle();const appended=geometry({card});
+  let finalText=hpText;
+  for(const text of ['The native HP effect expands.','Additional effect details.','Final HP result.']){const p=document.createElement('p');p.style.cssText='margin:0;line-height:24px';p.textContent=text;hp.append(p);finalText=p.firstChild;}
+  await settle();const after=geometry({card}),lastGlyph=glyph(finalText),readerAfter=glyph(readerText);
+  const identity=list.contains(row)&&row.firstElementChild===card&&card.querySelector('.hp')===hp&&hp.firstChild===hpText&&prior.text.isConnected&&submitted.text.isConnected&&narration.text.isConnected&&older.querySelector('p').firstChild===readerText&&draft.firstChild===draftNode&&draft.textContent==='Preserve native draft.';
+  const nativeGrowth=after.tail.height>appended.tail.height+.5;
+  const fullyVisible=after.tail.top>=after.feed.top-.5&&after.tail.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5&&!!lastGlyph&&lastGlyph.height>0&&lastGlyph.top>=after.feed.top-.5&&lastGlyph.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5;
+  const follow=after.distanceToMax<=1;
+  const readerPreserved=!manual||!!readerBefore&&!!readerAfter&&Math.abs(readerAfter.top-readerBefore.top)<=.5&&after.distanceToMax>20;
+  const passed=identity&&nativeGrowth&&composer.hidden&&readerPreserved&&(manual||fullyVisible&&follow);
+  cases.push({name:manual?'submit-native-scroll-manual-reader':'submit-native-scroll-late-hp',adapter:enabled?'on':'off',passed,identity,nativeGrowth,fullyVisible,follow,readerPreserved,target,scrollFrames,scrollEvents,scrollEnds,before,afterSubmit,afterNative,appended,after,lastGlyph,readerBefore,readerAfter});
+  window.__friendsFablesDesktopChatAppearance?.dispose();
+ }
+ return {passed:cases.filter(item=>item.adapter==='on').every(item=>item.passed),case:'public-submit-native-scroll-delayed-hp',cases};
+}
+module.exports={followScenario,submitNativeScrollScenario};
 if(process.versions.electron){
  const {app,BrowserWindow,session}=require('electron');app.on('window-all-closed',()=>{});
  let window,profile,passed=false;const timer=setTimeout(()=>{console.error('Chat follow fixture timed out');app.exit(1);},30000);
@@ -88,7 +156,14 @@ if(process.versions.electron){
   const site=session.fromPartition('chat-follow');site.protocol.handle('https',()=>new Response('<!doctype html><style>body{margin:0}#chat{position:relative;width:900px;height:556px;margin:40px}#feed{box-sizing:border-box;height:100%;overflow-y:auto;overflow-anchor:auto;padding:0 0 64px}#turn-controls{position:absolute;bottom:0;left:0;right:0;height:56px;background:#123;z-index:5}.prose{padding:10px}.prose p{margin:0;line-height:24px}.damage{box-sizing:border-box;padding:10px;background:#812}</style>',{headers:{'Content-Type':'text/html'}}));
   window=new BrowserWindow({show:false,width:1920,height:1080,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});await window.loadURL('https://play.fables.gg/fixture/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
   const selected=process.env.FABLES_CHAT_FOLLOW_CASE||'all';
-  const result=await window.webContents.executeJavaScript(`(${followScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)},${JSON.stringify(selected)})`);
-  console.log('Chat bottom follow cases',JSON.stringify(result));assert.equal(result.passed,true,'Pinned tail or manual reader contract failed');passed=true;
+  if(selected!=='submit-native-scroll'){
+   const result=await window.webContents.executeJavaScript(`(${followScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)},${JSON.stringify(selected)})`);
+   console.log('Chat bottom follow cases',JSON.stringify(result));assert.equal(result.passed,true,'Pinned tail or manual reader contract failed');
+  }
+  if(selected==='all'||selected==='submit-native-scroll'){
+   const result=await window.webContents.executeJavaScript(`(${submitNativeScrollScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);
+   console.log('Submit native scroll delayed HP result',JSON.stringify(result));assert.equal(result.passed,true,'Submitted follow intent was lost after native programmatic scroll or manual reader moved');
+  }
+  passed=true;
  }catch(error){console.error('Chat follow fixture failed:',error);}finally{clearTimeout(timer);window?.destroy();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await fs.rm(profile,{recursive:true,force:true});app.exit(passed?0:1);}})().catch(error=>{console.error(error);app.exit(1);});
 }
