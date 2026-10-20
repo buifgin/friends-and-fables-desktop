@@ -507,3 +507,123 @@ test('native pending roll excludes baseline results and refuses competing same-c
  for(const matching of [true,false]){const f=pendingNativeFixture();f.submit();f.pending();const own=freshNativeDamage(f),competing=freshNativeDamage(f,107655741);if(!matching)competing.events_roll.total_roll++;publishNativeDamage(f,[own,competing]);assert.equal(f.attackPanel.children.length,1,'Multiple newly published own-character events are ambiguous');}
  const multiple=pendingNativeFixture();multiple.t5.memoizedState.next={memoizedState:{...multiple.damageObserver,subscribe(){return()=>{}}}};multiple.submit();multiple.pending();publishNativeDamage(multiple,[freshNativeDamage(multiple)]);assert.equal(multiple.attackPanel.children.length,1,'Two pending native observers are ambiguous');
 });
+
+// Actual captured INSERT factory through public controller lifecycle. Fake Fiber
+// provides ownership only; native paint is covered separately by the smoke model.
+const {nativeFactory,createNativeEventQuery}=require('./fixtures/native-event-query.cjs');
+function continuityFixture(setup){
+ const f=flowFixture();Object.assign(f.attackEvent,{character:{name:'Fixture character',image:null,voice:null},command_used:'roll_damage',created_at:'2026-10-20T00:00:00Z'});
+ f.attackEvent.events_roll={roll_type:'Damage',base_roll:8,base_rolls_array:[8],dice:[8],total_roll:8,modifier_stat:null,modifier_value:null,proficiency_bonus:null};
+ const query=createNativeEventQuery(nativeFactory,'campaign-a',[f.attackEvent,f.dmEvent]);
+ setup?.(query);
+ const original=query.client.setQueryData,descriptor=Object.getOwnPropertyDescriptor(query.client,'setQueryData');
+ const provider={tag:10,memoizedProps:{value:query.client},return:f.root,child:f.root.child};for(let child=provider.child;child;child=child.sibling)child.return=provider;f.root.child=provider;
+ const list=new f.Element();list.id='events-list';list.append(...f.rows);for(const row of f.rows)row.closest=selector=>selector==='#events-list'?list:null;
+ f.context.document.querySelector=selector=>selector==='#events-list'?list:f.dock;f.notify();
+ return {f,query,original,descriptor,insert:event=>query.exports.insertEventIntoQueryData({queryClient:query.client,campaignId:'campaign-a',newEvent:event})};
+}
+test('native INSERT relation continuity through current provider and controller lifecycle',()=>{
+ const crypto=require('node:crypto');assert.equal(crypto.createHash('sha256').update(nativeFactory.toString()).digest('hex'),'755b0dd7c840984fc2f93316701142f0a0da106557b89521a051af85327c6e91');
+ const {f,query,insert}=continuityFixture();assert.equal(query.events()[0],f.attackEvent,'Native row event is exact querycache object');
+ const oldRoll=f.attackEvent.events_roll;insert({...f.attackEvent,content:'incoming content remains authoritative',events_roll:null});
+ assert.equal(query.writes.length,1,'Native updater executes once');
+ assert.equal(query.events()[0].content,'incoming content remains authoritative');
+ assert.equal(query.events()[0].events_roll,oldRoll,'Recognized duplicate native INSERT must retain already observed complete roll');
+ assert.equal(f.attackEvent.events_roll,oldRoll,'Previous cache object is not mutated');
+});
+test('continuity boundary preserves authoritative clear, deletion, direct data and unknown updater semantics',()=>{
+ for(const operation of ['update','delete','direct','unknown']){
+  const {f,query}=continuityFixture(),incoming={...f.attackEvent,events_roll:null};
+  if(operation==='update')query.exports.updateEventInQueryData({queryClient:query.client,campaignId:'campaign-a',newEvent:incoming});
+  if(operation==='delete')query.client.setQueryData(query.key,data=>({...data,pages:data.pages.map(page=>({...page,data:page.data.filter(event=>event.id!==incoming.id)}))}));
+  if(operation==='direct')query.client.setQueryData(query.key,{pages:[{data:[incoming]}],pageParams:[]});
+  if(operation==='unknown')query.client.setQueryData(query.key,data=>({...data,pages:[{data:[incoming]}]}));
+  if(operation==='delete')assert.equal(query.events().some(event=>event.id===incoming.id),false);else assert.equal(query.events()[0].events_roll,null,operation);
+  assert.equal(query.writes.length,1);
+ }
+});
+test('continuity refuses changed immutable ownership and accepts complete incoming rolls',()=>{
+ for(const patch of [{id:null},{campaign_id:'other'},{character_id:99},{role:'dm'},{command_used:'talk'},{request_id:'other'},{created_at:'2026-10-21T00:00:00Z'}]){
+  const {f,query,insert}=continuityFixture();const incoming={...f.attackEvent,...patch,events_roll:null};insert(incoming);
+  assert.equal(query.events().some(event=>event===incoming&&event.events_roll===null),true,JSON.stringify(patch));
+ }
+ const {f,query,insert}=continuityFixture(),roll={...f.attackEvent.events_roll,total_roll:9};insert({...f.attackEvent,events_roll:roll});assert.equal(query.events()[0].events_roll,roll);
+});
+test('unrecognized updater preserves receiver, options, return, exception and exactly-once invocation',()=>{
+ const {query}=continuityFixture(),options={updatedAt:123};let calls=0;const updater=data=>{calls++;return data};
+ const returned=query.client.setQueryData(query.key,updater,options);assert.equal(calls,1);assert.equal(returned,query.client.getQueryData(query.key));
+ assert.equal(query.writes[0].receiver,query.client);assert.equal(query.writes[0].options,options);
+ const error=Error('native updater failure');assert.throws(()=>query.client.setQueryData(query.key,()=>{calls++;throw error}),value=>value===error);assert.equal(calls,2);
+});
+test('continuity lifecycle restores own method descriptor on disable, route and dispose',()=>{
+ for(const action of ['disable','route','dispose']){const {f,query,original,descriptor}=continuityFixture();
+  if(action==='disable')f.setPreferences({automaticDamage:false});
+  if(action==='route'){f.context.location.pathname='/campaign-b/play';f.notify();}
+  if(action==='dispose')f.install(false);
+  assert.equal(query.client.setQueryData,original,action);assert.deepEqual(Object.getOwnPropertyDescriptor(query.client,'setQueryData'),descriptor,action);
+ }
+});
+
+test('other campaign/client writes and malformed existing rolls remain untouched',()=>{
+ const {f,query}=continuityFixture();
+ const other=createNativeEventQuery(nativeFactory,'campaign-a',[f.attackEvent]);other.exports.insertEventIntoQueryData({queryClient:other.client,campaignId:'campaign-a',newEvent:{...f.attackEvent,events_roll:null}});assert.equal(other.events()[0].events_roll,null);
+ query.client.setQueryData(['events','other'],{pages:[{data:[f.attackEvent]}],pageParams:[]});query.exports.insertEventIntoQueryData({queryClient:query.client,campaignId:'other',newEvent:{...f.attackEvent,events_roll:null}});assert.equal(query.client.getQueryData(['events','other']).pages[0].data[0].events_roll,null);
+ for(const roll of [null,{roll_type:'Damage',base_roll:NaN},{}]){const fresh=continuityFixture();fresh.f.attackEvent.events_roll=roll;fresh.insert({...fresh.f.attackEvent,events_roll:null});assert.equal(fresh.query.events()[0].events_roll,null);}
+});
+test('dispose preserves a later independent instance method wrapper',()=>{
+ const {f,query}=continuityFixture();const ours=query.client.setQueryData;const later=function(...args){return ours.apply(this,args)};query.client.setQueryData=later;f.install(false);assert.equal(query.client.setQueryData,later);
+});
+
+test('ambiguous current providers and mismatched cache identity fail closed',()=>{
+ for(const mismatch of [false,true]){const {f,query,original}=continuityFixture();
+  if(mismatch){query.client.setQueryData(query.key,{pages:[{data:[{...f.attackEvent}]}],pageParams:[]});}
+  else{const other=createNativeEventQuery(nativeFactory,'campaign-a',[f.attackEvent,f.dmEvent]);const first=f.root.child,second={tag:10,memoizedProps:{value:other.client},return:f.root,child:first};first.return=second;f.root.child=second;}
+  f.notify();assert.equal(query.client.setQueryData,original);
+ }
+});
+test('custom own method descriptor is restored and unknown native updater versions bypass',()=>{
+ const {f,query,original,descriptor}=continuityFixture(query=>Object.defineProperty(query.client,'setQueryData',{value:query.client.setQueryData,configurable:true,writable:true,enumerable:true}));
+ assert.notEqual(query.client.setQueryData,original,'Guard actually attaches to custom data descriptor');
+ const plain=createNativeEventQuery(nativeFactory,'campaign-a',[f.attackEvent]);plain.exports.insertEventIntoQueryData({queryClient:plain.client,campaignId:'campaign-a',newEvent:{...f.attackEvent,events_roll:null}});
+ const nativeUpdater=plain.writes[0].updater,changed=vm.runInNewContext('('+nativeUpdater.toString().replace('if(!e?.pages?.length)','if(!e?.pages?.length /* unknown release */)')+')',{i:{...f.attackEvent,events_roll:null}});
+ query.client.setQueryData(query.key,changed);assert.equal(query.events()[0].events_roll,null,'Whitespace/source version changes bypass');
+ f.install(false);assert.equal(query.client.setQueryData,original);assert.deepEqual(Object.getOwnPropertyDescriptor(query.client,'setQueryData'),descriptor);
+});
+test('recognized native updater exceptions propagate once, and malformed query data bypasses',()=>{
+ const {f,query,insert}=continuityFixture(),error=Error('native getter');let reads=0;
+ const bad={...f.attackEvent};Object.defineProperty(bad,'id',{get(){reads++;throw error}});
+ assert.throws(()=>insert(bad),value=>value===error);assert.equal(reads,1);assert.equal(query.writes.length,1);
+ query.client.setQueryData(query.key,0);const incoming={...f.attackEvent,events_roll:null};insert(incoming);assert.equal(query.events()[0],incoming,'Native empty-cache initializer remains authoritative');
+});
+test('complete zero-valued Attack and Damage roll metadata retains without truthiness checks',()=>{
+ for(const type of ['Damage','Melee Attack']){const {f,query,insert}=continuityFixture();f.attackEvent.command_used=type==='Damage'?'roll_damage':'roll_attack';Object.assign(f.attackEvent.events_roll,{roll_type:type,base_roll:0,total_roll:0,base_rolls_array:[0]});const roll=f.attackEvent.events_roll;insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,roll);}
+});
+
+test('automatic Damage off leaves recognized native relation clearing untouched',()=>{
+ const {f,query,insert}=continuityFixture();f.setPreferences({automaticDamage:false});insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,null);
+});
+test('placeholder IDs, non-roll prior commands and invalid native roll metadata never retain',()=>{
+ for(const change of [event=>event.id=0,event=>event.id=null,event=>event.command_used='talk',event=>event.events_roll.total_roll=NaN,event=>event.events_roll.event_id++,event=>event.events_roll.roll_type='Heal',event=>event.events_roll.dice=[0],event=>event.events_roll.base_rolls_array=[],event=>delete event.character]){const {f,query,insert}=continuityFixture();change(f.attackEvent);const incoming={...f.attackEvent,events_roll:null};insert(incoming);assert.equal(query.events().some(event=>event===incoming),true);assert.equal(incoming.events_roll,null);}
+});
+
+test('current EVENTS_SELECT projection retains without relation IDs or optional roll metadata',()=>{
+ const {f,query,insert}=continuityFixture();assert.equal(f.attackEvent.character.id,undefined);assert.equal(f.attackEvent.events_roll.event_id,undefined);assert.equal(f.attackEvent.events_roll.campaign_id,undefined);assert.equal(f.attackEvent.events_roll.modifier_stat,null);
+ f.attackEvent.events_roll={roll_type:'Damage',base_roll:0,total_roll:0};const roll=f.attackEvent.events_roll;insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,roll);
+ for(const patch of [{event_id:999},{campaign_id:'other'},{modifier_value:NaN},{proficiency_bonus:'bad'},{modifier_stat:23},{vantage:'unknown'}]){const fresh=continuityFixture();Object.assign(fresh.f.attackEvent.events_roll,patch);fresh.insert({...fresh.f.attackEvent,events_roll:null});assert.equal(fresh.query.events()[0].events_roll,null);}
+});
+
+test('released binding is inert through a retained independent wrapper after provider ownership loss',()=>{
+ const {f,query,insert}=continuityFixture(),guard=query.client.setQueryData;
+ const independent=function(...args){return guard.apply(this,args)};query.client.setQueryData=independent;
+ const other=createNativeEventQuery(nativeFactory,'campaign-a',[f.attackEvent,f.dmEvent]);
+ const first=f.root.child,second={tag:10,memoizedProps:{value:other.client},return:f.root,child:first};first.return=second;f.root.child=second;
+ f.notify();assert.equal(f.preferences().automaticDamage,true,'Same campaign preference remains enabled');assert.equal(query.client.setQueryData,independent,'Independent wrapper retains ownership');
+ insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,null,'Released captured guard must bypass recognized native INSERT');assert.equal(query.writes.length,1);
+});
+
+test('current query provider remains discoverable above sixty transparent native wrappers',()=>{
+ const {f,query,insert}=continuityFixture(),provider=f.root.child,children=provider.child;
+ let parent=provider;for(let index=0;index<60;index++){const wrapper={memoizedProps:{},return:parent};parent.child=wrapper;parent=wrapper;}
+ parent.child=children;for(let child=children;child;child=child.sibling)child.return=parent;
+ f.notify();const roll=f.attackEvent.events_roll;insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,roll,'Current provider beyond UI ancestry budget must bind via bounded provider lookup');
+});

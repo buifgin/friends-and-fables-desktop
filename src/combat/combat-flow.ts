@@ -80,7 +80,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     const match = /^\/([^/]+)\/play(?:\/|$)/.exec(path)?.[1] ?? '';
     const next = match.length <= 256 && !/[\s?#]/.test(match) ? match : '';
     if (path !== route || next !== campaign) {
-      cancel(); linked.clear(); restoreAll(); route = path; campaign = next;
+      releaseQuery(); cancel(); linked.clear(); restoreAll(); route = path; campaign = next;
       prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false };
     }
   }
@@ -98,7 +98,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     // Do not acknowledge a failed persistent write or disturb the active flow.
     localStorage.setItem(storageKey(), JSON.stringify(next));
     prefs = next;
-    if (!prefs.automaticDamage) { cancel(); linked.clear(); restoreAll(); }
+    if (!prefs.automaticDamage) { releaseQuery(); cancel(); linked.clear(); restoreAll(); }
     else { if (!prefs.hideIntermediateFranz) restore(); if (!prefs.hideDamagePrompt) restorePrompts(); if (!prefs.hideIntermediateFranz || !prefs.hideDamagePrompt) restoreEmptyRows(); }
     schedule(); return { campaignId: campaign, ...prefs };
   }
@@ -216,6 +216,79 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     const result: Fiber[] = [];
     for (let fiber = committedFiber(node), depth = 0; fiber && depth < maxDepth; depth++, fiber = currentFiber(fiber.return)) result.push(fiber);
     ancestryCache.set(node, { depth: maxDepth, fibers: result }); return result;
+  }
+  // Current public native module389261 INSERT updater only; unknown releases
+  // bypass. Its duplicate INSERT replaces the entire event, unlike UPDATE.
+  const nativeInsertSource = "e=>{if(!e?.pages?.length)return{pages:[{data:[i]}],pageParams:[{cursor:void 0,direction:\"backward\"}]};let s=!1,n=e.pages.map(e=>{let a=e.data.map(e=>null!==i.id&&null!==e.id&&e.id===i.id||null!==i.id&&null===e.id||null!==i.id&&null===e.id&&e.character_id===i.character_id&&\"talk\"===e.command_used&&\"talk\"===i.command_used&&\"Sending audio...\"===e.content?(s=!0,i):e);return{...e,data:a}});if(!s){let e=n[n.length-1];if(!e)return{pages:[{data:[i]}],pageParams:[{cursor:void 0,direction:\"backward\"}]};e.data||(e.data=[]),e.data.some(e=>null!==i.id&&e.id===i.id)?a.default.warn(\"Event already exists in last page, skipping\",{functionName:\"insertEventIntoQueryData\",campaignId:r,newEventId:i.id}):e.data.length>=t.CAMPAIGN_EVENTS_PAGE_SIZE?n.push({data:[i]}):e.data.push(i)}if(n.length>3){let e=n.length-3;n.splice(0,e)}let l=e.pageParams.slice(-n.length);for(;l.length<n.length;)l.unshift({cursor:void 0,direction:\"backward\"});return{pages:n,pageParams:l}}";
+  type QueryBinding = { client: Native; original: Function; wrapper: Function; descriptor?: PropertyDescriptor; campaign: string };
+  let queryBinding: QueryBinding | undefined;
+  function releaseQuery(): void {
+    const binding = queryBinding; queryBinding = undefined;
+    if (!binding || binding.client.setQueryData !== binding.wrapper) return;
+    if (binding.descriptor) Object.defineProperty(binding.client, 'setQueryData', binding.descriptor);
+    else delete binding.client.setQueryData;
+  }
+  function queryEvents(data: Native | undefined): Native[] | null {
+    if (!data || !Array.isArray(data.pages) || !data.pages.length || data.pages.length > 3) return null;
+    const events: Native[] = [];
+    for (const page of data.pages) { if (!page || !Array.isArray(page.data) || page.data.length > 120) return null; events.push(...page.data); }
+    return events.length <= 120 && events.every(event => event && typeof event === 'object') ? events : null;
+  }
+  const positiveEventId = (value: unknown): boolean => typeof value === 'number' ? Number.isSafeInteger(value) && value > 0 : typeof value === 'string' && /^[1-9]\d{0,19}$/.test(value);
+  function completeRoll(event: Native): boolean {
+    const roll = event.events_roll;
+    return positiveEventId(event.id) && positiveEventId(event.character_id) && event.role === 'player' && event.campaign_id === campaign
+      && ['roll', 'roll_damage', 'roll_attack'].includes(event.command_used) && !!event.character && typeof event.character === 'object' && !Array.isArray(event.character) && (event.character.id === undefined || event.character.id === event.character_id)
+      && typeof event.request_id === 'string' && event.request_id.length > 0 && typeof event.created_at === 'string' && Number.isFinite(Date.parse(event.created_at))
+      && !!roll && (roll.event_id === undefined || roll.event_id === event.id) && (roll.campaign_id === undefined || roll.campaign_id === campaign)
+      && ['Damage', 'Melee', 'Ranged', 'Spell', 'Attack', 'Melee Attack', 'Ranged Attack', 'Spell Attack'].includes(roll.roll_type)
+      && (event.command_used !== 'roll_damage' || roll.roll_type === 'Damage') && (event.command_used !== 'roll_attack' || roll.roll_type !== 'Damage')
+      && ['base_roll', 'total_roll'].every(field => typeof roll[field] === 'number' && Number.isFinite(roll[field]))
+      && ['modifier_value', 'proficiency_bonus'].every(field => roll[field] == null || typeof roll[field] === 'number' && Number.isFinite(roll[field]))
+      && (roll.modifier_stat == null || typeof roll.modifier_stat === 'string') && (roll.vantage == null || ['normal', 'advantage', 'disadvantage'].includes(roll.vantage))
+      && (roll.base_rolls_array == null || Array.isArray(roll.base_rolls_array) && roll.base_rolls_array.length > 0 && roll.base_rolls_array.every((value: unknown) => typeof value === 'number' && Number.isFinite(value)))
+      && (roll.dice == null || Array.isArray(roll.dice) && roll.dice.length > 0 && roll.dice.every((value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0));
+  }
+  function retainRolls(before: Native | undefined, after: Native | undefined): Native | undefined {
+    const previous = queryEvents(before), incoming = queryEvents(after);
+    if (!previous || !incoming) return after;
+    const replacements = new Map<Native, Native>();
+    for (const event of incoming) {
+      if (event.events_roll != null) continue;
+      const matches = previous.filter(old => old.id === event.id);
+      const old = matches.length === 1 ? matches[0] : undefined;
+      if (!old || !completeRoll(old) || !['id', 'campaign_id', 'character_id', 'role', 'command_used', 'request_id', 'created_at'].every(field => old[field] === event[field])) continue;
+      replacements.set(event, { ...event, events_roll: old.events_roll });
+    }
+    return replacements.size ? { ...after, pages: after!.pages.map((page: Native) => ({ ...page, data: page.data.map((event: Native) => replacements.get(event) ?? event) })) } : after;
+  }
+  function syncQuery(): void {
+    if (!prefs.automaticDamage || !campaign) { releaseQuery(); return; }
+    const feed = document.querySelector('#events-list'), clients = new Set<Native>();
+    if (feed) for (const row of Array.from(document.querySelectorAll('[id^="event-container-"]')).slice(-30)) {
+      if (!feed.contains(row)) continue;
+      const event = eventFor(row); if (!event || event.campaign_id !== campaign) continue;
+      for (const fiber of ancestry(row, 96)) {
+        const client = fiber.tag === 10 ? fiber.memoizedProps?.value as Native | undefined : undefined;
+        if (!client || typeof client.getQueryData !== 'function' || typeof client.setQueryData !== 'function') continue;
+        try { if (queryEvents(client.getQueryData(['events', campaign]))?.includes(event)) clients.add(client); } catch { /* Unknown provider. */ }
+      }
+    }
+    const client = clients.size === 1 ? [...clients][0] : undefined;
+    if (queryBinding?.client === client) return;
+    releaseQuery(); if (!client) return;
+    const descriptor = Object.getOwnPropertyDescriptor(client, 'setQueryData'), original = client.setQueryData;
+    if (descriptor && (!('value' in descriptor) || descriptor.writable !== true || descriptor.configurable !== true)) return;
+    const binding: QueryBinding = { client, original, descriptor, campaign, wrapper: function(this: Native, ...args: any[]): any {
+      const [key, updater] = args;
+      if (queryBinding !== binding || this !== client || disposed || !prefs.automaticDamage || location.pathname !== route || campaign !== binding.campaign
+        || !Array.isArray(key) || key.length !== 2 || key[0] !== 'events' || key[1] !== binding.campaign
+        || typeof updater !== 'function' || Function.prototype.toString.call(updater) !== nativeInsertSource) return original.apply(this, args);
+      const forwarded = [...args];
+      forwarded[1] = function(this: unknown, data: Native | undefined): Native | undefined { return retainRolls(data, updater.call(this, data)); };
+      return original.apply(this, forwarded);
+    } };
+    try { Object.defineProperty(client, 'setQueryData', { value: binding.wrapper, configurable: true, writable: true, enumerable: descriptor?.enumerable ?? false }); queryBinding = binding; } catch { /* Frozen or unknown QueryClient. */ }
   }
   function formContext(form: HTMLFormElement): { owner: Native; character: Native; methods: Native; observer: Observer } | null {
     let owner: Fiber | undefined, methods: Native | undefined;
@@ -711,7 +784,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (disposed) return;
     syncRoute();
     if (!campaign) return;
-    try { observeNativeRolls(); observeOutcomes(); applyFlow(); pruneAbsentLinks(); syncNarration(); syncPrompts(); syncPresentation(); } catch { cancel(); restoreAll(); }
+    try { syncQuery(); observeNativeRolls(); observeOutcomes(); applyFlow(); pruneAbsentLinks(); syncNarration(); syncPrompts(); syncPresentation(); } catch { releaseQuery(); cancel(); restoreAll(); }
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(sync); }
   // Mutation delivery precedes paint; RAF-only concealment permits a first-frame flash.
@@ -719,7 +792,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-docked', 'data-ff-combat-panel-mode', 'hidden', 'aria-hidden'] });
   function storageChanged(event: StorageEvent): void {
     if (event.storageArea !== localStorage || event.key !== storageKey()) return;
-    cancel(); linked.clear(); restoreAll(); syncRoute(); prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false }; schedule();
+    releaseQuery(); cancel(); linked.clear(); restoreAll(); syncRoute(); prefs = campaign ? read() : { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false }; schedule();
   }
   const timer = window.setInterval(schedule, 500);
   window.addEventListener('storage', storageChanged);
@@ -728,7 +801,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   host[key] = {
     getPreferences, setPreferences,
     update(nextLocale) { language = nextLocale; schedule(); },
-    dispose() { disposed = true; cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('submit', submitted, true); window.clearInterval(timer); window.removeEventListener('popstate', schedule); window.removeEventListener('storage', storageChanged); cancel(); restoreAll(); delete host[key]; }
+    dispose() { releaseQuery(); disposed = true; cancelAnimationFrame(frame); observer.disconnect(); document.removeEventListener('submit', submitted, true); window.clearInterval(timer); window.removeEventListener('popstate', schedule); window.removeEventListener('storage', storageChanged); cancel(); restoreAll(); delete host[key]; }
   };
   schedule();
 }
