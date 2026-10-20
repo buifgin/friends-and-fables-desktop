@@ -4,7 +4,10 @@ export function configureInstructionHiding(enabled: boolean): void {
   const key='__friendsFablesDesktopInstructionHiding';
   const host=window as unknown as Record<string,{setEnabled(value:boolean):void}|undefined>;
   if(host[key]){host[key]!.setEnabled(enabled);return;}
-  const style=document.createElement('style');style.textContent='[data-ff-desktop-hidden-instructions],[data-ff-desktop-sp-draft]>.tiptap[contenteditable="true"]>p:last-child{display:none!important}';document.documentElement.append(style);
+  const style=document.createElement('style');style.textContent='[data-ff-desktop-hidden-instructions],[data-ff-desktop-sp-draft]>.tiptap[contenteditable="true"]>p:last-child{display:none!important}'
+    // Hidden guidance still owns :last-child. Preserve the native prose terminal
+    // margin on the visible body, while leaving inline margins and not-prose alone.
+    +'[data-ff-desktop-sp-draft]>.tiptap.prose[contenteditable="true"]:has(>p:last-child)>:nth-last-child(2):not(:where([class~="not-prose"],[class~="not-prose"] *)){margin-bottom:0}';document.documentElement.append(style);
   let hidden=enabled,queued=false;
   const ignored=new WeakMap<Element,string|null>();
   function scan():void {

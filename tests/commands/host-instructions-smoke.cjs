@@ -23,7 +23,7 @@ const enterGeometryStyles=enterGeometrySelected?`<style>
 </style>`:'';
 const script=require('esbuild').buildSync({stdin:{contents:`
 import {Editor,Node} from '@tiptap/core';import StarterKit from '@tiptap/starter-kit';
-const Paragraph=Node.create({name:'paragraph',priority:1000,group:'block',content:'inline*',addAttributes(){return {kind:{default:null}}},parseHTML(){return [{tag:'p'}]},renderHTML({HTMLAttributes}){return ['p',HTMLAttributes,0]}});
+const Paragraph=Node.create({name:'paragraph',priority:1000,group:'block',content:'inline*',addAttributes(){return ${enterGeometrySelected}?{kind:{default:null},style:{default:null},class:{default:null}}:{kind:{default:null}}},parseHTML(){return [{tag:'p'}]},renderHTML({HTMLAttributes}){return ['p',HTMLAttributes,0]}});
 const options={extensions:[StarterKit.configure({paragraph:false}),Paragraph]};
 window.sent=[];window.draftHTML='';window.originalNodes=[];
 window.editor=new Editor({...options,element:document.getElementById('editor-content'),content:'<p></p>',onUpdate({editor}){const html=editor.getHTML();setTimeout(()=>window.draftHTML=html,0)}});
@@ -136,11 +136,11 @@ const html='<!doctype html><html><meta charset="utf-8">'+enterGeometryStyles+'<b
  const draft=async value=>{await js(`editor.commands.setContent(${JSON.stringify(value)});editor.view.dom.dispatchEvent(new Event('input',{bubbles:true}))`);await sleep(25)};
  const enter=async shift=>{await js(`editor.view.dom.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:${!!shift},bubbles:true,cancelable:true}));editor.view.dom.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',bubbles:true}))`);await sleep(30)};
  const preferenceFile=()=>readFile(path.join(profile,'host-instructions.json'),'utf8').then(JSON.parse).catch(()=>null);
- if(process.env.FABLES_SP_SCENARIO==='enter-geometry'){
+ if(enterGeometrySelected){
   stage='enter geometry configuration';
   const body='<p>I look around.</p>',guidance='Keep scene continuity.\nRespect the current scene.';
   await appearance.save({...appearance.getSettings(),messageCommands:true});
-  await host.save({...host.getSettings(),configured:true,text:guidance,enabled:false,hideMarked:true});
+  await host.save({...host.getSettings(),configured:true,text:guidance,enabled:false,combatEnabled:false,hideMarked:true});
   await until(()=>js("!!document.querySelector('[data-ff-desktop-command-controls]')"),'geometry command footer');
   await draft(body);await js('editor.commands.focus("end")');await focusParent('geometry guidance OFF');
   const off=await js(`(${enterGeometryProbe.toString()})()`);
@@ -166,6 +166,36 @@ const html='<!doctype html><html><meta charset="utf-8">'+enterGeometryStyles+'<b
   console.log('ENTER_GEOMETRY multiline',JSON.stringify(multiline));
   assert(multiline.height>off.baseline.editor.height+0.5,'Ordinary multiline draft must retain visible expansion');
   assert.equal(multiline.sends,2,'Multiline controls do not send');
+  for(const [label,content] of [
+   ['ordinary multiline','<p>First visible paragraph.</p><p>Last visible paragraph.</p>'],
+   ['terminal code block','<pre><code>Literal code body.</code></pre>'],
+   ['inline margin authority','<p style="margin-bottom: 11px;">Custom native margin.</p>'],
+   ['not-prose exclusion','<p class="not-prose">Unstyled native body.</p>']
+  ]){
+   await draft(content);await js('editor.commands.focus("end")');
+   const result=await js(`(${enterGeometryProbe.toString()})()`);
+   console.log('ENTER_GEOMETRY '+label,JSON.stringify(result));
+   assertStableEnterGeometry(result,label);assert.deepEqual(result.payload.json,result.json);
+   assert.equal(result.payload.html,result.html,label+' sends committed exact payload');
+   assert.equal(result.send.marked,true);
+   const margin=await js("getComputedStyle(editor.view.dom.children[editor.view.dom.children.length-2]).marginBottom");
+   if(label==='inline margin authority')assert.equal(margin,'11px','Inline custom margin retains authority');
+   if(label==='not-prose exclusion')assert.equal(margin,'16px','not-prose keeps native paragraph margin');
+  }
+  await host.save({...host.getSettings(),hideMarked:false});
+  await draft(body);await js('editor.commands.focus("end")');
+  const visible=await js(`(${enterGeometryProbe.toString()})()`);
+  console.log('ENTER_GEOMETRY hideMarked false',JSON.stringify(visible));
+  assert.equal(visible.sends,1);assert.equal(visible.nativeEditorIdentity,true);assert.equal(visible.send.marked,false);
+  assert.equal(visible.payload.html,expected);assert.deepEqual(visible.payload.json,visible.json);
+  assert(visible.paints.every(sample=>sample.editor.height>visible.baseline.editor.height+0.5),'Reviewed guidance remains visibly expanded');
+  assert.equal(await js("getComputedStyle(editor.view.dom.firstElementChild).marginBottom"),'20px','Visible guidance keeps ordinary prose paragraph spacing');
+  await host.save({...host.getSettings(),enabled:false,hideMarked:true});
+  await draft(body);await js('editor.commands.focus("end")');
+  const disabled=await js(`(${enterGeometryProbe.toString()})()`);
+  console.log('ENTER_GEOMETRY guidance disabled after review',JSON.stringify(disabled));
+  assertStableEnterGeometry(disabled,'guidance disabled after review');assert.equal(disabled.payload.html,body);assert.equal(disabled.send.marked,false);
+  assert.equal(await js("getComputedStyle(editor.view.dom.firstElementChild).marginBottom"),'0px','Native terminal style resumes after guidance cleanup');
   console.log('PASS: selected Enter geometry; stable next two visible frames and Send click. Synchronous samples are ordering evidence only; user-captured prose CSS applied; OS keyboard path remains untested.');
   return;
  }
