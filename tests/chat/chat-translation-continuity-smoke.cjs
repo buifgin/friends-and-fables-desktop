@@ -331,7 +331,64 @@ async function reasoningRevealScenario(configure,settings){
  window.__friendsFablesDesktopChatAppearance.dispose();
  return {passed:before.gated&&before.paneHidden&&before.bodyEmpty&&after.bodyEmpty&&retained&&revealed,case:'atomic-attribute-only-native-reasoning-reveal',before,after,retained,revealed};
 }
-module.exports={continuityScenario,firstPaintScenario,handoffScenario,atomicFirstPresentationScenario,firstPresentationPreservationScenario,reasoningRevealScenario};
+// Refined user contract: an owned, never-presented shell must not move visible
+// history to expose empty space. Natural growth after first ink is allowed.
+// Captured native ej grid/avatar sibling and keyed null->confirmed wrapper shape;
+// no asynchronous removal interval or invented native opacity is introduced.
+async function reservationScenario(configure,settings,install,dictionary,local){
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+ const campaign=location.pathname.split('/')[1],source='Мой герой осторожно подходит к тихой башне и осматривает старые камни возле закрытых ворот.';
+ document.body.innerHTML='<style>#reservation-chat{position:relative;width:720px;height:400px;margin:24px}#reservation-chat>#feed{display:flex;flex-direction:column;box-sizing:border-box;height:100%;overflow-y:auto;padding:16px 16px 64px;overflow-anchor:auto}#reservation-chat .feed-spacer{flex-grow:1}#reservation-chat #events-list{display:flex;flex-direction:column;flex-shrink:0;gap:8px;width:100%;max-width:950px;margin:auto}#reservation-chat .native-grid{display:grid;position:relative;grid-template-columns:40px 1fr 30px}#reservation-chat .native-avatar{width:40px;height:40px;background:rgb(90,100,110)}#reservation-chat .native-content-column{min-width:0;margin-left:16px}#reservation-chat .card{position:relative;width:auto;padding:12px;border:1px solid rgb(110,120,130);box-sizing:border-box}#reservation-chat .author{height:40px}#reservation-chat .prose p{margin:0;line-height:24px}#reservation-footer{position:absolute;bottom:0;left:0;right:0;height:56px;background:rgb(20,30,40)}#reservation-footer .tiptap{height:24px}</style><section id="reservation-chat" class="flex-1 h-full w-full"><main id="feed"><div class="feed-spacer"></div><div id="events-list"></div></main><footer id="reservation-footer" class="absolute bottom-0"><div class="tiptap" contenteditable="true">Сохранить черновик.</div><button type="button">Завершить ход</button></footer></section>';
+ const feed=document.getElementById('feed'),list=document.getElementById('events-list'),footer=document.getElementById('reservation-footer'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
+ const mount=(id,content)=>{
+  const wrapper=document.createElement('div');wrapper.id=`event-${id}`;
+  wrapper.innerHTML=`<div id="event-container-${id}" class="native-grid grid relative"><div class="relative"><div class="native-avatar"></div></div><div class="native-content-column min-w-0"><div id="event-message-card-${id}" class="card"><div class="author">Мира</div><div class="prose"><div class="space-y-4 whitespace-normal"></div></div></div></div></div>`;
+  const container=wrapper.firstElementChild,card=wrapper.querySelector('.card'),body=card.querySelector('.prose'),renderer=body.firstElementChild,avatar=wrapper.querySelector('.native-avatar');
+  const event={id,role:'player',command_used:'talk',content:content||source,campaign_id:campaign,character_id:42,...(id===null?{isOptimistic:true}:{})};card.__reactFiber$fixture={memoizedProps:{event}};
+  const item={wrapper,container,card,body,renderer,avatar,event,paragraph:null,text:null};
+  if(content)hydrate(item,content);list.append(wrapper);return item;
+ };
+ const hydrate=(item,content)=>{item.paragraph=document.createElement('p');item.text=document.createTextNode(content);item.paragraph.append(item.text);item.renderer.append(item.paragraph);};
+ let old;for(let id=1;id<=8;id++)old=mount(id,'Ранее полученное сообщение '+id+'.');
+ const oldText=old.text,oldCard=old.card;
+ feed.scrollTop=feed.scrollHeight-feed.clientHeight;
+ configure(settings);install('reservation',dictionary,true,[],local,true,true);
+ const visible=element=>{for(let node=element;node;node=node.parentElement){const style=getComputedStyle(node);if(node.hidden||style.display==='none'||style.visibility==='hidden'||style.opacity==='0')return false;}return true;};
+ const ink=style=>style.color!=='transparent'&&style.color!=='rgba(0, 0, 0, 0)'&&style.webkitTextFillColor!=='transparent'&&style.webkitTextFillColor!=='rgba(0, 0, 0, 0)';
+ const rect=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,width:r.width};};
+ const glyph=node=>{const range=document.createRange();range.selectNodeContents(node);const r=range.getBoundingClientRect();range.detach();return {top:r.top,bottom:r.bottom,height:r.height,width:r.width};};
+ const frames=[];
+ const sample=(stage,item)=>{
+  const root=item&&(item.card.querySelector('[data-ff-desktop-message-snapshot]')||item.body);
+  let readable=false,progress=false;
+  if(root){const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);let node;while(node=walker.nextNode())if(node.data.trim()&&visible(node.parentElement)&&ink(getComputedStyle(node.parentElement)))readable=true;
+   const dot=root.querySelector('[data-ff-translation-dot]'),style=dot&&getComputedStyle(dot,'::after');progress=!!dot&&visible(dot)&&ink(style)&&!!style.content&&style.content!=='none'&&style.content!=='""';}
+  const geometry={oldGlyph:glyph(oldText),oldCard:rect(oldCard),feed:rect(feed),footer:rect(footer),scrollTop:feed.scrollTop,scrollHeight:feed.scrollHeight,clientHeight:feed.clientHeight};
+  const retained=!item||list.contains(item.wrapper)&&item.wrapper.firstElementChild===item.container&&item.wrapper.querySelector('.native-avatar')===item.avatar&&item.wrapper.querySelector('.card')===item.card&&item.card.querySelector('.prose')===item.body&&item.body.firstElementChild===item.renderer&&(!item.text||item.paragraph.firstChild===item.text&&item.text.isConnected);
+  const value={stage,geometry,retained,draftSame:draft.firstChild===draftNode&&draft.textContent==='Сохранить черновик.',oldIdentity:old.paragraph.firstChild===oldText&&document.getElementById(oldCard.id)===oldCard&&oldText.isConnected,
+   ...(item?{id:item.event.id,sourceLength:item.event.content.length,optimistic:item.event.isOptimistic===true,ownedHidden:item.container.style.getPropertyValue('opacity')==='0'&&item.container.style.getPropertyPriority('opacity')==='important'&&item.container.inert,avatarVisible:visible(item.avatar),cardVisible:visible(item.card),glyph:readable,progress,presentation:root===item.body?'native':'continuity',nativeBodyEmpty:!item.body.textContent.trim(),row:rect(item.wrapper),body:rect(item.body),nativeGlyph:item.text?glyph(item.text):null}: {})};
+  frames.push(value);return value;
+ };
+ // Exactly eight RAF waits in this scenario; two establish initial pin/layout.
+ await frame();await frame();const before=sample('before-mount');
+ const initiallyVisible=before.geometry.oldGlyph.height>0&&before.geometry.oldGlyph.top>=before.geometry.feed.top&&before.geometry.oldGlyph.bottom<=before.geometry.footer.top+.5;
+ const temporary=mount(null,'');
+ await frame();sample('owned-empty-first',temporary);await frame();sample('owned-empty-second',temporary);
+ hydrate(temporary,source);await frame();sample('optimistic-first-ink',temporary);
+ temporary.wrapper.remove();const confirmed=mount(180,'');
+ await frame();sample('confirmed-gap-first',confirmed);await frame();sample('confirmed-gap-second',confirmed);
+ hydrate(confirmed,source);await frame();const final=sample('confirmed-first-ink',confirmed);
+ const hidden=frames.filter(value=>value.stage.startsWith('owned-empty-'));
+ const ownedGate=hidden.every(value=>value.ownedHidden&&!value.avatarVisible&&!value.cardVisible&&!value.glyph&&!value.progress);
+ const reservationStable=hidden.every(value=>Math.abs(value.geometry.oldGlyph.top-before.geometry.oldGlyph.top)<=.5&&Math.abs(value.geometry.oldCard.top-before.geometry.oldCard.top)<=.5&&Math.abs(value.geometry.scrollTop-before.geometry.scrollTop)<=.5);
+ const continuity=frames.filter(value=>value.stage.startsWith('confirmed-')).every(value=>value.avatarVisible&&value.cardVisible&&(value.glyph||value.progress));
+ const revealed=final.avatarVisible&&final.cardVisible&&final.glyph&&final.nativeGlyph.height>0;
+ const retained=frames.every(value=>value.retained&&value.draftSame&&value.oldIdentity);
+ const noFakePending=!document.querySelector('[data-ff-translation-placeholder],[data-ff-translation-pending],[data-ff-translation-dot]');
+ window.__friendsFablesDesktopTranslation.dispose();window.__friendsFablesDesktopChatAppearance.dispose();
+ return {passed:initiallyVisible&&ownedGate&&reservationStable&&continuity&&revealed&&retained&&noFakePending,case:'owned-hidden-shell-flow-reservation',contract:'refined-no-invisible-shell-displacement-not-visible-disappearance-proof',frames,initiallyVisible,ownedGate,reservationStable,continuity,revealed,retained,noFakePending};
+}
+module.exports={continuityScenario,firstPaintScenario,handoffScenario,atomicFirstPresentationScenario,firstPresentationPreservationScenario,reasoningRevealScenario,reservationScenario};
 if(process.versions.electron){
  const {app,BrowserWindow,session}=require('electron');app.on('window-all-closed',()=>{});
  let window,profile,passed=false;const timer=setTimeout(()=>{console.error('Combined chat translation fixture timed out');app.exit(1);},30000);
@@ -345,6 +402,10 @@ if(process.versions.electron){
   await window.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
   const settings={...DEFAULT_APPEARANCE,preset:'website',messages:{...DEFAULT_APPEARANCE.messages,enabled:true}};
   const selected=process.env.FABLES_CHAT_TRANSLATION_SCENARIO;
+  if(!selected||selected==='atomic-reservation'){
+   const result=await window.webContents.executeJavaScript(`(${reservationScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)},${installTranslationDom.toString()},${JSON.stringify(RUSSIAN_DICTIONARY)},${localTranslation.toString()})`);
+   console.log('Owned hidden shell reservation result',JSON.stringify(result));assert.equal(result.passed,true,'Owned invisible shell displaced visible history or lost handoff presentation');passed=true;
+  }
   if(!selected||selected==='atomic-first-presentation-matrix'){
    const cases=[{}, {role:'dm',sourceEmpty:true}, {role:'dm',sourceEmpty:true,translated:false}, {english:true,dynamic:false}, {role:'dm',english:true}, {dynamic:false}, {translated:false}, {english:true,translated:false}, {role:'dm',sourceEmpty:true,emptyToolCalls:true}];
    for(const options of cases){
@@ -356,7 +417,9 @@ if(process.versions.electron){
    const reasoning=await window.webContents.executeJavaScript(`(${reasoningRevealScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)})`);
    console.log('Atomic native reasoning reveal result',JSON.stringify(reasoning));assert.equal(reasoning.passed,true,'Attribute-only native reasoning reveal stayed gated');passed=true;
   }
-  if(selected==='atomic-reasoning-reveal'){
+  if(selected==='atomic-reservation'){
+   // The selected reservation scenario above is the complete focused run.
+  }else if(selected==='atomic-reasoning-reveal'){
    const result=await window.webContents.executeJavaScript(`(${reasoningRevealScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(settings)})`);
    console.log('Atomic native reasoning reveal result',JSON.stringify(result));assert.equal(result.passed,true,'Attribute-only native reasoning reveal stayed gated');passed=true;
   }else if(selected==='atomic-empty-tool-calls'){
