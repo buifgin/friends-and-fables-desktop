@@ -106,7 +106,7 @@ app.on('window-all-closed', () => {});
   };
   const rollContinuityContract=async()=>{
     await setPreferences(true);
-    await js(`window.createNativeEventQuery=(${createNativeEventQuery.toString()});window.capturedNativeFactory=(${nativeFactory.toString()});`);
+    await js(`window.createNativeEventQuery=(${createNativeEventQuery.toString()});window.capturedNativeFactory=(${nativeFactory.toString()});void 0;`);
     await js(`(()=>{
       // Model the captured nS null guard, not a React commit: missing native
       // relation unmounts its card; enriched INSERT creates a fresh card.
