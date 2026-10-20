@@ -330,8 +330,11 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     const bounds = scrollFeed.getBoundingClientRect();
     // Only a bottom overlay inside this native chat stack may reserve space.
     // Unrelated panels, dialogs and in-flow footers retain native geometry.
-    const footer = Array.from(chat?.querySelectorAll<HTMLElement>('footer,[class~="absolute"][class~="bottom-0"],[class~="fixed"][class~="bottom-0"]') ?? []).slice(0, 12).filter(node => {
-      if (scrollFeed!.contains(node) || node.closest('form,[role="dialog"],aside,[data-sidebar]')) return false;
+    const footer = Array.from(chat?.querySelectorAll<HTMLElement>('footer,[class~="absolute"][class~="bottom-0"],[class~="fixed"][class~="bottom-0"]') ?? [])
+      // Native roll corners and TTS badges precede the footer in DOM order.
+      // Exclude ineligible scopes before spending the bounded geometry budget.
+      .filter(node => !scrollFeed!.contains(node) && !node.closest('form,[role="dialog"],aside,[data-sidebar]'))
+      .slice(0, 12).filter(node => {
       const style = getComputedStyle(node), rect = node.getBoundingClientRect();
       return ['absolute', 'fixed'].includes(style.position) && style.visibility !== 'hidden' && style.display !== 'none' && rect.height > 0
         && rect.bottom >= bounds.bottom - .5 && rect.top < bounds.bottom && rect.left <= bounds.left + bounds.width / 2 && rect.right >= bounds.left + bounds.width / 2;
