@@ -238,15 +238,16 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   function completeRoll(event: Native): boolean {
     const roll = event.events_roll;
     return positiveEventId(event.id) && positiveEventId(event.character_id) && event.role === 'player' && event.campaign_id === campaign
-      && ['roll', 'roll_damage', 'roll_attack'].includes(event.command_used) && event.character?.id === event.character_id
+      && ['roll', 'roll_damage', 'roll_attack'].includes(event.command_used) && !!event.character && typeof event.character === 'object' && !Array.isArray(event.character) && (event.character.id === undefined || event.character.id === event.character_id)
       && typeof event.request_id === 'string' && event.request_id.length > 0 && typeof event.created_at === 'string' && Number.isFinite(Date.parse(event.created_at))
-      && !!roll && roll.event_id === event.id && roll.campaign_id === campaign
+      && !!roll && (roll.event_id === undefined || roll.event_id === event.id) && (roll.campaign_id === undefined || roll.campaign_id === campaign)
       && ['Damage', 'Melee', 'Ranged', 'Spell', 'Attack', 'Melee Attack', 'Ranged Attack', 'Spell Attack'].includes(roll.roll_type)
       && (event.command_used !== 'roll_damage' || roll.roll_type === 'Damage') && (event.command_used !== 'roll_attack' || roll.roll_type !== 'Damage')
-      && ['base_roll', 'total_roll', 'modifier_value', 'proficiency_bonus'].every(field => typeof roll[field] === 'number' && Number.isFinite(roll[field]))
-      && typeof roll.modifier_stat === 'string' && ['normal', 'advantage', 'disadvantage'].includes(roll.vantage)
-      && Array.isArray(roll.base_rolls_array) && roll.base_rolls_array.length > 0 && roll.base_rolls_array.every((value: unknown) => typeof value === 'number' && Number.isFinite(value))
-      && Array.isArray(roll.dice) && roll.dice.length > 0 && roll.dice.every((value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0);
+      && ['base_roll', 'total_roll'].every(field => typeof roll[field] === 'number' && Number.isFinite(roll[field]))
+      && ['modifier_value', 'proficiency_bonus'].every(field => roll[field] == null || typeof roll[field] === 'number' && Number.isFinite(roll[field]))
+      && (roll.modifier_stat == null || typeof roll.modifier_stat === 'string') && (roll.vantage == null || ['normal', 'advantage', 'disadvantage'].includes(roll.vantage))
+      && (roll.base_rolls_array == null || Array.isArray(roll.base_rolls_array) && roll.base_rolls_array.length > 0 && roll.base_rolls_array.every((value: unknown) => typeof value === 'number' && Number.isFinite(value)))
+      && (roll.dice == null || Array.isArray(roll.dice) && roll.dice.length > 0 && roll.dice.every((value: unknown) => typeof value === 'number' && Number.isSafeInteger(value) && value > 0));
   }
   function retainRolls(before: Native | undefined, after: Native | undefined): Native | undefined {
     const previous = queryEvents(before), incoming = queryEvents(after);

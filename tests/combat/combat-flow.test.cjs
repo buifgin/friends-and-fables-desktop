@@ -512,8 +512,8 @@ test('native pending roll excludes baseline results and refuses competing same-c
 // provides ownership only; native paint is covered separately by the smoke model.
 const {nativeFactory,createNativeEventQuery}=require('./fixtures/native-event-query.cjs');
 function continuityFixture(setup){
- const f=flowFixture();Object.assign(f.attackEvent,{character:{...f.character,name:'Fixture character',image:null},command_used:'roll_damage',created_at:'2026-10-20T00:00:00Z'});
- f.attackEvent.events_roll={event_id:f.attackEvent.id,campaign_id:'campaign-a',roll_type:'Damage',base_roll:8,base_rolls_array:[8],dice:[8],total_roll:8,modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,vantage:'normal'};
+ const f=flowFixture();Object.assign(f.attackEvent,{character:{name:'Fixture character',image:null,voice:null},command_used:'roll_damage',created_at:'2026-10-20T00:00:00Z'});
+ f.attackEvent.events_roll={roll_type:'Damage',base_roll:8,base_rolls_array:[8],dice:[8],total_roll:8,modifier_stat:null,modifier_value:null,proficiency_bonus:null};
  const query=createNativeEventQuery(nativeFactory,'campaign-a',[f.attackEvent,f.dmEvent]);
  setup?.(query);
  const original=query.client.setQueryData,descriptor=Object.getOwnPropertyDescriptor(query.client,'setQueryData');
@@ -604,4 +604,10 @@ test('automatic Damage off leaves recognized native relation clearing untouched'
 });
 test('placeholder IDs, non-roll prior commands and invalid native roll metadata never retain',()=>{
  for(const change of [event=>event.id=0,event=>event.id=null,event=>event.command_used='talk',event=>event.events_roll.total_roll=NaN,event=>event.events_roll.event_id++,event=>event.events_roll.roll_type='Heal',event=>event.events_roll.dice=[0],event=>event.events_roll.base_rolls_array=[],event=>delete event.character]){const {f,query,insert}=continuityFixture();change(f.attackEvent);const incoming={...f.attackEvent,events_roll:null};insert(incoming);assert.equal(query.events().some(event=>event===incoming),true);assert.equal(incoming.events_roll,null);}
+});
+
+test('current EVENTS_SELECT projection retains without relation IDs or optional roll metadata',()=>{
+ const {f,query,insert}=continuityFixture();assert.equal(f.attackEvent.character.id,undefined);assert.equal(f.attackEvent.events_roll.event_id,undefined);assert.equal(f.attackEvent.events_roll.campaign_id,undefined);assert.equal(f.attackEvent.events_roll.modifier_stat,null);
+ f.attackEvent.events_roll={roll_type:'Damage',base_roll:0,total_roll:0};const roll=f.attackEvent.events_roll;insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,roll);
+ for(const patch of [{event_id:999},{campaign_id:'other'},{modifier_value:NaN},{proficiency_bonus:'bad'},{modifier_stat:23},{vantage:'unknown'}]){const fresh=continuityFixture();Object.assign(fresh.f.attackEvent.events_roll,patch);fresh.insert({...fresh.f.attackEvent,events_roll:null});assert.equal(fresh.query.events()[0].events_roll,null);}
 });

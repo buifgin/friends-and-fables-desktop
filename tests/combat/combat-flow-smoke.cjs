@@ -111,7 +111,7 @@ app.on('window-all-closed', () => {});
       // Model the captured nS null guard, not a React commit: missing native
       // relation unmounts its card; enriched INSERT creates a fresh card.
       const feed=document.querySelector('main');feed.id='events-list';feed.replaceChildren();
-      const event={id:109467696,campaign_id:'campaign-a',character_id:83026155,character:{id:83026155,name:'Fixture character',image:null},role:'player',command_used:'roll_damage',request_id:'continuity-request',created_at:'2026-10-20T12:00:00Z',events_roll:{event_id:109467696,campaign_id:'campaign-a',roll_type:'Damage',base_roll:3,total_roll:3,base_rolls_array:[3],dice:[8],modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,vantage:'normal'}};
+      const event={id:109467696,campaign_id:'campaign-a',character_id:83026155,character:{name:'Fixture character',image:null,voice:null},role:'player',command_used:'roll_damage',request_id:'continuity-request',created_at:'2026-10-20T12:00:00Z',events_roll:{roll_type:'Damage',base_roll:3,total_roll:3,base_rolls_array:[3],dice:[8],modifier_stat:null,modifier_value:null,proficiency_bonus:null}};
       const query=createNativeEventQuery(capturedNativeFactory,'campaign-a',[event]);
       const queryProvider={tag:10,memoizedProps:{value:query.client},return:root,child:owner};root.child=queryProvider;owner.return=queryProvider;
       const eventFiber={memoizedProps:{event},return:queryProvider};owner.sibling=eventFiber;
