@@ -512,7 +512,7 @@ test('native pending roll excludes baseline results and refuses competing same-c
 // provides ownership only; native paint is covered separately by the smoke model.
 const {nativeFactory,createNativeEventQuery}=require('./fixtures/native-event-query.cjs');
 function continuityFixture(){
- const f=flowFixture();Object.assign(f.attackEvent,{command_used:'roll_damage',created_at:'2026-10-20T00:00:00Z'});
+ const f=flowFixture();Object.assign(f.attackEvent,{character:{...f.character,name:'Fixture character',image:null},command_used:'roll_damage',created_at:'2026-10-20T00:00:00Z'});
  f.attackEvent.events_roll={event_id:f.attackEvent.id,campaign_id:'campaign-a',roll_type:'Damage',base_roll:8,base_rolls_array:[8],dice:[8],total_roll:8,modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,vantage:'normal'};
  const query=createNativeEventQuery(nativeFactory,'campaign-a',[f.attackEvent,f.dmEvent]);
  const original=query.client.setQueryData,descriptor=Object.getOwnPropertyDescriptor(query.client,'setQueryData');
