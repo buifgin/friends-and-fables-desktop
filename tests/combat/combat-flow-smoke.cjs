@@ -6,6 +6,7 @@ if (!process.env.FABLES_TEST_PROFILE_DIR) throw Error('Use the central private-p
 app.setPath('userData', process.env.FABLES_TEST_PROFILE_DIR);
 const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '../..');
 const { configureCombatFlow } = require(path.join(root, 'dist/combat/combat-flow'));
+const { nativeFactory, createNativeEventQuery } = require('./fixtures/native-event-query.cjs');
 const html = `<!doctype html><meta charset="utf-8"><style>body{background:#222;color:white}section{width:400px}.relative{position:relative}button{padding:12px}label{display:block}fieldset{max-width:380px}.native-grid{display:grid;grid-template-columns:40px 1fr 30px;column-gap:8px}.native-avatar{height:160px}.native-middle{margin-left:16px}.native-actions{height:140px}</style>
 <section data-ff-combat-docked data-ff-combat-panel-mode="actions"><form><input value="preserved native draft"><button type="submit" id="submit">Attack</button></form></section><main></main><script>
 window.delayDamageIdentity=false;window.damageMountFrames=[];window.delayDamageProps=false;window.presentationFrames=[];window.calls=0;window.submits=0;window.mode='hit';window.holdStreaming=true;window.sequence=100;window.nativeCharacter={id:83026155};window.nativeCampaign={id:'campaign-a',active_encounter_id:412456};
@@ -103,9 +104,53 @@ app.on('window-all-closed', () => {});
     assert.equal(restored.narrationHidden,true,'Still-owned narration re-hides after the same row returns');
     assert.equal(restored.promptHidden,true,'Still-owned completed Damage prompt re-hides after the same row returns');
   };
+  const rollContinuityContract=async()=>{
+    await setPreferences(true);
+    await js(`window.createNativeEventQuery=(${createNativeEventQuery.toString()});window.capturedNativeFactory=(${nativeFactory.toString()});`);
+    await js(`(()=>{
+      // Model the captured nS null guard, not a React commit: missing native
+      // relation unmounts its card; enriched INSERT creates a fresh card.
+      const feed=document.querySelector('main');feed.id='events-list';feed.replaceChildren();
+      const event={id:109467696,campaign_id:'campaign-a',character_id:83026155,role:'player',command_used:'roll_damage',request_id:'continuity-request',created_at:'2026-10-20T12:00:00Z',events_roll:{event_id:109467696,campaign_id:'campaign-a',roll_type:'Damage',base_roll:3,total_roll:3,base_rolls_array:[3],dice:[8],modifier_stat:'strength',modifier_value:0,proficiency_bonus:0,vantage:'normal'}};
+      const query=createNativeEventQuery(capturedNativeFactory,'campaign-a',[event]);
+      const queryProvider={tag:10,memoizedProps:{value:query.client},return:root,child:owner};root.child=queryProvider;owner.return=queryProvider;
+      const eventFiber={memoizedProps:{event},return:queryProvider};owner.sibling=eventFiber;
+      const outer=document.createElement('div');outer.id='event-'+event.id;
+      const row=document.createElement('div');row.id='event-container-undefined';outer.append(row);feed.append(outer);
+      const host={tag:5,type:'div',stateNode:row,memoizedProps:{},return:eventFiber};eventFiber.child=host;row.__reactFiber$fixture=host;
+      const render=()=>{const current=query.events()[0];eventFiber.memoizedProps={event:current};
+        if(!current.events_roll){row.replaceChildren();return;}
+        if(!row.firstElementChild){const card=document.createElement('div');card.id='event-message-card-'+event.id;const panel=document.createElement('div');panel.className='relative rounded-2xl border-2 overflow-hidden';panel.style.cssText='height:72px;border:2px solid white';panel.innerHTML='<svg width="32" height="32"><circle cx="16" cy="16" r="12" /></svg><span>Damage 3</span>';card.append(panel);row.append(card);}
+      };
+      render();query.client.onChange=render;
+      window.continuity={query,event,outer,row,card:row.firstElementChild,panel:row.firstElementChild.firstElementChild,svg:row.querySelector('svg'),form,draft:form.querySelector('input'),calls,submits,original:query.client.setQueryData,hadOwn:Object.hasOwn(query.client,'setQueryData'),render};
+    })()`);
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    await js("continuity.height=continuity.card.getBoundingClientRect().height;continuity.editorHeight=continuity.form.getBoundingClientRect().height;continuity.scrollTop=document.querySelector('main').scrollTop;continuity.query.exports.insertEventIntoQueryData({queryClient:continuity.query.client,campaignId:'campaign-a',newEvent:{...continuity.event,events_roll:null}})");
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    const raw=await js(`({visible:continuity.card.isConnected&&continuity.card.getClientRects().length>0,sameCard:continuity.row.firstElementChild===continuity.card,samePanel:continuity.row.firstElementChild?.firstElementChild===continuity.panel,sameSvg:continuity.row.querySelector('svg')===continuity.svg,rollPresent:!!continuity.query.events()[0].events_roll,height:continuity.row.firstElementChild?.getBoundingClientRect().height??0,expectedHeight:continuity.height,sameOuter:document.getElementById('event-'+continuity.event.id)===continuity.outer,sameForm:document.querySelector('form')===continuity.form,sameDraft:document.querySelector('form input')===continuity.draft,draft:continuity.draft.value,editorHeight:continuity.form.getBoundingClientRect().height,expectedEditorHeight:continuity.editorHeight,scrollTop:document.querySelector('main').scrollTop,expectedScrollTop:continuity.scrollTop,calls,submits,writes:continuity.query.writes.length})`);
+    // Always exercise enriched recovery and disposal even when the RED card gap
+    // will fail below, so failure evidence includes cleanup and no callback replay.
+    await js("continuity.query.exports.insertEventIntoQueryData({queryClient:continuity.query.client,campaignId:'campaign-a',newEvent:continuity.event})");
+    await configure(false);
+    const cleanup=await js("({restored:continuity.query.client.setQueryData===continuity.original,ownRestored:Object.hasOwn(continuity.query.client,'setQueryData')===continuity.hadOwn,recovered:!!continuity.row.firstElementChild,cardReplaced:continuity.row.firstElementChild!==continuity.card,calls,submits})");
+    console.log('ROLL_RELATION_CONTINUITY captured-native INSERT/null-guard model',JSON.stringify({raw,cleanup}));
+    for(const field of ['sameOuter','sameForm','sameDraft'])assert.equal(raw[field],true,field);
+    assert.equal(raw.draft,'preserved native draft');assert.equal(raw.editorHeight,raw.expectedEditorHeight);assert.equal(raw.scrollTop,raw.expectedScrollTop);
+    assert.equal(raw.calls,0);assert.equal(raw.submits,0);assert.equal(raw.writes,1,'Exactly one native updater invocation');
+    assert.equal(cleanup.restored,true,'Dispose restores exact original method');assert.equal(cleanup.ownRestored,true,'Dispose restores inherited method descriptor');assert.equal(cleanup.recovered,true);
+    for(const field of ['visible','sameCard','samePanel','sameSvg','rollPresent'])assert.equal(raw[field],true,field+' survives duplicate native INSERT');
+    assert.equal(raw.height,raw.expectedHeight,'No empty dice reserve or resize');
+    assert.equal(cleanup.cardReplaced,false,'Enriched recovery never remounts a retained card');
+  };
+  if(process.env.FABLES_COMBAT_SCENARIO==='roll-relation-continuity'){
+    await rollContinuityContract();console.log('Roll relation continuity contract passed');clearTimeout(watchdog);window.destroy();app.exit(0);return;
+  }
   if(process.env.FABLES_COMBAT_SCENARIO==='proof-absence'){
     await proofAbsenceContract();console.log('Combat proof-absence lifecycle contract passed');clearTimeout(watchdog);window.destroy();app.exit(0);return;
   }
+  await rollContinuityContract();
+  await window.loadURL('https://play.fables.gg/campaign-a/play');await nativeReady();await configure();
   await setPreferences(true);
   assert.equal(await js('calls'), 0, 'Historical choice remains manual after enabling');
   await setPreferences(true, true);
