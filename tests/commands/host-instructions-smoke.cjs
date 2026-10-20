@@ -10,12 +10,24 @@ let parent,settingsWindow,forged,profile,host,appearance,stage='initialize';
 let lastParentReadiness=null;
 const timer=setTimeout(()=>{const parentState=parent&&!parent.isDestroyed()?{nativeVisible:parent.isVisible(),nativeFocused:parent.isFocused(),loading:parent.webContents.isLoading(),url:parent.webContents.getURL(),lastReadiness:lastParentReadiness}:null;console.error('Instruction test timed out.',{stage,parent:parentState});app.exit(1)},50000);
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+const enterGeometrySelected=process.env.FABLES_SP_SCENARIO==='enter-geometry';
+// User F12 capture20Oct: only the selected diagnostic receives these native
+// typography/layout rules. Keep the prose selector specificity and exclusions.
+const enterGeometryStyles=enterGeometrySelected?`<style>
+#composer{display:flex;flex-direction:column;box-sizing:border-box;font-size:16px;line-height:24px;gap:4px;padding:8px;border:1px solid;}
+#editor-content>.tiptap{display:block;box-sizing:border-box;font-size:16px;line-height:28px;min-height:50px;padding:8px;margin:0;}
+.prose{font-size:1rem;line-height:1.75;}
+.prose :where(p):not(:where([class~="not-prose"], [class~="not-prose"] *)){box-sizing:border-box;margin-top:1.25em;margin-bottom:1.25em;}
+.prose :where(.prose > :first-child):not(:where([class~="not-prose"], [class~="not-prose"] *)){margin-top:0px;}
+.prose :where(.prose > :last-child):not(:where([class~="not-prose"], [class~="not-prose"] *)){margin-bottom:0px;}
+</style>`:'';
 const script=require('esbuild').buildSync({stdin:{contents:`
 import {Editor,Node} from '@tiptap/core';import StarterKit from '@tiptap/starter-kit';
 const Paragraph=Node.create({name:'paragraph',priority:1000,group:'block',content:'inline*',addAttributes(){return {kind:{default:null}}},parseHTML(){return [{tag:'p'}]},renderHTML({HTMLAttributes}){return ['p',HTMLAttributes,0]}});
 const options={extensions:[StarterKit.configure({paragraph:false}),Paragraph]};
 window.sent=[];window.draftHTML='';window.originalNodes=[];
 window.editor=new Editor({...options,element:document.getElementById('editor-content'),content:'<p></p>',onUpdate({editor}){const html=editor.getHTML();setTimeout(()=>window.draftHTML=html,0)}});
+if(${enterGeometrySelected})window.editor.view.dom.classList.add('prose');
 window.formEditor=new Editor({...options,element:document.getElementById('form-content'),content:'<p>/sp</p>'});
 document.getElementById('send').addEventListener('click',()=>{window.sent.push({html:window.draftHTML,json:window.editor.getJSON()});const article=document.createElement('article');article.className='prose';article.innerHTML=window.draftHTML;window.originalNodes.push(article.lastElementChild.firstChild);document.getElementById('feed').append(article)});
 document.getElementById('editor-content').addEventListener('keydown',event=>{if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();document.getElementById('send').click()}},true);
@@ -89,7 +101,7 @@ async function enterGeometryProbe(shift=false) {
   dom.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',bubbles:true}));
   const submitted=shift?Promise.resolve():Promise.race([sent,new Promise((_,reject)=>{sendTimeout=setTimeout(()=>reject(Error('Geometry probe Send click missing')),1500);})]);
   await Promise.all([paints,submitted]);
-  return {input:'existing DOM KeyboardEvent adapter',layout:'existing fixture; native site prose CSS absent',baseline,events,paints:samples,send:sendSample,sends:window.sent.length-sentBefore,payload:window.sent[sentBefore]??null,html:editor.getHTML(),json:editor.getJSON(),nativeEditorIdentity:window.editor===editor&&editor.view.dom===dom&&dom.parentElement===parent&&document.getElementById('composer')===composer&&document.getElementById('send')===send};
+  return {input:'existing DOM KeyboardEvent adapter',layout:'existing fixture with user-captured20Oct native prose spacing and composer layout',baseline,events,paints:samples,send:sendSample,sends:window.sent.length-sentBefore,payload:window.sent[sentBefore]??null,html:editor.getHTML(),json:editor.getJSON(),nativeEditorIdentity:window.editor===editor&&editor.view.dom===dom&&dom.parentElement===parent&&document.getElementById('composer')===composer&&document.getElementById('send')===send};
  } finally {
   clearTimeout(sendTimeout);
   for(const [event,callback] of observers)editor.off(event,callback);
@@ -108,7 +120,7 @@ function assertStableEnterGeometry(result,label) {
  }
 }
 
-const html='<!doctype html><html><meta charset="utf-8"><body><div class="flex flex-col bg-gray-800/80 relative" id="composer"><button aria-label="More actions">More actions</button><div id="editor-content"></div><button role="combobox" id="mode">Manual</button><button id="send" aria-label="Send message">Send</button></div><div id="feed"></div><form><div class="grid relative"><div id="working-context-bar-spacer"></div><div id="form-content"></div></div></form><script src="/editor.js"></script></body></html>';
+const html='<!doctype html><html><meta charset="utf-8">'+enterGeometryStyles+'<body><div class="flex flex-col bg-gray-800/80 relative" id="composer"><button aria-label="More actions">More actions</button><div id="editor-content"></div><button role="combobox" id="mode">Manual</button><button id="send" aria-label="Send message">Send</button></div><div id="feed"></div><form><div class="grid relative"><div id="working-context-bar-spacer"></div><div id="form-content"></div></div></form><script src="/editor.js"></script></body></html>';
 (async()=>{
  profile=process.env.FABLES_TEST_PROFILE_DIR||await mkdtemp(path.join(os.tmpdir(),'fables-sp-test-'));app.setPath('userData',profile);await app.whenReady();
  appearance=new AppearanceManager();await appearance.initialize();host=new HostInstructionsManager();await host.initialize();host.onChange=value=>appearance.setHostInstructions(value);await appearance.setHostInstructions(host.getSettings());
@@ -154,7 +166,7 @@ const html='<!doctype html><html><meta charset="utf-8"><body><div class="flex fl
   console.log('ENTER_GEOMETRY multiline',JSON.stringify(multiline));
   assert(multiline.height>off.baseline.editor.height+0.5,'Ordinary multiline draft must retain visible expansion');
   assert.equal(multiline.sends,2,'Multiline controls do not send');
-  console.log('PASS: selected Enter geometry; stable next two visible frames and Send click. Synchronous samples are ordering evidence only; native prose CSS and OS keyboard path remain untested.');
+  console.log('PASS: selected Enter geometry; stable next two visible frames and Send click. Synchronous samples are ordering evidence only; user-captured prose CSS applied; OS keyboard path remains untested.');
   return;
  }
 
