@@ -620,3 +620,10 @@ test('released binding is inert through a retained independent wrapper after pro
  f.notify();assert.equal(f.preferences().automaticDamage,true,'Same campaign preference remains enabled');assert.equal(query.client.setQueryData,independent,'Independent wrapper retains ownership');
  insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,null,'Released captured guard must bypass recognized native INSERT');assert.equal(query.writes.length,1);
 });
+
+test('current query provider remains discoverable above sixty transparent native wrappers',()=>{
+ const {f,query,insert}=continuityFixture(),provider=f.root.child,children=provider.child;
+ let parent=provider;for(let index=0;index<60;index++){const wrapper={memoizedProps:{},return:parent};parent.child=wrapper;parent=wrapper;}
+ parent.child=children;for(let child=children;child;child=child.sibling)child.return=parent;
+ f.notify();const roll=f.attackEvent.events_roll;insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,roll,'Current provider beyond UI ancestry budget must bind via bounded provider lookup');
+});

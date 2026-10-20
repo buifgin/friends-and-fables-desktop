@@ -268,7 +268,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (feed) for (const row of Array.from(document.querySelectorAll('[id^="event-container-"]')).slice(-30)) {
       if (!feed.contains(row)) continue;
       const event = eventFor(row); if (!event || event.campaign_id !== campaign) continue;
-      for (const fiber of ancestry(row)) {
+      for (const fiber of ancestry(row, 96)) {
         const client = fiber.tag === 10 ? fiber.memoizedProps?.value as Native | undefined : undefined;
         if (!client || typeof client.getQueryData !== 'function' || typeof client.setQueryData !== 'function') continue;
         try { if (queryEvents(client.getQueryData(['events', campaign]))?.includes(event)) clients.add(client); } catch { /* Unknown provider. */ }
