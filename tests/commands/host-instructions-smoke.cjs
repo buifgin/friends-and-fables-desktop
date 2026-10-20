@@ -56,6 +56,58 @@ async function instructionMarkerPreservation() {
  } finally {article.remove();controller.setEnabled(true);await settle();}
 }
 
+// Selected diagnostic only: observe the existing fixture layout without adding
+// native CSS, autoresize callbacks, editor clears, or send/layout delays.
+async function enterGeometryProbe(shift=false) {
+ const editor=window.editor,dom=editor.view.dom,parent=dom.parentElement;
+ const composer=document.getElementById('composer'),send=document.getElementById('send');
+ const footer=document.querySelector('[data-ff-desktop-command-controls]');
+ if(!footer)throw Error('Geometry probe requires installed command footer');
+ const rect=node=>{const r=node.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,scrollHeight:node.scrollHeight,scrollTop:node.scrollTop};};
+ const samples=[],events=[];
+ const sample=phase=>({phase,time:performance.now(),visibility:document.visibilityState,focused:document.hasFocus(),editor:rect(dom),composer:rect(composer),footer:rect(footer),send:rect(send),paragraphs:dom.querySelectorAll(':scope>p').length,marked:parent.hasAttribute('data-ff-desktop-sp-draft')});
+ const baseline=sample('before'),sentBefore=window.sent.length;
+ const observe=event=>()=>{if(events.length<4)events.push(sample(event));};
+ const observers=['transaction','update','selectionUpdate'].map(event=>[event,observe(event)]);
+ let sendSample=null,resolveSend;
+ const sent=new Promise(resolve=>{resolveSend=resolve;});
+ const onSend=()=>{sendSample=sample('send-click');resolveSend();};
+ const paint=()=>new Promise((resolve,reject)=>{
+  const timeout=setTimeout(()=>reject(Error('Geometry probe did not receive two visible frames')),1500);
+  const frame=()=>{const value=sample('raf-'+(samples.length+1));samples.push(value);if(value.visibility!=='visible'||!value.focused){clearTimeout(timeout);reject(Error('Geometry probe lost visible/focused renderer'));return;}if(samples.length===2){clearTimeout(timeout);resolve();}else requestAnimationFrame(frame);};
+  requestAnimationFrame(frame);
+ });
+ for(const [event,callback] of observers)editor.on(event,callback);
+ send.addEventListener('click',onSend,true);
+ let sendTimeout;
+ try {
+  // The same DOM key adapter as this fixture's existing Enter tests. Both paint
+  // requests and dispatch start in one renderer task; no pre-key frame is sampled.
+  const paints=paint();
+  dom.focus();
+  dom.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:shift,bubbles:true,cancelable:true}));
+  dom.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',bubbles:true}));
+  const submitted=shift?Promise.resolve():Promise.race([sent,new Promise((_,reject)=>{sendTimeout=setTimeout(()=>reject(Error('Geometry probe Send click missing')),1500);})]);
+  await Promise.all([paints,submitted]);
+  return {input:'existing DOM KeyboardEvent adapter',layout:'existing fixture; native site prose CSS absent',baseline,events,paints:samples,send:sendSample,sends:window.sent.length-sentBefore,payload:window.sent[sentBefore]??null,html:editor.getHTML(),json:editor.getJSON(),nativeEditorIdentity:window.editor===editor&&editor.view.dom===dom&&dom.parentElement===parent&&document.getElementById('composer')===composer&&document.getElementById('send')===send};
+ } finally {
+  clearTimeout(sendTimeout);
+  for(const [event,callback] of observers)editor.off(event,callback);
+  send.removeEventListener('click',onSend,true);
+ }
+}
+
+function assertStableEnterGeometry(result,label) {
+ assert.equal(result.nativeEditorIdentity,true,label+' retains native editor/composer/send identity');
+ assert.equal(result.sends,1,label+' sends exactly once');
+ assert.equal(result.paints.length,2);assert(result.send,label+' records actual Send click');
+ // Synchronous events intentionally remain diagnostic: an unmarked transaction
+ // may grow before hiding in the same JS task without any visible flicker.
+ for(const sample of [...result.paints,result.send])for(const surface of ['editor','composer','footer']){
+  for(const property of ['x','y','width','height','scrollHeight','scrollTop'])assert(Math.abs(sample[surface][property]-result.baseline[surface][property])<=0.5,`${label} ${sample.phase} ${surface}.${property} changed: ${JSON.stringify(result)}`);
+ }
+}
+
 const html='<!doctype html><html><meta charset="utf-8"><body><div class="flex flex-col bg-gray-800/80 relative" id="composer"><button aria-label="More actions">More actions</button><div id="editor-content"></div><button role="combobox" id="mode">Manual</button><button id="send" aria-label="Send message">Send</button></div><div id="feed"></div><form><div class="grid relative"><div id="working-context-bar-spacer"></div><div id="form-content"></div></div></form><script src="/editor.js"></script></body></html>';
 (async()=>{
  profile=process.env.FABLES_TEST_PROFILE_DIR||await mkdtemp(path.join(os.tmpdir(),'fables-sp-test-'));app.setPath('userData',profile);await app.whenReady();
@@ -72,6 +124,40 @@ const html='<!doctype html><html><meta charset="utf-8"><body><div class="flex fl
  const draft=async value=>{await js(`editor.commands.setContent(${JSON.stringify(value)});editor.view.dom.dispatchEvent(new Event('input',{bubbles:true}))`);await sleep(25)};
  const enter=async shift=>{await js(`editor.view.dom.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',shiftKey:${!!shift},bubbles:true,cancelable:true}));editor.view.dom.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',bubbles:true}))`);await sleep(30)};
  const preferenceFile=()=>readFile(path.join(profile,'host-instructions.json'),'utf8').then(JSON.parse).catch(()=>null);
+ if(process.env.FABLES_SP_SCENARIO==='enter-geometry'){
+  stage='enter geometry configuration';
+  const body='<p>I look around.</p>',guidance='Keep scene continuity.\nRespect the current scene.';
+  await appearance.save({...appearance.getSettings(),messageCommands:true});
+  await host.save({...host.getSettings(),configured:true,text:guidance,enabled:false,hideMarked:true});
+  await until(()=>js("!!document.querySelector('[data-ff-desktop-command-controls]')"),'geometry command footer');
+  await draft(body);await js('editor.commands.focus("end")');await focusParent('geometry guidance OFF');
+  const off=await js(`(${enterGeometryProbe.toString()})()`);
+  console.log('ENTER_GEOMETRY guidance OFF',JSON.stringify(off));
+  assert.equal(off.payload.html,body);assert.deepEqual(off.payload.json,off.json);assertStableEnterGeometry(off,'guidance OFF');
+  await host.save({...host.getSettings(),enabled:true});
+  await until(()=>js("document.querySelector('[data-ff-desktop-sp-status]')?.textContent==='/sp active'"),'geometry guidance ON');
+  await draft(body);await js('editor.commands.focus("end")');await focusParent('geometry guidance ON');
+  const on=await js(`(${enterGeometryProbe.toString()})()`);
+  console.log('ENTER_GEOMETRY guidance ON',JSON.stringify(on));
+  const expected='<p>I look around.</p><p>[[FF-SP:1]]<br>Additional guidance for Franz; apply to this message, not as player dialogue:<br>Keep scene continuity.<br>Respect the current scene.<br>[[/FF-SP:1]]</p>';
+  assert.equal(on.payload.html,expected,'Exact ordinary body and multiline guidance reach Send');
+  assert.deepEqual(on.payload.json,on.json);assert.equal(on.send.marked,true,'Guidance is hidden at Send');
+  assertStableEnterGeometry(on,'guidance ON');
+  stage='enter geometry legitimate multiline controls';
+  await draft(body);await js('editor.commands.focus("end")');
+  const soft=await js(`(${enterGeometryProbe.toString()})(true)`);
+  console.log('ENTER_GEOMETRY Shift+Enter',JSON.stringify(soft));
+  assert.equal(soft.nativeEditorIdentity,true);assert.equal(soft.sends,0);assert.equal(soft.html,'<p>I look around.<br></p>');
+  assert(soft.paints[1].editor.height>soft.baseline.editor.height+0.5,'Shift+Enter must retain legitimate visible growth');
+  await draft('<p>I look around.</p><p>A second visible paragraph.</p>');
+  const multiline=await js("({height:editor.view.dom.getBoundingClientRect().height,html:editor.getHTML(),sends:sent.length})");
+  console.log('ENTER_GEOMETRY multiline',JSON.stringify(multiline));
+  assert(multiline.height>off.baseline.editor.height+0.5,'Ordinary multiline draft must retain visible expansion');
+  assert.equal(multiline.sends,2,'Multiline controls do not send');
+  console.log('PASS: selected Enter geometry; stable next two visible frames and Send click. Synchronous samples are ordering evidence only; native prose CSS and OS keyboard path remain untested.');
+  return;
+ }
+
  assert.equal(await js("document.querySelector('[data-ff-desktop-sp-status]')"),null,'No badge before first configuration.');
  stage='launcher';await draft('<p>/sp</p>');await enter();assert.equal(await js('sent.length'),0);await until(()=>opens===1,'first /sp opens');
  stage='settings open';settingsWindow=await host.open(parent);settingsWindow.hide();await focusParent('settings closed; restore parent');const settingsJs=async source=>{try{return await settingsWindow.webContents.executeJavaScript(source)}catch(error){console.error('Failed settings expression:',source);throw error}};
