@@ -144,7 +144,50 @@ async function submitNativeScrollScenario(configure,settings){
  }
  return {passed:cases.filter(item=>item.adapter==='on').every(item=>item.passed),case:'public-submit-native-scroll-delayed-hp',cases};
 }
-module.exports={followScenario,submitNativeScrollScenario};
+// Current user capture: four old roll rows contribute three bottom ornaments
+// each before the real external footer. Native feed padding is p-4 (16px).
+async function footerCandidateBudgetScenario(configure,settings){
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),settle=async()=>{await frame();await frame();await frame();};
+ const box=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,width:r.width};};
+ const glyph=node=>{const range=document.createRange();range.selectNodeContents(node);const r=range.getBoundingClientRect();range.detach();return {top:r.top,bottom:r.bottom,height:r.height};};
+ const cases=[];
+ for(const mode of ['off-crowded','on-uncluttered','on-crowded','on-crowded-manual']){
+  const enabled=mode!=='off-crowded',crowded=mode!=='on-uncluttered',manual=mode.endsWith('-manual');
+  window.__friendsFablesDesktopChatAppearance?.dispose();
+  document.body.innerHTML='<section id="chat" class="flex-1 h-full w-full"><main id="feed"><div id="events-list"></div></main><footer id="turn-controls" class="absolute bottom-0"><div id="composer" hidden><div class="tiptap" contenteditable="true">Preserve native draft.</div></div><button type="button">Show Input</button><button type="button">End turn Magnus</button></footer></section>';
+  const feed=document.getElementById('feed'),list=document.getElementById('events-list'),footer=document.getElementById('turn-controls'),composer=document.getElementById('composer'),draft=document.querySelector('.tiptap'),draftNode=draft.firstChild;
+  feed.style.cssText='display:flex;flex-direction:column;padding:16px';
+  const history=[];
+  for(let id=1;id<=12;id++){
+   const row=document.createElement('div');row.id='event-'+id;row.innerHTML='<div id="event-container-'+id+'"><div id="event-message-card-'+id+'"><div class="prose"><p>Earlier narration '+id+'</p></div></div></div>';
+   const card=row.firstElementChild.firstElementChild;card.style.cssText='min-height:90px;position:relative';
+   if(crowded&&id<=4)for(const classes of ['absolute bottom-0 right-0 translate-x-1/3 translate-y-1/3','absolute bottom-0 left-0 w-14 h-14 md:w-18 md:h-18','absolute bottom-0 right-0 w-14 h-14 md:w-18 md:h-18']){const ornament=document.createElement('div');ornament.className=classes;ornament.style.cssText='position:absolute;bottom:0';card.append(ornament);}
+   list.append(row);history.push({row,card,text:card.querySelector('p').firstChild,height:card.getBoundingClientRect().height});
+  }
+  const nativeFooter=box(footer),nativePadding=getComputedStyle(feed).paddingBottom;
+  if(nativePadding!=='16px')throw Error('Footer budget fixture must start at captured native16px padding');
+  const prefix=[...document.getElementById('chat').querySelectorAll('footer,[class~="absolute"][class~="bottom-0"],[class~="fixed"][class~="bottom-0"]')];
+  if(crowded&&(prefix.length!==13||!prefix.slice(0,12).every(node=>feed.contains(node))||prefix[12]!==footer))throw Error('Captured twelve in-feed decorations must precede the real footer');
+  feed.scrollTop=feed.scrollHeight-feed.clientHeight;if(enabled)configure(settings);await settle();
+  const older=history[7];let readerBefore=null;
+  if(manual){feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-400}));feed.scrollTop+=older.card.getBoundingClientRect().top-feed.getBoundingClientRect().top-60;await settle();feed.dispatchEvent(new Event('scrollend',{bubbles:true}));await settle();readerBefore=glyph(older.text);}
+  const row=document.createElement('div');row.id='event-103';const card=document.createElement('div');card.className='bg-card border rounded-md damage';card.style.cssText='min-height:120px;display:flex;flex-direction:column;justify-content:flex-end';card.innerHTML='<strong>Target takes 6 damage</strong><p style="margin:0;line-height:24px">Final HP 14 / 20</p>';row.append(card);list.append(row);
+  const finalText=card.querySelector('p').firstChild,nativeCardHeight=card.getBoundingClientRect().height;
+  if(!enabled)feed.scrollTop=feed.scrollHeight-feed.clientHeight;
+  await settle();
+  const after={feed:box(feed),footer:box(footer),tail:box(card),lastGlyph:glyph(finalText),paddingBottom:getComputedStyle(feed).paddingBottom,distanceToMax:feed.scrollHeight-feed.clientHeight-feed.scrollTop},readerAfter=manual?glyph(older.text):null;
+  const identity=document.getElementById('turn-controls')===footer&&row.firstElementChild===card&&card.querySelector('p').firstChild===finalText&&document.querySelector('.tiptap')===draft&&draft.firstChild===draftNode&&draft.textContent==='Preserve native draft.'&&history.every(item=>item.text.isConnected&&item.card.querySelector('p').firstChild===item.text);
+  const unchangedHeights=Math.abs(after.footer.height-nativeFooter.height)<=.5&&Math.abs(after.footer.top-nativeFooter.top)<=.5&&Math.abs(after.tail.height-nativeCardHeight)<=.5&&history.every(item=>Math.abs(item.card.getBoundingClientRect().height-item.height)<=.5);
+  const fullyVisible=after.tail.top>=after.feed.top-.5&&after.tail.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5&&after.lastGlyph.height>0&&after.lastGlyph.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5;
+  const follow=after.distanceToMax<=1,readerPreserved=!manual||Math.abs(readerAfter.top-readerBefore.top)<=.5&&after.distanceToMax>20;
+  cases.push({mode,passed:identity&&unchangedHeights&&composer.hidden&&readerPreserved&&(manual||!enabled||fullyVisible&&follow),identity,unchangedHeights,composerHidden:composer.hidden,nativePadding,candidateCount:prefix.length,firstTwelveInsideFeed:prefix.slice(0,12).every(node=>feed.contains(node)),fullyVisible,follow,readerPreserved,readerBefore,readerAfter,after});
+  window.__friendsFablesDesktopChatAppearance?.dispose();
+ }
+ const control=cases.find(item=>item.mode==='off-crowded');
+ if(!control.follow||control.fullyVisible||control.after.paddingBottom!=='16px')throw Error('Native OFF control must be pinned yet clipped with only16px reserve: '+JSON.stringify(control));
+ return {passed:cases.every(item=>item.passed),case:'footer-candidate-budget',cases};
+}
+module.exports={followScenario,submitNativeScrollScenario,footerCandidateBudgetScenario};
 if(process.versions.electron){
  const {app,BrowserWindow,session}=require('electron');app.on('window-all-closed',()=>{});
  let window,profile,passed=false;const timer=setTimeout(()=>{console.error('Chat follow fixture timed out');app.exit(1);},30000);
@@ -156,13 +199,17 @@ if(process.versions.electron){
   const site=session.fromPartition('chat-follow');site.protocol.handle('https',()=>new Response('<!doctype html><style>body{margin:0}#chat{position:relative;width:900px;height:556px;margin:40px}#feed{box-sizing:border-box;height:100%;overflow-y:auto;overflow-anchor:auto;padding:0 0 64px}#turn-controls{position:absolute;bottom:0;left:0;right:0;height:56px;background:#123;z-index:5}.prose{padding:10px}.prose p{margin:0;line-height:24px}.damage{box-sizing:border-box;padding:10px;background:#812}</style>',{headers:{'Content-Type':'text/html'}}));
   window=new BrowserWindow({show:false,width:1920,height:1080,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});await window.loadURL('https://play.fables.gg/fixture/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
   const selected=process.env.FABLES_CHAT_FOLLOW_CASE||'all';
-  if(selected!=='submit-native-scroll'){
+  if(!['submit-native-scroll','footer-candidate-budget'].includes(selected)){
    const result=await window.webContents.executeJavaScript(`(${followScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)},${JSON.stringify(selected)})`);
    console.log('Chat bottom follow cases',JSON.stringify(result));assert.equal(result.passed,true,'Pinned tail or manual reader contract failed');
   }
   if(selected==='all'||selected==='submit-native-scroll'){
    const result=await window.webContents.executeJavaScript(`(${submitNativeScrollScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);
    console.log('Submit native scroll delayed HP result',JSON.stringify(result));assert.equal(result.passed,true,'Submitted follow intent was lost after native programmatic scroll or manual reader moved');
+  }
+  if(selected==='all'||selected==='footer-candidate-budget'){
+   const result=await window.webContents.executeJavaScript(`(${footerCandidateBudgetScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);
+   console.log('Footer candidate budget result',JSON.stringify(result));assert.equal(result.passed,true,'Native message ornaments must not exhaust the external footer candidate budget');
   }
   passed=true;
  }catch(error){console.error('Chat follow fixture failed:',error);}finally{clearTimeout(timer);window?.destroy();if(profile&&!process.env.FABLES_TEST_PROFILE_DIR)await fs.rm(profile,{recursive:true,force:true});app.exit(passed?0:1);}})().catch(error=>{console.error(error);app.exit(1);});
