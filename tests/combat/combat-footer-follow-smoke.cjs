@@ -276,7 +276,7 @@ app.on('window-all-closed', () => {});
     const frames = await js(`new Promise(resolve=>{const frames=[];fixture.setSpin('damage',false);document.body.append(document.createElement('i'));let count=0;const frame=()=>{frames.push(fixture.snapshot());if(++count===18)resolve(frames);else requestAnimationFrame(frame)};requestAnimationFrame(frame)})`);
     console.log('FOOTER_FOLLOW_HANDOFF',JSON.stringify({width,frames}));
     await until('fixture.snapshot().continueVisible'); const manual = await sample('manual-'+width); preserved(manual);
-    assert.equal(manual.badgeVisible,true); assert.equal(await js('fixture.damage===fixture.damageProof'),true,'Same native result owner');
+    assert.equal(manual.badgeVisible,true); assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'),0,'Settled Manual handoff releases inert shell'); assert.equal(manual.gmSubscriptions,0); assert.equal(manual.damageSubscriptions,0); assert.equal(await js('fixture.damage===fixture.damageProof'),true,'Same native result owner');
     assert.equal(manual.listHeight,spinning.listHeight,'Footer-only handoff leaves list height unchanged');
     assert.deepEqual(manual.rollHeights,spinning.rollHeights,'Footer-only handoff leaves rolls unchanged');
     assert.equal(manual.footerHeight,spinning.footerHeight,'Settled Manual handoff retains validated native footer footprint');
@@ -307,13 +307,17 @@ app.on('window-all-closed', () => {});
   for (const action of ['off','dispose','route','turn','encounter','owner','newer-style']) {
     await reset(1000); const before=await js('document.getElementById("right").style.getPropertyValue("min-height")');
     await click('#submit'); await until('fixture.submits===1'); await paint();
+    const activeSubscriptions=await js('fixture.gmObserver.count()');
     const actions={off:'window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:"campaign-a",automaticDamage:false,hideIntermediateFranz:false,hideDamagePrompt:false})',route:'history.pushState({},"","/campaign-b/play");dispatchEvent(new PopStateEvent("popstate"))',turn:'fixture.encounter.currentTurnEntity.characterId=999;fixture.render()',encounter:'fixture.campaign.active_encounter_id=999;fixture.render()',owner:'fixture.footerCommitted=false;fixture.render()'};
     if(action==='newer-style') await js('document.getElementById("right").style.setProperty("min-height","73px","important");void 0');
     if(['dispose','newer-style'].includes(action)) await configure(false); else await js(actions[action]+';void 0');
     await paint();
     assert.equal(await js('document.getElementById("right").style.getPropertyValue("min-height")'),action==='newer-style'?'73px':before,action+': owned layout restored without overwriting native style');
     assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'),0,action+': shell removed');
-    assert.equal(await js('fixture.gmObserver.count()'),0,action+': independent presentation subscription removed');
+    // Invalid footer ownership retires presentation, not the independent action ticket.
+    const subscriptions=await js('fixture.gmObserver.count()');
+    if(['turn','encounter','owner'].includes(action)) assert.ok(subscriptions<=activeSubscriptions-1,action+': independent presentation subscription removed');
+    else assert.equal(subscriptions,0,action+': presentation/action subscriptions removed');
   }
   console.log('Combat footer follow passed'); clearTimeout(watchdog); window.destroy(); app.exit(0);
 })().catch(error=>{console.error(error);clearTimeout(watchdog);window?.destroy();app.exit(1)});
