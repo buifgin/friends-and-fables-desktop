@@ -94,7 +94,7 @@ app.on('window-all-closed', () => {});
     const before=await js('({calls,submits})');
     await js("mode='no-damage';holdStreaming=true;done=false");
     await nativeClick('#submit');await until(`submits===${before.submits+1}&&result.status==='pending'`);
-    await js("window.noDamageProof={card:document.getElementById('event-message-card-'+(sequence+1)),avatar:document.getElementById('native-avatar'),actions:document.getElementById('native-actions'),form:document.querySelector('form'),draft:document.querySelector('form input'),event:currentDM,choices:currentDM.rollChoices}");
+    await js("window.noDamageProof={card:document.getElementById('event-message-card-'+(sequence+1)),avatar:document.getElementById('native-avatar'),actions:document.getElementById('native-actions'),form:document.querySelector('form'),draft:document.querySelector('form input'),event:currentDM,choices:currentDM.rollChoices};void 0");
     await until("noDamageProof.card.getClientRects().length===0&&noDamageProof.avatar.getClientRects().length===0&&noDamageProof.actions.getClientRects().length===0&&!!document.querySelector('[data-ff-combat-damage-progress]')");
     assert.equal(await js("document.querySelector('[data-native-damage-result]')===null&&document.querySelector('#damage-prompt')===null&&currentDM.rollChoices.length===0"),true,'No native Damage event or choice exists');
     await js('finishGeneration()');
