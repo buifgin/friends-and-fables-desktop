@@ -2,6 +2,7 @@
 const {spawnSync}=require('node:child_process');
 const path=require('node:path');
 const cases=[
+ ['combat-footer-follow-smoke.cjs',{}],
  ['automatic-turn-control-smoke.cjs',{}],
  ...['guards','readiness','paint'].map(mode=>['combat-switch-smoke.cjs',{FABLES_COMBAT_SWITCH_FOCUS:mode}]),
  ['combat-chat-follow-smoke.cjs',{}],

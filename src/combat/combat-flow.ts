@@ -18,6 +18,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   type TurnPresentation = { source: Ticket; template: HTMLElement; operation: 'gm' | 'damage'; completed: boolean; request?: string; attackId?: string | number; outcomeKey?: string; unsubscribe?: () => void };
   let turnPresentation: TurnPresentation | null = null;
   let turnShell: HTMLElement | null = null;
+  type TurnFootprint = { source: Ticket; right: HTMLElement; entity: string | number; value: string; priority: string; applied: string };
+  let turnFootprint: TurnFootprint | null = null;
   const turnHidden = new Map<HTMLElement, { value: string; priority: string }>();
   let traversalBudget = 50000;
   const currentFiberCache = new Map<Fiber, Fiber | null>();
@@ -228,7 +230,15 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     turnHidden.clear();
   }
-  function releaseTurnPresentation(): void {
+  function releaseTurnFootprint(): void {
+    const footprint = turnFootprint; turnFootprint = null;
+    if (!footprint || footprint.right.style.getPropertyValue('min-height') !== footprint.applied
+      || footprint.right.style.getPropertyPriority('min-height') !== 'important') return;
+    if (footprint.value) footprint.right.style.setProperty('min-height', footprint.value, footprint.priority);
+    else footprint.right.style.removeProperty('min-height');
+  }
+  function releaseTurnPresentation(keepFootprint = false): void {
+    if (!keepFootprint) releaseTurnFootprint();
     const current = turnPresentation; turnPresentation = null;
     try { current?.unsubscribe?.(); } catch { /* Native observer may already be disposed. */ }
     restoreTurnVisuals();
@@ -275,6 +285,16 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     const appearance = getComputedStyle(button);
     for (const property of ['background-color', 'background-image', 'border-color', 'border-style', 'border-width', 'border-radius', 'color', 'font-family', 'font-size', 'font-weight', 'line-height', 'box-shadow']) template.style.setProperty(property, appearance.getPropertyValue(property));
     const turn = (footer.props.encounter as Native).currentTurnEntity;
+    // Reserve the validated native slot, including its native button margins.
+    // This layout ownership survives settled Manual handoff independently of
+    // the busy presentation; Continue remains entirely native and interactive.
+    const height = footer.right.getBoundingClientRect().height;
+    if (Number.isFinite(height) && height > 0) {
+      const right = footer.right, applied = `${height}px`;
+      turnFootprint = { source: current, right, entity: turn.entityId,
+        value: right.style.getPropertyValue('min-height'), priority: right.style.getPropertyPriority('min-height'), applied };
+      right.style.setProperty('min-height', applied, 'important');
+    }
     current.turnName = turn.name; current.turnImage = turn.image;
     template.setAttribute('data-ff-combat-turn-control', 'true'); template.setAttribute('data-ff-translation-ignore', 'true'); template.setAttribute('aria-hidden', 'true');
     const avatar = button.firstElementChild.cloneNode(true) as Element;
@@ -311,7 +331,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   }
   function transferTurnPresentation(current: Ticket, outcomeKey: string): void {
     const template = current.turnTemplate;
-    releaseTurnPresentation();
+    releaseTurnPresentation(true);
     if (template) turnPresentation = { source: current, template, operation: 'damage', completed: false, request: current.request, attackId: current.attackId, outcomeKey };
   }
   function ownRollSpinning(presentation: TurnPresentation): boolean {
@@ -352,8 +372,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     const footer = turnFooter(current.character, current.encounter);
     const turn = (footer?.props.encounter as Native | undefined)?.currentTurnEntity;
     if (!prefs.automaticDamage || campaign !== current.campaign || location.pathname !== route || Date.now() - current.started > 120000 || !footer || turn?.name !== current.turnName || turn?.image !== current.turnImage
-      || footer.button && (footer.button.disabled || committedFiber(footer.button)?.memoizedProps?.disabled === true)
-      || presentation.completed && !ownRollSpinning(presentation)) { releaseTurnPresentation(); return; }
+      || footer.button && (footer.button.disabled || committedFiber(footer.button)?.memoizedProps?.disabled === true)) { releaseTurnPresentation(); return; }
+    if (presentation.completed && !ownRollSpinning(presentation)) { releaseTurnPresentation(true); return; }
     const desired = new Set<HTMLElement>();
     for (const node of Array.from(footer.right.children)) {
       if (!(node instanceof HTMLElement) || node === turnShell || node === footer.button) continue;
@@ -382,6 +402,17 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       if (label.textContent !== text) label.textContent = text;
       if (turnShell.parentElement !== footer.right) footer.right.append(turnShell);
     }
+  }
+  function syncTurnFootprint(): void {
+    const footprint = turnFootprint; if (!footprint) return;
+    const current = footprint.source, footer = turnFooter(current.character, current.encounter);
+    const turn = (footer?.props.encounter as Native | undefined)?.currentTurnEntity;
+    if (!prefs.automaticDamage || campaign !== current.campaign || location.pathname !== route
+      || !footer || footer.right !== footprint.right || turn?.entityId !== footprint.entity
+      || turn?.name !== current.turnName || turn?.image !== current.turnImage
+      || footprint.right.style.getPropertyValue('min-height') !== footprint.applied
+      || footprint.right.style.getPropertyPriority('min-height') !== 'important'
+      || footer.button && (!turnPresentation || footer.button.disabled || committedFiber(footer.button)?.memoizedProps?.disabled === true)) releaseTurnFootprint();
   }
   // Current public native module389261 INSERT updater only; unknown releases
   // bypass. Its duplicate INSERT replaces the entire event, unlike UPDATE.
@@ -962,7 +993,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (disposed) return;
     syncRoute();
     if (!campaign) return;
-    try { syncQuery(); observeNativeRolls(); observeOutcomes(); applyFlow(); pruneAbsentLinks(); syncNarration(); syncPrompts(); syncPresentation(); syncTurnPresentation(); } catch { releaseQuery(); cancel(); restoreAll(); }
+    try { syncQuery(); observeNativeRolls(); observeOutcomes(); applyFlow(); pruneAbsentLinks(); syncNarration(); syncPrompts(); syncPresentation(); syncTurnPresentation(); syncTurnFootprint(); } catch { releaseQuery(); cancel(); restoreAll(); }
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(sync); }
   // Mutation delivery precedes paint; RAF-only concealment permits a first-frame flash.
