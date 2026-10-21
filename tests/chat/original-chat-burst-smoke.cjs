@@ -47,6 +47,14 @@ async function scenario(mode, code) {
   editorElement.editor = editor;
   const feed = document.getElementById('feed'), list = document.getElementById('events-list');
   const send = document.getElementById('send'), footer = document.getElementById('footer');
+  // Observe native completion throughout the fixture, including motion already
+  // in progress when a checkpoint begins. Position stability alone precedes
+  // Chromium's scrollend and the adapter's finite anchor/style cleanup.
+  let scrollActive = false;
+  const scrollActivity = () => { scrollActive = true; };
+  const scrollCompletion = () => { scrollActive = false; };
+  feed.addEventListener('scroll', scrollActivity);
+  feed.addEventListener('scrollend', scrollCompletion);
   const draftIdentity = editorElement;
   const event = (id, content = `Native narration ${id}`) => ({ id, role: id === null || id >= 140 ? 'player' : 'dm', content, campaign_id: campaign, character_id: 42, ...(id === null ? { isOptimistic: true } : {}) });
   const page = (start, end, direction) => ({ data: Array.from({ length: end - start + 1 }, (_, i) => event(start + i)), hasPreviousPage: true, hasNextPage: false, previousCursor: start, nextCursor: end, ...(direction ? { direction } : {}) });
@@ -127,8 +135,8 @@ async function scenario(mode, code) {
     for (const overlay of document.querySelectorAll('[data-ff-desktop-message-snapshot]')) check(!overlay.textContent.includes('PRIVATE-FIXTURE-GUIDANCE'), 'Private guidance text resurrected');
   }
   async function checkpoint(label, visibleIDs = []) {
-    // Retain the exact quiet window while diagnosing finite native scroll work.
-    const position = () => ({ scrollTop: feed.scrollTop, target: feed.scrollHeight - feed.clientHeight, counts: { ...window.__burstCounts } });
+    // Quiet work is measured only after native motion and its finite cleanup.
+    const position = () => ({ scrollTop: feed.scrollTop, target: feed.scrollHeight - feed.clientHeight, scrollActive, counts: { ...window.__burstCounts } });
     const entry = position(), scrollEnds = [];
     const ended = () => scrollEnds.push(position());
     feed.addEventListener('scrollend', ended);
@@ -136,7 +144,21 @@ async function scenario(mode, code) {
     try {
       await settle(); identity();
       for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
-      baseline = position();
+      let completionFrames = 0;
+      const completionFrame = async () => {
+        check(completionFrames < 90, `Native scroll/cleanup did not complete: ${label}; ${JSON.stringify({ entry, current: position(), scrollEnds })}`);
+        await frame(); completionFrames++;
+      };
+      for (;;) {
+        // A stable tail pixel still needs its actual pending scrollend event.
+        while (scrollActive) await completionFrame();
+        // Drain the same task/two-RAF cleanup as settle(), before the baseline.
+        await task(); await completionFrame(); await completionFrame();
+        if (!scrollActive) break;
+      }
+      identity();
+      for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
+      baseline = position(); baseline.completionFrames = completionFrames;
       await settle(); after = position();
     } finally { feed.removeEventListener('scrollend', ended); }
     const before = baseline.counts;
@@ -203,7 +225,7 @@ async function scenario(mode, code) {
       const final = { mode, passed: true, accepted, trusted, samples, counts: { ...window.__burstCounts } };
       window.__friendsFablesDesktopCommands?.dispose(); window.__friendsFablesDesktopCampaignChatPages?.dispose(); window.__friendsFablesDesktopChatAppearance.dispose();
       check(!listeners.size && query.setData === originalSetter, 'Query subscription/setter leaked');
-      check(!document.querySelector('[data-ff-desktop-message-snapshot],[data-ff-desktop-command-controls]'), 'Owned presentation leaked after dispose'); editor.destroy();
+      check(!document.querySelector('[data-ff-desktop-message-snapshot],[data-ff-desktop-command-controls]'), 'Owned presentation leaked after dispose'); feed.removeEventListener('scroll', scrollActivity); feed.removeEventListener('scrollend', scrollCompletion); editor.destroy();
       return final;
     },
   };
