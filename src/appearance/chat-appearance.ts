@@ -357,7 +357,11 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
   }
   let tailPinned = false, tailFrame = 0;
-  type TailMotion = { feed: HTMLElement; target: number; original: typeof HTMLElement.prototype.scrollTo; descriptor?: PropertyDescriptor; wrapper: typeof HTMLElement.prototype.scrollTo };
+  type TailEntry = { row: HTMLElement; panel: HTMLElement; animation: CSSAnimation; expires: number; target: number; height: number; frames: number; time: number | null; stalled: number };
+  let tailEntry: TailEntry | null = null;
+  // Existing/hydrating rows never acquire a first-reveal scheduling hint.
+  const knownTailRows = new WeakSet<Element>(document.querySelectorAll('#events-list > [id^="event-"]'));
+  type TailMotion = { feed: HTMLElement; target?: number; original: typeof HTMLElement.prototype.scrollTo; descriptor?: PropertyDescriptor; wrapper: typeof HTMLElement.prototype.scrollTo };
   let tailMotion: TailMotion | null = null;
   function releaseTailMotion(stop = false): void {
     const motion = tailMotion;
@@ -370,35 +374,96 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       try {
         if (motion.descriptor) Object.defineProperty(motion.feed, 'scrollTo', motion.descriptor); else delete (motion.feed as Partial<HTMLElement>).scrollTo;
       } catch { /* A feed sealed during motion retains an inert delegate. */ }
-      if (stop && motion.feed.isConnected) Reflect.apply(motion.original, motion.feed, [{ top: motion.feed.scrollTop, left: motion.feed.scrollLeft, behavior: 'instant' }]);
+      if (stop && motion.target !== undefined && motion.feed.isConnected) Reflect.apply(motion.original, motion.feed, [{ top: motion.feed.scrollTop, left: motion.feed.scrollLeft, behavior: 'instant' }]);
     }
   }
-  function moveTail(feed: HTMLElement, target: number): void {
-    if (Math.abs(feed.scrollTop - target) <= 1) return;
-    if (tailMotion?.feed === feed && tailMotion.target === target) return;
-    if (!tailMotion) {
-      const descriptor = Object.getOwnPropertyDescriptor(feed, 'scrollTo'), original = feed.scrollTo;
-      if (typeof original !== 'function' || descriptor && !('value' in descriptor)) return;
-      const motion: TailMotion = { feed, target, original, descriptor, wrapper: original };
-      motion.wrapper = function(this: HTMLElement, ...args: unknown[]) {
-        // Native scrollTo replaces our animation. Relinquish before delegating,
-        // so later manual/route/disposal cancellation cannot stop that motion.
-        if (this === feed && tailMotion === motion) releaseTailMotion();
-        return Reflect.apply(original, this, args);
-      } as typeof original;
-      try { Object.defineProperty(feed, 'scrollTo', descriptor ? { ...descriptor, value: motion.wrapper } : { configurable: true, writable: true, value: motion.wrapper }); }
-      catch { return; } // Sealed/unsupported feeds retain native authority.
-      tailMotion = motion;
+  function ownTailMotion(feed: HTMLElement): TailMotion | null {
+    if (tailMotion) {
+      if (Object.getOwnPropertyDescriptor(feed, 'scrollTo')?.value !== tailMotion.wrapper) { cancelTail(); return null; }
+      return tailMotion;
     }
-    tailMotion.target = target;
-    Reflect.apply(tailMotion.original, feed, [{ top: target, behavior: 'smooth' }]);
+    const descriptor = Object.getOwnPropertyDescriptor(feed, 'scrollTo'), original = feed.scrollTo;
+    if (typeof original !== 'function' || descriptor && !('value' in descriptor)) return null;
+    const motion: TailMotion = { feed, original, descriptor, wrapper: original };
+    motion.wrapper = function(this: HTMLElement, ...args: unknown[]) {
+      // Native calls retire even a gate-only wrapper before delegating. They
+      // must not be followed by a deferred target reclaiming native authority.
+      if (this === feed && tailMotion === motion) {
+        if (tailEntry) { tailEntry = null; cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false; }
+        releaseTailMotion();
+      }
+      return Reflect.apply(original, this, args);
+    } as typeof original;
+    try { Object.defineProperty(feed, 'scrollTo', descriptor ? { ...descriptor, value: motion.wrapper } : { configurable: true, writable: true, value: motion.wrapper }); }
+    catch { return null; } // Sealed/unsupported feeds retain native authority.
+    tailMotion = motion; return motion;
+  }
+  function moveTail(feed: HTMLElement, target: number): void {
+    if (Math.abs(feed.scrollTop - target) <= 1) {
+      if (tailMotion && tailMotion.target === undefined) releaseTailMotion();
+      return;
+    }
+    if (tailMotion?.feed === feed && tailMotion.target === target) return;
+    const motion = ownTailMotion(feed); if (!motion) return;
+    motion.target = target;
+    Reflect.apply(motion.original, feed, [{ top: target, behavior: 'smooth' }]);
+  }
+  function nativeTailPanel(row: HTMLElement): HTMLElement | null {
+    const cards = row.querySelectorAll<HTMLElement>('[id^="event-message-card-"]');
+    if (cards.length !== 1 || cards[0].id !== `event-message-card-${row.id.slice(6)}`) return null;
+    const panels = cards[0].querySelectorAll<HTMLElement>('div.relative.rounded-2xl.border-2.overflow-hidden');
+    if (panels.length !== 1) return null;
+    const panel = panels[0];
+    // Public nS native entrance and gradient; this hint changes scheduling only,
+    // and grants no action/event ownership. Unknown native releases fail open.
+    if (!['from-slate-900/95','to-slate-950/95','animate-in','fade-in-0','slide-in-from-bottom-4','duration-500','transition-all'].every(name => panel.classList.contains(name))
+      || !panel.querySelector('svg:is([id="d4"],[id="d6"],[id="d8"],[id="d10"],[id="d12"],[id="d20"])')) return null;
+    return panel;
+  }
+  function noteTailEntry(row: HTMLElement | undefined, list: HTMLElement | null): void {
+    if (!row || knownTailRows.has(row)) return;
+    const panel = nativeTailPanel(row);
+    // A newly published empty outer can precede its roll relation/panel. Only
+    // initial/hydrating rows are exempt before their first native panel exists.
+    if (!panel) return;
+    knownTailRows.add(row);
+    if (!tailPinned || list?.lastElementChild !== row || scrollYield || scrollGesture || selectedInFeed()) return;
+    if (typeof CSSAnimation === 'undefined' || typeof panel.getAnimations !== 'function') return;
+    const entries = panel.getAnimations().filter((animation): animation is CSSAnimation => animation instanceof CSSAnimation
+      && animation.animationName === 'enter' && (animation.effect as KeyframeEffect | null)?.target === panel);
+    if (entries.length !== 1 || getComputedStyle(panel).opacity !== '0') return;
+    const animation = entries[0], timing = animation.effect!.getComputedTiming();
+    if (animation.playState !== 'running' || !Number.isFinite(animation.playbackRate) || animation.playbackRate <= 0
+      || typeof timing.endTime !== 'number' || !Number.isFinite(timing.endTime) || timing.endTime <= 0) return;
+    tailEntry = { row, panel, animation, expires: performance.now() + timing.endTime / animation.playbackRate, target: scrollFeed!.scrollHeight - scrollFeed!.clientHeight, height: row.getBoundingClientRect().height, frames: 0, time: null, stalled: 0 };
+  }
+  function waitingForTailEntry(feed: HTMLElement): boolean {
+    const entry = tailEntry; if (!entry) return false;
+    const { row, panel, animation } = entry;
+    const time = animation.currentTime;
+    if (!row.isConnected || row.parentElement?.id !== 'events-list' || row.parentElement.lastElementChild !== row || !feed.contains(row)
+      || nativeTailPanel(row) !== panel || getComputedStyle(panel).opacity !== '0'
+      // Outside layout changes must remain responsive. Own scroll-anchor style
+      // bookkeeping does not grow content; only the exact new row may account
+      // for a changed target while its entrance is still transparent.
+      || Math.abs((feed.scrollHeight - feed.clientHeight - entry.target) - (row.getBoundingClientRect().height - entry.height)) > 1
+      || animation.playState !== 'running' || !panel.getAnimations().includes(animation)
+      || !Number.isFinite(animation.playbackRate) || animation.playbackRate <= 0
+      || performance.now() >= entry.expires || ++entry.frames > 32
+      || time !== null && (typeof time !== 'number' || !Number.isFinite(time))) { tailEntry = null; return false; }
+    // A finite native effect bounds this local continuation. Paused, stalled or
+    // replaced effects never become an indefinite wait or a copied native clock.
+    if (!animation.pending && time === entry.time) entry.stalled++; else entry.stalled = 0;
+    entry.time = time as number | null;
+    if (entry.stalled > 1) { tailEntry = null; return false; }
+    return !!ownTailMotion(feed);
   }
   let tailResize: ResizeObserver | null = null;
   const tailSizes = new Map<HTMLElement, number>();
   function atTail(): boolean {
     return !!scrollFeed && scrollFeed.scrollHeight - scrollFeed.clientHeight - scrollFeed.scrollTop <= 1;
   }
-  function cancelTail(): void { cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false; releaseTailMotion(true); }
+  function cancelTail(): void { cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false; tailEntry = null; releaseTailMotion(true); }
   function followTail(): void {
     if (!tailPinned || tailFrame || scrollYield || scrollGesture || selectedInFeed()) return;
     const feed = scrollFeed, route = scrollRoute;
@@ -406,7 +471,8 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       tailFrame = 0;
       if (disposed || !feed?.isConnected || feed !== scrollFeed || route !== location.pathname + location.search
         || !tailPinned || scrollYield || scrollGesture || selectedInFeed()) return;
-      moveTail(feed, Math.max(0, feed.scrollHeight - feed.clientHeight));
+      if (waitingForTailEntry(feed)) { followTail(); return; }
+      if (tailPinned) moveTail(feed, Math.max(0, feed.scrollHeight - feed.clientHeight));
     });
   }
   // Called only by the adapter path that validated a trusted current form submit.
@@ -421,6 +487,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     if (!scrollFeed || !tailResize) return;
     const list = scrollFeed.querySelector<HTMLElement>('#events-list');
     const last = Array.from((list ?? scrollFeed).children).filter((node): node is HTMLElement => node instanceof HTMLElement && /^event-\d+$/.test(node.id)).at(-1);
+    noteTailEntry(last, list);
     const owners = new Set([list, last].filter((node): node is HTMLElement => !!node));
     for (const node of tailSizes.keys()) if (!owners.has(node)) { tailResize.unobserve(node); tailSizes.delete(node); }
     for (const node of owners) if (!tailSizes.has(node)) {
@@ -481,7 +548,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
             updateTailSpace();
             const size = { width: scrollFeed.clientWidth, height: scrollFeed.clientHeight };
             if (scrollSize?.width === size.width && scrollSize?.height === size.height) return;
-            scrollSize = size; rebaseScrollAnchor(); followTail();
+            scrollSize = size; tailEntry = null; rebaseScrollAnchor(); followTail();
           });
           scrollResize.observe(node); updateTailSpace(); break;
         }
@@ -532,7 +599,9 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   }
   function scrollFinished(event: Event): void {
     if (event.type === 'scrollend' ? event.target !== scrollFeed : !scrollGesture && !scrollYield) return;
-    if (event.type === 'scrollend' && tailMotion && Math.abs(tailMotion.feed.scrollTop - tailMotion.target) <= 1) releaseTailMotion();
+    if (event.type === 'scrollend' && tailMotion?.target !== undefined && Math.abs(tailMotion.feed.scrollTop - tailMotion.target) <= 1) {
+      if (tailEntry) tailMotion.target = undefined; else releaseTailMotion();
+    }
     const navigated = scrollGesture || scrollYield;
     scrollGesture = false; scrollYield = false;
     if (navigated) tailPinned = atTail() && !selectedInFeed();
@@ -555,7 +624,15 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       if (!scrollFeed && record.type === 'childList' && Array.from(record.addedNodes).some(node => node instanceof Element && (node.id.startsWith('event-message-card-') || !!node.querySelector('[id^="event-message-card-"]')))) { scrollTried = false; return true; }
       return false;
     });
-    if (relevant) { preferScrollAnchor(); observeTail(); followTail(); }
+    if (relevant) {
+      // Unrelated narration/growth may proceed immediately; only duplicate
+      // notifications belonging to this exact new dice row share its hint.
+      if (tailEntry && records.some(record => {
+        const target = record.target instanceof Element ? record.target : record.target.parentElement;
+        return record.type !== 'attributes' && target && scrollFeed?.contains(target) && !tailEntry!.row.contains(target);
+      })) tailEntry = null;
+      preferScrollAnchor(); observeTail(); followTail();
+    }
   }
   function outside(event: PointerEvent): void {
     if (!(event.target instanceof Element) || event.target.closest('[role="dialog"],[role="menu"],[role="listbox"],[data-radix-popper-content-wrapper]')) return;
