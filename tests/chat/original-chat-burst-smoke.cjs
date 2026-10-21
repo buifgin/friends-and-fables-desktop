@@ -137,7 +137,8 @@ async function scenario(mode, code) {
   async function checkpoint(label, visibleIDs = []) {
     // Quiet work is measured only after native motion and its finite cleanup.
     const position = () => ({ scrollTop: feed.scrollTop, target: feed.scrollHeight - feed.clientHeight, scrollActive, counts: { ...window.__burstCounts } });
-    const entry = position(), scrollEnds = [];
+    const quietKeys = ['appearanceRecords', 'appearanceScan', 'snapshotPass', 'snapshotCards', 'safeClone', 'commandsScan', 'commandsRender', 'nativeWrites', 'nativeRender'];
+    const entry = position(), scrollEnds = [], completionSamples = [];
     const ended = () => scrollEnds.push(position());
     feed.addEventListener('scrollend', ended);
     let baseline, after;
@@ -145,16 +146,23 @@ async function scenario(mode, code) {
       await settle(); identity();
       for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
       let completionFrames = 0;
+      const unchanged = (left, right) => Math.abs(left.scrollTop - right.scrollTop) <= .5 && left.target === right.target
+        && quietKeys.every(key => (left.counts[key] || 0) === (right.counts[key] || 0));
       const completionFrame = async () => {
-        check(completionFrames < 90, `Native scroll/cleanup did not complete: ${label}; ${JSON.stringify({ entry, current: position(), scrollEnds })}`);
-        await frame(); completionFrames++;
+        check(completionFrames < 90, `Native scroll/cleanup did not become quiet: ${label}; ${JSON.stringify({ entry, current: position(), scrollEnds, completionSamples })}`);
+        await frame(); completionFrames++; const current = position(); completionSamples.push(current); return current;
       };
+      let previous = position(), stable = 0;
       for (;;) {
-        // A stable tail pixel still needs its actual pending scrollend event.
-        while (scrollActive) await completionFrame();
-        // Drain the same task/two-RAF cleanup as settle(), before the baseline.
-        await task(); await completionFrame(); await completionFrame();
-        if (!scrollActive) break;
+        const current = await completionFrame();
+        stable = unchanged(previous, current) ? stable + 1 : 0; previous = current;
+        if (stable < 2) continue;
+        // Instant/clamped scroll events need not provide scrollend. Require
+        // measured position AND work counters to settle, then drain pending
+        // event/anchor cleanup before starting the unchanged strict quiet test.
+        await task(); const first = await completionFrame(), last = await completionFrame();
+        if (unchanged(current, first) && unchanged(first, last)) break;
+        previous = last; stable = 0;
       }
       identity();
       for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
@@ -162,9 +170,9 @@ async function scenario(mode, code) {
       await settle(); after = position();
     } finally { feed.removeEventListener('scrollend', ended); }
     const before = baseline.counts;
-    const quietMotion = { entry, baseline, after, scrollEnds };
+    const quietMotion = { entry, baseline, after, scrollEnds, completionSamples };
     // Interval discovery is allowed. Its normalization call is counted separately.
-    for (const key of ['appearanceRecords', 'appearanceScan', 'snapshotPass', 'snapshotCards', 'safeClone', 'commandsScan', 'commandsRender', 'nativeWrites', 'nativeRender']) check((window.__burstCounts[key] || 0) === (before[key] || 0), `Unsolicited quiet work: ${label}/${key}; scroll diagnostic ${JSON.stringify(quietMotion)}`);
+    for (const key of quietKeys) check((window.__burstCounts[key] || 0) === (before[key] || 0), `Unsolicited quiet work: ${label}/${key}; scroll diagnostic ${JSON.stringify(quietMotion)}`);
     const sample = { label, counts: { ...window.__burstCounts }, quietMotion, pageLengths: query.state.data.pages.map(item => item.data.length), accepted: accepted.length, pending: !!pending, trusted: [...trusted] };
     samples.push(sample); return sample;
   }
