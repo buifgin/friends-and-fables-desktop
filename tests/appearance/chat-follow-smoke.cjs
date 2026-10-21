@@ -144,6 +144,62 @@ async function submitNativeScrollScenario(configure,settings){
  }
  return {passed:cases.filter(item=>item.adapter==='on').every(item=>item.passed),case:'public-submit-native-scroll-delayed-hp',cases};
 }
+// Same saved native first-new-event calculation as submitNativeScrollScenario.
+// Here the new rows fit above the footer, so its clamped target is the real tail.
+// Start the native animation before observer RAFs can overwrite it; OFF must
+// demonstrate rendered intermediate positions before ON can expose an app snap.
+async function smoothTailTrajectoryScenario(configure,settings){
+ const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
+ const settle=async()=>{await frame();await frame();await frame();};
+ const box=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height};};
+ const glyph=node=>{const range=document.createRange();range.selectNodeContents(node);const r=range.getBoundingClientRect();range.detach();return {top:r.top,bottom:r.bottom,height:r.height};};
+ const cases=[];
+ for(const enabled of [false,true]){
+  window.__friendsFablesDesktopChatAppearance?.dispose();
+  document.body.innerHTML='<section id="chat" class="flex-1 h-full w-full"><main id="feed"><div id="events-list"></div></main><footer id="turn-controls" class="absolute bottom-0"><div id="composer" hidden><div class="tiptap" contenteditable="true">Preserve smooth-follow draft.</div></div><button type="button">Show Input</button><button type="button">End turn Magnus</button></footer></section>';
+  const feed=document.getElementById('feed'),list=document.getElementById('events-list'),footer=document.getElementById('turn-controls'),composer=document.getElementById('composer'),draft=composer.querySelector('.tiptap'),draftText=draft.firstChild;
+  const retained=[];
+  const message=(id,height,text)=>{const row=document.createElement('div');row.id='event-'+id;row.innerHTML='<div id="event-container-'+id+'"><div id="event-message-card-'+id+'"><div class="prose"><p></p></div></div></div>';const card=row.firstElementChild.firstElementChild;card.style.minHeight=height+'px';card.querySelector('p').textContent=text;list.append(row);const item={row,card,text:card.querySelector('p').firstChild,height:card.getBoundingClientRect().height};retained.push(item);return item;};
+  for(let id=1;id<=12;id++)message(id,90,'Earlier narration '+id);
+  const prior=message(100,160,'Earlier completed narration.');
+  feed.scrollTop=feed.scrollHeight-feed.clientHeight;await settle();
+  if(enabled)configure(settings);await settle();
+  const geometry=card=>({scrollTop:feed.scrollTop,scrollHeight:feed.scrollHeight,clientHeight:feed.clientHeight,distanceToMax:feed.scrollHeight-feed.clientHeight-feed.scrollTop,feed:box(feed),footer:box(footer),tail:box(card)});
+  const before=geometry(prior.card);
+  if(before.distanceToMax>1||before.tail.bottom>before.footer.top+.5)throw Error('Smooth trajectory setup must start pinned/unobstructed: '+JSON.stringify(before));
+  if(enabled)window.__friendsFablesDesktopChatAppearance.followAfterSubmit();
+  const submitted=message(101,120,'The submitted attack action.');
+  message(102,120,'Franz final narration.');
+  const row=document.createElement('div');row.id='event-103';const card=document.createElement('div');card.className='bg-card border rounded-md damage';card.style.cssText='height:120px;display:flex;flex-direction:column;justify-content:flex-end';card.innerHTML='<strong>Target takes 6 damage</strong><p style="margin:0;line-height:24px">Final HP 14 / 20</p>';row.append(card);list.append(row);
+  const hpText=card.querySelector('p').firstChild,startTop=feed.scrollTop,max=feed.scrollHeight-feed.clientHeight;
+  const target=Math.max(0,Math.min(max,startTop+submitted.row.getBoundingClientRect().top-feed.getBoundingClientRect().top-100));
+  // This guard prevents the old already-at-tail false setup. No RAF has run
+  // since the append and there are no later DOM/size changes in this case.
+  if(Math.abs(startTop-before.scrollTop)>.5||target-startTop<200||Math.abs(target-max)>.5)throw Error('Smooth trajectory needs a real off-tail native target: '+JSON.stringify({before,startTop,target,max}));
+  const pending=geometry(card),samples=[{frame:0,scrollTop:startTop}];let terminalFrames=0,scrollEvents=0,scrollEnds=0;
+  const scrolled=()=>scrollEvents++,ended=()=>scrollEnds++;
+  feed.addEventListener('scroll',scrolled);feed.addEventListener('scrollend',ended);
+  try{
+   feed.scrollTo({top:target,behavior:'smooth'});
+   for(let index=1;index<=90;index++){
+    const timestamp=await frame(),scrollTop=feed.scrollTop;samples.push({frame:index,timestamp,scrollTop});
+    terminalFrames=Math.abs(scrollTop-target)<=1?terminalFrames+1:0;
+    if(terminalFrames===3)break;
+   }
+  }finally{feed.removeEventListener('scroll',scrolled);feed.removeEventListener('scrollend',ended);}
+  const after=geometry(card),lastGlyph=glyph(hpText);
+  const intermediate=samples.filter(sample=>sample.scrollTop>startTop+1&&sample.scrollTop<target-1);
+  const distinctIntermediate=new Set(intermediate.map(sample=>Math.round(sample.scrollTop))).size;
+  const smooth=distinctIntermediate>=2,follow=after.distanceToMax<=1&&terminalFrames===3;
+  const fullyVisible=after.tail.top>=after.feed.top-.5&&after.tail.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5&&lastGlyph.height>0&&lastGlyph.top>=after.feed.top-.5&&lastGlyph.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5;
+  const identity=document.getElementById('turn-controls')===footer&&document.querySelector('.tiptap')===draft&&draft.firstChild===draftText&&draft.textContent==='Preserve smooth-follow draft.'&&composer.hidden&&row.firstElementChild===card&&card.querySelector('p').firstChild===hpText&&retained.every(item=>item.row.isConnected&&item.row.firstElementChild.firstElementChild===item.card&&item.card.querySelector('p').firstChild===item.text&&Math.abs(item.card.getBoundingClientRect().height-item.height)<=.5);
+  const noLaterGrowth=after.scrollHeight===pending.scrollHeight&&after.clientHeight===pending.clientHeight&&Math.abs(after.tail.height-pending.tail.height)<=.5&&Math.abs(after.footer.top-pending.footer.top)<=.5;
+  const result={adapter:enabled?'on':'off',passed:smooth&&follow&&fullyVisible&&identity&&noLaterGrowth,smooth,distinctIntermediate,follow,fullyVisible,identity,noLaterGrowth,startTop,target,max,scrollEvents,scrollEnds,before,pending,after,lastGlyph,samples};
+  cases.push(result);window.__friendsFablesDesktopChatAppearance?.dispose();
+  if(!enabled&&!result.passed)throw Error('OFF native smooth trajectory control invalid: '+JSON.stringify(result));
+ }
+ return {case:'smooth-tail-trajectory',passed:cases.every(item=>item.passed),cases};
+}
 // Current user capture: four old roll rows contribute three bottom ornaments
 // each before the real external footer. Native feed padding is p-4 (16px).
 async function footerCandidateBudgetScenario(configure,settings){
@@ -191,7 +247,7 @@ async function footerCandidateBudgetScenario(configure,settings){
  if(!control.follow||control.fullyVisible||control.after.paddingBottom!=='16px')throw Error('Native OFF control must be pinned yet clipped with only16px reserve: '+JSON.stringify(control));
  return {passed:cases.every(item=>item.passed),case:'footer-candidate-budget',cases};
 }
-module.exports={followScenario,submitNativeScrollScenario,footerCandidateBudgetScenario};
+module.exports={followScenario,submitNativeScrollScenario,smoothTailTrajectoryScenario,footerCandidateBudgetScenario};
 if(process.versions.electron){
  const {app,BrowserWindow,session}=require('electron');app.on('window-all-closed',()=>{});
  let window,profile,passed=false;const timer=setTimeout(()=>{console.error('Chat follow fixture timed out');app.exit(1);},30000);
@@ -203,13 +259,17 @@ if(process.versions.electron){
   const site=session.fromPartition('chat-follow');site.protocol.handle('https',()=>new Response('<!doctype html><style>body{margin:0}#chat{position:relative;width:900px;height:556px;margin:40px}#feed{box-sizing:border-box;height:100%;overflow-y:auto;overflow-anchor:auto;padding:0 0 64px}#turn-controls{position:absolute;bottom:0;left:0;right:0;height:56px;background:#123;z-index:5}.prose{padding:10px}.prose p{margin:0;line-height:24px}.damage{box-sizing:border-box;padding:10px;background:#812}</style>',{headers:{'Content-Type':'text/html'}}));
   window=new BrowserWindow({show:false,width:1920,height:1080,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});await window.loadURL('https://play.fables.gg/fixture/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
   const selected=process.env.FABLES_CHAT_FOLLOW_CASE||'all';
-  if(!['submit-native-scroll','footer-candidate-budget'].includes(selected)){
+  if(!['submit-native-scroll','smooth-tail-trajectory','footer-candidate-budget'].includes(selected)){
    const result=await window.webContents.executeJavaScript(`(${followScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)},${JSON.stringify(selected)})`);
    console.log('Chat bottom follow cases',JSON.stringify(result));assert.equal(result.passed,true,'Pinned tail or manual reader contract failed');
   }
   if(selected==='all'||selected==='submit-native-scroll'){
    const result=await window.webContents.executeJavaScript(`(${submitNativeScrollScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);
    console.log('Submit native scroll delayed HP result',JSON.stringify(result));assert.equal(result.passed,true,'Submitted follow intent was lost after native programmatic scroll or manual reader moved');
+  }
+  if(selected==='all'||selected==='smooth-tail-trajectory'){
+   const result=await window.webContents.executeJavaScript(`(${smoothTailTrajectoryScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);
+   console.log('Smooth tail trajectory result',JSON.stringify(result));assert.equal(result.passed,true,'Adapter must preserve native smooth rendered trajectory and final HP/footer clearance');
   }
   if(selected==='all'||selected==='footer-candidate-budget'){
    const result=await window.webContents.executeJavaScript(`(${footerCandidateBudgetScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);
