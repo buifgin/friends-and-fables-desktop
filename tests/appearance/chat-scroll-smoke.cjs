@@ -117,7 +117,18 @@ async function occlusionScenario(configure,settings){
  const before=geometry();check(before.lastGlyph.bottom<=before.footerTop+.5,'Occlusion fixture not initially pinned/unobstructed: '+JSON.stringify(before));
  // Native composer opens without resizing the scroll feed/content border box.
  // No fake scroll/submit/API call tells the adapter that a new event arrived.
- composer.hidden=false;await settle();
+ // Footer reserve now follows with native smooth motion. Observe its actual
+ // completion instead of treating three rendered frames as the final viewport.
+ let completed=false;const completionSamples=[],scrollEnds=[];
+ const ended=()=>{const target=feed.scrollHeight-feed.clientHeight;scrollEnds.push({scrollTop:feed.scrollTop,target});if(target>before.scrollTop+1&&Math.abs(feed.scrollTop-target)<=1)completed=true;};
+ feed.addEventListener('scrollend',ended);
+ try{
+  composer.hidden=false;
+  for(let index=0;index<90;index++){
+   await frame();const scrollTop=feed.scrollTop,target=feed.scrollHeight-feed.clientHeight;completionSamples.push({frame:index+1,scrollTop,target});
+   if(completed&&Math.abs(scrollTop-target)<=1)break;
+  }
+ }finally{feed.removeEventListener('scrollend',ended);}
  const opened=geometry();
  const fullyVisible=opened.lastGlyph.bottom<=Math.min(opened.feedBottom,opened.footerTop)+.5;
  const retained=tail.querySelector('[id^="event-message-card-"]')===tailCard&&tail.querySelector('p').firstChild===tailText&&draft.firstChild===draftNode&&draft.textContent==='Preserve native draft.';
@@ -127,7 +138,7 @@ async function occlusionScenario(configure,settings){
  const manualBefore=glyph(older).top;add(101,'Late ordinary message after manual navigation.');await settle();const manualAfter=glyph(older).top;
  const manualPreserved=Math.abs(manualAfter-manualBefore)<=.5;
  feed.dispatchEvent(new Event('scrollend'));composer.hidden=true;await settle();
- const result={passed:fullyVisible&&retained&&manualPreserved,case:'native-composer-footer-occlusion',before,opened,fullyVisible,retained,manualPreserved,manualBefore,manualAfter};
+ const result={passed:completed&&fullyVisible&&retained&&manualPreserved,case:'native-composer-footer-occlusion',before,opened,completed,completionSamples,scrollEnds,fullyVisible,retained,manualPreserved,manualBefore,manualAfter};
  window.__friendsFablesDesktopChatAppearance?.dispose();return result;
 }
 module.exports={scrollScenario,occlusionScenario};

@@ -47,6 +47,14 @@ async function scenario(mode, code) {
   editorElement.editor = editor;
   const feed = document.getElementById('feed'), list = document.getElementById('events-list');
   const send = document.getElementById('send'), footer = document.getElementById('footer');
+  // Observe native completion throughout the fixture, including motion already
+  // in progress when a checkpoint begins. Position stability alone precedes
+  // Chromium's scrollend and the adapter's finite anchor/style cleanup.
+  let scrollActive = false;
+  const scrollActivity = () => { scrollActive = true; };
+  const scrollCompletion = () => { scrollActive = false; };
+  feed.addEventListener('scroll', scrollActivity);
+  feed.addEventListener('scrollend', scrollCompletion);
   const draftIdentity = editorElement;
   const event = (id, content = `Native narration ${id}`) => ({ id, role: id === null || id >= 140 ? 'player' : 'dm', content, campaign_id: campaign, character_id: 42, ...(id === null ? { isOptimistic: true } : {}) });
   const page = (start, end, direction) => ({ data: Array.from({ length: end - start + 1 }, (_, i) => event(start + i)), hasPreviousPage: true, hasNextPage: false, previousCursor: start, nextCursor: end, ...(direction ? { direction } : {}) });
@@ -127,15 +135,48 @@ async function scenario(mode, code) {
     for (const overlay of document.querySelectorAll('[data-ff-desktop-message-snapshot]')) check(!overlay.textContent.includes('PRIVATE-FIXTURE-GUIDANCE'), 'Private guidance text resurrected');
   }
   async function checkpoint(label, visibleIDs = []) {
-    await settle(); identity();
-    for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
-    const before = { ...window.__burstCounts };
-    await settle();
+    // Quiet work is measured only after native motion and its finite cleanup.
+    const position = () => ({ scrollTop: feed.scrollTop, target: feed.scrollHeight - feed.clientHeight, scrollActive, counts: { ...window.__burstCounts } });
+    const quietKeys = ['appearanceRecords', 'appearanceScan', 'snapshotPass', 'snapshotCards', 'safeClone', 'commandsScan', 'commandsRender', 'nativeWrites', 'nativeRender'];
+    const entry = position(), scrollEnds = [], completionSamples = [];
+    const ended = () => scrollEnds.push(position());
+    feed.addEventListener('scrollend', ended);
+    let baseline, after;
+    try {
+      await settle(); identity();
+      for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
+      let completionFrames = 0;
+      const unchanged = (left, right) => Math.abs(left.scrollTop - right.scrollTop) <= .5 && left.target === right.target
+        && quietKeys.every(key => (left.counts[key] || 0) === (right.counts[key] || 0));
+      const completionFrame = async () => {
+        check(completionFrames < 90, `Native scroll/cleanup did not become quiet: ${label}; ${JSON.stringify({ entry, current: position(), scrollEnds, completionSamples })}`);
+        await frame(); completionFrames++; const current = position(); completionSamples.push(current); return current;
+      };
+      let previous = position(), stable = 0;
+      for (;;) {
+        const current = await completionFrame();
+        stable = unchanged(previous, current) ? stable + 1 : 0; previous = current;
+        if (stable < 2) continue;
+        // Instant/clamped scroll events need not provide scrollend. Require
+        // measured position AND work counters to settle, then drain pending
+        // event/anchor cleanup before starting the unchanged strict quiet test.
+        await task(); const first = await completionFrame(), last = await completionFrame();
+        if (unchanged(current, first) && unchanged(first, last)) break;
+        previous = last; stable = 0;
+      }
+      identity();
+      for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
+      baseline = position(); baseline.completionFrames = completionFrames;
+      await settle(); after = position();
+    } finally { feed.removeEventListener('scrollend', ended); }
+    const before = baseline.counts;
+    const quietMotion = { entry, baseline, after, scrollEnds, completionSamples };
     // Interval discovery is allowed. Its normalization call is counted separately.
-    for (const key of ['appearanceRecords', 'appearanceScan', 'snapshotPass', 'snapshotCards', 'safeClone', 'commandsScan', 'commandsRender', 'nativeWrites', 'nativeRender']) check((window.__burstCounts[key] || 0) === (before[key] || 0), `Unsolicited quiet work: ${label}/${key}`);
-    const sample = { label, counts: { ...window.__burstCounts }, pageLengths: query.state.data.pages.map(item => item.data.length), accepted: accepted.length, pending: !!pending, trusted: [...trusted] };
+    for (const key of quietKeys) check((window.__burstCounts[key] || 0) === (before[key] || 0), `Unsolicited quiet work: ${label}/${key}; scroll diagnostic ${JSON.stringify(quietMotion)}`);
+    const sample = { label, counts: { ...window.__burstCounts }, quietMotion, pageLengths: query.state.data.pages.map(item => item.data.length), accepted: accepted.length, pending: !!pending, trusted: [...trusted] };
     samples.push(sample); return sample;
   }
+
   window.__burst = {
     async prepare(content) {
       absent(); editor.commands.setContent(`<p>${content}</p>`); editor.commands.focus('end'); editorElement.dispatchEvent(new Event('input', { bubbles: true }));
@@ -192,7 +233,7 @@ async function scenario(mode, code) {
       const final = { mode, passed: true, accepted, trusted, samples, counts: { ...window.__burstCounts } };
       window.__friendsFablesDesktopCommands?.dispose(); window.__friendsFablesDesktopCampaignChatPages?.dispose(); window.__friendsFablesDesktopChatAppearance.dispose();
       check(!listeners.size && query.setData === originalSetter, 'Query subscription/setter leaked');
-      check(!document.querySelector('[data-ff-desktop-message-snapshot],[data-ff-desktop-command-controls]'), 'Owned presentation leaked after dispose'); editor.destroy();
+      check(!document.querySelector('[data-ff-desktop-message-snapshot],[data-ff-desktop-command-controls]'), 'Owned presentation leaked after dispose'); feed.removeEventListener('scroll', scrollActivity); feed.removeEventListener('scrollend', scrollCompletion); editor.destroy();
       return final;
     },
   };
