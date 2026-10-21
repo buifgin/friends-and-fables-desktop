@@ -5,7 +5,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   type Fiber = { tag?: number; type?: unknown; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
   type Native = Record<string, any>;
   type Observer = { options: { mutationFn: Function }; getCurrentResult(): Native; subscribe(listener: (result: Native) => void): () => void };
-  type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; finished?: boolean; unsubscribe?: () => void };
+  type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; finished?: boolean; unsubscribe?: () => void; turnTemplate?: HTMLElement; turnName?: string; turnImage?: unknown };
   type Outcome = { campaign: string; character: string | number; eventId: string | number; choiceId: string | number; started: number; status: 'claimed' | 'accepted' | 'failed' | 'unknown'; rollResultId?: string | number };
   type Preferences = { automaticDamage: boolean; hideIntermediateFranz: boolean; hideDamagePrompt: boolean };
   const key = '__friendsFablesDesktopCombatFlow';
@@ -15,6 +15,10 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   let disposed = false, frame = 0, campaign = '', route = '';
   let prefs: Preferences = { automaticDamage: false, hideIntermediateFranz: false, hideDamagePrompt: false };
   let ticket: Ticket | null = null;
+  type TurnPresentation = { source: Ticket; template: HTMLElement; operation: 'gm' | 'damage'; completed: boolean; request?: string; attackId?: string | number; outcomeKey?: string; unsubscribe?: () => void };
+  let turnPresentation: TurnPresentation | null = null;
+  let turnShell: HTMLElement | null = null;
+  const turnHidden = new Map<HTMLElement, { value: string; priority: string }>();
   let traversalBudget = 50000;
   const currentFiberCache = new Map<Fiber, Fiber | null>();
   const rootCache = new Map<Fiber, Fiber | null>();
@@ -38,7 +42,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   function restoreStatus(): void { for (const node of statuses.values()) node.remove(); statuses.clear(); }
   function restoreEmptyRows(): void { for (const [node, previous] of emptyRows) { if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display'); } emptyRows.clear(); }
   const storageKey = (): string => `ff-desktop-combat-flow-v1:${campaign}`;
-  function cancel(): void { const current = ticket; ticket = null; if (current?.attackId) progress.delete(current.attackId); pendingPrompts.clear(); if (narrating.size) { narrating.clear(); schedule(); } try { current?.unsubscribe?.(); } catch { /* Native lifecycle may already be disposed. */ } }
+  function cancel(keepTurnPresentation = false): void { if (!keepTurnPresentation) releaseTurnPresentation(); const current = ticket; ticket = null; if (current?.attackId) progress.delete(current.attackId); pendingPrompts.clear(); if (narrating.size) { narrating.clear(); schedule(); } try { current?.unsubscribe?.(); } catch { /* Native lifecycle may already be disposed. */ } }
   function restoreNode(node: HTMLElement): void {
     const previous = hidden.get(node); if (!previous) return;
     if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
@@ -60,7 +64,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     hiddenPrompts.clear();
   }
-  function restoreAll(): void { for (const key of nativeWatches.keys()) clearNativeWatch(key); restore(); restorePrompts(); restoreEmptyRows(); restoreStatus(); progress.clear(); }
+  function restoreAll(): void { releaseTurnPresentation(); for (const key of nativeWatches.keys()) clearNativeWatch(key); restore(); restorePrompts(); restoreEmptyRows(); restoreStatus(); progress.clear(); }
   function read(): Preferences {
     try {
       const raw = localStorage.getItem(storageKey());
@@ -217,6 +221,168 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     for (let fiber = committedFiber(node), depth = 0; fiber && depth < maxDepth; depth++, fiber = currentFiber(fiber.return)) result.push(fiber);
     ancestryCache.set(node, { depth: maxDepth, fibers: result }); return result;
   }
+  function restoreTurnVisuals(): void {
+    turnShell?.remove(); turnShell = null;
+    for (const [node, previous] of turnHidden) {
+      if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
+    }
+    turnHidden.clear();
+  }
+  function releaseTurnPresentation(): void {
+    const current = turnPresentation; turnPresentation = null;
+    try { current?.unsubscribe?.(); } catch { /* Native observer may already be disposed. */ }
+    restoreTurnVisuals();
+  }
+  function turnFooter(character: string | number, encounter: string | number): { right: HTMLElement; props: Native; button?: HTMLButtonElement } | null {
+    const matches: { right: HTMLElement; props: Native; button?: HTMLButtonElement }[] = [];
+    const candidates = document.querySelectorAll<HTMLElement>('div.h-fit.flex.items-center.justify-between.gap-2');
+    if (candidates.length > 12) return null;
+    for (const node of Array.from(candidates)) {
+      const host = committedFiber(node), owner = host && currentFiber(host.return), props = owner?.memoizedProps;
+      const source = typeof owner?.type === 'function' ? String(owner.type) : '';
+      const turn = (props?.encounter as Native)?.currentTurnEntity;
+      if (host?.tag !== 5 || host.type !== 'div' || !props || !['shouldShowEndTurnButton', 'shouldShowDeathSaveButton', 'isUsersTurn', 'justify-end'].every(marker => source.includes(marker))
+        || props.campaignId !== campaign || (props.campaign as Native)?.id !== campaign || (props.campaign as Native)?.active_encounter_id !== encounter
+        || props.encounterId !== encounter || (props.encounter as Native)?.id !== encounter || (props.usersCharacter as Native)?.id !== character
+        || turn?.characterId !== character || turn.is_npc !== false || !id(turn.entityId) || typeof turn.name !== 'string' || !turn.name || turn.name.length > 100
+        || props.isUsersTurn !== true || props.showEncounterButtons !== true || props.shouldShowDeathSaveButton !== false
+        || props.isAnotherPlayersTurn !== false || props.shouldShowRunNpcTurnButton !== false) continue;
+      const right = Array.from(node.children).filter((child): child is HTMLElement => child instanceof HTMLElement && child.classList.contains('justify-end') && child.classList.contains('gap-2'));
+      if (right.length !== 1) continue;
+      const rightHost = committedFiber(right[0]);
+      if (rightHost?.tag !== 5 || rightHost.type !== 'div' || currentFiber(rightHost.return) !== host) continue;
+      const buttons = Array.from(right[0].querySelectorAll<HTMLButtonElement>('button')).filter(button => {
+        const chain = ancestry(button, 8), native = chain[0]?.memoizedProps, classes = native?.className;
+        return chain[0]?.tag === 5 && chain[0].type === 'button' && typeof native?.onClick === 'function'
+          && ['currentTurnEntity', 'entityId', 'currentTurnEntityId'].every(marker => String(native.onClick).includes(marker))
+          && chain.some(fiber => fiber.memoizedProps?.campaignId === campaign && fiber.memoizedProps.encounterId === encounter
+            && fiber.memoizedProps.shouldShowEndTurnButton === true && (fiber.memoizedProps.usersCharacter as Native)?.id === character)
+          && typeof classes === 'string' && ['rounded-full', 'h-12', 'mt-2'].every(marker => classes.split(/\s+/).includes(marker));
+      });
+      if (buttons.length > 1 || (props.shouldShowEndTurnButton === true) !== (buttons.length === 1)) continue;
+      matches.push({ right: right[0], props, button: buttons[0] });
+    }
+    return matches.length === 1 && traversalBudget > 0 ? matches[0] : null;
+  }
+  function turnTemplate(current: Ticket): HTMLElement | undefined {
+    const footer = turnFooter(current.character, current.encounter), button = footer?.button;
+    if (!button || button.disabled || committedFiber(button)?.memoizedProps?.disabled === true || !button.firstElementChild) return;
+    const template = document.createElement('div');
+    template.className = button.className;
+    template.style.setProperty('pointer-events', 'none');
+    // Native themes may style BUTTON rather than its utility classes. Copy
+    // appearance, not width/position/padding: responsive classes still govern.
+    const appearance = getComputedStyle(button);
+    for (const property of ['background-color', 'background-image', 'border-color', 'border-style', 'border-width', 'border-radius', 'color', 'font-family', 'font-size', 'font-weight', 'line-height', 'box-shadow']) template.style.setProperty(property, appearance.getPropertyValue(property));
+    const turn = (footer.props.encounter as Native).currentTurnEntity;
+    current.turnName = turn.name; current.turnImage = turn.image;
+    template.setAttribute('data-ff-combat-turn-control', 'true'); template.setAttribute('data-ff-translation-ignore', 'true'); template.setAttribute('aria-hidden', 'true');
+    const avatar = button.firstElementChild.cloneNode(true) as Element;
+    // Only the native avatar decoration is copied. Never clone an interactive
+    // element, ID, event attribute, reference or translation presentation owner.
+    const safeTags = new Set(['DIV', 'SPAN', 'IMG', 'SVG', 'PATH', 'CIRCLE', 'G', 'RECT', 'DEFS', 'CLIPPATH', 'POLYGON', 'POLYLINE', 'LINE', 'TITLE']);
+    for (const node of [avatar, ...Array.from(avatar.querySelectorAll('*'))]) {
+      if (!safeTags.has(node.tagName.toUpperCase())) { node.remove(); continue; }
+      for (const attribute of Array.from(node.attributes)) if (!['class', 'style', 'src', 'alt', 'viewBox', 'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'fill-rule', 'clip-rule', 'width', 'height', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'points', 'xmlns'].includes(attribute.name)) node.removeAttribute(attribute.name);
+    }
+    template.append(avatar);
+    const label = document.createElement('span'); label.className = 'inline-block overflow-hidden text-ellipsis whitespace-nowrap max-w-[190px] sm:max-w-none'; template.append(label);
+    return template;
+  }
+  function beginTurnPresentation(current: Ticket): void {
+    releaseTurnPresentation();
+    current.turnTemplate = turnTemplate(current);
+    if (!current.turnTemplate) return;
+    const presentation: TurnPresentation = { source: current, template: current.turnTemplate, operation: 'gm', completed: false };
+    turnPresentation = presentation;
+    presentation.unsubscribe = current.observer.subscribe(result => {
+      if (turnPresentation !== presentation) return;
+      if (result.status === 'error') { releaseTurnPresentation(); return; }
+      if (result.status !== 'pending' && result.status !== 'success') return;
+      const variables = result.variables;
+      if (result === current.baseline || variables === current.baseline.variables || !Number.isFinite(result.submittedAt)
+        || result.submittedAt <= (current.baseline.submittedAt ?? 0) || result.submittedAt < current.started || typeof variables?.requestId !== 'string'
+        || !variables.requestId || !id(variables.lastEventId) || variables.isRewrite === true
+        || presentation.request && (presentation.request !== variables.requestId || presentation.attackId !== variables.lastEventId)
+        || result.status === 'success' && !presentation.request) { releaseTurnPresentation(); return; }
+      presentation.request = variables.requestId; presentation.attackId = variables.lastEventId;
+      presentation.completed = result.status === 'success'; schedule();
+    });
+  }
+  function transferTurnPresentation(current: Ticket, outcomeKey: string): void {
+    const template = current.turnTemplate;
+    releaseTurnPresentation();
+    if (template) turnPresentation = { source: current, template, operation: 'damage', completed: false, request: current.request, attackId: current.attackId, outcomeKey };
+  }
+  function ownRollSpinning(presentation: TurnPresentation): boolean {
+    const current = presentation.source, outcome = outcomes.get(presentation.outcomeKey ?? '');
+    const eventId = presentation.operation === 'gm' ? presentation.attackId : outcome?.rollResultId;
+    if (!id(eventId)) return false;
+    const cards = Array.from(document.querySelectorAll('[id^="event-message-card-"]')).filter(node => node.id === `event-message-card-${eventId}`);
+    if (cards.length !== 1) return false;
+    const card = cards[0], chain = ancestry(card, 24);
+    const owners = chain.filter(fiber => {
+      const event = fiber.memoizedProps?.event as Native | undefined;
+      return typeof fiber.type === 'function' && String(fiber.type).includes('animate-spin blur-sm scale-105')
+        && event?.id === eventId && event.campaign_id === campaign && event.character_id === current.character
+        && event.events_roll?.roll_type === (presentation.operation === 'gm' ? current.rollType : 'Damage')
+        && (presentation.operation !== 'gm' || event.request_id === presentation.request && event.command_used === 'roll_attack');
+    });
+    if (owners.length !== 1 || !encounterMatches(card, current.encounter)) return false;
+    const panels = card.querySelectorAll('div.relative.rounded-2xl.border-2.overflow-hidden'); if (panels.length !== 1) return false;
+    const panelHost = committedFiber(panels[0]), classes = panelHost?.memoizedProps?.className;
+    if (panelHost?.tag !== 5 || panelHost.type !== 'div' || typeof classes !== 'string'
+      || !['relative', 'rounded-2xl', 'border-2', 'overflow-hidden'].every(marker => classes.split(/\s+/).includes(marker))
+      || !ancestry(panels[0], 24).includes(owners[0])) return false;
+    const dice = Array.from(panels[0].querySelectorAll('svg[data-name]'));
+    if (!dice.length || dice.length > 20) return false;
+    let spinning = false;
+    for (const die of dice) {
+      const host = committedFiber(die), classes = host?.memoizedProps?.className;
+      if (!/^d(?:4|6|8|10|12|20)$/.test(die.getAttribute('data-name') ?? '') || host?.tag !== 5 || host.type !== 'svg'
+        || typeof classes !== 'string' || !ancestry(die, 24).includes(owners[0])) return false;
+      if (['animate-spin', 'blur-sm', 'scale-105'].every(marker => die.classList.contains(marker) && classes.split(/\s+/).includes(marker))) spinning = true;
+    }
+    return spinning && traversalBudget > 0;
+  }
+
+  function syncTurnPresentation(): void {
+    const presentation = turnPresentation; if (!presentation) return;
+    const current = presentation.source;
+    const footer = turnFooter(current.character, current.encounter);
+    const turn = (footer?.props.encounter as Native | undefined)?.currentTurnEntity;
+    if (!prefs.automaticDamage || campaign !== current.campaign || location.pathname !== route || Date.now() - current.started > 120000 || !footer || turn?.name !== current.turnName || turn?.image !== current.turnImage
+      || footer.button && (footer.button.disabled || committedFiber(footer.button)?.memoizedProps?.disabled === true)
+      || presentation.completed && !ownRollSpinning(presentation)) { releaseTurnPresentation(); return; }
+    const desired = new Set<HTMLElement>();
+    for (const node of Array.from(footer.right.children)) {
+      if (!(node instanceof HTMLElement) || node === turnShell || node === footer.button) continue;
+      const chain = ancestry(node, 8);
+      const phase = chain.some(fiber => {
+        const props = fiber.memoizedProps, source = typeof fiber.type === 'function' ? String(fiber.type) : '';
+        return (props?.usersCharacter as Native)?.id === current.character
+          && (source.includes('Your turn, ') && source.includes('bg-blue-600/20')
+            || props?.campaignId === campaign && source.includes('Continue') && source.includes('isGmResponding'));
+      });
+      if (!phase) { releaseTurnPresentation(); return; }
+      desired.add(node);
+    }
+    for (const [node, previous] of turnHidden) if (!desired.has(node)) {
+      if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display'); turnHidden.delete(node);
+    }
+    for (const node of desired) if (!turnHidden.has(node)) {
+      turnHidden.set(node, { value: node.style.getPropertyValue('display'), priority: node.style.getPropertyPriority('display') }); node.style.setProperty('display', 'none', 'important');
+    }
+    if (footer.button) { turnShell?.remove(); turnShell = null; }
+    else {
+      if (!turnShell) turnShell = presentation.template;
+      const label = turnShell.lastElementChild as HTMLElement;
+      const name = (footer.props.encounter as Native).currentTurnEntity.name;
+      const text = language === 'ru' ? `Завершить ход ${name}` : `End ${name}'s Turn`;
+      if (label.textContent !== text) label.textContent = text;
+      if (turnShell.parentElement !== footer.right) footer.right.append(turnShell);
+    }
+  }
   // Current public native module389261 INSERT updater only; unknown releases
   // bypass. Its duplicate INSERT replaces the entire event, unlike UPDATE.
   const nativeInsertSource = "e=>{if(!e?.pages?.length)return{pages:[{data:[i]}],pageParams:[{cursor:void 0,direction:\"backward\"}]};let s=!1,n=e.pages.map(e=>{let a=e.data.map(e=>null!==i.id&&null!==e.id&&e.id===i.id||null!==i.id&&null===e.id||null!==i.id&&null===e.id&&e.character_id===i.character_id&&\"talk\"===e.command_used&&\"talk\"===i.command_used&&\"Sending audio...\"===e.content?(s=!0,i):e);return{...e,data:a}});if(!s){let e=n[n.length-1];if(!e)return{pages:[{data:[i]}],pageParams:[{cursor:void 0,direction:\"backward\"}]};e.data||(e.data=[]),e.data.some(e=>null!==i.id&&e.id===i.id)?a.default.warn(\"Event already exists in last page, skipping\",{functionName:\"insertEventIntoQueryData\",campaignId:r,newEventId:i.id}):e.data.length>=t.CAMPAIGN_EVENTS_PAGE_SIZE?n.push({data:[i]}):e.data.push(i)}if(n.length>3){let e=n.length-3;n.splice(0,e)}let l=e.pageParams.slice(-n.length);for(;l.length<n.length;)l.unshift({cursor:void 0,direction:\"backward\"});return{pages:n,pageParams:l}}";
@@ -335,6 +501,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (!event.isTrusted || !(event.target instanceof HTMLFormElement) || !event.target.closest('[data-ff-combat-docked]')) return;
     // A second own submission cancels rather than batching or guessing ownership.
     if (ticket) { cancel(); return; }
+    releaseTurnPresentation();
     if (!prefs.automaticDamage || !campaign) return;
     const context = formContext(event.target);
     if (!context) return;
@@ -351,6 +518,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       const current: Ticket = { campaign, encounter: context.owner.encounterId, character: context.character.id, target: targets[0].id, dc: targets[0].ac,
         rollType, modifier: attack.modifier_value, proficiency: attack.proficiency_bonus, observer: context.observer, baseline, started: Date.now() };
       ticket = current;
+      beginTurnPresentation(current);
       current.unsubscribe = context.observer.subscribe(result => localResult(current, result));
     } catch { cancel(); }
   }
@@ -622,7 +790,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     for (const [key, watch] of nativeWatches) {
       const outcome = watch.outcome;
       const proof = linked.get(outcome.eventId), row = document.getElementById(`event-container-${outcome.eventId}`);
-      if (!proof || proof.outcomeKey !== key || !row || !encounterMatches(row, proof.encounter) || !prefs.automaticDamage || outcome.campaign !== campaign || outcome.status === 'failed' || outcome.status === 'unknown' || Date.now() - outcome.started > 120000) { clearNativeWatch(key); continue; }
+      if (!proof || proof.outcomeKey !== key || !row || !encounterMatches(row, proof.encounter) || !prefs.automaticDamage || outcome.campaign !== campaign || outcome.status === 'failed' || outcome.status === 'unknown' || Date.now() - outcome.started > 120000) { if (turnPresentation?.outcomeKey === key) releaseTurnPresentation(); clearNativeWatch(key); continue; }
       const matches: { result: Native; observer: Observer }[] = [];
       for (const { observer, baseline } of watch.observers) try {
         const result = observer.getCurrentResult(), variables = result?.variables;
@@ -636,10 +804,11 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
           && variables.rollChoice.event_id === outcome.eventId && variables.rollChoice.type === 'Damage'
           && variables.rollResult && typeof variables.rollResult === 'object') matches.push({ result, observer });
       } catch { /* Native observer teardown is not proof of backend failure. */ }
-      if (matches.length !== 1) { watch.publication = undefined; continue; }
+      if (matches.length !== 1) { if (turnPresentation?.outcomeKey === key) releaseTurnPresentation(); watch.publication = undefined; continue; }
       const { result, observer } = matches[0];
-      if (result.status === 'error') { outcome.status = 'failed'; clearNativeWatch(key); }
-      else if (result.status === 'success') clearNativeWatch(key);
+      if (turnPresentation?.outcomeKey === key && !['shouldTriggerFranz', 'continueMode_', 'mutateAsync', 'events_choices_rolls', 'insertEventIntoQueryData'].every(marker => String(observer.options.mutationFn).includes(marker))) releaseTurnPresentation();
+      if (result.status === 'error') { outcome.status = 'failed'; if (turnPresentation?.outcomeKey === key) releaseTurnPresentation(); clearNativeWatch(key); }
+      else if (result.status === 'success') { if (turnPresentation?.outcomeKey === key) turnPresentation.completed = true; clearNativeWatch(key); }
       else if (result.status === 'pending') {
         const source = String(observer.options.mutationFn), signature = nativeRollSignature(result.variables.rollResult);
         if (signature && ['rollResult', 'rollChoice', 'events_choices_rolls', 'INSERT_EVENT', 'insertEventIntoQueryData'].every(marker => source.includes(marker))) {
@@ -699,7 +868,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       || roll.modifier_value !== current.modifier || roll.proficiency_bonus !== current.proficiency || typeof roll.total_roll !== 'number' || !Number.isFinite(roll.total_roll)) { cancel(); return; }
     // This is the native eJ hit rule captured in its submit function. Critical
     // dice remain entirely owned by the following native Damage callback.
-    if (roll.total_roll < roll.dc) { cancel(); return; }
+    if (roll.total_roll < roll.dc) { cancel(true); return; }
     progress.set(attack.id, { campaign, encounter: current.encounter, request: current.request, character: current.character });
     // The local observer + validated hit own this causal intermediate already
     // while it streams. Conceal its narration without claiming or accepting a
@@ -777,13 +946,15 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (traversalBudget <= 0 || !choiceOwner) { cancel(); return; }
     const outcome: Outcome = { campaign, character: current.character, eventId: match.event.id, choiceId: match.choice.id, started: Date.now(), status: 'claimed' };
     outcomes.set(key, outcome);
-    claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request, attackId: attack.id, outcomeKey: key, choiceOwner }); cancel();
+    claimed.add(key); linked.set(match.event.id, { campaign, encounter: current.encounter, request: current.request, attackId: attack.id, outcomeKey: key, choiceOwner }); cancel(true);
+    transferTurnPresentation(current, key);
     progress.set(attack.id, { campaign, encounter: current.encounter, request: current.request, character: current.character, outcomeKey: key });
     syncNarration(); syncPrompts(); syncPresentation();
     watchNativeRoll(key, outcome, choiceOwner, latestOwner!.rollChoice as Native);
+    if (!nativeWatches.has(key)) releaseTurnPresentation();
     try { const result = candidate.callback({ stopPropagation() {}, preventDefault() {}, currentTarget: candidate.button, target: candidate.button });
-      if (result && typeof (result as PromiseLike<unknown>).then === 'function') void Promise.resolve(result).catch(() => { outcome.status = 'failed'; schedule(); });
-    } catch { outcome.status = 'failed'; schedule(); /* Unknown send outcome is terminal. Keep native manual controls. */ }
+      if (result && typeof (result as PromiseLike<unknown>).then === 'function') void Promise.resolve(result).catch(() => { outcome.status = 'failed'; if (turnPresentation?.outcomeKey === key) releaseTurnPresentation(); schedule(); });
+    } catch { outcome.status = 'failed'; if (turnPresentation?.outcomeKey === key) releaseTurnPresentation(); schedule(); /* Unknown send outcome is terminal. Keep native manual controls. */ }
   }
   function sync(): void {
     frame = 0;
@@ -791,7 +962,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (disposed) return;
     syncRoute();
     if (!campaign) return;
-    try { syncQuery(); observeNativeRolls(); observeOutcomes(); applyFlow(); pruneAbsentLinks(); syncNarration(); syncPrompts(); syncPresentation(); } catch { releaseQuery(); cancel(); restoreAll(); }
+    try { syncQuery(); observeNativeRolls(); observeOutcomes(); applyFlow(); pruneAbsentLinks(); syncNarration(); syncPrompts(); syncPresentation(); syncTurnPresentation(); } catch { releaseQuery(); cancel(); restoreAll(); }
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(sync); }
   // Mutation delivery precedes paint; RAF-only concealment permits a first-frame flash.
