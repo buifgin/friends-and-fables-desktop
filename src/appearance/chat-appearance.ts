@@ -357,7 +357,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
   }
   let tailPinned = false, tailFrame = 0;
-  type TailEntry = { row: HTMLElement; panel: HTMLElement; animation: CSSAnimation; expires: number; frames: number; time: number | null; stalled: number };
+  type TailEntry = { row: HTMLElement; panel: HTMLElement; animation: CSSAnimation; expires: number; target: number; height: number; frames: number; time: number | null; stalled: number };
   let tailEntry: TailEntry | null = null;
   // Existing/hydrating rows never acquire a first-reveal scheduling hint.
   const knownTailRows = new WeakSet<Element>(document.querySelectorAll('#events-list > [id^="event-"]'));
@@ -422,17 +422,20 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   }
   function noteTailEntry(row: HTMLElement | undefined, list: HTMLElement | null): void {
     if (!row || knownTailRows.has(row)) return;
+    const panel = nativeTailPanel(row);
+    // A newly published empty outer can precede its roll relation/panel. Only
+    // initial/hydrating rows are exempt before their first native panel exists.
+    if (!panel) return;
     knownTailRows.add(row);
     if (!tailPinned || list?.lastElementChild !== row || scrollYield || scrollGesture || selectedInFeed()) return;
-    const panel = nativeTailPanel(row);
-    if (!panel || typeof CSSAnimation === 'undefined' || typeof panel.getAnimations !== 'function') return;
+    if (typeof CSSAnimation === 'undefined' || typeof panel.getAnimations !== 'function') return;
     const entries = panel.getAnimations().filter((animation): animation is CSSAnimation => animation instanceof CSSAnimation
       && animation.animationName === 'enter' && (animation.effect as KeyframeEffect | null)?.target === panel);
     if (entries.length !== 1 || getComputedStyle(panel).opacity !== '0') return;
     const animation = entries[0], timing = animation.effect!.getComputedTiming();
     if (animation.playState !== 'running' || !Number.isFinite(animation.playbackRate) || animation.playbackRate <= 0
       || typeof timing.endTime !== 'number' || !Number.isFinite(timing.endTime) || timing.endTime <= 0) return;
-    tailEntry = { row, panel, animation, expires: performance.now() + timing.endTime / animation.playbackRate, frames: 0, time: null, stalled: 0 };
+    tailEntry = { row, panel, animation, expires: performance.now() + timing.endTime / animation.playbackRate, target: scrollFeed!.scrollHeight - scrollFeed!.clientHeight, height: row.getBoundingClientRect().height, frames: 0, time: null, stalled: 0 };
   }
   function waitingForTailEntry(feed: HTMLElement): boolean {
     const entry = tailEntry; if (!entry) return false;
@@ -440,6 +443,10 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     const time = animation.currentTime;
     if (!row.isConnected || row.parentElement?.id !== 'events-list' || row.parentElement.lastElementChild !== row || !feed.contains(row)
       || nativeTailPanel(row) !== panel || getComputedStyle(panel).opacity !== '0'
+      // Outside layout changes must remain responsive. Own scroll-anchor style
+      // bookkeeping does not grow content; only the exact new row may account
+      // for a changed target while its entrance is still transparent.
+      || Math.abs((feed.scrollHeight - feed.clientHeight - entry.target) - (row.getBoundingClientRect().height - entry.height)) > 1
       || animation.playState !== 'running' || !panel.getAnimations().includes(animation)
       || !Number.isFinite(animation.playbackRate) || animation.playbackRate <= 0
       || performance.now() >= entry.expires || ++entry.frames > 32
@@ -622,7 +629,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       // notifications belonging to this exact new dice row share its hint.
       if (tailEntry && records.some(record => {
         const target = record.target instanceof Element ? record.target : record.target.parentElement;
-        return target && scrollFeed?.contains(target) && !tailEntry!.row.contains(target);
+        return record.type !== 'attributes' && target && scrollFeed?.contains(target) && !tailEntry!.row.contains(target);
       })) tailEntry = null;
       preferScrollAnchor(); observeTail(); followTail();
     }

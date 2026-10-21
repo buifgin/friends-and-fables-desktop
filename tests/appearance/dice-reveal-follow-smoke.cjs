@@ -31,16 +31,17 @@ function page() {
     row.innerHTML = `<div id="event-message-card-${state.sequence}"><div class="prose">Native narration ${state.sequence}</div></div>`; list.append(row); return row;
   };
   for (let i = 0; i < 20; i++) state.prose();
-  state.roll = (kind, mode = 'entry') => {
-    const row = document.createElement('div'); row.id = `event-${++state.sequence}`;
-    const card = document.createElement('div'); card.id = `event-message-card-${state.sequence}`;
+  state.emptyDamage = () => { const row = document.createElement('div'); row.id = `event-${++state.sequence}`; list.append(row); state.phase = 'damage-empty'; return state.empty = row; };
+  state.roll = (kind, mode = 'entry', outer) => {
+    const row = outer || document.createElement('div'); if (!outer) row.id = `event-${++state.sequence}`;
+    const card = document.createElement('div'); card.id = `event-message-card-${row.id.slice(6)}`;
     const panel = document.createElement('div'); panel.className = panelClasses;
     panel.innerHTML = `<svg id="${kind === 'attack' ? 'd20' : 'd8'}" data-name="${kind === 'attack' ? 'd20' : 'd8'}" class="animate-spin" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="gold"/></svg><span>${kind}</span>`;
     if (mode === 'disabled') panel.style.animation = 'none';
     if (mode === 'paused') panel.style.animationPlayState = 'paused';
     if (mode === 'unknown') panel.style.animationName = 'unknown-entry';
     if (mode === 'ambiguous') card.append(panel.cloneNode(true));
-    card.append(panel); row.append(card); list.append(row);
+    card.append(panel); row.append(card); if (!row.isConnected) list.append(row);
     state[kind] = { row, card, panel, svg: panel.querySelector('svg') }; state.phase = kind;
     return row;
   };
@@ -92,6 +93,7 @@ function page() {
     if (action === 'pointer') { feed.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); feed.dispatchEvent(new PointerEvent('pointerup',{bubbles:true})); }
     if (action === 'selection') { const range = document.createRange(); range.selectNodeContents(list.firstElementChild); getSelection().removeAllRanges(); getSelection().addRange(range); }
     if (action === 'prose') state.prose(110);
+    if (action === 'prior-growth') list.firstElementChild.style.height = '210px';
     if (action === 'disconnect') state.damage.row.remove();
     if (action === 'route') { history.pushState({}, '', '/campaign-b/play'); dispatchEvent(new PopStateEvent('popstate')); }
     if (action === 'dispose') window.__friendsFablesDesktopChatAppearance.dispose();
@@ -149,16 +151,38 @@ app.on('window-all-closed', () => {});
     await until(`fixture.calls.some(call=>call.behavior==="smooth"&&call.requested===${rollGrowth})`);
     await js('fixture.prose(120);void 0'); await until('fixture.calls.some(call=>call.behavior==="smooth"&&call.requested===fixture.snapshot().target)');
   }
+  // Native publication may expose an empty event outer before roll enrichment.
+  await reset(); await begin(); await js('fixture.emptyDamage();void 0'); await paint();
+  const enriched = await js('fixture.roll("damage","entry",fixture.empty);fixture.snapshot()');
+  const enrichedFrames = await js('fixture.observeFrames(4)'); const enrichedCalls = smooth(await js('fixture.calls')).filter(call=>call.phase==='damage');
+  console.log('DICE_REVEAL_ENRICHED',JSON.stringify({enriched,enrichedFrames,enrichedCalls}));
+  assert.equal(await js('fixture.damage.row===fixture.empty'),true,'Native enrichment retains exact event outer');
+  assert.ok(enrichedCalls.length && enrichedCalls[0].opacity>0,'Empty new outer does not consume first native reveal hint');
+  // Own overflow-anchor restoration is geometry-neutral, not new narration.
+  await reset(); await begin();
+  await js('fixture.roll("damage");requestAnimationFrame(()=>{const style=document.getElementById("events-list").firstElementChild.style;style.setProperty("overflow-anchor","none","important");style.removeProperty("overflow-anchor")});void 0');
+  await paint(); const anchorCalls=smooth(await js('fixture.calls')).filter(call=>call.phase==='damage');
+  assert.ok(anchorCalls.length && anchorCalls[0].opacity>0,'Anchor bookkeeping cannot retire first reveal hint');
+  await reset(); await begin();
+  await js('fixture.roll("damage");requestAnimationFrame(()=>document.getElementById("events-list").firstElementChild.style.height="210px");void 0');
+  await paint(); const priorCalls=smooth(await js('fixture.calls')).filter(call=>call.phase==='damage');
+  console.log('DICE_REVEAL_PRIOR_GROWTH',JSON.stringify(priorCalls));
+  assert.ok(priorCalls.length && priorCalls[0].opacity===0,'Real prior narration CSS growth stays immediately followable during initial zero');
+
   await reset(); await js('window.__friendsFablesDesktopChatAppearance.dispose();fixture.roll("damage");void 0'); await configure();
   await js('fixture.noAttack=true;void 0'); await submit(); await paint();
   assert.ok(smooth(await js('fixture.calls')).some(call=>call.phase==='damage'),'Preexisting/hydrating native row retains ordinary follow');
+  await reset(); await js('window.__friendsFablesDesktopChatAppearance.dispose();fixture.emptyDamage();void 0'); await configure();
+  await js('fixture.roll("damage","entry",fixture.empty);window.__friendsFablesDesktopChatAppearance.followAfterSubmit();void 0'); await paint();
+  const hydratedCalls=smooth(await js('fixture.calls')).filter(call=>call.phase==='damage');
+  assert.ok(hydratedCalls.length && hydratedCalls[0].opacity===0,'Initially existing empty row remains exempt during hydration');
   // Negative scheduling boundaries are not evidence of the user bug's cause.
   for (const mode of ['disabled','paused','unknown','ambiguous']) {
     await reset(); await begin(); await js(`fixture.roll('damage',${JSON.stringify(mode)});void 0`); await paint();
     const calls = smooth(await js('fixture.calls')).filter(call => call.phase === 'damage');
     assert.ok(calls.length, mode+': unknown/non-running entry fails open');
   }
-  for (const action of ['native','newer','retired','wheel','key','pointer','selection','route','dispose','disconnect','prose']) {
+  for (const action of ['native','newer','retired','wheel','key','pointer','selection','route','dispose','disconnect','prose','prior-growth']) {
     for (const noPrior of ['native','newer','retired','dispose'].includes(action) ? [false,true] : [false]) {
       await reset(); if (noPrior) await js('fixture.pinWithoutMotion();void 0');
       if (noPrior) await submit(); else await begin();
@@ -166,7 +190,7 @@ app.on('window-all-closed', () => {});
       const frames = await js('fixture.observeFrames(4)'); const calls = await js('fixture.calls');
       console.log('DICE_REVEAL_BOUNDARY', JSON.stringify({ action, noPrior, evidence, frames, calls }));
       const later = smooth(calls).filter(call => call.at >= evidence.at);
-      if (action === 'prose') assert.ok(later.length, 'Unrelated later prose remains immediately followable');
+      if (action === 'prose' || action === 'prior-growth') assert.ok(later.length, 'Unrelated later prose remains immediately followable');
       else assert.equal(later.length, 0, action+': a deferred first target cannot regain authority');
       if (action === 'native' || action === 'newer') assert.ok(Math.abs((await js('fixture.snapshot().top'))-83)<=1, 'Native replacement remains in control');
       if (action === 'newer') assert.equal(await js('document.getElementById("feed").scrollTo===fixture.newer'),true,'Newer method owner retained');
