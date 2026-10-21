@@ -75,30 +75,43 @@ function page() {
   state.observeFrames = (count = 12) => new Promise(resolve => {
     const frames = []; const frame = () => { frames.push(state.snapshot()); if (frames.length === count) resolve(frames); else requestAnimationFrame(frame); }; requestAnimationFrame(frame);
   });
-  // The first callback precedes the mutation-scheduled follow callback; its
-  // nested callback precedes a deferred continuation on the next paint turn.
-  state.boundary = action => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (action === 'native' || action === 'retired') {
-      const retired = feed.scrollTo; state.nativeScroll();
-      if (action === 'retired') { state.actor = 'native'; retired.call(feed, {top:91,behavior:'instant'}); retired.call(feed, {top:91,behavior:'instant'}); state.actor = null; }
-    }
-    if (action === 'newer') {
-      state.newer = function(...args) { state.actor = 'native'; const result = Reflect.apply(state.tracedScroll,this,args); state.actor = null; return result; };
-      Object.defineProperty(feed,'scrollTo',{configurable:true,writable:true,value:state.newer}); state.nativeScroll();
-    }
-    // Synthetic intent covers the production handlers during the tiny pending
-    // frame. Actual native wheel/keyboard behavior remains in existing suites.
-    if (action === 'wheel') feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-120}));
-    if (action === 'key') feed.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'PageUp'}));
-    if (action === 'pointer') { feed.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); feed.dispatchEvent(new PointerEvent('pointerup',{bubbles:true})); }
-    if (action === 'selection') { const range = document.createRange(); range.selectNodeContents(list.firstElementChild); getSelection().removeAllRanges(); getSelection().addRange(range); }
-    if (action === 'prose') state.prose(110);
-    if (action === 'prior-growth') list.firstElementChild.style.height = '210px';
-    if (action === 'disconnect') state.damage.row.remove();
-    if (action === 'route') { history.pushState({}, '', '/campaign-b/play'); dispatchEvent(new PopStateEvent('popstate')); }
-    if (action === 'dispose') window.__friendsFablesDesktopChatAppearance.dispose();
-    resolve(state.snapshot());
-  })));
+  // Observe this append after the adapter's already-registered observer, so
+  // its first follow RAF runs before this boundary in the SAME initial frame.
+  // A missed pending precondition is a fixture failure, never a late override.
+  state.boundary = action => new Promise((resolve,reject) => {
+    const observer = new MutationObserver(() => {
+      observer.disconnect(); requestAnimationFrame(() => {
+        const pending = state.snapshot();
+        const dispatched = state.calls.some(call => call.phase === 'damage' && call.actor === 'desktop' && call.behavior === 'smooth');
+        const method = Object.getOwnPropertyDescriptor(feed,'scrollTo')?.value;
+        const wrapped = typeof method === 'function' && method !== state.tracedScroll;
+        if (pending.opacity !== 0 || dispatched || !wrapped || !pending.effects.some(effect => effect.playState === 'running' && (effect.pending || effect.currentTime === 0))) {
+          reject(Error('Missed actual pending reveal boundary: '+JSON.stringify({action,pending,dispatched,wrapped,calls:state.calls}))); return;
+        }
+        if (action === 'native' || action === 'retired') {
+          const retired = feed.scrollTo; state.nativeScroll();
+          if (action === 'retired') { state.actor = 'native'; retired.call(feed, {top:91,behavior:'instant'}); retired.call(feed, {top:91,behavior:'instant'}); state.actor = null; }
+        }
+        if (action === 'newer') {
+          state.newer = function(...args) { state.actor = 'native'; const result = Reflect.apply(state.tracedScroll,this,args); state.actor = null; return result; };
+          Object.defineProperty(feed,'scrollTo',{configurable:true,writable:true,value:state.newer}); state.nativeScroll();
+        }
+        // Synthetic intent covers the production handlers during the tiny pending
+        // frame. Actual native wheel/keyboard behavior remains in existing suites.
+        if (action === 'wheel') feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-120}));
+        if (action === 'key') feed.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'PageUp'}));
+        if (action === 'pointer') { feed.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); feed.dispatchEvent(new PointerEvent('pointerup',{bubbles:true})); }
+        if (action === 'selection') { const range = document.createRange(); range.selectNodeContents(list.firstElementChild); getSelection().removeAllRanges(); getSelection().addRange(range); }
+        if (action === 'prose') state.prose(110);
+        if (action === 'prior-growth') list.firstElementChild.style.height = '210px';
+        if (action === 'disconnect') state.damage.row.remove();
+        if (action === 'route') { history.pushState({}, '', '/campaign-b/play'); dispatchEvent(new PopStateEvent('popstate')); }
+        if (action === 'dispose') window.__friendsFablesDesktopChatAppearance.dispose();
+        resolve({...state.snapshot(),pendingBeforeAction:pending});
+      });
+    });
+    observer.observe(list,{childList:true});
+  });
   // For the no-prior-motion boundary, establish pinned tail without a motion.
   state.pinWithoutMotion = () => { original.call(feed, { top: feed.scrollHeight, behavior: 'instant' }); state.noAttack = true; };
 }
@@ -186,7 +199,7 @@ app.on('window-all-closed', () => {});
     for (const noPrior of ['native','newer','retired','dispose'].includes(action) ? [false,true] : [false]) {
       await reset(); if (noPrior) await js('fixture.pinWithoutMotion();void 0');
       if (noPrior) await submit(); else await begin();
-      const evidence = await js(`fixture.roll('damage');fixture.boundary(${JSON.stringify(action)})`);
+      const evidence = await js(`(()=>{const pending=fixture.boundary(${JSON.stringify(action)});fixture.roll('damage');return pending})()`);
       const frames = await js('fixture.observeFrames(4)'); const calls = await js('fixture.calls');
       console.log('DICE_REVEAL_BOUNDARY', JSON.stringify({ action, noPrior, evidence, frames, calls }));
       const later = smooth(calls).filter(call => call.at >= evidence.at);
