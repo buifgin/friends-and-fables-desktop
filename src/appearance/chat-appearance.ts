@@ -357,12 +357,48 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
   }
   let tailPinned = false, tailFrame = 0;
+  type TailMotion = { feed: HTMLElement; target: number; original: typeof HTMLElement.prototype.scrollTo; descriptor?: PropertyDescriptor; wrapper: typeof HTMLElement.prototype.scrollTo };
+  let tailMotion: TailMotion | null = null;
+  function releaseTailMotion(stop = false): void {
+    const motion = tailMotion;
+    if (!motion) return;
+    tailMotion = null;
+    // A newer native method owner wins. Retained wrappers simply delegate once
+    // retired; only ordinary calls through this feed's method are attributable.
+    const ours = Object.getOwnPropertyDescriptor(motion.feed, 'scrollTo')?.value === motion.wrapper;
+    if (ours) {
+      try {
+        if (motion.descriptor) Object.defineProperty(motion.feed, 'scrollTo', motion.descriptor); else delete (motion.feed as Partial<HTMLElement>).scrollTo;
+      } catch { /* A feed sealed during motion retains an inert delegate. */ }
+      if (stop && motion.feed.isConnected) Reflect.apply(motion.original, motion.feed, [{ top: motion.feed.scrollTop, left: motion.feed.scrollLeft, behavior: 'instant' }]);
+    }
+  }
+  function moveTail(feed: HTMLElement, target: number): void {
+    if (Math.abs(feed.scrollTop - target) <= 1) return;
+    if (tailMotion?.feed === feed && tailMotion.target === target) return;
+    if (!tailMotion) {
+      const descriptor = Object.getOwnPropertyDescriptor(feed, 'scrollTo'), original = feed.scrollTo;
+      if (typeof original !== 'function' || descriptor && !('value' in descriptor)) return;
+      const motion: TailMotion = { feed, target, original, descriptor, wrapper: original };
+      motion.wrapper = function(this: HTMLElement, ...args: unknown[]) {
+        // Native scrollTo replaces our animation. Relinquish before delegating,
+        // so later manual/route/disposal cancellation cannot stop that motion.
+        if (this === feed && tailMotion === motion) releaseTailMotion();
+        return Reflect.apply(original, this, args);
+      } as typeof original;
+      try { Object.defineProperty(feed, 'scrollTo', descriptor ? { ...descriptor, value: motion.wrapper } : { configurable: true, writable: true, value: motion.wrapper }); }
+      catch { return; } // Sealed/unsupported feeds retain native authority.
+      tailMotion = motion;
+    }
+    tailMotion.target = target;
+    Reflect.apply(tailMotion.original, feed, [{ top: target, behavior: 'smooth' }]);
+  }
   let tailResize: ResizeObserver | null = null;
   const tailSizes = new Map<HTMLElement, number>();
   function atTail(): boolean {
     return !!scrollFeed && scrollFeed.scrollHeight - scrollFeed.clientHeight - scrollFeed.scrollTop <= 1;
   }
-  function cancelTail(): void { cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false; }
+  function cancelTail(): void { cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false; releaseTailMotion(true); }
   function followTail(): void {
     if (!tailPinned || tailFrame || scrollYield || scrollGesture || selectedInFeed()) return;
     const feed = scrollFeed, route = scrollRoute;
@@ -370,7 +406,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       tailFrame = 0;
       if (disposed || !feed?.isConnected || feed !== scrollFeed || route !== location.pathname + location.search
         || !tailPinned || scrollYield || scrollGesture || selectedInFeed()) return;
-      feed.scrollTop = Math.max(0, feed.scrollHeight - feed.clientHeight);
+      moveTail(feed, Math.max(0, feed.scrollHeight - feed.clientHeight));
     });
   }
   // Called only by the adapter path that validated a trusted current form submit.
@@ -379,7 +415,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       || new URLSearchParams(location.search).get('view') && new URLSearchParams(location.search).get('view') !== 'play') return;
     preferScrollAnchor();
     if (!scrollFeed?.isConnected || scrollYield || scrollGesture || selectedInFeed()) return;
-    cancelTail(); tailPinned = true; followTail();
+    tailPinned = true; followTail();
   }
   function observeTail(): void {
     if (!scrollFeed || !tailResize) return;
@@ -496,6 +532,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   }
   function scrollFinished(event: Event): void {
     if (event.type === 'scrollend' ? event.target !== scrollFeed : !scrollGesture && !scrollYield) return;
+    if (event.type === 'scrollend' && tailMotion && Math.abs(tailMotion.feed.scrollTop - tailMotion.target) <= 1) releaseTailMotion();
     const navigated = scrollGesture || scrollYield;
     scrollGesture = false; scrollYield = false;
     if (navigated) tailPinned = atTail() && !selectedInFeed();

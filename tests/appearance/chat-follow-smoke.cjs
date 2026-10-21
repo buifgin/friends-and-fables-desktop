@@ -6,6 +6,7 @@ async function followScenario(configure,settings,selected='all'){
  if(selected!=='all'&&!names.includes(selected))throw Error('Unknown chat follow case: '+selected);
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
  const settle=async()=>{await frame();await frame();await frame();};
+ const settleScroll=async()=>{await settle();const feed=document.getElementById('feed');let previous=feed.scrollTop,stable=0;for(let index=0;index<90;index++){await frame();const top=feed.scrollTop;stable=Math.abs(top-previous)<=.5?stable+1:0;previous=top;if(stable===3)return;}throw Error('Chat follow did not reach a stable rendered scroll position');};
  const rect=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,left:r.left,right:r.right};};
  const cases=[];
  for(const name of names.filter(name=>selected==='all'||name===selected))for(const enabled of [false,true]){
@@ -62,7 +63,7 @@ async function followScenario(configure,settings,selected='all'){
    feed.scrollTop+=older.getBoundingClientRect().top-feed.getBoundingClientRect().top-60;
    readingText=older.querySelector('p').firstChild;readingY=glyphTop();
   }
-  await settle();const after=geometry();
+  await settleScroll();const after=geometry();
   const fullyVisible=after.tail.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5;
   const identity=negative?older.querySelector('p').firstChild===readingText:retainedText.isConnected;
   const follow=after.distanceToMax<=1;
@@ -83,6 +84,7 @@ async function followScenario(configure,settings,selected='all'){
 async function submitNativeScrollScenario(configure,settings){
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
  const settle=async()=>{await frame();await frame();await frame();};
+ const settleScroll=async()=>{await settle();const feed=document.getElementById('feed');let previous=feed.scrollTop,stable=0;for(let index=0;index<90;index++){await frame();const top=feed.scrollTop;stable=Math.abs(top-previous)<=.5?stable+1:0;previous=top;if(stable===3)return;}throw Error('Chat follow did not reach a stable rendered scroll position');};
  const box=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height};};
  const glyph=node=>{const range=document.createRange();range.selectNodeContents(node);const rects=range.getClientRects(),r=rects[rects.length-1];range.detach();return r?{top:r.top,bottom:r.bottom,height:r.height}:null;};
  const cases=[];
@@ -102,7 +104,7 @@ async function submitNativeScrollScenario(configure,settings){
   // This is the validated adapter API, not a real campaign form submission.
   window.__friendsFablesDesktopChatAppearance?.followAfterSubmit();
   const submitted=message(101,120,'The submitted attack action.'),narration=message(102,360,'Franz narration before the delayed HP effect.');
-  await settle();const afterSubmit=geometry(narration);
+  await settleScroll();const afterSubmit=geometry(narration);
   // Native first-new-event alignment runs after the adapter's initial follow.
   // Its saved calculation is copied here without timers or invented user input.
   const startTop=feed.scrollTop,target=Math.max(0,Math.min(feed.scrollHeight-feed.clientHeight,startTop+submitted.row.getBoundingClientRect().top-feed.getBoundingClientRect().top-100));
@@ -129,10 +131,10 @@ async function submitNativeScrollScenario(configure,settings){
   const card=document.createElement('div');card.className='bg-card border rounded-md damage';card.style.minHeight='64px';
   card.innerHTML='<strong>Target takes 6 damage</strong><div class="hp">HP 14 / 20</div>';row.append(card);list.append(row);
   const hp=card.querySelector('.hp'),hpText=hp.firstChild;
-  await settle();const appended=geometry({card});
+  await settleScroll();const appended=geometry({card});
   let finalText=hpText;
   for(const text of ['The native HP effect expands.','Additional effect details.','Final HP result.']){const p=document.createElement('p');p.style.cssText='margin:0;line-height:24px';p.textContent=text;hp.append(p);finalText=p.firstChild;}
-  await settle();const after=geometry({card}),lastGlyph=glyph(finalText),readerAfter=glyph(readerText);
+  await settleScroll();const after=geometry({card}),lastGlyph=glyph(finalText),readerAfter=glyph(readerText);
   const identity=list.contains(row)&&row.firstElementChild===card&&card.querySelector('.hp')===hp&&hp.firstChild===hpText&&prior.text.isConnected&&submitted.text.isConnected&&narration.text.isConnected&&older.querySelector('p').firstChild===readerText&&draft.firstChild===draftNode&&draft.textContent==='Preserve native draft.';
   const nativeGrowth=after.tail.height>appended.tail.height+.5;
   const fullyVisible=after.tail.top>=after.feed.top-.5&&after.tail.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5&&!!lastGlyph&&lastGlyph.height>0&&lastGlyph.top>=after.feed.top-.5&&lastGlyph.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5;
@@ -232,6 +234,7 @@ async function smoothTailTrajectoryScenario(configure,settings,owned=false){
 // each before the real external footer. Native feed padding is p-4 (16px).
 async function footerCandidateBudgetScenario(configure,settings){
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve)),settle=async()=>{await frame();await frame();await frame();};
+ const settleScroll=async()=>{await settle();const feed=document.getElementById('feed');let previous=feed.scrollTop,stable=0;for(let index=0;index<90;index++){await frame();const top=feed.scrollTop;stable=Math.abs(top-previous)<=.5?stable+1:0;previous=top;if(stable===3)return;}throw Error('Chat follow did not reach a stable rendered scroll position');};
  const box=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,width:r.width};};
  const glyph=node=>{const range=document.createRange();range.selectNodeContents(node);const r=range.getBoundingClientRect();range.detach();return {top:r.top,bottom:r.bottom,height:r.height};};
  const cases=[];
@@ -261,7 +264,7 @@ async function footerCandidateBudgetScenario(configure,settings){
   const row=document.createElement('div');row.id='event-103';const card=document.createElement('div');card.className='bg-card border rounded-md damage';card.style.cssText='min-height:120px;display:flex;flex-direction:column;justify-content:flex-end';card.innerHTML='<strong>Target takes 6 damage</strong><p style="margin:0;line-height:24px">Final HP 14 / 20</p>';row.append(card);list.append(row);
   const finalText=card.querySelector('p').firstChild,nativeCardHeight=card.getBoundingClientRect().height;
   if(!enabled)feed.scrollTop=feed.scrollHeight-feed.clientHeight;
-  await settle();
+  await settleScroll();
   const after={feed:box(feed),footer:box(footer),tail:box(card),lastGlyph:glyph(finalText),paddingBottom:getComputedStyle(feed).paddingBottom,distanceToMax:feed.scrollHeight-feed.clientHeight-feed.scrollTop},readerAfter=manual?glyph(older.text):null;
   const identity=document.getElementById('turn-controls')===footer&&row.firstElementChild===card&&card.querySelector('p').firstChild===finalText&&document.querySelector('.tiptap')===draft&&draft.firstChild===draftNode&&draft.textContent==='Preserve native draft.'&&history.every(item=>item.text.isConnected&&item.card.querySelector('p').firstChild===item.text);
   const unchangedHeights=Math.abs(after.footer.height-nativeFooter.height)<=.5&&Math.abs(after.footer.top-nativeFooter.top)<=.5&&Math.abs(after.tail.height-nativeCardHeight)<=.5&&history.every(item=>Math.abs(item.card.getBoundingClientRect().height-item.height)<=.5);
