@@ -24,7 +24,7 @@ window.mountRows=(request,attackId)=>{
  root.memoizedProps={};
  const dmId=attackId+1;const choice={id:attackId+2,event_id:dmId,character_id:83026155,type:'Damage',accepted:null,dice_expression:mode==='crit'?'2d10+3':'1d10',fixed_bonus:3};
  const attack={id:attackId,role:'player',request_id:request,campaign_id:'campaign-a',character_id:83026155,command_used:'roll_attack',events_roll:{roll_type:'Spell Attack',dc:10,total_roll:mode==='miss'?9:24,modifier_value:8,proficiency_bonus:8}};
- const dm={id:dmId,role:'dm',request_id:request,campaign_id:'campaign-a',command_used:'encounter_player_turn_action_response',processed:false,rollChoices:mode==='miss'?[]:[choice]};
+ const dm={id:dmId,role:'dm',request_id:request,campaign_id:'campaign-a',command_used:'encounter_player_turn_action_response',processed:false,rollChoices:['miss','no-damage'].includes(mode)?[]:[choice]};
  window.currentDM=dm;window.currentChoice=choice;document.querySelector('main').innerHTML='<div id="event-container-undefined"><div id="event-message-card-'+attackId+'"><div class="relative rounded-2xl border-2 overflow-hidden">Attack result</div></div></div><div class="native-grid" id="event-container-'+dmId+'"><div id="native-avatar" class="native-avatar"><button>Franz audio</button></div><div id="native-middle" class="native-middle"><div id="event-message-card-'+dmId+'">Intermediate narration</div><div id="damage-prompt"><span>Damage</span><button type="button" id="damage">Roll Damage</button></div></div><div id="native-actions" class="native-actions"><button>Feedback</button></div></div><div id="native-damage-wrapper"><div data-native-damage-result id="actual-damage-result">Damage total: 12</div></div><div id="final-reply">Final Franz reply</div>';
  const rows=document.querySelector('main').children;const attackFiber={memoizedProps:{event:attack,campaign:nativeCampaign},return:root};const dmFiber={memoizedProps:{event:dm,campaign:nativeCampaign},return:root};owner.sibling=attackFiber;attackFiber.sibling=dmFiber;
  rows[0].__reactFiber$fixture=attackFiber;
@@ -43,9 +43,16 @@ window.mountRows=(request,attackId)=>{
  if(delayDamageIdentity)root.memoizedProps={events:[dm,damageEvent]};else if(delayDamageProps)root.memoizedProps={events:[{...dm,rollChoices:[acceptedChoice]},damageEvent]};else publishDamageProps();window.done=true;
  requestAnimationFrame(()=>damageMountFrames.push({sequence:attackId,progress:!!document.querySelector('[data-ff-combat-damage-progress]'),rowChoiceAccepted:choice.accepted,resultHasFiber:!!resultCard.__reactFiber$fixture,visible:resultCard.getClientRects().length>0}))};
  const buttonFiber={memoizedProps:{onClick:callback,disabled:false},return:promptFiber};button.__reactFiber$fixture=buttonFiber;promptFiber.child=buttonFiber;
+ if(mode==='no-damage'){
+  const resultWrapper=document.getElementById('native-damage-wrapper'),reply=document.getElementById('final-reply');
+  prompt.remove();resultWrapper.remove();reply.remove();cardOwner.sibling=undefined;
+  card.textContent='The target is out of reach.';
+  window.publishLateDamageChoice=()=>{dm.rollChoices=[choice];cardOwner.sibling=t5;document.querySelector('#native-middle').append(prompt);document.querySelector('main').append(resultWrapper,reply)};
+ }
+
 };mountRows('historical',sequence);
 window.finishGeneration=()=>{result={...result,status:'success'};record('success');for(const fn of listeners)fn(result);document.querySelector('main').append(document.createElement('span'))};
-form.addEventListener('submit',event=>{event.preventDefault();submits++;sequence+=10;const request='local-request-'+sequence;mountRows(request,sequence);result={status:'pending',submittedAt:Date.now(),variables:{requestId:request,lastEventId:sequence,isMultiplayer:true}};record('pending',{subscriptions:listeners.size,submittedAt:result.submittedAt});const frameSequence=sequence;requestAnimationFrame(()=>{if(frameSequence!==sequence)return;presentationFrames.push({sequence:frameSequence,promptVisible:document.querySelector('#damage-prompt').getClientRects().length>0,rowVisible:document.querySelector('.native-grid').getClientRects().length>0,status:document.querySelector('[data-ff-combat-damage-progress]')?.textContent})});for(const fn of listeners)fn(result);if(!holdStreaming)finishGeneration()});
+form.addEventListener('submit',event=>{event.preventDefault();submits++;sequence+=10;const request='local-request-'+sequence;mountRows(request,sequence);result={status:'pending',submittedAt:Date.now(),variables:{requestId:request,lastEventId:sequence,isMultiplayer:true}};record('pending',{subscriptions:listeners.size,submittedAt:result.submittedAt});const frameSequence=sequence;requestAnimationFrame(()=>{if(frameSequence!==sequence)return;presentationFrames.push({sequence:frameSequence,promptVisible:mode==='no-damage'?false:document.querySelector('#damage-prompt').getClientRects().length>0,rowVisible:document.querySelector('.native-grid').getClientRects().length>0,status:document.querySelector('[data-ff-combat-damage-progress]')?.textContent})});for(const fn of listeners)fn(result);if(!holdStreaming)finishGeneration()});
 </script>`;
 let window;
 const watchdog = setTimeout(() => { console.error('Combat flow fixture timed out'); window?.destroy(); app.exit(1); }, 30000);
@@ -82,6 +89,31 @@ app.on('window-all-closed', () => {});
   await configure(); await until('!!window.__friendsFablesDesktopCombatFlow');
   assert.equal(await js("document.querySelector('[data-ff-combat-flow]')===null"), true);
   const setPreferences = (automaticDamage, hideIntermediateFranz = false, hideDamagePrompt = false) => js(`window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:'campaign-a',automaticDamage:${automaticDamage},hideIntermediateFranz:${hideIntermediateFranz},hideDamagePrompt:${hideDamagePrompt}})`);
+  const noDamageContract=async()=>{
+    await setPreferences(true,true,true);
+    const before=await js('({calls,submits})');
+    await js("mode='no-damage';holdStreaming=true;done=false");
+    await nativeClick('#submit');await until(`submits===${before.submits+1}&&result.status==='pending'`);
+    await js("window.noDamageProof={card:document.getElementById('event-message-card-'+(sequence+1)),avatar:document.getElementById('native-avatar'),actions:document.getElementById('native-actions'),form:document.querySelector('form'),draft:document.querySelector('form input'),event:currentDM,choices:currentDM.rollChoices};void 0");
+    await until("noDamageProof.card.getClientRects().length===0&&noDamageProof.avatar.getClientRects().length===0&&noDamageProof.actions.getClientRects().length===0&&!!document.querySelector('[data-ff-combat-damage-progress]')");
+    assert.equal(await js("document.querySelector('[data-native-damage-result]')===null&&document.querySelector('#damage-prompt')===null&&currentDM.rollChoices.length===0"),true,'No native Damage event or choice exists');
+    await js('finishGeneration()');
+    await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    const final=await js("({cardVisible:noDamageProof.card.getClientRects().length>0,avatarVisible:noDamageProof.avatar.getClientRects().length>0,actionsVisible:noDamageProof.actions.getClientRects().length>0,progress:!!document.querySelector('[data-ff-combat-damage-progress]'),calls,sameCard:document.getElementById('event-message-card-'+(sequence+1))===noDamageProof.card,sameEvent:currentDM===noDamageProof.event,sameChoices:currentDM.rollChoices===noDamageProof.choices,sameForm:document.querySelector('form')===noDamageProof.form,sameDraft:document.querySelector('form input')===noDamageProof.draft,draft:noDamageProof.draft.value})");
+    assert.equal(final.calls,before.calls,'Final no-Damage answer never invokes a roll');
+    for(const field of ['sameCard','sameEvent','sameChoices','sameForm','sameDraft'])assert.equal(final[field],true,field);
+    assert.equal(final.draft,'preserved native draft');
+    for(const field of ['cardVisible','avatarVisible','actionsVisible'])assert.equal(final[field],true,'Final no-Damage '+field);
+    assert.equal(final.progress,false,'Final no-Damage clears progress');
+    await js("publishLateDamageChoice();document.querySelector('main').append(document.createElement('span'))");
+    await until(`calls===${before.calls+1}&&done===true`);
+    await js('finishGeneration()');await js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    assert.equal(await js('calls'),before.calls+1,'A late native Damage choice still executes exactly once');
+    assert.equal(await js("document.querySelector('form')===noDamageProof.form&&document.querySelector('form input')===noDamageProof.draft"),true);
+  };
+  if(process.env.FABLES_COMBAT_SCENARIO==='no-damage-final'){
+    await noDamageContract();console.log('Combat no-Damage final response contract passed');clearTimeout(watchdog);window.destroy();app.exit(0);return;
+  }
   const proofAbsenceContract=async()=>{
     await setPreferences(true,true,true);
     const before=await js("({calls,submits})");
@@ -201,6 +233,7 @@ app.on('window-all-closed', () => {});
   assert.equal(await js('currentChoice.accepted'),null);assert.equal(await js('currentChoice.roll_result_id'),undefined);assert.equal(await js('currentNativeRollState().status'),'pending');
   assert.equal(await js('[...window.__friendsFablesDesktopCombatFlowOutcomes.values()].find(value=>value.eventId===sequence+1).status'),'claimed','Presentation fingerprint never forges native acceptance');
   assert.equal(await js("document.querySelector('#damage-prompt').getClientRects().length===0&&document.querySelector('[data-native-damage-result]').getClientRects().length>0"),true);
+  await noDamageContract();
   await proofAbsenceContract();
   await configure(false); assert.equal(await js("document.querySelector('[data-ff-combat-flow]')===null"), true);
   assert.equal(await js("document.querySelector('form input').value"), 'preserved native draft');
