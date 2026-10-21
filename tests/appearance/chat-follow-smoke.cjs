@@ -183,8 +183,8 @@ async function smoothTailTrajectoryScenario(configure,settings,owned=false){
   // This guard prevents the old already-at-tail false setup. No RAF has run
   // since the append and there are no later DOM/size changes in this case.
   if(Math.abs(startTop-before.scrollTop)>.5||target-startTop<200||Math.abs(target-max)>.5)throw Error('Smooth trajectory needs a real off-tail native target: '+JSON.stringify({before,startTop,target,max}));
-  const pending=geometry(card),samples=[{frame:0,scrollTop:startTop}];let terminalFrames=0,scrollEvents=0,scrollEnds=0,interruptedAt=null,ownedStarted=!owned;
-  const scrolled=()=>scrollEvents++,ended=()=>scrollEnds++;
+  const pending=geometry(card),samples=[{frame:0,scrollTop:startTop}];let terminalFrames=0,scrollEvents=0,scrollEnds=0,completed=false,interruptedAt=null,ownedStarted=!owned;const scrollEndPositions=[];
+  const scrolled=()=>scrollEvents++,ended=()=>{scrollEnds++;scrollEndPositions.push(feed.scrollTop);if(Math.abs(feed.scrollTop-target)<=1)completed=true;};
   feed.addEventListener('scroll',scrolled);feed.addEventListener('scrollend',ended);
   const sample=async()=>{const timestamp=await frame(),scrollTop=feed.scrollTop;samples.push({frame:samples.length,timestamp,scrollTop});return scrollTop;};
   try{
@@ -207,13 +207,13 @@ async function smoothTailTrajectoryScenario(configure,settings,owned=false){
    }
    for(let index=0;index<90;index++){
     const scrollTop=await sample();terminalFrames=Math.abs(scrollTop-target)<=1?terminalFrames+1:0;
-    if(terminalFrames===3)break;
+    if(terminalFrames>=3&&(mode.startsWith('own-')||completed))break;
    }
   }finally{feed.removeEventListener('scroll',scrolled);feed.removeEventListener('scrollend',ended);}
   const after=geometry(card),lastGlyph=glyph(hpText);
   const intermediate=samples.filter(sample=>sample.scrollTop>startTop+1&&sample.scrollTop<target-1);
   const distinctIntermediate=new Set(intermediate.map(sample=>Math.round(sample.scrollTop))).size;
-  const smooth=distinctIntermediate>=2,follow=after.distanceToMax<=1&&terminalFrames===3;
+  const smooth=distinctIntermediate>=2,follow=after.distanceToMax<=1&&terminalFrames>=3&&completed;
   const fullyVisible=after.tail.top>=after.feed.top-.5&&after.tail.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5&&lastGlyph.height>0&&lastGlyph.top>=after.feed.top-.5&&lastGlyph.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5;
   const identity=document.getElementById('turn-controls')===footer&&document.querySelector('.tiptap')===draft&&draft.firstChild===draftText&&draft.textContent==='Preserve smooth-follow draft.'&&composer.hidden&&row.firstElementChild===card&&card.querySelector('p').firstChild===hpText&&retained.every(item=>item.row.isConnected&&item.row.firstElementChild.firstElementChild===item.card&&item.card.querySelector('p').firstChild===item.text&&Math.abs(item.card.getBoundingClientRect().height-item.height)<=.5);
   const noLaterGrowth=after.scrollHeight===pending.scrollHeight&&after.clientHeight===pending.clientHeight&&Math.abs(after.tail.height-pending.tail.height)<=.5&&Math.abs(after.footer.top-pending.footer.top)<=.5;
@@ -221,9 +221,9 @@ async function smoothTailTrajectoryScenario(configure,settings,owned=false){
   const methodRestored=feed.scrollTo===nativeScrollTo;
   const cancelled=mode.startsWith('own-'),nativeReplacement=mode.startsWith('native-');
   const replacementIntermediate=interruptedAt===null?0:new Set(samples.filter(sample=>sample.scrollTop>1&&sample.scrollTop<interruptedAt-1).map(sample=>Math.round(sample.scrollTop))).size;
-  const motionPassed=cancelled?terminalFrames===3&&Math.abs(after.scrollTop-interruptedAt)<=1:nativeReplacement?terminalFrames===3&&after.scrollTop<=1&&replacementIntermediate>=2:smooth&&follow&&fullyVisible;
+  const motionPassed=cancelled?terminalFrames>=3&&Math.abs(after.scrollTop-interruptedAt)<=1:nativeReplacement?completed&&terminalFrames>=3&&after.scrollTop<=1&&replacementIntermediate>=2:smooth&&follow&&fullyVisible;
   const passed=ownedStarted&&motionPassed&&identity&&methodRestored&&(mode==='growth-retarget'||noLaterGrowth)&&(mode!=='same-target'||smoothCalls===1);
-  const result={mode,adapter:enabled?'on':'off',passed,ownedStarted,smooth,distinctIntermediate,follow,fullyVisible,identity,noLaterGrowth,methodRestored,smoothCalls,replacementIntermediate,interruptedAt,startTop,target,max,scrollEvents,scrollEnds,before,pending,after,lastGlyph,samples};
+  const result={mode,adapter:enabled?'on':'off',passed,ownedStarted,smooth,distinctIntermediate,follow,fullyVisible,identity,noLaterGrowth,methodRestored,smoothCalls,replacementIntermediate,interruptedAt,startTop,target,max,scrollEvents,scrollEnds,completed,scrollEndPositions,before,pending,after,lastGlyph,samples};
   cases.push(result);window.__friendsFablesDesktopChatAppearance?.dispose();window.getSelection().removeAllRanges();history.replaceState({},'', '/fixture/play');
   if(!enabled&&!result.passed)throw Error('OFF native smooth trajectory control invalid: '+JSON.stringify(result));
  }
