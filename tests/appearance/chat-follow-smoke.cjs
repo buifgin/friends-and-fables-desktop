@@ -148,13 +148,15 @@ async function submitNativeScrollScenario(configure,settings){
 // Here the new rows fit above the footer, so its clamped target is the real tail.
 // Start the native animation before observer RAFs can overwrite it; OFF must
 // demonstrate rendered intermediate positions before ON can expose an app snap.
-async function smoothTailTrajectoryScenario(configure,settings){
+async function smoothTailTrajectoryScenario(configure,settings,owned=false){
  const frame=()=>new Promise(resolve=>requestAnimationFrame(resolve));
  const settle=async()=>{await frame();await frame();await frame();};
  const box=node=>{const r=node.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height};};
  const glyph=node=>{const range=document.createRange();range.selectNodeContents(node);const r=range.getBoundingClientRect();range.detach();return {top:r.top,bottom:r.bottom,height:r.height};};
  const cases=[];
- for(const enabled of [false,true]){
+ const modes=owned?['own-wheel','own-key','own-selection','own-route','own-dispose','native-wheel','native-route','native-dispose','growth-retarget','same-target']:['off','on'];
+ for(const mode of modes){
+  const enabled=mode!=='off';
   window.__friendsFablesDesktopChatAppearance?.dispose();
   document.body.innerHTML='<section id="chat" class="flex-1 h-full w-full"><main id="feed"><div id="events-list"></div></main><footer id="turn-controls" class="absolute bottom-0"><div id="composer" hidden><div class="tiptap" contenteditable="true">Preserve smooth-follow draft.</div></div><button type="button">Show Input</button><button type="button">End turn Magnus</button></footer></section>';
   const feed=document.getElementById('feed'),list=document.getElementById('events-list'),footer=document.getElementById('turn-controls'),composer=document.getElementById('composer'),draft=composer.querySelector('.tiptap'),draftText=draft.firstChild;
@@ -163,6 +165,9 @@ async function smoothTailTrajectoryScenario(configure,settings){
   for(let id=1;id<=12;id++)message(id,90,'Earlier narration '+id);
   const prior=message(100,160,'Earlier completed narration.');
   feed.scrollTop=feed.scrollHeight-feed.clientHeight;await settle();
+  const inheritedScrollTo=feed.scrollTo,calls=[];
+  const nativeScrollTo=function(...args){calls.push(args);return Reflect.apply(inheritedScrollTo,this,args);};
+  Object.defineProperty(feed,'scrollTo',{value:nativeScrollTo,writable:true,configurable:true});
   if(enabled)configure(settings);await settle();
   const geometry=card=>({scrollTop:feed.scrollTop,scrollHeight:feed.scrollHeight,clientHeight:feed.clientHeight,distanceToMax:feed.scrollHeight-feed.clientHeight-feed.scrollTop,feed:box(feed),footer:box(footer),tail:box(card)});
   const before=geometry(prior.card);
@@ -171,19 +176,35 @@ async function smoothTailTrajectoryScenario(configure,settings){
   const submitted=message(101,120,'The submitted attack action.');
   message(102,120,'Franz final narration.');
   const row=document.createElement('div');row.id='event-103';const card=document.createElement('div');card.className='bg-card border rounded-md damage';card.style.cssText='height:120px;display:flex;flex-direction:column;justify-content:flex-end';card.innerHTML='<strong>Target takes 6 damage</strong><p style="margin:0;line-height:24px">Final HP 14 / 20</p>';row.append(card);list.append(row);
-  const hpText=card.querySelector('p').firstChild,startTop=feed.scrollTop,max=feed.scrollHeight-feed.clientHeight;
-  const target=Math.max(0,Math.min(max,startTop+submitted.row.getBoundingClientRect().top-feed.getBoundingClientRect().top-100));
+  const hpText=card.querySelector('p').firstChild,startTop=feed.scrollTop;let max=feed.scrollHeight-feed.clientHeight;
+  let target=Math.max(0,Math.min(max,startTop+submitted.row.getBoundingClientRect().top-feed.getBoundingClientRect().top-100));
   // This guard prevents the old already-at-tail false setup. No RAF has run
   // since the append and there are no later DOM/size changes in this case.
   if(Math.abs(startTop-before.scrollTop)>.5||target-startTop<200||Math.abs(target-max)>.5)throw Error('Smooth trajectory needs a real off-tail native target: '+JSON.stringify({before,startTop,target,max}));
-  const pending=geometry(card),samples=[{frame:0,scrollTop:startTop}];let terminalFrames=0,scrollEvents=0,scrollEnds=0;
+  const pending=geometry(card),samples=[{frame:0,scrollTop:startTop}];let terminalFrames=0,scrollEvents=0,scrollEnds=0,interruptedAt=null,ownedStarted=!owned;
   const scrolled=()=>scrollEvents++,ended=()=>scrollEnds++;
   feed.addEventListener('scroll',scrolled);feed.addEventListener('scrollend',ended);
+  const sample=async()=>{const timestamp=await frame(),scrollTop=feed.scrollTop;samples.push({frame:samples.length,timestamp,scrollTop});return scrollTop;};
   try{
-   feed.scrollTo({top:target,behavior:'smooth'});
-   for(let index=1;index<=90;index++){
-    const timestamp=await frame(),scrollTop=feed.scrollTop;samples.push({frame:index,timestamp,scrollTop});
-    terminalFrames=Math.abs(scrollTop-target)<=1?terminalFrames+1:0;
+   if(!owned)feed.scrollTo({top:target,behavior:'smooth'});
+   else{
+    // Require actual in-flight owned travel, not a pending RAF or snapped tail.
+    for(let index=0;index<90;index++){const top=await sample();if(top>startTop+40&&top<target-40){ownedStarted=true;break;}if(Math.abs(top-target)<=1)break;}
+    if(ownedStarted){
+     interruptedAt=feed.scrollTop;
+     if(mode.startsWith('native-')){target=0;feed.scrollTo({top:target,behavior:'smooth'});}
+     if(mode.endsWith('wheel'))feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-100}));
+     if(mode.endsWith('key'))feed.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'PageUp'}));
+     if(mode.endsWith('selection')){const range=document.createRange();range.selectNodeContents(hpText);window.getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'));}
+     if(mode.endsWith('route')){history.replaceState({},'', '/settings');window.dispatchEvent(new PopStateEvent('popstate'));}
+     if(mode.endsWith('dispose'))window.__friendsFablesDesktopChatAppearance.dispose();
+     if(mode==='same-target')for(let index=0;index<3;index++)window.__friendsFablesDesktopChatAppearance.followAfterSubmit();
+     if(mode==='growth-retarget'){card.style.height='240px';max=feed.scrollHeight-feed.clientHeight;target=max;}
+     if(mode.startsWith('own-'))target=interruptedAt;
+    }
+   }
+   for(let index=0;index<90;index++){
+    const scrollTop=await sample();terminalFrames=Math.abs(scrollTop-target)<=1?terminalFrames+1:0;
     if(terminalFrames===3)break;
    }
   }finally{feed.removeEventListener('scroll',scrolled);feed.removeEventListener('scrollend',ended);}
@@ -194,12 +215,19 @@ async function smoothTailTrajectoryScenario(configure,settings){
   const fullyVisible=after.tail.top>=after.feed.top-.5&&after.tail.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5&&lastGlyph.height>0&&lastGlyph.top>=after.feed.top-.5&&lastGlyph.bottom<=Math.min(after.feed.bottom,after.footer.top)+.5;
   const identity=document.getElementById('turn-controls')===footer&&document.querySelector('.tiptap')===draft&&draft.firstChild===draftText&&draft.textContent==='Preserve smooth-follow draft.'&&composer.hidden&&row.firstElementChild===card&&card.querySelector('p').firstChild===hpText&&retained.every(item=>item.row.isConnected&&item.row.firstElementChild.firstElementChild===item.card&&item.card.querySelector('p').firstChild===item.text&&Math.abs(item.card.getBoundingClientRect().height-item.height)<=.5);
   const noLaterGrowth=after.scrollHeight===pending.scrollHeight&&after.clientHeight===pending.clientHeight&&Math.abs(after.tail.height-pending.tail.height)<=.5&&Math.abs(after.footer.top-pending.footer.top)<=.5;
-  const result={adapter:enabled?'on':'off',passed:smooth&&follow&&fullyVisible&&identity&&noLaterGrowth,smooth,distinctIntermediate,follow,fullyVisible,identity,noLaterGrowth,startTop,target,max,scrollEvents,scrollEnds,before,pending,after,lastGlyph,samples};
-  cases.push(result);window.__friendsFablesDesktopChatAppearance?.dispose();
+  const smoothCalls=calls.filter(args=>args[0]?.behavior==='smooth').length;
+  const methodRestored=feed.scrollTo===nativeScrollTo;
+  const cancelled=mode.startsWith('own-'),nativeReplacement=mode.startsWith('native-');
+  const replacementIntermediate=interruptedAt===null?0:new Set(samples.filter(sample=>sample.scrollTop>1&&sample.scrollTop<interruptedAt-1).map(sample=>Math.round(sample.scrollTop))).size;
+  const motionPassed=cancelled?terminalFrames===3&&Math.abs(after.scrollTop-interruptedAt)<=1:nativeReplacement?terminalFrames===3&&after.scrollTop<=1&&replacementIntermediate>=2:smooth&&follow&&fullyVisible;
+  const passed=ownedStarted&&motionPassed&&identity&&methodRestored&&(mode==='growth-retarget'||noLaterGrowth)&&(mode!=='same-target'||smoothCalls===1);
+  const result={mode,adapter:enabled?'on':'off',passed,ownedStarted,smooth,distinctIntermediate,follow,fullyVisible,identity,noLaterGrowth,methodRestored,smoothCalls,replacementIntermediate,interruptedAt,startTop,target,max,scrollEvents,scrollEnds,before,pending,after,lastGlyph,samples};
+  cases.push(result);window.__friendsFablesDesktopChatAppearance?.dispose();window.getSelection().removeAllRanges();history.replaceState({},'', '/fixture/play');
   if(!enabled&&!result.passed)throw Error('OFF native smooth trajectory control invalid: '+JSON.stringify(result));
  }
- return {case:'smooth-tail-trajectory',passed:cases.every(item=>item.passed),cases};
+ return {case:owned?'smooth-owned-lifecycle':'smooth-tail-trajectory',passed:cases.every(item=>item.passed),cases};
 }
+
 // Current user capture: four old roll rows contribute three bottom ornaments
 // each before the real external footer. Native feed padding is p-4 (16px).
 async function footerCandidateBudgetScenario(configure,settings){
@@ -259,7 +287,7 @@ if(process.versions.electron){
   const site=session.fromPartition('chat-follow');site.protocol.handle('https',()=>new Response('<!doctype html><style>body{margin:0}#chat{position:relative;width:900px;height:556px;margin:40px}#feed{box-sizing:border-box;height:100%;overflow-y:auto;overflow-anchor:auto;padding:0 0 64px}#turn-controls{position:absolute;bottom:0;left:0;right:0;height:56px;background:#123;z-index:5}.prose{padding:10px}.prose p{margin:0;line-height:24px}.damage{box-sizing:border-box;padding:10px;background:#812}</style>',{headers:{'Content-Type':'text/html'}}));
   window=new BrowserWindow({show:false,width:1920,height:1080,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});await window.loadURL('https://play.fables.gg/fixture/play');window.show();window.focus();window.webContents.focus();assert(window.isVisible());
   const selected=process.env.FABLES_CHAT_FOLLOW_CASE||'all';
-  if(!['submit-native-scroll','smooth-tail-trajectory','footer-candidate-budget'].includes(selected)){
+  if(!['submit-native-scroll','smooth-tail-trajectory','smooth-owned-lifecycle','footer-candidate-budget'].includes(selected)){
    const result=await window.webContents.executeJavaScript(`(${followScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)},${JSON.stringify(selected)})`);
    console.log('Chat bottom follow cases',JSON.stringify(result));assert.equal(result.passed,true,'Pinned tail or manual reader contract failed');
   }
@@ -270,6 +298,10 @@ if(process.versions.electron){
   if(selected==='all'||selected==='smooth-tail-trajectory'){
    const result=await window.webContents.executeJavaScript(`(${smoothTailTrajectoryScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);
    console.log('Smooth tail trajectory result',JSON.stringify(result));assert.equal(result.passed,true,'Adapter must preserve native smooth rendered trajectory and final HP/footer clearance');
+  }
+  if(selected==='all'||selected==='smooth-owned-lifecycle'){
+   const result=await window.webContents.executeJavaScript(`(${smoothTailTrajectoryScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)},true)`);
+   console.log('Smooth owned lifecycle result',JSON.stringify(result));assert.equal(result.passed,true,'Owned follow must cancel without stopping a replacement native animation');
   }
   if(selected==='all'||selected==='footer-candidate-budget'){
    const result=await window.webContents.executeJavaScript(`(${footerCandidateBudgetScenario.toString()})(${configureChatAppearance.toString()},${JSON.stringify(DEFAULT_APPEARANCE)})`);
