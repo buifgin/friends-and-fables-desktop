@@ -627,3 +627,44 @@ test('current query provider remains discoverable above sixty transparent native
  parent.child=children;for(let child=children;child;child=child.sibling)child.return=parent;
  f.notify();const roll=f.attackEvent.events_roll;insert({...f.attackEvent,events_roll:null});assert.equal(query.events()[0].events_roll,roll,'Current provider beyond UI ancestry budget must bind via bounded provider lookup');
 });
+
+// R2: the exact owned GM observer has completed, and the committed native event
+// explicitly has no Damage choices. No prose, processed flag or timer heuristic.
+test('final owned GM response without Damage restores streamed answer and clears progress',()=>{
+ const f=flowFixture({streaming:true,hide:true,prompt:true,wrapper:true,hidePrompt:true});
+ f.dmEvent.rollChoices=[];
+ f.submit();f.pending();
+ assert.equal(f.result().status,'pending');
+ for(const node of [f.card,f.avatar,f.actions])assert.equal(node.style.getPropertyValue('display'),'none','Owned intermediate remains hidden while GM is pending');
+ assert.equal(f.attackPanel.children.length,1);
+ assert.equal(f.calls(),0);
+ const event=f.dmEvent,card=f.card,form=f.form,emptyChoices=f.dmEvent.rollChoices;
+ f.finish();
+ assert.equal(f.result().status,'success');
+ assert.equal(f.dmEvent,event);assert.equal(f.dmEvent.rollChoices,emptyChoices,'Explicit empty choices belong to the same committed native event');
+ assert.equal(f.card,card);assert.equal(f.form,form);
+ assert.equal(f.calls(),0);assert.equal(f.context.window.__friendsFablesDesktopCombatFlowClaims.size,0);
+ for(const node of [f.card,f.avatar,f.actions])assert.equal(node.style.getPropertyValue('display'),'','Final no-Damage answer must be restored on owned success');
+ assert.equal(f.attackPanel.children.length,0,'No Damage remains pending after final no-choice answer');
+});
+test('final no-Damage response never conceals another request or an unproven card owner',()=>{
+ for(const variant of ['other-request','unknown-owner','ambiguous-owner']){
+  const f=flowFixture({streaming:true,hide:true,prompt:true,wrapper:true,unrelated:variant==='other-request'});
+  f.dmEvent.rollChoices=[];
+  if(variant==='unknown-owner')f.card.__reactFiber$fixture.return.type=function Unknown(){return 'unproven'};
+  if(variant==='ambiguous-owner')f.card.__reactFiber$fixture.return.memoizedProps.eventId=999;
+  f.submit();f.pending();f.finish();
+  assert.equal(f.card.style.getPropertyValue('display'),'',variant);
+  assert.equal(f.calls(),0,variant);
+  assert.equal(f.context.window.__friendsFablesDesktopCombatFlowClaims.size,0,variant);
+ }
+});
+test('late native Damage choice after owned GM success retains once-only authority',()=>{
+ const f=flowFixture({streaming:true,hide:true,prompt:true,wrapper:true,hidePrompt:true});
+ f.dmEvent.rollChoices=[];f.submit();f.pending();f.finish();
+ assert.equal(f.calls(),0);
+ f.dmEvent.rollChoices=[f.choice];f.notify();
+ assert.equal(f.calls(),1,'Presentation release must preserve ticket for an eventual native choice');
+ f.notify();f.finish();assert.equal(f.calls(),1);
+ assert.equal(f.context.window.__friendsFablesDesktopCombatFlowClaims.size,1);
+});
