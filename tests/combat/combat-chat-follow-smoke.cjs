@@ -32,6 +32,20 @@ let window,passed=false;const timeout=setTimeout(()=>app.exit(1),20000);
  await js(`(${configureChatAppearance.toString()})(${JSON.stringify(DEFAULT_APPEARANCE)})`);
  await js(`(${configureCombatPanel.toString()})(true,'en',${JSON.stringify(combatPanelCss)})`);
  await until("!!document.querySelector('[data-ff-combat-docked]')");await settled();
+ // A trusted submit starts browser-owned smooth motion on the next frame;
+ // a few painted frames prove dispatch, not arrival. Keep the existing800ms
+ // readiness budget and resolve only on the actual tail for two painted frames.
+ const tailCompletionProgram=`new Promise((resolve,reject)=>{
+  const node=document.getElementById('feed'),start=performance.now();let frame=0,stable=0,frames=0,scrollEnds=0,min=node.scrollTop,max=min;
+  const ended=()=>{scrollEnds++};node.addEventListener('scrollend',ended);
+  const cleanup=()=>{cancelAnimationFrame(frame);clearTimeout(timer);node.removeEventListener('scrollend',ended)};
+  const snapshot=()=>({top:node.scrollTop,max:node.scrollHeight-node.clientHeight,elapsed:performance.now()-start,frames,scrollEnds,min,maxObserved:max});
+  const timer=setTimeout(()=>{const evidence=snapshot();cleanup();reject(Error('Smooth follow did not reach tail: '+JSON.stringify(evidence)))},800);
+  const sample=()=>{frames++;const top=node.scrollTop,target=node.scrollHeight-node.clientHeight;min=Math.min(min,top);max=Math.max(max,top);stable=Math.abs(top-target)<=1?stable+1:0;
+   if(stable>=2){const evidence=snapshot();cleanup();resolve(evidence);return}frame=requestAnimationFrame(sample)};
+  frame=requestAnimationFrame(sample);
+ })`;
+ const tailCompletion=async label=>{const evidence=await js(tailCompletionProgram);console.log(label,JSON.stringify(evidence));return evidence};
  const trustedSubmit=async()=>{const point=await js("(()=>{const b=document.querySelector('[data-ff-combat-docked] button[type=submit]'),r=b.getBoundingClientRect(),x=Math.round(r.x+r.width/2),y=Math.round(r.y+r.height/2);return{x,y,hit:b.contains(document.elementFromPoint(x,y))}})()");assert(point.hit,'native submit hit target');for(const type of ['mouseDown','mouseUp'])window.webContents.sendInputEvent({type,button:'left',clickCount:1,x:point.x,y:point.y});await settled()};
  const reopenFocus=process.env.FABLES_COMBAT_CHAT_FOCUS;
  if(reopenFocus?.startsWith('reopen')){
@@ -63,9 +77,9 @@ let window,passed=false;const timeout=setTimeout(()=>app.exit(1),20000);
  await js("document.querySelector('[data-ff-combat-docked] form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));unrelated.requestSubmit()");await settled();
  assert.equal(await js('feed.scrollTop'),400,'synthetic docked and unrelated native submits preserve history');
  await trustedSubmit();assert.equal(await js('submits.at(-1)'),true,'real input dispatches trusted native submit');
- let result=await js('({top:feed.scrollTop,max:feed.scrollHeight-feed.clientHeight})');console.log('Trusted docked submit follows history',JSON.stringify(result));assert.ok(Math.abs(result.top-result.max)<=1,'own native docked submit follows newest result from older history');
+ let result=await tailCompletion('Trusted docked submit follows history');assert.ok(Math.abs(result.top-result.max)<=1,'own native docked submit follows newest result from older history');
  await js("const row=document.createElement('div');row.id='event-19';row.textContent='Native attack result';document.getElementById('events-list').append(row)");await settled();
- result=await js('({top:feed.scrollTop,max:feed.scrollHeight-feed.clientHeight})');assert.ok(Math.abs(result.top-result.max)<=1,'new native result remains followed');
+ result=await tailCompletion('New native result follow completion');assert.ok(Math.abs(result.top-result.max)<=1,'new native result remains followed');
  await older();await js("const range=document.createRange();range.selectNodeContents(document.querySelector('#event-message-card-8 p'));getSelection().removeAllRanges();getSelection().addRange(range);document.dispatchEvent(new Event('selectionchange'))");await settled();
  const selected=await js('getSelection().toString()');await trustedSubmit();assert.equal(await js('feed.scrollTop'),400,'submit preserves selected history');assert.equal(await js('getSelection().toString()'),selected);
  assert.equal(await js("document.querySelector('.tiptap').textContent"),'Unsent composer draft');assert.equal(await js("document.querySelector('[data-ff-combat-docked] input').value"),'Native attack draft');
