@@ -62,6 +62,7 @@ function page() {
     state.calls.push({ ...state.snapshot(), actor: state.actor || 'desktop', requested: args[0]?.top ?? args[1], behavior: args[0]?.behavior || 'auto' });
     return Reflect.apply(original, this, args);
   };
+  state.tracedScroll = feed.scrollTo;
   state.nativeScroll = () => { state.actor = 'native'; feed.scrollTo({ top: 83, behavior: 'instant' }); state.actor = null; };
   // Exact trusted-form bridge used by combat-panel; the real appearance adapter
   // owns all pinned intent, animation scheduling and browser scroll dispatch.
@@ -76,7 +77,19 @@ function page() {
   // The first callback precedes the mutation-scheduled follow callback; its
   // nested callback precedes a deferred continuation on the next paint turn.
   state.boundary = action => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (action === 'native') state.nativeScroll();
+    if (action === 'native' || action === 'retired') {
+      const retired = feed.scrollTo; state.nativeScroll();
+      if (action === 'retired') { state.actor = 'native'; retired.call(feed, {top:91,behavior:'instant'}); retired.call(feed, {top:91,behavior:'instant'}); state.actor = null; }
+    }
+    if (action === 'newer') {
+      state.newer = function(...args) { state.actor = 'native'; const result = Reflect.apply(state.tracedScroll,this,args); state.actor = null; return result; };
+      Object.defineProperty(feed,'scrollTo',{configurable:true,writable:true,value:state.newer}); state.nativeScroll();
+    }
+    // Synthetic intent covers the production handlers during the tiny pending
+    // frame. Actual native wheel/keyboard behavior remains in existing suites.
+    if (action === 'wheel') feed.dispatchEvent(new WheelEvent('wheel',{bubbles:true,deltaY:-120}));
+    if (action === 'key') feed.dispatchEvent(new KeyboardEvent('keydown',{bubbles:true,key:'PageUp'}));
+    if (action === 'pointer') { feed.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true})); feed.dispatchEvent(new PointerEvent('pointerup',{bubbles:true})); }
     if (action === 'selection') { const range = document.createRange(); range.selectNodeContents(list.firstElementChild); getSelection().removeAllRanges(); getSelection().addRange(range); }
     if (action === 'prose') state.prose(110);
     if (action === 'disconnect') state.damage.row.remove();
@@ -132,16 +145,21 @@ app.on('window-all-closed', () => {});
     assert.equal(mount.effects[0]?.duration, 500, 'Exact source-native duration');
     assert.equal(mount.reduced, reduced); preserved(await js('fixture.snapshot()'));
     await until('Math.abs(fixture.snapshot().top-fixture.snapshot().target)<=1');
+    const rollGrowth = await js('fixture.damage.panel.style.height="216px";fixture.snapshot().target');
+    await until(`fixture.calls.some(call=>call.behavior==="smooth"&&call.requested===${rollGrowth})`);
     await js('fixture.prose(120);void 0'); await until('fixture.calls.some(call=>call.behavior==="smooth"&&call.requested===fixture.snapshot().target)');
   }
+  await reset(); await js('window.__friendsFablesDesktopChatAppearance.dispose();fixture.roll("damage");void 0'); await configure();
+  await js('fixture.noAttack=true;void 0'); await submit(); await paint();
+  assert.ok(smooth(await js('fixture.calls')).some(call=>call.phase==='damage'),'Preexisting/hydrating native row retains ordinary follow');
   // Negative scheduling boundaries are not evidence of the user bug's cause.
   for (const mode of ['disabled','paused','unknown','ambiguous']) {
     await reset(); await begin(); await js(`fixture.roll('damage',${JSON.stringify(mode)});void 0`); await paint();
     const calls = smooth(await js('fixture.calls')).filter(call => call.phase === 'damage');
     assert.ok(calls.length, mode+': unknown/non-running entry fails open');
   }
-  for (const action of ['native','selection','route','dispose','disconnect','prose']) {
-    for (const noPrior of action === 'native' ? [false,true] : [false]) {
+  for (const action of ['native','newer','retired','wheel','key','pointer','selection','route','dispose','disconnect','prose']) {
+    for (const noPrior of ['native','newer','retired','dispose'].includes(action) ? [false,true] : [false]) {
       await reset(); if (noPrior) await js('fixture.pinWithoutMotion();void 0');
       if (noPrior) await submit(); else await begin();
       const evidence = await js(`fixture.roll('damage');fixture.boundary(${JSON.stringify(action)})`);
@@ -150,7 +168,10 @@ app.on('window-all-closed', () => {});
       const later = smooth(calls).filter(call => call.at >= evidence.at);
       if (action === 'prose') assert.ok(later.length, 'Unrelated later prose remains immediately followable');
       else assert.equal(later.length, 0, action+': a deferred first target cannot regain authority');
-      if (action === 'native') assert.ok(Math.abs((await js('fixture.snapshot().top'))-83)<=1, 'Native replacement remains in control');
+      if (action === 'native' || action === 'newer') assert.ok(Math.abs((await js('fixture.snapshot().top'))-83)<=1, 'Native replacement remains in control');
+      if (action === 'newer') assert.equal(await js('document.getElementById("feed").scrollTo===fixture.newer'),true,'Newer method owner retained');
+      if (action === 'retired') assert.ok(Math.abs((await js('fixture.snapshot().top'))-91)<=1,'Reused retired wrapper is an inert native delegate');
+      if (action === 'dispose' && noPrior) assert.equal(calls.filter(call=>call.phase==='damage'&&call.behavior==='instant').length,0,'Gate-only disposal cannot inject an instant scroll');
       preserved(await js('fixture.snapshot()'));
     }
   }
