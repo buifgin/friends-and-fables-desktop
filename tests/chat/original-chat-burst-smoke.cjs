@@ -127,15 +127,26 @@ async function scenario(mode, code) {
     for (const overlay of document.querySelectorAll('[data-ff-desktop-message-snapshot]')) check(!overlay.textContent.includes('PRIVATE-FIXTURE-GUIDANCE'), 'Private guidance text resurrected');
   }
   async function checkpoint(label, visibleIDs = []) {
-    await settle(); identity();
-    for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
-    const before = { ...window.__burstCounts };
-    await settle();
+    // Retain the exact quiet window while diagnosing finite native scroll work.
+    const position = () => ({ scrollTop: feed.scrollTop, target: feed.scrollHeight - feed.clientHeight, counts: { ...window.__burstCounts } });
+    const entry = position(), scrollEnds = [];
+    const ended = () => scrollEnds.push(position());
+    feed.addEventListener('scrollend', ended);
+    let baseline, after;
+    try {
+      await settle(); identity();
+      for (const id of visibleIDs) check(glyph(cards.get(id)), `Previously ready body blank: ${label}/${id}`);
+      baseline = position();
+      await settle(); after = position();
+    } finally { feed.removeEventListener('scrollend', ended); }
+    const before = baseline.counts;
+    const quietMotion = { entry, baseline, after, scrollEnds };
     // Interval discovery is allowed. Its normalization call is counted separately.
-    for (const key of ['appearanceRecords', 'appearanceScan', 'snapshotPass', 'snapshotCards', 'safeClone', 'commandsScan', 'commandsRender', 'nativeWrites', 'nativeRender']) check((window.__burstCounts[key] || 0) === (before[key] || 0), `Unsolicited quiet work: ${label}/${key}`);
-    const sample = { label, counts: { ...window.__burstCounts }, pageLengths: query.state.data.pages.map(item => item.data.length), accepted: accepted.length, pending: !!pending, trusted: [...trusted] };
+    for (const key of ['appearanceRecords', 'appearanceScan', 'snapshotPass', 'snapshotCards', 'safeClone', 'commandsScan', 'commandsRender', 'nativeWrites', 'nativeRender']) check((window.__burstCounts[key] || 0) === (before[key] || 0), `Unsolicited quiet work: ${label}/${key}; scroll diagnostic ${JSON.stringify(quietMotion)}`);
+    const sample = { label, counts: { ...window.__burstCounts }, quietMotion, pageLengths: query.state.data.pages.map(item => item.data.length), accepted: accepted.length, pending: !!pending, trusted: [...trusted] };
     samples.push(sample); return sample;
   }
+
   window.__burst = {
     async prepare(content) {
       absent(); editor.commands.setContent(`<p>${content}</p>`); editor.commands.focus('end'); editorElement.dispatchEvent(new Event('input', { bubbles: true }));
