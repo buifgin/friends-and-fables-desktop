@@ -710,6 +710,13 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       const entry = intermediate[0];
       if (entry.event?.error) { cancel(); return; }
       if (entry.event?.command_used !== 'encounter_player_turn_action_response' || !encounterMatches(entry.row, current.encounter)) { cancel(); return; }
+      // The exact GM invocation can finish without requesting Damage. Release
+      // its final answer, but retain the ticket: realtime choice delivery may
+      // still follow mutation success and must keep native once-only authority.
+      if (current.finished && Array.isArray(entry.event.rollChoices)
+        && !entry.event.rollChoices.some((choice: Native) => choice?.type === 'Damage' && choice.character_id === current.character)) {
+        narrating.delete(entry.event.id); pendingPrompts.delete(entry.event.id); progress.delete(attack.id); return;
+      }
       if (id(entry.event.id)) narrating.set(entry.event.id, { campaign, encounter: current.encounter, request: current.request });
       if (!entry.event.error && Array.isArray(entry.event.rollChoices)) {
         const choices = entry.event.rollChoices.filter((choice: Native) => choice?.type === 'Damage' && choice.character_id === current.character);

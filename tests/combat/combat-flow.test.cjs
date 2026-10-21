@@ -646,6 +646,7 @@ test('final owned GM response without Damage restores streamed answer and clears
  assert.equal(f.calls(),0);assert.equal(f.context.window.__friendsFablesDesktopCombatFlowClaims.size,0);
  for(const node of [f.card,f.avatar,f.actions])assert.equal(node.style.getPropertyValue('display'),'','Final no-Damage answer must be restored on owned success');
  assert.equal(f.attackPanel.children.length,0,'No Damage remains pending after final no-choice answer');
+ f.notify();assert.equal(f.card.style.getPropertyValue('display'),'');assert.equal(f.attackPanel.children.length,0,'Repeated synchronization cannot re-arm no-Damage progress');
 });
 test('final no-Damage response never conceals another request or an unproven card owner',()=>{
  for(const variant of ['other-request','unknown-owner','ambiguous-owner']){
@@ -662,9 +663,11 @@ test('final no-Damage response never conceals another request or an unproven car
 test('late native Damage choice after owned GM success retains once-only authority',()=>{
  const f=flowFixture({streaming:true,hide:true,prompt:true,wrapper:true,hidePrompt:true});
  f.dmEvent.rollChoices=[];f.submit();f.pending();f.finish();
+ assert.equal(f.card.style.getPropertyValue('display'),'');assert.equal(f.attackPanel.children.length,0);
  assert.equal(f.calls(),0);
  f.dmEvent.rollChoices=[f.choice];f.notify();
  assert.equal(f.calls(),1,'Presentation release must preserve ticket for an eventual native choice');
+ assert.equal(f.card.style.getPropertyValue('display'),'none','A later proven Damage choice restores intermediate hiding');
  f.notify();f.finish();assert.equal(f.calls(),1);
  assert.equal(f.context.window.__friendsFablesDesktopCombatFlowClaims.size,1);
 });
