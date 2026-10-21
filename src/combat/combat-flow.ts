@@ -283,7 +283,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     const safeTags = new Set(['DIV', 'SPAN', 'IMG', 'SVG', 'PATH', 'CIRCLE', 'G', 'RECT', 'DEFS', 'CLIPPATH', 'POLYGON', 'POLYLINE', 'LINE', 'TITLE']);
     for (const node of [avatar, ...Array.from(avatar.querySelectorAll('*'))]) {
       if (!safeTags.has(node.tagName.toUpperCase())) { node.remove(); continue; }
-      for (const attribute of Array.from(node.attributes)) if (!['class', 'style', 'src', 'alt', 'viewBox', 'd', 'fill', 'stroke', 'stroke-width', 'width', 'height', 'cx', 'cy', 'r', 'x', 'y', 'points', 'xmlns'].includes(attribute.name)) node.removeAttribute(attribute.name);
+      for (const attribute of Array.from(node.attributes)) if (!['class', 'style', 'src', 'alt', 'viewBox', 'd', 'fill', 'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin', 'fill-rule', 'clip-rule', 'width', 'height', 'cx', 'cy', 'r', 'rx', 'ry', 'x', 'y', 'points', 'xmlns'].includes(attribute.name)) node.removeAttribute(attribute.name);
     }
     template.append(avatar);
     const label = document.createElement('span'); label.className = 'inline-block overflow-hidden text-ellipsis whitespace-nowrap max-w-[190px] sm:max-w-none'; template.append(label);
