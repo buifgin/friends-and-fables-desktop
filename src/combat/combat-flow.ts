@@ -548,7 +548,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     const current = presentation.source;
     const footer = turnFooter(current.character, current.encounter);
     const turn = (footer?.props.encounter as Native | undefined)?.currentTurnEntity;
-    if (!prefs.automaticDamage || campaign !== current.campaign || location.pathname !== route || Date.now() - current.started > 120000 || !footer || turn?.name !== current.turnName || turn?.image !== current.turnImage
+    if (!prefs.automaticDamage || campaign !== current.campaign || location.pathname !== route || Date.now() - current.started > 120000 || !footer || turn?.entityId !== current.turnEntity || turn?.name !== current.turnName || turn?.image !== current.turnImage
       || footer.button && (footer.button.disabled || committedFiber(footer.button)?.memoizedProps?.disabled === true)) { releaseTurnPresentation(); return; }
     if (presentation.completed && ownRollState(presentation) !== 'spinning' && !completions.has(presentation.outcomeKey ?? '')) { releaseTurnPresentation(true); return; }
     const desired = new Set<HTMLElement>();

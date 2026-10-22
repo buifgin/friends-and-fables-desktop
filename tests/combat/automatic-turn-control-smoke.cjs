@@ -24,7 +24,7 @@ function nativePage() {
   // Native useCampaignEventsQuery: pages.flatMap(page=>page.data), lastEvent=events.at(-1).
   // public2zwjnwy9btd1s SHA2f06d6d8…a53d, query430490 / ee315275 / GM4264xx.
   const events = state.events = [];
-  const eventsOwner = component(function uJ() { return 'useCampaignEventsQuery mostRecentDmEvent'; }, { events, campaign }, root);
+  const eventsOwner = state.eventsOwner = component(function uJ() { return 'useCampaignEventsQuery mostRecentDmEvent'; }, { events, campaign }, root);
   function link(parent, children) { parent.child = children[0]; children.forEach((child, index) => { child.return = parent; child.sibling = children[index + 1]; }); }
   function nodeFiber(node, props, parent, type = node.tagName.toLowerCase()) { const value = { tag: 5, type, stateNode: node, memoizedProps: props, return: parent }; node.__reactFiber$fixture = value; return value; }
   function component(type, props, parent) { return { type, memoizedProps: props, return: parent }; }
@@ -439,6 +439,11 @@ app.on('window-all-closed', () => {});
       assert.equal(actual.continueCalls, 0); assert.equal(actual.endCalls, 0);
       assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 0, name+': release owned shell');
     }
+    await prepare('delete fixture.eventsOwner.memoizedProps.events');
+    assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 1, 'Unsupported continuation keeps original spinning Damage lease');
+    await js('fixture.encounter.currentTurnEntity={...fixture.encounter.currentTurnEntity,entityId:302};fixture.render();window.__friendsFablesDesktopCombatFlow.update("en");void 0'); await paint();
+    assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 0, 'Entity-only turn replacement retires original unsupported-context lease');
+    assert.equal(await js('fixture.finalCalls.length'), 0);
     await prepare('fixture.continueGMObserver.subscribe=()=>{throw Error("native observer unavailable")}');
     await js('fixture.setSpin("damage",false);window.__friendsFablesDesktopCombatFlow.update("en");void 0');
     const unsubscribed = await sample('continue-observer-subscribe-failure');
