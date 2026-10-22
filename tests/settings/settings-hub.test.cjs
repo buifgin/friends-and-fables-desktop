@@ -468,3 +468,19 @@ test('first-painted navigation consumes only the eligible revealing ticket and c
  await f.hub.select('general');finishReveal(true);await opening;
  assert.equal(f.hub.currentSection(),'general');assert.deepEqual(f.remembered,['general']);assert.equal(f.hub.view.getVisible(),true);
 });
+
+test('direct local navigation invalidates Campaign ticket before awaiting a cold editor load',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let model,release;
+ const editor=new View();editor.webContents.loadURL=url=>{editor.webContents.mainFrame.url=url;return new Promise(resolve=>release=resolve);};
+ f.hub.configure({translation:{...manager,createPanel:()=>editor},instructions:manager,campaign:{prepare:async(bounds,navigation)=>{model=navigation;return true;},reveal:async()=>true,show(){},suspend(){},hide(){}}});
+ await f.hub.select('campaign');assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),true);
+ const local=f.hub.select('translation');assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),false,'Ticket is consumed synchronously before any local load await');
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(f.hub.consumeCampaignNavigation('general',model.ticket),false);release();await local;assert.equal(f.hub.currentSection(),'translation');
+});
+test('Dock rejects Campaign navigation while a local opening owns the next operation',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let model,opens=0;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{prepare:async(bounds,navigation)=>{model=navigation;return true;},reveal:async()=>true,show(){},suspend(){},hide(){}}});await f.hub.select('campaign');
+ const {AppearanceDock}=require('../../dist/shell/appearance-dock');const dock=Object.create(AppearanceDock.prototype);dock.window=f.window;dock.hub=f.hub;dock.opened=true;dock.opening=true;dock.openingSection='general';dock.openSection=async()=>{opens++;};
+ assert.equal(await dock.navigateCampaignSection('general',model.ticket),false);assert.equal(opens,0);assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),true,'Rejected dispatch cannot consume another operation ticket');
+ dock.opening=false;assert.equal(await dock.navigateCampaignSection('general',model.ticket),true);assert.equal(opens,1);assert.equal(await dock.navigateCampaignSection('general',model.ticket),false);assert.equal(opens,1);
+});

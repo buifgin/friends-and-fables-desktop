@@ -107,7 +107,7 @@ export class AppearanceDock {
   closeCampaign(): void { if (this.opening?this.openingSection==='campaign':this.opened&&this.hub.currentSection()==='campaign') this.hide(); }
 
   async navigateCampaignSection(destination:CampaignNavDestination,ticket:string):Promise<boolean> {
-    if(this.window.isDestroyed()||!(this.opened||this.opening&&this.openingSection==='campaign')||!this.hub.consumeCampaignNavigation(destination,ticket))return false;
+    if(this.window.isDestroyed()||this.opening&&this.openingSection!=='campaign'||!(this.opened||this.opening&&this.openingSection==='campaign')||!this.hub.consumeCampaignNavigation(destination,ticket))return false;
     this.opened=true;
     await this.openSection(destination);return true;
   }

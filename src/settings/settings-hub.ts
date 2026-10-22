@@ -170,6 +170,7 @@ export class SettingsHub {
  async select(section:SettingsSection,beforeLayout?:()=>void):Promise<void> {
   if(section==='campaign'&&!this.managers?.campaign)throw new Error('Campaign settings are not connected.');
   if((section==='campaign'||section==='combat')&&this.campaignAvailable===false)throw new Error('Campaign settings are not available on this page.');
+  if(section!=='campaign')this.campaignNavigationConsumed=true;
   const revision=++this.revision;this.cancelPreparation();
   await this.ready;
   let editor=this.editors.get(section);
