@@ -442,3 +442,29 @@ test('direct Campaign without passive workspace opens native form with its own n
  f.hub.configure({translation:manager,instructions:manager,campaign:{reserve:async()=>false,show:b=>{trace.push(['show',b]);return new Promise(resolve=>finishShow=resolve);},suspend(){},hide(){}}});
  const opening=f.hub.select('campaign',()=>trace.push(['layout']));await flush();assert.equal(f.hub.view.bounds.width,126);assert.equal(f.created.length,0);assert.deepEqual(trace.map(row=>row[0]),['show']);assert.equal(trace[0][1].x,126);assert.equal(trace[0][1].width,454);assert.deepEqual(f.remembered,[]);finishShow(true);await opening;assert.equal(f.hub.currentSection(),'campaign');assert.deepEqual(f.remembered,['campaign']);
 });
+
+test('coherent Campaign keeps local rail hidden through preparation and only accepts the committed ticket',async()=>{
+ const f=fixture(),trace=[],manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let release,model;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{prepare:(bounds,navigation)=>{model=navigation;trace.push('prepare');return new Promise(resolve=>release=resolve);},reveal:async(bounds,ticket)=>{assert.equal(ticket,model.ticket);trace.push('reveal');return true;},show:()=>{trace.push('show');return true;},suspend:()=>trace.push('suspend'),hide:()=>trace.push('hide')}});
+ const opening=f.hub.select('campaign',()=>trace.push('commit'));await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(trace,['prepare']);assert.equal(f.hub.view.getVisible(),false);assert.equal(f.hub.isVisible(),false);assert.equal(f.remembered.length,0);assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),false);
+ assert.match(model.ticket,/^[A-Za-z0-9_-]{1,128}$/);assert.equal(model.destinations.includes('combat'),false);
+ release(true);await opening;assert.deepEqual(trace,['prepare','reveal','commit']);assert.equal(f.hub.view.getVisible(),false);assert.equal(f.hub.canNavigateCampaignSection('general','stale'),false);assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),true);assert.deepEqual(f.remembered,['campaign']);
+ const old=model.ticket;assert.equal(f.hub.consumeCampaignNavigation('general',old),true);assert.equal(f.hub.consumeCampaignNavigation('general',old),false);assert.equal(f.hub.canNavigateCampaignSection('general',old),false);await f.hub.select('general');assert.equal(f.hub.view.getVisible(),true);assert.equal(f.hub.canNavigateCampaignSection('general',old),false);assert.equal(trace.at(-1),'suspend');
+});
+test('close or a newer local request invalidates prepared Campaign before late success can reveal it',async()=>{
+ for(const cancel of [f=>f.hub.setVisible(false),f=>f.hub.select('general')]){
+  const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let release,reveals=0;
+  f.hub.configure({translation:manager,instructions:manager,campaign:{prepare:()=>new Promise(resolve=>release=resolve),reveal:async()=>{reveals++;return true;},show(){},suspend(){},hide(){}}});
+  const opening=f.hub.select('campaign');await new Promise(resolve=>setImmediate(resolve));await cancel(f);release(true);await opening;assert.equal(reveals,0);assert.equal(f.hub.view.getVisible(),f.hub.currentSection()==='general');assert.ok(!f.remembered.includes('campaign'));
+ }
+});
+
+test('first-painted navigation consumes only the eligible revealing ticket and cancels late reveal history',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let finishReveal,model,reachedReveal=false;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{prepare:async(bounds,navigation)=>{model=navigation;assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),false);return true;},reveal:()=>{reachedReveal=true;return new Promise(resolve=>finishReveal=resolve);},show(){},suspend(){},hide(){}}});
+ const opening=f.hub.select('campaign');await new Promise(resolve=>setImmediate(resolve));assert.equal(reachedReveal,true);
+ assert.equal(f.hub.consumeCampaignNavigation('general','stale'),false);assert.equal(f.hub.consumeCampaignNavigation('general',model.ticket),true);assert.equal(f.hub.consumeCampaignNavigation('general',model.ticket),false);
+ await f.hub.select('general');finishReveal(true);await opening;
+ assert.equal(f.hub.currentSection(),'general');assert.deepEqual(f.remembered,['general']);assert.equal(f.hub.view.getVisible(),true);
+});
