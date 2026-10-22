@@ -39,6 +39,7 @@ function nativePage() {
   continueGMObserver.mutate = variables => startFinal(continueGMObserver, variables, 'continue');
   state.finalCalls = [];
   function startFinal(observer, variables, kind) {
+    if (state.finalThrow) throw Error('Native GM mutation failure');
     state.finalCalls.push({ kind, ...variables }); state.activeFinalObserver = observer;
     state.gmPending = true;
     observer.publish({ status: 'pending', submittedAt: Date.now(), variables });
@@ -147,6 +148,7 @@ function nativePage() {
       const generateFranzResponseMutation = continueGMObserver;
       generateFranzResponseMutation.mutate({ isRewrite: false, lastEventId: mostRecentDmEvent.id, requestId: undefined, isPlayerEncounterTurn: encounter.currentTurnEntity.characterId === usersCharacter.id, isMultiplayer: true });
     };
+    state.continueNow = () => nativeContinue();
     if (isPending || state.continueLastDm === mostRecentDmEvent?.id) return value;
     const wrapper = appendElement(container, 'div', 'continue-button-wrapper'); wrapper.id = 'native-continue-wrapper';
     const button = appendElement(wrapper, 'button', 'flex items-center gap-1 rounded-full border border-gray-700/50 bg-gray-800/70 transition-colors pl-1 pr-1 md:pr-4 py-1 h-12', 'Continue'); button.type = 'button'; button.id = 'native-continue'; button.disabled = isPending || !hasAccess || isGmResponding || !!state.continueBusy; button.onclick = nativeContinue;
@@ -227,7 +229,9 @@ function nativePage() {
       rollObserver.publish({ status: 'pending', submittedAt: Date.now(), variables: { rollResult, rollChoice: choice, rollCharacter: character, campaign, shouldTriggerFranz: true }, data: null });
       const damageEvent = { id: attackId + 3, role: 'player', request_id: `damage-${attackId}`, campaign_id: campaign.id, character_id: character.id, character, created_at: new Date().toISOString(), command_used: 'roll', events_roll: { event_id: attackId + 3, campaign_id: campaign.id, roll_type: 'Damage', total_roll: 12, base_roll: 9, base_rolls_array: [9], dice: [10], modifier_stat: 'strength', modifier_value: 0, proficiency_bonus: 0, vantage: 'normal' } };
       Object.assign(choice, { accepted: true, roll_result_id: damageEvent.id });
-      state.damage = mountRoll(damageEvent, true); state.lastEvent = damageEvent; state.render(); return dice_expression && undefined;
+      state.damage = mountRoll(damageEvent, true); state.lastEvent = damageEvent;
+      if (state.holdProjection) { events.splice(events.indexOf(damageEvent), 1); choice.accepted = null; delete choice.roll_result_id; }
+      state.render(); return dice_expression && undefined;
     };
     button.onclick = callback; link(promptHost, [nodeFiber(button, { disabled: false, onClick: callback }, promptHost)]);
     link(dmHost, [cardOwner, choiceOwner]);
@@ -235,6 +239,7 @@ function nativePage() {
     state.gmPending = true; state.render();
     gmObserver.publish({ status: 'pending', submittedAt: Date.now(), variables: { requestId: request, lastEventId: attackId, isMultiplayer: true } });
   });
+  state.releaseProjection = () => { Object.assign(state.choice, { accepted: true, roll_result_id: state.damage.event.id }); events.push(state.damage.event); state.render(); };
   state.restoreLatePrompt = () => { const dmHost = state.choiceOwner.return; const row = dmHost.stateNode; row.append(state.choiceOwner.child.stateNode); link(dmHost, [dmHost.child, state.choiceOwner]); state.publishLateChoice(); };
   state.snapshot = () => {
     const right = $('#right'), rect = right.getBoundingClientRect();
@@ -355,14 +360,21 @@ app.on('window-all-closed', () => {});
       if (mode === 'manual' || mode === 'unsupported') assert.equal(await js('fixture.snapshot().badgeVisible'), true);
     }
   };
-  const wholeAttack = async (automatic = false) => {
+  const wholeAttack = async (automatic = false, projection = false) => {
     await reset(); const initial = await sample(`whole-${automatic ? 'automatic' : 'manual'}-idle`);
-    if (automatic) await js('fixture.manual=false;fixture.render();void 0');
+    if (automatic) await js(`fixture.manual=false;fixture.holdProjection=${projection};fixture.render();void 0`);
+    await js('window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:"campaign-a",automaticDamage:true,hideIntermediateFranz:true,hideDamagePrompt:true});void 0');
     await begin('hit'); await js('fixture.setSpin("attack",false);fixture.finishGM();void 0'); await until('fixture.calls===1');
     await js('fixture.finishDamage();void 0');
     assert.equal(await js('fixture.continueCalls'), 0, 'No continuation before positively settled Damage');
     if (automatic) {
       await until('fixture.finalCalls.length===1');
+      if (projection) {
+        const held = await sample('nested-GM-before-accepted-result-projection');
+        stable(held, initial, 'Waiting for exact committed result projection');
+        assert.equal(await js('fixture.choice.accepted===null&&!fixture.events.includes(fixture.damage.event)'), true);
+        await js('fixture.releaseProjection();void 0');
+      }
       assert.deepEqual(await js('fixture.finalCalls[0]'), { kind: 'automatic', isRewrite: false, lastEventId: 113, requestId: 'damage-110', isPlayerEncounterTurn: true, isMultiplayer: true });
       // Auto→Manual while already-awaited native GM is pending: never duplicate.
       await js('fixture.manual=true;fixture.render();fixture.finishFinalGM();fixture.setSpin("damage",false);void 0');
@@ -398,13 +410,77 @@ app.on('window-all-closed', () => {});
     assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 0, 'Owned shell retires at native End readiness');
     assert.equal(await js('document.getElementById("event-container-114").getClientRects().length>0'), true, 'Final Franz remains visible');
   };
+  const completionSafety = async () => {
+    const prepare = async setup => {
+      await reset(); if (setup) await js(setup+';void 0'); await begin('hit');
+      await js('fixture.setSpin("attack",false);fixture.finishGM();void 0'); await until('fixture.calls===1');
+      await js('fixture.finishDamage();void 0'); await paint();
+      assert.equal(await js('fixture.finalCalls.length'), 0, 'Boundary starts with spinning Damage/no final GM');
+    };
+    const cancelCases = {
+      'same-character-new-turn': 'fixture.encounter.currentTurnEntity={...fixture.encounter.currentTurnEntity,entityId:302,name:"New turn",image:"different"};fixture.render()',
+      'missing-card': 'fixture.damage.card.remove()',
+      'duplicate-card': 'fixture.damage.card.after(fixture.damage.card.cloneNode(true))',
+      'unknown-die-state': 'fixture.damage.dice[0].setAttribute("class","transition-all");fixture.damage.dice[0].__reactFiber$fixture.memoizedProps={className:"transition-all"}',
+      'uncommitted-die': 'delete fixture.damage.dice[0].__reactFiber$fixture',
+      'competing-tail': 'fixture.events.push({id:999,role:"player",campaign_id:fixture.campaign.id});fixture.render()',
+      'native-hidden-attribute': 'document.getElementById("native-continue-wrapper").hidden=true',
+      'native-hidden-css-after-owned-concealment': 'const style=document.createElement("style");style.textContent=".native-hidden-proof{display:none!important}";document.head.append(style);document.getElementById("native-continue-wrapper").classList.add("native-hidden-proof")',
+      'native-disabled': 'const button=document.getElementById("native-continue");button.disabled=true;button.__reactFiber$fixture.memoizedProps.disabled=true',
+      'off': 'window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:"campaign-a",automaticDamage:false,hideIntermediateFranz:false,hideDamagePrompt:false})',
+      'route': 'history.pushState({},"","/campaign-b/play");window.dispatchEvent(new PopStateEvent("popstate"))',
+      'encounter': 'fixture.campaign.active_encounter_id=999;fixture.render()'
+    };
+    for (const [name, action] of Object.entries(cancelCases)) {
+      await prepare(); await js(`fixture.setSpin("damage",false);${action};window.__friendsFablesDesktopCombatFlow.update("en");void 0`);
+      const actual = await sample(`final-boundary-${name}`);
+      assert.equal(actual.finalCalls.length, 0, name+': no automatic continuation');
+      assert.equal(actual.continueCalls, 0); assert.equal(actual.endCalls, 0);
+      assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 0, name+': release owned shell');
+    }
+    await prepare('fixture.continueGMObserver.subscribe=()=>{throw Error("native observer unavailable")}');
+    await js('fixture.setSpin("damage",false);window.__friendsFablesDesktopCombatFlow.update("en");void 0');
+    const unsubscribed = await sample('continue-observer-subscribe-failure');
+    assert.equal(unsubscribed.finalCalls.length, 0); assert.equal(unsubscribed.continueCalls, 0); assert.equal(unsubscribed.continueVisible, true);
+    for (const reinject of [false, true]) {
+      await prepare(); await configure(false); if (reinject) await configure(true);
+      await js('fixture.setSpin("damage",false);void 0'); await paint();
+      assert.equal(await js('fixture.finalCalls.length'), 0, reinject?'Reinjection cannot replay retired outcome':'Disposed callback cannot continue');
+    }
+    // Actual native Ctrl+Enter after subscription is adopted, including success
+    // before native footer publication; Desktop never generates a second GM.
+    await prepare();
+    window.webContents.sendInputEvent({type:'keyDown',keyCode:'Enter',modifiers:['control']}); window.webContents.sendInputEvent({type:'keyUp',keyCode:'Enter',modifiers:['control']});
+    await until('fixture.finalCalls.length===1');
+    await js('fixture.finishFinalGM();fixture.setSpin("damage",false);window.__friendsFablesDesktopCombatFlow.update("en");void 0');
+    let actual = await sample('native-shortcut-success-adopted');
+    assert.equal(actual.finalCalls.length, 1); assert.equal(actual.continueCalls, 1); assert.equal(actual.continueVisible, false);
+    // Synchronous native request+success before the first eligible wrapper sync:
+    // uK's own once-ref removes its button but committed hooks remain available.
+    await reset(); await begin('hit'); await js('fixture.setSpin("attack",false);fixture.finishGM();void 0'); await until('fixture.calls===1');
+    await js('fixture.finishDamage();fixture.continueNow();fixture.finishFinalGM();fixture.setSpin("damage",false);window.__friendsFablesDesktopCombatFlow.update("en");void 0');
+    actual = await sample('native-success-before-first-uK-watch');
+    assert.equal(actual.finalCalls.length, 1); assert.equal(actual.continueCalls, 1); assert.equal(actual.continueVisible, false);
+    assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 1, 'Adopt exact fresh success without host button');
+    for (const failure of ['error', 'throw']) {
+      await prepare(failure==='throw'?'fixture.finalThrow=true':null);
+      await js('fixture.setSpin("damage",false);window.__friendsFablesDesktopCombatFlow.update("en");void 0');
+      await until('fixture.continueCalls===1');
+      if (failure==='error') await js('fixture.finishFinalGM(true);void 0');
+      await paint(); await js('fixture.render();window.__friendsFablesDesktopCombatFlow.update("en");void 0'); await paint();
+      assert.equal(await js('fixture.continueCalls'), 1, 'Failed/unknown final never retries');
+      assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 0, 'Failed final releases owned presentation');
+    }
+  };
   const scenario = process.env.FABLES_TURN_CONTROL_SCENARIO || 'all';
+  if (['all', 'whole-safety'].includes(scenario)) await completionSafety();
+  if (['all', 'whole-projection'].includes(scenario)) await wholeAttack(true, true);
   if (['all', 'whole-manual'].includes(scenario)) await wholeAttack(false);
   if (['all', 'whole-automatic-gap'].includes(scenario)) await wholeAttack(true);
   if (['all', 'phases'].includes(scenario)) await phases();
   if (['all', 'completion'].includes(scenario)) { await completion('miss'); await completion('no-damage'); }
   if (['all', 'safety'].includes(scenario)) await nativeSafety();
   if (['all', 'negatives'].includes(scenario)) await negatives();
-  assert.ok(['all', 'whole-manual', 'whole-automatic-gap', 'phases', 'completion', 'safety', 'negatives'].includes(scenario), 'Known fixture scenario');
+  assert.ok(['all', 'whole-safety', 'whole-projection', 'whole-manual', 'whole-automatic-gap', 'phases', 'completion', 'safety', 'negatives'].includes(scenario), 'Known fixture scenario');
   console.log(`Automatic turn control ${scenario} passed`); clearTimeout(watchdog); window.destroy(); app.exit(0);
 })().catch(error => { console.error(error); clearTimeout(watchdog); window?.destroy(); app.exit(1); });

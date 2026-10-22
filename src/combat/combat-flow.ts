@@ -5,7 +5,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   type Fiber = { tag?: number; type?: unknown; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
   type Native = Record<string, any>;
   type Observer = { options: { mutationFn: Function }; getCurrentResult(): Native; subscribe(listener: (result: Native) => void): () => void };
-  type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; finished?: boolean; unsubscribe?: () => void; turnTemplate?: HTMLElement; turnName?: string; turnImage?: unknown };
+  type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; finished?: boolean; unsubscribe?: () => void; turnTemplate?: HTMLElement; turnName?: string; turnImage?: unknown; turnEntity?: string | number };
   type Outcome = { campaign: string; character: string | number; eventId: string | number; choiceId: string | number; started: number; status: 'claimed' | 'accepted' | 'failed' | 'unknown'; rollResultId?: string | number; rollSucceeded?: boolean; rollSignature?: string; final?: 'claimed' | 'success' | 'failed' | 'canceled' };
   type Preferences = { automaticDamage: boolean; hideIntermediateFranz: boolean; hideDamagePrompt: boolean };
   const key = '__friendsFablesDesktopCombatFlow';
@@ -56,13 +56,21 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
     return hook ? [] : [...values];
   }
-  function addFinalWatch(value: Completion, observer: Observer, kind: FinalWatch['kind']): void {
-    if (value.watches.some(watch => watch.observer === observer)) return;
+  function addFinalWatch(value: Completion, observer: Observer, kind: FinalWatch['kind']): boolean {
+    if (value.watches.some(watch => watch.observer === observer && watch.kind === kind)) return true;
     try {
       const watch: FinalWatch = { observer, baseline: observer.getCurrentResult(), kind };
-      if (!['idle', 'success', 'error'].includes(watch.baseline.status)) return;
-      watch.unsubscribe = observer.subscribe(() => schedule()); value.watches.push(watch);
+      const result = watch.baseline, variables = result?.variables;
+      const alreadyInvoked = kind === 'continue' && ['pending', 'success', 'error'].includes(result.status)
+        && Number.isFinite(result.submittedAt) && result.submittedAt >= value.outcome.started
+        && variables?.lastEventId === value.outcome.eventId && variables.requestId === undefined && variables.isRewrite !== true;
+      if (alreadyInvoked) watch.baseline = { status: 'idle', submittedAt: 0 };
+      else if (!['idle', 'success', 'error'].includes(result.status)) return false;
+      watch.unsubscribe = observer.subscribe(() => schedule());
+      if (typeof watch.unsubscribe !== 'function') return false;
+      value.watches.push(watch); return true;
     } catch { /* Unknown observer cannot authorize continuation. */ }
+    return false;
   }
 
   function clearNativeWatch(key: string): void { const watch = nativeWatches.get(key); nativeWatches.delete(key); for (const item of watch?.observers ?? []) try { item.unsubscribe?.(); } catch { /* Native owner may already be disposed. */ } }
@@ -400,7 +408,9 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       const { source, outcome } = value, proof = linked.get(outcome.eventId);
       const footer = turnFooter(source.character, source.encounter);
       const row = document.getElementById(`event-container-${outcome.eventId}`);
-      if (!prefs.automaticDamage || source.campaign !== campaign || location.pathname !== route || Date.now() - source.started > 120000
+      const turn = (footer?.props.encounter as Native | undefined)?.currentTurnEntity;
+      if (!id(source.turnEntity) || turn?.entityId !== source.turnEntity || turn.name !== source.turnName || turn.image !== source.turnImage
+        || !prefs.automaticDamage || source.campaign !== campaign || location.pathname !== route || Date.now() - source.started > 120000
         || !proof || proof.outcomeKey !== key || !row || !encounterMatches(row, source.encounter) || !footer
         || ['failed', 'unknown'].includes(outcome.status) || ['failed', 'canceled'].includes(outcome.final ?? '')) { retireCompletion(key); continue; }
       // The native ordered collection is a committed query projection, not DOM
@@ -413,28 +423,37 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       if (collections.size !== 1) { retireCompletion(key); continue; }
       const events = [...collections][0], tail = events.at(-1);
       const damage = events.filter(event => event?.id === outcome.rollResultId);
-      // Capture the current uK before it can receive a keyboard/native request.
-      const candidates: { button: HTMLButtonElement; owner: Fiber; callback: Function }[] = [];
-      for (const button of Array.from(footer.right.querySelectorAll<HTMLButtonElement>('button')).slice(0, 12)) {
-        const chain = ancestry(button, 12), host = chain[0], props = host?.memoizedProps;
-        const owners = chain.filter(fiber => {
-          const p = fiber.memoizedProps, text = typeof fiber.type === 'function' ? String(fiber.type) : '';
-          return p?.campaignId === campaign && p.mostRecentDmEvent === footer.props.mostRecentDmEvent
-            && (p.usersCharacter as Native)?.id === source.character && (p.encounter as Native)?.id === source.encounter
-            && ['mostRecentDmEvent', 'isGmResponding', 'Continue'].every(marker => text.includes(marker));
-        });
-        if (owners.length === 1 && host?.tag === 5 && host.type === 'button' && typeof props?.onClick === 'function') {
-          const observers = gmObservers(owners[0]);
-          if (observers.length !== 1) continue;
-          addFinalWatch(value, observers[0], 'continue');
-          candidates.push({ button, owner: owners[0], callback: props.onClick });
-        }
+      // uK can have no host button after its own once-ref suppresses the
+      // wrapper. Inspect only the bounded committed subtree of this exact slot.
+      const nativeOwners = new Set<Fiber>(), pending = [committedFiber(footer.right)];
+      for (let count = 0; pending.length && count < 80; count++) {
+        const fiber = currentFiber(pending.pop()); if (!fiber) continue;
+        const p = fiber.memoizedProps, text = typeof fiber.type === 'function' ? String(fiber.type) : '';
+        if (p?.campaignId === campaign && p.mostRecentDmEvent === footer.props.mostRecentDmEvent
+          && (p.usersCharacter as Native)?.id === source.character && (p.encounter as Native)?.id === source.encounter
+          && ['mostRecentDmEvent', 'isGmResponding', 'Continue', 'lastEventId', 'requestId'].every(marker => text.includes(marker))) nativeOwners.add(fiber);
+        if (fiber.child) pending.push(fiber.child);
+        if (fiber.sibling && fiber !== committedFiber(footer.right)) pending.push(fiber.sibling);
       }
-      let ambiguous = false;
+      if (pending.length || nativeOwners.size > 1) { retireCompletion(key); continue; }
+      const owner = [...nativeOwners][0], observers = owner ? gmObservers(owner) : [];
+      const subscribed = observers.length === 1 && addFinalWatch(value, observers[0], 'continue');
+      const candidates: { button: HTMLButtonElement; owner: Fiber; callback: Function }[] = [];
+      if (owner && subscribed) for (const button of Array.from(footer.right.querySelectorAll<HTMLButtonElement>('button')).slice(0, 12)) {
+        const chain = ancestry(button, 12), host = chain[0], props = host?.memoizedProps;
+        if (chain.includes(owner) && host?.tag === 5 && host.type === 'button' && typeof props?.onClick === 'function') candidates.push({ button, owner, callback: props.onClick });
+      }
+      let ambiguous = false, awaitingProjection = false;
       for (const watch of value.watches) try {
         const result = watch.observer.getCurrentResult(), variables = result?.variables;
         if (result === watch.baseline || variables === watch.baseline.variables) continue;
         if (!Number.isFinite(result.submittedAt) || result.submittedAt < outcome.started || result.submittedAt <= (watch.baseline.submittedAt ?? 0)) continue;
+        // Native ee may start its awaited GM before realtime accepted-choice
+        // and result projection reaches this committed collection. Waiting is
+        // presentation-only; never invoke Continue without the exact relation.
+        if (watch.kind === 'automatic' && (!id(outcome.rollResultId) || damage.length === 0)
+          && variables?.isRewrite !== true && id(variables?.lastEventId) && typeof variables.requestId === 'string' && variables.requestId
+          && ['pending', 'success'].includes(result.status)) { awaitingProjection = true; continue; }
         const exact = variables?.isRewrite !== true && (watch.kind === 'automatic'
           ? damage.length === 1 && variables?.lastEventId === outcome.rollResultId && variables.requestId === damage[0].request_id
           : variables?.lastEventId === outcome.eventId && variables.requestId === undefined);
@@ -449,6 +468,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
         }
       } catch { ambiguous = true; }
       if (ambiguous) { retireCompletion(key); continue; }
+      if (awaitingProjection) continue;
       if (value.state === 'success') {
         // Native GM success precedes realtime/footer publication. Keep the
         // existing presentation, never generate again while awaiting native End.
@@ -475,7 +495,30 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       ancestryCache.delete(candidate.button); currentFiberCache.clear(); rootCache.clear();
       const native = committedFiber(candidate.button)?.memoizedProps;
       const p = candidate.owner.memoizedProps;
-      if (!candidate.button.isConnected || candidate.button.disabled || candidate.button.matches(':disabled') || native?.disabled === true || native?.['aria-disabled'] === true
+      let visible = true;
+      const concealed: { node: HTMLElement; previous: { value: string; priority: string } }[] = [];
+      try {
+        // Remove only our synchronous concealment while measuring native CSS.
+        // Restore it before returning to the event loop/paint. A newer inline
+        // owner is never overwritten or treated as our permission to invoke.
+        for (const [node, previous] of turnHidden) if (node.contains(candidate.button)) {
+          if (node.style.getPropertyValue('display') !== 'none' || node.style.getPropertyPriority('display') !== 'important') { visible = false; break; }
+          concealed.push({ node, previous });
+          if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
+        }
+        let ancestor: HTMLElement | null = candidate.button;
+        for (let depth = 0; ancestor && depth < 24; depth++, ancestor = ancestor.parentElement) {
+          const appearance = getComputedStyle(ancestor);
+          if (ancestor.hidden || ancestor.getAttribute('aria-hidden') === 'true' || ['hidden', 'collapse'].includes(appearance.visibility) || appearance.display === 'none') { visible = false; break; }
+        }
+        if (ancestor || !candidate.button.getClientRects().length) visible = false;
+      } finally {
+        for (const { node, previous } of concealed) {
+          if (node.style.getPropertyValue('display') === previous.value && node.style.getPropertyPriority('display') === previous.priority) node.style.setProperty('display', 'none', 'important');
+          else turnHidden.delete(node);
+        }
+      }
+      if (!visible || !candidate.button.isConnected || candidate.button.disabled || candidate.button.matches(':disabled') || native?.disabled === true || native?.['aria-disabled'] === true
         || native?.onClick !== candidate.callback || p?.hasAccess !== true || p.isPending !== false || p.isGmResponding !== false
         || !String(candidate.callback).includes('lastEventId') || !/requestId\s*:\s*(?:undefined|void\s*0)/.test(String(candidate.callback)) || traversalBudget <= 0) { retireCompletion(key); continue; }
       // Persist before calling native uK, including synchronous throw/reentry.
@@ -675,6 +718,8 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       if (baseline.status === 'pending') return;
       const current: Ticket = { campaign, encounter: context.owner.encounterId, character: context.character.id, target: targets[0].id, dc: targets[0].ac,
         rollType, modifier: attack.modifier_value, proficiency: attack.proficiency_bonus, observer: context.observer, baseline, started: Date.now() };
+      const footer = turnFooter(current.character, current.encounter), turn = (footer?.props.encounter as Native | undefined)?.currentTurnEntity;
+      if (turn && id(turn.entityId)) { current.turnEntity = turn.entityId; current.turnName = turn.name; current.turnImage = turn.image; }
       ticket = current;
       beginTurnPresentation(current);
       current.unsubscribe = context.observer.subscribe(result => localResult(current, result));
