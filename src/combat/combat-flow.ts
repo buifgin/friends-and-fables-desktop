@@ -40,11 +40,14 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   type FinalWatch = { observer: Observer; baseline: Native; kind: 'automatic' | 'continue'; unsubscribe?: () => void; invocation?: Native };
   type Completion = { source: Ticket; outcome: Outcome; watches: FinalWatch[]; state: 'waiting' | 'pending' | 'success' };
   const completions = new Map<string, Completion>();
-  function retireCompletion(key: string): void {
+  function retireCompletion(key: string, keepDamagePresentation = false): void {
     const value = completions.get(key); completions.delete(key);
     if (value && value.outcome.final !== 'success' && value.outcome.final !== 'failed') value.outcome.final = 'canceled';
     for (const watch of value?.watches ?? []) try { watch.unsubscribe?.(); } catch { /* Native teardown. */ }
-    if (turnPresentation?.outcomeKey === key) releaseTurnPresentation();
+    // Unsupported final-continuation context does not revoke the independently
+    // validated original Damage lease. Its native observer/spin lifetime still
+    // ends that presentation and keeps the existing footprint handoff.
+    if (turnPresentation?.outcomeKey === key && !keepDamagePresentation) releaseTurnPresentation();
   }
   function clearCompletions(): void { for (const key of completions.keys()) retireCompletion(key); }
   function gmObservers(owner: Fiber): Observer[] {
@@ -420,7 +423,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
         const events = fiber.memoizedProps?.events;
         if (typeof fiber.type === 'function' && Array.isArray(events) && events.length > 0 && events.length <= 45) collections.add(events);
       }
-      if (collections.size !== 1) { retireCompletion(key); continue; }
+      if (collections.size !== 1) { retireCompletion(key, true); continue; }
       const events = [...collections][0], tail = events.at(-1);
       // A subsequent player action is competing activity even after final GM
       // was claimed/succeeded. A final DM publication is allowed: uK's native
@@ -439,7 +442,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
         if (fiber.child) pending.push(fiber.child);
         if (fiber.sibling && fiber !== committedFiber(footer.right)) pending.push(fiber.sibling);
       }
-      if (pending.length || nativeOwners.size > 1) { retireCompletion(key); continue; }
+      if (pending.length || nativeOwners.size > 1) { retireCompletion(key, true); continue; }
       const owner = [...nativeOwners][0], observers = owner ? gmObservers(owner) : [];
       const subscribed = observers.length === 1 && addFinalWatch(value, observers[0], 'continue');
       const candidates: { button: HTMLButtonElement; owner: Fiber; callback: Function }[] = [];
