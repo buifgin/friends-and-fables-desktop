@@ -427,6 +427,7 @@ app.on('window-all-closed', () => {});
       'native-hidden-attribute': 'document.getElementById("native-continue-wrapper").hidden=true',
       'native-hidden-css-after-owned-concealment': 'const style=document.createElement("style");style.textContent=".native-hidden-proof{display:none!important}";document.head.append(style);document.getElementById("native-continue-wrapper").classList.add("native-hidden-proof")',
       'native-disabled': 'const button=document.getElementById("native-continue");button.disabled=true;button.__reactFiber$fixture.memoizedProps.disabled=true',
+      'native-aria-disabled-string': 'const button=document.getElementById("native-continue");button.setAttribute("aria-disabled","true");button.__reactFiber$fixture.memoizedProps["aria-disabled"]="true"',
       'off': 'window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:"campaign-a",automaticDamage:false,hideIntermediateFranz:false,hideDamagePrompt:false})',
       'route': 'history.pushState({},"","/campaign-b/play");window.dispatchEvent(new PopStateEvent("popstate"))',
       'encounter': 'fixture.campaign.active_encounter_id=999;fixture.render()'
@@ -462,6 +463,18 @@ app.on('window-all-closed', () => {});
     actual = await sample('native-success-before-first-uK-watch');
     assert.equal(actual.finalCalls.length, 1); assert.equal(actual.continueCalls, 1); assert.equal(actual.continueVisible, false);
     assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 1, 'Adopt exact fresh success without host button');
+    for (const phase of ['pending', 'success']) {
+      await prepare();
+      await js('fixture.setSpin("damage",false);window.__friendsFablesDesktopCombatFlow.update("en");void 0'); await until('fixture.finalCalls.length===1');
+      if (phase==='success') await js('fixture.finishFinalGM();void 0');
+      await js(`(()=>{const dm={id:fixture.sequence+10,role:'dm',campaign_id:fixture.campaign.id,profile_id:fixture.profile,command_used:'encounter_player_turn_action_response'};const player={id:fixture.sequence+11,role:'player',campaign_id:fixture.campaign.id,character_id:fixture.character.id,command_used:'roll'};fixture.events.push(dm,player);fixture.latestDm=dm;fixture.lastEvent=player;fixture.render();window.__friendsFablesDesktopCombatFlow.update('en')})()`);
+      await paint();
+      assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 0, phase+': newer player action retires old completion');
+      if (phase==='pending') await js('fixture.finishFinalGM();void 0');
+      const newer = await sample('newer-player-after-final-'+phase);
+      assert.equal(newer.continueVisible, true, 'New native Continue is no longer concealed by old completion');
+      assert.equal(newer.finalCalls.length, 1); assert.equal(newer.continueCalls, 1);
+    }
     for (const failure of ['error', 'throw']) {
       await prepare(failure==='throw'?'fixture.finalThrow=true':null);
       await js('fixture.setSpin("damage",false);window.__friendsFablesDesktopCombatFlow.update("en");void 0');

@@ -422,6 +422,10 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       }
       if (collections.size !== 1) { retireCompletion(key); continue; }
       const events = [...collections][0], tail = events.at(-1);
+      // A subsequent player action is competing activity even after final GM
+      // was claimed/succeeded. A final DM publication is allowed: uK's native
+      // request UUID is internal, so native observer/End readiness owns it.
+      if (id(outcome.rollResultId) && tail?.role === 'player' && tail.id !== outcome.rollResultId) { retireCompletion(key); continue; }
       const damage = events.filter(event => event?.id === outcome.rollResultId);
       // uK can have no host button after its own once-ref suppresses the
       // wrapper. Inspect only the bounded committed subtree of this exact slot.
@@ -518,7 +522,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
           else turnHidden.delete(node);
         }
       }
-      if (!visible || !candidate.button.isConnected || candidate.button.disabled || candidate.button.matches(':disabled') || native?.disabled === true || native?.['aria-disabled'] === true
+      if (!visible || !candidate.button.isConnected || candidate.button.disabled || candidate.button.matches(':disabled') || native?.disabled === true || native?.['aria-disabled'] === true || native?.['aria-disabled'] === 'true' || candidate.button.getAttribute('aria-disabled') === 'true'
         || native?.onClick !== candidate.callback || p?.hasAccess !== true || p.isPending !== false || p.isGmResponding !== false
         || !String(candidate.callback).includes('lastEventId') || !/requestId\s*:\s*(?:undefined|void\s*0)/.test(String(candidate.callback)) || traversalBudget <= 0) { retireCompletion(key); continue; }
       // Persist before calling native uK, including synchronous throw/reentry.
