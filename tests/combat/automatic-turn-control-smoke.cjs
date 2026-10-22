@@ -21,6 +21,10 @@ function nativePage() {
   const root = { tag: 3, stateNode: {} }; root.stateNode.current = root;
   const state = window.fixture = { campaign, character, encounter, root, sequence: 100, mode: 'hit', profile: 'profile-a', manual: true, endPending: false, gmPending: false, damagePending: false, calls: 0, endCalls: [], continueCalls: 0, submits: 0, lastEvent: { role: 'dm', command_used: 'encounter_player_turn_action_response', profile_id: 'profile-a' }, latestDm: null, footerEnabled: true, footerCommitted: true, otherSpinner: false };
   const rootChildren = [];
+  // Native useCampaignEventsQuery: pages.flatMap(page=>page.data), lastEvent=events.at(-1).
+  // public2zwjnwy9btd1s SHA2f06d6d8…a53d, query430490 / ee315275 / GM4264xx.
+  const events = state.events = [];
+  const eventsOwner = component(function uJ() { return 'useCampaignEventsQuery mostRecentDmEvent'; }, { events, campaign }, root);
   function link(parent, children) { parent.child = children[0]; children.forEach((child, index) => { child.return = parent; child.sibling = children[index + 1]; }); }
   function nodeFiber(node, props, parent, type = node.tagName.toLowerCase()) { const value = { tag: 5, type, stateNode: node, memoizedProps: props, return: parent }; node.__reactFiber$fixture = value; return value; }
   function component(type, props, parent) { return { type, memoizedProps: props, return: parent }; }
@@ -31,6 +35,33 @@ function nativePage() {
   }
   const gmObserver = observer(function nativeGM({ lastEventId }) { return ['ENCOUNTER_GM_RESPONSE', 'GM_RESPONSE', lastEventId]; });
   state.gmObserver = gmObserver;
+  const continueGMObserver = state.continueGMObserver = observer(function nativeGM({ lastEventId }) { return ['ENCOUNTER_GM_RESPONSE', 'GM_RESPONSE', lastEventId]; });
+  continueGMObserver.mutate = variables => startFinal(continueGMObserver, variables, 'continue');
+  state.finalCalls = [];
+  function startFinal(observer, variables, kind) {
+    state.finalCalls.push({ kind, ...variables }); state.activeFinalObserver = observer;
+    state.gmPending = true;
+    observer.publish({ status: 'pending', submittedAt: Date.now(), variables });
+    state.render();
+  }
+  state.finishFinalGM = (error = false) => {
+    const watch = state.activeFinalObserver; if (!watch) throw Error('No final GM invocation');
+    state.gmPending = false;
+    watch.publish({ ...watch.getCurrentResult(), status: error ? 'error' : 'success' });
+    // ee awaits its nested automatic GM before resolving the Damage operation.
+    if (state.finalCalls.at(-1).kind === 'automatic') {
+      state.damagePending = false;
+      state.damageObserver.publish({ ...state.damageObserver.getCurrentResult(), status: error ? 'error' : 'success' });
+    }
+    state.render();
+  };
+  state.publishFinalResponse = () => {
+    const final = { id: state.sequence + 4, role: 'dm', campaign_id: campaign.id, profile_id: state.profile, command_used: 'encounter_player_turn_action_response', request_id: state.finalCalls.at(-1)?.requestId };
+    state.lastEvent = state.latestDm = final; events.push(final);
+    const row = appendElement($('main'), 'div', '', 'Final Franz answer'); row.id = `event-container-${final.id}`;
+    const value = component(function NativeEvent() {}, { event: final, campaign }, eventsOwner);
+    link(value, [nodeFiber(row, {}, value)]); rootChildren.push(value); state.render();
+  };
   const form = $('form'), draft = $('input'); state.form = form; state.draft = draft;
   const owner = component(function NativeExecuteActions() { const sendAttackRoll = null; return sendAttackRoll; }, { campaignId: campaign.id, encounterId: encounter.id, isUsersCharacterTurn: true, isMultiplayerCampaign: true }, root);
   owner.memoizedState = { memoizedState: { data: { usersCharacter: character } }, next: { memoizedState: gmObserver } };
@@ -65,7 +96,7 @@ function nativePage() {
     const eventOwner = component(function NativeEvent() {}, { event, campaign }, root);
     const host = nodeFiber(row, {}, eventOwner); link(eventOwner, [host]);
     const roll = nS({ event, spinning, advantage: state.advantage }, host, row); link(host, [roll.fiber]);
-    roll.fiberRoot = eventOwner; roll.outer = outer; state.rolls.push(roll); rootChildren.push(eventOwner); return roll;
+    events.push(event); roll.fiberRoot = eventOwner; roll.outer = outer; state.rolls.push(roll); rootChildren.push(eventOwner); return roll;
   }
   state.setSpin = (kind, spinning) => {
     const roll = state[kind]; if (!roll) return;
@@ -101,13 +132,24 @@ function nativePage() {
   }
   // Captured uK owns a window Ctrl/Cmd+Enter listener independent of wrapper
   // visibility. The adapter may conceal its visual; this handler is untouched.
-  const nativeContinue = () => { if (!state.gmPending && !state.damagePending && !state.continueBusy) state.continueCalls++; };
-  window.addEventListener('keydown', event => { if (state.continueMounted && event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !state.gmPending && !state.damagePending) { event.preventDefault(); nativeContinue(); } });
-  function uK(props, parent, container) {
+  let nativeContinue = () => {};
+  window.addEventListener('keydown', event => { if (state.continueMounted && event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); nativeContinue(); } });
+  function uK({ campaignId, mostRecentDmEvent, usersCharacter, encounter, campaign, hasAccess, isPending, isGmResponding }, parent, container) {
+    const props = { campaignId, mostRecentDmEvent, usersCharacter, encounter, campaign, hasAccess, isPending, isGmResponding };
     const value = component(uK, props, parent); state.continueMounted = true;
-    if (props.isPending) return value;
+    value.memoizedState = { memoizedState: continueGMObserver, next: { memoizedState: { current: state.continueLastDm } } };
+    // Captured uK callback uses mostRecentDmEvent.id, NOT the Damage lastEvent.
+    // Its internal generated request UUID is not part of mutation variables.
+    nativeContinue = function nativeContinueResponse() {
+      const p = isPending || !hasAccess || isGmResponding;
+      if (!mostRecentDmEvent?.id || p || state.continueBusy) return;
+      state.continueLastDm = mostRecentDmEvent.id; state.continueBusy = true; state.continueCalls++;
+      const generateFranzResponseMutation = continueGMObserver;
+      generateFranzResponseMutation.mutate({ isRewrite: false, lastEventId: mostRecentDmEvent.id, requestId: undefined, isPlayerEncounterTurn: encounter.currentTurnEntity.characterId === usersCharacter.id, isMultiplayer: true });
+    };
+    if (isPending || state.continueLastDm === mostRecentDmEvent?.id) return value;
     const wrapper = appendElement(container, 'div', 'continue-button-wrapper'); wrapper.id = 'native-continue-wrapper';
-    const button = appendElement(wrapper, 'button', 'flex items-center gap-1 rounded-full border border-gray-700/50 bg-gray-800/70 transition-colors pl-1 pr-1 md:pr-4 py-1 h-12', 'Continue'); button.type = 'button'; button.id = 'native-continue'; button.disabled = props.isPending || !props.hasAccess || props.isGmResponding; button.onclick = nativeContinue;
+    const button = appendElement(wrapper, 'button', 'flex items-center gap-1 rounded-full border border-gray-700/50 bg-gray-800/70 transition-colors pl-1 pr-1 md:pr-4 py-1 h-12', 'Continue'); button.type = 'button'; button.id = 'native-continue'; button.disabled = isPending || !hasAccess || isGmResponding || !!state.continueBusy; button.onclick = nativeContinue;
     const host = nodeFiber(wrapper, { className: wrapper.className }, value); link(value, [host]); link(host, [nodeFiber(button, { disabled: button.disabled, onClick: nativeContinue, className: button.className }, host)]); return value;
   }
   function uD(props, parent, container) {
@@ -144,7 +186,7 @@ function nativePage() {
     const shouldShowEndTurnButton = isUsersTurn && ['encounter_player_turn_action_narration', 'encounter_player_turn_action_response', 'encounter_state_agent_response', 'encounter_player_turn_movement_narration'].includes(state.lastEvent?.command_used) && state.lastEvent?.profile_id === state.profile;
     const footer = uZ({ campaignId: campaign.id, campaign, encounter, usersCharacter: character, mostRecentDmEvent: state.latestDm, hasAccess: true, continueMode: state.manual ? 'manual' : 'auto', globalIsPending: state.gmPending || state.damagePending, showContinueButton: state.manual && state.lastEvent?.role !== 'dm' && !state.gmPending, isGmResponding: state.gmPending, showEncounterButtons: !!campaign.active_encounter_id, encounterId: campaign.active_encounter_id, shouldShowEndTurnButton, shouldShowRunNpcTurnButton: !!turn?.is_npc, shouldShowDeathSaveButton: turn?.hp <= 0, isAnotherPlayersTurn: turn?.characterId !== character.id && turn?.type === 'player', currentTurnEntityName: turn?.name, isUsersTurn, isInputBarMinimized: false, isHost: true });
     if (!state.footerEnabled) $('#footer').remove();
-    link(root, [owner, ...rootChildren, ...(state.footerCommitted ? [footer] : [])]);
+    link(eventsOwner, [owner, ...rootChildren, ...(state.footerCommitted ? [footer] : [])]); link(root, [eventsOwner]);
   };
   state.finishGM = (error = false) => {
     state.gmPending = false;
@@ -153,17 +195,18 @@ function nativePage() {
     if (state.mode === 'no-damage') state.lastEvent = state.latestDm;
     gmObserver.publish({ ...gmObserver.getCurrentResult(), status: error ? 'error' : 'success' }); state.render();
   };
-  state.finishDamage = (error = false) => { state.damagePending = false; const watch = state.damageObserver; watch.publish({ ...watch.getCurrentResult(), status: error ? 'error' : 'success' }); state.render(); };
+  state.finishDamage = (error = false) => { if (!error && !state.manual) { const damage = state.damage.event; startFinal(state.nestedGMObserver, { isRewrite: false, lastEventId: damage.id, requestId: damage.request_id, isPlayerEncounterTurn: true, isMultiplayer: true }, 'automatic'); return; } state.damagePending = false; const watch = state.damageObserver; watch.publish({ ...watch.getCurrentResult(), status: error ? 'error' : 'success' }); state.render(); };
   state.publishLateChoice = () => { state.latestDm.rollChoices = [state.choice]; state.choice.accepted = null; state.choiceOwner.memoizedProps.rollChoice = state.choice; state.render(); document.body.append(document.createElement('i')); };
   form.addEventListener('submit', event => {
     event.preventDefault(); state.submits++; state.sequence += 10;
-    rootChildren.length = 0; $('main').replaceChildren(); state.rolls = []; state.damage = undefined; state.callsAtSubmit = state.calls;
+    rootChildren.length = 0; events.length = 0; $('main').replaceChildren(); state.rolls = []; state.damage = undefined; state.callsAtSubmit = state.calls;
     const attackId = state.sequence, request = `local-request-${attackId}`;
     const attack = { id: attackId, role: 'player', profile_id: state.profile, request_id: request, campaign_id: campaign.id, character_id: character.id, character, created_at: new Date().toISOString(), command_used: 'roll_attack', events_roll: { roll_type: 'Spell Attack', dc: 10, total_roll: state.mode === 'miss' ? 9 : 24, modifier_value: 8, proficiency_bonus: 8 } };
     state.attack = mountRoll(attack, true); state.lastEvent = attack;
     const dmId = attackId + 1;
     const choice = state.choice = { id: attackId + 2, event_id: dmId, character_id: character.id, type: 'Damage', accepted: null, dice_expression: '1d10', fixed_bonus: 3 };
     const dm = state.latestDm = { id: dmId, role: 'dm', request_id: request, campaign_id: campaign.id, profile_id: state.profile, command_used: 'encounter_player_turn_action_response', processed: false, rollChoices: ['miss', 'no-damage'].includes(state.mode) ? [] : [choice] };
+    events.push(dm);
     const dmRow = appendElement($('main'), 'div'); dmRow.id = `event-container-${dmId}`;
     const dmOwner = component(function NativeEvent() {}, { event: dm, campaign }, root);
     const dmHost = nodeFiber(dmRow, {}, dmOwner); link(dmOwner, [dmHost]); rootChildren.push(dmOwner);
@@ -171,7 +214,8 @@ function nativePage() {
     const cardOwner = component(function NativeNarrativeCard() { return 'event-message-card-'; }, { eventId: dmId }, dmHost); link(cardOwner, [nodeFiber(card, {}, cardOwner)]);
     const rollObserver = observer(async function ee({ rollResult, rollChoice, rollCharacter, campaign, shouldTriggerFranz }) { const events_choices_rolls = 'events_choices_rolls', INSERT_EVENT = 'INSERT_EVENT', insertEventIntoQueryData = 'insertEventIntoQueryData', continueMode_ = 'continueMode_'; if (shouldTriggerFranz && continueMode_ !== 'manual') await Promise.resolve('mutateAsync Franz'); return [events_choices_rolls, INSERT_EVENT, insertEventIntoQueryData, rollResult, rollChoice, rollCharacter, campaign]; });
     state.damageObserver = rollObserver;
-    const choiceOwner = state.choiceOwner = component(function t5() {}, { rollChoice: choice, campaignId: campaign.id, usersCharacter: character }, dmHost); choiceOwner.memoizedState = { memoizedState: rollObserver };
+    const nestedGMObserver = state.nestedGMObserver = observer(function nativeGM({ lastEventId }) { return ['ENCOUNTER_GM_RESPONSE', 'GM_RESPONSE', lastEventId]; });
+    const choiceOwner = state.choiceOwner = component(function t5() {}, { rollChoice: choice, campaignId: campaign.id, usersCharacter: character }, dmHost); choiceOwner.memoizedState = { memoizedState: rollObserver, next: { memoizedState: nestedGMObserver } };
     const prompt = appendElement(dmRow, 'div'); prompt.id = 'native-damage-prompt';
     const promptHost = nodeFiber(prompt, {}, choiceOwner); link(choiceOwner, [promptHost]);
     const button = appendElement(prompt, 'button', '', 'Roll Damage'); button.type = 'button';
@@ -198,7 +242,7 @@ function nativePage() {
     const image = right.querySelector('img');
     const appearance = visible[0] && getComputedStyle(visible[0]);
     const shape = appearance ? { radius: appearance.borderRadius, border: appearance.borderTopWidth, borderColor: appearance.borderTopColor, background: appearance.backgroundColor } : null;
-    return { shape, label: visible.map(node => node.textContent.trim()).join(' | '), image: image?.getAttribute('src') || '', width: rect.width, height: rect.height, right: rect.right, top: rect.top, viewport: innerWidth, nativeEnd: !!$('#native-end'), disabled: $('#native-end')?.disabled ?? null, badgeVisible: !!$('#native-your-turn')?.getClientRects().length && getComputedStyle($('#native-your-turn')).visibility !== 'hidden', continueVisible: !!$('#native-continue-wrapper')?.getClientRects().length && getComputedStyle($('#native-continue-wrapper')).visibility !== 'hidden', endCalls: state.endCalls.length, continueCalls: state.continueCalls, calls: state.calls, submits: state.submits, sameForm: $('form') === form, sameDraft: $('input') === draft, draft: draft.value, gmSubscriptions: gmObserver.count(), damageSubscriptions: state.damageObserver?.count() || 0 };
+    return { finalCalls: state.finalCalls, finalStatus: state.activeFinalObserver?.getCurrentResult().status, shape, label: visible.map(node => node.textContent.trim()).join(' | '), image: image?.getAttribute('src') || '', width: rect.width, height: rect.height, right: rect.right, top: rect.top, viewport: innerWidth, nativeEnd: !!$('#native-end'), disabled: $('#native-end')?.disabled ?? null, badgeVisible: !!$('#native-your-turn')?.getClientRects().length && getComputedStyle($('#native-your-turn')).visibility !== 'hidden', continueVisible: !!$('#native-continue-wrapper')?.getClientRects().length && getComputedStyle($('#native-continue-wrapper')).visibility !== 'hidden', endCalls: state.endCalls.length, continueCalls: state.continueCalls, calls: state.calls, submits: state.submits, sameForm: $('form') === form, sameDraft: $('input') === draft, draft: draft.value, gmSubscriptions: gmObserver.count(), damageSubscriptions: state.damageObserver?.count() || 0 };
   };
   state.render();
 }
@@ -310,11 +354,56 @@ app.on('window-all-closed', () => {});
       if (mode === 'manual' || mode === 'unsupported') assert.equal(await js('fixture.snapshot().badgeVisible'), true);
     }
   };
+  const wholeAttack = async (automatic = false) => {
+    await reset(); const initial = await sample(`whole-${automatic ? 'automatic' : 'manual'}-idle`);
+    if (automatic) await js('fixture.manual=false;fixture.render();void 0');
+    await begin('hit'); await js('fixture.setSpin("attack",false);fixture.finishGM();void 0'); await until('fixture.calls===1');
+    await js('fixture.finishDamage();void 0');
+    assert.equal(await js('fixture.continueCalls'), 0, 'No continuation before positively settled Damage');
+    if (automatic) {
+      await until('fixture.finalCalls.length===1');
+      assert.deepEqual(await js('fixture.finalCalls[0]'), { kind: 'automatic', isRewrite: false, lastEventId: 113, requestId: 'damage-110', isPlayerEncounterTurn: true, isMultiplayer: true });
+      // Auto→Manual while already-awaited native GM is pending: never duplicate.
+      await js('fixture.manual=true;fixture.render();fixture.finishFinalGM();fixture.setSpin("damage",false);void 0');
+    } else {
+      await js('fixture.setSpin("damage",false);void 0');
+      await until('fixture.finalCalls.length===1');
+      assert.equal(await js('fixture.finalCalls[0].requestId===undefined'), true, 'Native uK leaves requestId undefined');
+      assert.deepEqual(await js('JSON.parse(JSON.stringify(fixture.finalCalls[0]))'), { kind: 'continue', isRewrite: false, lastEventId: 111, isPlayerEncounterTurn: true, isMultiplayer: true });
+      const pending = await sample('whole-manual-final-pending');
+      stable({ ...pending, continueCalls: 0 }, initial, 'whole-manual-final-pending');
+      assert.equal(pending.continueCalls, 1, 'Exact native Continue callback once');
+      await js('fixture.finishFinalGM();void 0');
+    }
+    // Hold success separately from native event/footer publication. This gap is
+    // visible in22October clips; no invented delay or claim that GM is missing.
+    // Explicit public update queues evaluation even when native class updates
+    // are outside the adapter MutationObserver filter; no elapsed-time gate.
+    await js('window.__friendsFablesDesktopCombatFlow.update("en");void 0');
+    const gap = await sample(`whole-${automatic ? 'automatic' : 'manual'}-success-before-native-End`);
+    assert.equal(gap.nativeEnd, false, 'Final native eligibility really remains unpublished');
+    stable({ ...gap, continueCalls: 0 }, initial, 'Final success publication gap');
+    assert.equal(gap.finalCalls.length, 1, 'No duplicate final GM in publication gap');
+    assert.equal(gap.continueCalls, automatic ? 0 : 1);
+    for (let frame = 0; frame < 3; frame++) {
+      const held = await sample(`whole-held-frame-${frame}`);
+      assert.equal(held.continueVisible, false, 'No Continue flash in held native publication frames');
+      assert.equal(held.finalCalls.length, 1);
+    }
+    await js('fixture.publishFinalResponse();void 0'); await until('fixture.snapshot().nativeEnd');
+    const finished = await sample('whole-native-End-ready');
+    assert.equal(finished.finalCalls.length, 1); assert.equal(finished.continueVisible, false);
+    assert.equal(finished.calls, 1); assert.equal(finished.endCalls, 0);
+    assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 0, 'Owned shell retires at native End readiness');
+    assert.equal(await js('document.getElementById("event-container-114").getClientRects().length>0'), true, 'Final Franz remains visible');
+  };
   const scenario = process.env.FABLES_TURN_CONTROL_SCENARIO || 'all';
+  if (['all', 'whole-manual'].includes(scenario)) await wholeAttack(false);
+  if (['all', 'whole-automatic-gap'].includes(scenario)) await wholeAttack(true);
   if (['all', 'phases'].includes(scenario)) await phases();
   if (['all', 'completion'].includes(scenario)) { await completion('miss'); await completion('no-damage'); }
   if (['all', 'safety'].includes(scenario)) await nativeSafety();
   if (['all', 'negatives'].includes(scenario)) await negatives();
-  assert.ok(['all', 'phases', 'completion', 'safety', 'negatives'].includes(scenario), 'Known fixture scenario');
+  assert.ok(['all', 'whole-manual', 'whole-automatic-gap', 'phases', 'completion', 'safety', 'negatives'].includes(scenario), 'Known fixture scenario');
   console.log(`Automatic turn control ${scenario} passed`); clearTimeout(watchdog); window.destroy(); app.exit(0);
 })().catch(error => { console.error(error); clearTimeout(watchdog); window?.destroy(); app.exit(1); });
