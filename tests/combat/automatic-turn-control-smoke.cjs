@@ -296,11 +296,12 @@ app.on('window-all-closed', () => {});
       stable(await sample(`damage-pending-${width}`), initial, `damage-pending-${width}`);
       await js('fixture.finishDamage();void 0');
       stable(await sample(`damage-operation-success-still-spinning-${width}`), initial, `damage-operation-success-still-spinning-${width}`);
-      await js('fixture.setSpin("damage",false);void 0'); await until('fixture.snapshot().continueVisible');
-      const completed = await sample(`manual-continue-${width}`); assert.equal(completed.badgeVisible, true); assert.equal(completed.calls, 1); assert.equal(completed.endCalls, 0); assert.equal(completed.continueCalls, 0);
-      // The native Continue keyboard contract is preserved after restoration.
-      window.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Enter', modifiers: ['control'] }); window.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Enter', modifiers: ['control'] });
-      await until('fixture.continueCalls===1');
+      await js('fixture.setSpin("damage",false);window.__friendsFablesDesktopCombatFlow.update("en");void 0'); await until('fixture.finalCalls.length===1');
+      const completed = await sample(`final-pending-${width}`); stable({ ...completed, continueCalls: 0 }, initial, `final-pending-${width}`);
+      assert.equal(completed.continueCalls, 1); assert.equal(completed.calls, 1);
+      await js('fixture.finishFinalGM();void 0');
+      stable({ ...await sample(`final-success-${width}`), continueCalls: 0 }, initial, `final-success-${width}`);
+      await js('fixture.publishFinalResponse();void 0'); await until('fixture.snapshot().nativeEnd');
       await configure(false);
     }
   };
@@ -315,7 +316,7 @@ app.on('window-all-closed', () => {});
       assert.equal(await js('document.getElementById("event-message-card-"+(fixture.sequence+1)).getClientRects().length>0'), true, '937 no-Damage answer remains visible');
       await js('fixture.restoreLatePrompt();void 0'); await until('fixture.calls===1');
       await js('fixture.setSpin("attack",false);fixture.finishDamage();fixture.setSpin("damage",false);void 0');
-      await until('fixture.snapshot().continueVisible'); assert.equal(await js('fixture.calls'), 1, 'Late choice accepted only once');
+      await until('fixture.finalCalls.length===1'); assert.equal(await js('fixture.calls'), 1, 'Late choice accepted only once');
     }
   };
   const nativeSafety = async () => {
