@@ -31,7 +31,8 @@ if(!process.versions.electron){module.exports={websiteHtml,scripts};}else{
  registerAppearanceScheme();app.on('window-all-closed',()=>{});
  let window,profile,evidence,appearance,translation,website,dock,closeDeliveryGate;const samples=[],trace=[],websiteBounds=[];
  const mode=process.env.FABLES_CAMPAIGN_LAYOUT_CASE||'geometry',locale=process.env.FABLES_CAMPAIGN_LAYOUT_LOCALE||'en';
- assert.ok(['hidden-composer','no-workspace','escape-native-held','escape-editor-held','escape-native','escape-editor','geometry','incoming','incoming-geometry','incoming-appearance-geometry','first-open','cancel','cancel-outgoing','outgoing-general','outgoing-translation','outgoing-appearance'].includes(mode));assert.ok(['en','ru'].includes(locale));
+ assert.ok(['hidden-composer','no-workspace','escape-native-held','escape-editor-held','escape-native','escape-editor','geometry','incoming','incoming-geometry','incoming-appearance-geometry','first-open','opening-default-held','opening-default-natural','cancel','cancel-outgoing','outgoing-general','outgoing-translation','outgoing-appearance'].includes(mode));assert.ok(['en','ru'].includes(locale));
+ const openingCase=mode==='first-open'||mode.startsWith('opening-default-');
  const timeout=setTimeout(()=>{console.error('Campaign layout bounded timeout');window?.destroy();app.exit(1)},30000);
  const js=(c,s)=>{new vm.Script(s);return c.executeJavaScript(s)};
  const frame=c=>js(c,scripts.frame);
@@ -54,7 +55,7 @@ if(!process.versions.electron){module.exports={websiteHtml,scripts};}else{
  website.webContents.setWindowOpenHandler(({url})=>{if(url==='fables-desktop://settings/close-campaign'){trace.push({nativeCloseRequest:true,time:performance.now()});const gate=closeDeliveryGate;if(gate?.kind==='native'){gate.reach();void gate.released.then(()=>dock.closeCampaign());}else dock.closeCampaign();}return {action:'deny'};});
  translation=new TranslationManager(profile,null);const instructions=new HostInstructionsManager(profile);await translation.initialize();await instructions.initialize();translation.settings={...translation.getSettings(),enabled:locale==='ru',showOriginal:false,translateDescriptions:false};translation.setAppearance(appearance.getSettings());instructions.setInterface(appearance.getSettings(),locale);translation.check=async()=>({available:false,message:'No fixture service'});
  let updates=Promise.resolve(),request=0;const update=(show,bounds={width:0,height:0})=>{const current=++request,c=website.webContents;void js(c,'window.__friendsFablesDesktopCampaignPanel?.cancelPending?.();true').catch(()=>{});updates=updates.then(async()=>{if(current!==request)return false;const gate=closeDeliveryGate;if(show===false&&gate?.kind==='editor'){gate.reach();await gate.released;if(current!==request)return false;}trace.push({show,bounds,website:website.getBounds(),time:performance.now()});const previous=c.getBackgroundThrottling();if(show===true)c.setBackgroundThrottling(false);try{return await js(c,`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${bounds.width},${bounds.height},${JSON.stringify({background:'#203040',foreground:'#f5f5f5',border:'#465050',accent:'#d8bb82',panel:'#17181a',selected:'#383a3e'})},${bounds.x??0})`)}finally{if(show===true&&!c.isDestroyed())c.setBackgroundThrottling(previous)}});return updates};
- dock.configureSettings({translation,instructions,campaign:{reserve:b=>update('reserve',b),show:b=>update(true,b),suspend:b=>{void update('suspend',b)},hide:()=>{void update(false)}}});await website.webContents.loadURL('https://play.fables.gg/'+campaignId+'/play');await js(website.webContents,`fixtureLocale=${JSON.stringify(locale)};true`);await dock.setCampaignAvailable(true);if(mode==='hidden-composer')await js(website.webContents,`document.querySelector('.tiptap').remove();true`);if(mode==='no-workspace')await js(website.webContents,`document.querySelector('.flex-1.h-full.w-full').remove();true`);window.showInactive();if(mode!=='first-open')await dock.openSection('general');const focus=mode==='first-open'?website.webContents:dock.hub.view.webContents;focus.focus();await frame(focus);
+ dock.configureSettings({translation,instructions,campaign:{reserve:b=>update('reserve',b),show:b=>update(true,b),suspend:b=>{void update('suspend',b)},hide:()=>{void update(false)}}});await website.webContents.loadURL('https://play.fables.gg/'+campaignId+'/play');await js(website.webContents,`fixtureLocale=${JSON.stringify(locale)};true`);await dock.setCampaignAvailable(true);if(mode==='hidden-composer')await js(website.webContents,`document.querySelector('.tiptap').remove();true`);if(mode==='no-workspace')await js(website.webContents,`document.querySelector('.flex-1.h-full.w-full').remove();true`);window.showInactive();if(!openingCase)await dock.openSection('general');const focus=openingCase?website.webContents:dock.hub.view.webContents;focus.focus();await frame(focus);
  assert.equal(await js(focus,'document.hasFocus()'),true);assert.equal(await js(website.webContents,'typeof window.require'),'undefined');
  if(mode==='hidden-composer'||mode==='no-workspace'){
   assert.equal(await js(website.webContents,'nativeMounts'),0,'Passive local opening never launches native Campaign');
@@ -133,6 +134,49 @@ if(!process.versions.electron){module.exports={websiteHtml,scripts};}else{
   for(const state of observations){assert.deepEqual(state.nativePixel,[33,122,77],'Canceled General must uncover painted committed Campaign during cold Appearance load');assert.equal(state.hubWidth,126);assert.match(state.marker,/:campaign$/);assert.equal(state.generalHidden,true);}
  }else if(mode==='cancel'){
   await select('general');await js(website.webContents,'mountAllowed=false;true');const opening=dock.openSection('campaign');await until(website.webContents,'launchPending');const started=performance.now();dock.hide();let budget;try{await Promise.race([opening,new Promise((_,reject)=>budget=setTimeout(()=>reject(Error('Cancelled native readiness blocks the queue')),500))])}finally{clearTimeout(budget)}assert.ok(performance.now()-started<500);await updates;await js(website.webContents,'releaseMount();true');await until(website.webContents,`!document.querySelector('#native')`);await frame(website.webContents);const record=await sample('cancelled-late-mount');assert.equal(dock.isOpen(),false);assert.equal(record.native.node,false,'A cancelled async native mount never survives as a stray modal');assert.equal(await js(website.webContents,'window.__friendsFablesDesktopCampaignPanel===undefined'),true);
+ }else if(mode.startsWith('opening-default-')){
+  const held=mode.endsWith('-held'),records=[];
+  assert.equal(dock.isOpen(),false);assert.equal(dock.hub.resolveSettingsSection(),'campaign','Fresh generic Settings resolves Campaign without mutating saved preferences');
+  await js(website.webContents,'window.geometryComposer=document.querySelector(".tiptap");true');
+  const paletteGame=[90,16,32],paletteForm=[32,48,64],panel=dock.hub.bounds;
+  const points={nav:{x:64,y:panel.y+480},form:{x:300,y:panel.y+480},content:{x:panel.width-12,y:panel.y+panel.height-12}};
+  const same=(a,b)=>a.every((value,index)=>value===b[index]);
+  async function openingFrame(label){
+   const before={geometry:await js(website.webContents,scripts.geometry),native:await js(website.webContents,scripts.snapshot),website:website.getBounds(),hubVisible:dock.hub.view.getVisible()};
+   const captureStarted=performance.timeOrigin+performance.now(),boundsBefore=website.getBounds(),handle=window.getNativeWindowHandle().toString('hex');
+   const image=await capture(label);const captureFinished=performance.timeOrigin+performance.now(),boundsAfter=website.getBounds();
+   assert.equal(image.getSize().width,window.getContentSize()[0]);
+   const pixels=Object.fromEntries(Object.entries(points).map(([name,point])=>[name,color(image,point.x,point.y)]));
+   const after={geometry:await js(website.webContents,scripts.geometry),native:await js(website.webContents,scripts.snapshot),website:website.getBounds(),hubVisible:dock.hub.view.getVisible()};
+   const record={label,captureStarted,captureFinished,handle,boundsBefore,boundsAfter,points,pixels,before,after,navExposed:!same(pixels.nav,paletteGame),formExposed:same(pixels.form,paletteForm)&&same(pixels.content,paletteForm)};
+   records.push(record);console.log('CAMPAIGN_OPENING_FRAME '+JSON.stringify(record));return record;
+  }
+  function closed(record,phase){
+   for(const name of Object.keys(points))assert.deepEqual(record.pixels[name],paletteGame,phase+': actual game remains visible at '+name+'; no navigation/form/blank cover');
+   for(const state of [record.before,record.after]){assert.equal(state.native.node,false,phase+': genuine native mount is held');assert.equal(state.website.x,0);assert.equal(state.geometry.composer.x,0);assert.equal(state.geometry.composer.width,1000);assert.equal(state.geometry.composerSame,true);assert.equal(state.geometry.composerDraft,'composer draft');}
+  }
+  const control=await openingFrame('opening-closed-control');closed(control,'Closed precondition');
+  if(held)await js(website.webContents,'mountAllowed=false;true');
+  let completed=false;const opening=dock.openSettings().then(()=>{completed=true;});
+  const heldFrames=[];
+  if(held){await until(website.webContents,'launchPending');for(let i=0;i<2;i++){await frame(website.webContents);heldFrames.push(await openingFrame('opening-held-'+i));}}
+  // Collect release pixels before asserting held state, retaining a full chain
+  // even on the baseline RED. DOM after capture cannot erase earlier pixels.
+  if(held)await js(website.webContents,'releaseMount();true');
+  for(let i=0;i<4;i++){await frame(website.webContents);await openingFrame('opening-release-'+i);}
+  await opening;assert.equal(completed,true);await frame(website.webContents);const final=await openingFrame('opening-ready');
+  const crypto=require('node:crypto'),hashes={};for(const file of ['dist/settings/settings-hub.js','dist/settings/campaign-panel.js','dist/shell/appearance-dock.js'])hashes[file]=crypto.createHash('sha256').update(await fs.readFile(path.join(root,file))).digest('hex');hashes.fixture=crypto.createHash('sha256').update(await fs.readFile(__filename)).digest('hex');
+  await fs.writeFile(path.join(evidence,'campaign-opening-frames.json'),JSON.stringify({mode,locale,contract:'Current real Hub/Dock/controller; single presentation contract, no cross-view atomicity assumption',appRoot:root,hashes,records,trace,websiteBounds},null,2));
+  for(const record of heldFrames)closed(record,'Held native mount');
+  for(const record of records.filter(row=>row.label.startsWith('opening-release-'))){
+   const whollyClosed=Object.values(record.pixels).every(pixel=>same(pixel,paletteGame));
+   assert.ok(whollyClosed||record.navExposed&&record.formExposed,'Every composed release capture is wholly closed or genuine navigation+native form together: '+JSON.stringify(record));
+   if(record.navExposed&&record.formExposed){assert.equal(record.after.website.x,0);assert.equal(record.after.geometry.composer.x,580,'Exposed native presentation has the total renderer gutter');}
+   if(record.after.native.adopted){assert.equal(record.after.geometry.composerSame,true);assert.equal(record.after.geometry.composerDraft,'composer draft');assert.equal(record.after.geometry.nativeFieldSame,true);assert.equal(record.after.geometry.nativeDraft,'native campaign draft');}
+  }
+  assert.ok(final.navExposed&&final.formExposed,'Final genuine Campaign presentation paints both navigation and native form');
+  assert.equal(final.after.website.x,0);assert.equal(final.after.geometry.composer.x,580);assert.equal(final.after.geometry.nativeConnected,true);
+  assertIdentity(await sample('opening-ready-identity'));assertGeometry(samples.at(-1));
  }else if(mode==='first-open'){
   assert.equal(dock.isOpen(),false);assert.equal(dock.hub.currentSection(),'appearance');await js(website.webContents,'mountAllowed=false;true');const opening=dock.openSection('campaign');await until(website.webContents,'launchPending');await frame(dock.hub.view.webContents);const held=await sample('first-open-held');assert.equal(held.native.node,false);assert.equal(dock.hub.view.getBounds().width,126);assert.ok(held.editors.every(editor=>!editor.visible),'Direct Campaign opening never stages another Settings editor');const semantic=await js(dock.hub.view.webContents,`({marker:document.documentElement.getAttribute('data-ff-settings-rendered'),selected:document.querySelector('[aria-current=page]')?.textContent,contentHidden:document.querySelector('#content').hidden})`);assert.ok(semantic.marker.endsWith(':campaign'));assert.equal(semantic.contentHidden,true);assert.equal(semantic.selected,locale==='ru'?'Кампания':'Campaign');const game=await js(website.webContents,scripts.geometry);assert.equal(website.getBounds().x,0);assert.equal(game.composer.x,0,'Direct Campaign keeps game unreserved until actual form adoption');assert.equal(game.composer.width,1000);const image=await capture('first-open-held');assert.deepEqual(color(image,568,950),[90,16,32],'Actual game remains painted where no form has mounted; no blank Settings cover');await js(website.webContents,'releaseMount();true');await opening;await settled();assertIdentity(await assertComposed('first-open-ready','First Campaign'));assertGeometry(samples.at(-1));
  }else if(mode==='incoming'||mode==='incoming-geometry'||mode==='incoming-appearance-geometry'){
