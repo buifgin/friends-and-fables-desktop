@@ -86,11 +86,6 @@ void (async () => {
     assert.equal(await site.executeJavaScript("document.getElementById('native-draft').value"), 'Keep this native draft');
     await dock.flushSettings();
     dock.hide();
-    const observeCampaign = site.executeJavaScript.bind(site);
-    site.executeJavaScript = (source, ...args) => {
-      const result = observeCampaign(source, ...args);
-      return source.includes('function configureNativeCampaignPanel') ? result.then(value => { console.log('Campaign transport diagnostic', source.slice(-500), value); return value; }) : result;
-    };
     await dock.openSection('campaign');
     await until(() => site.executeJavaScript("!!document.querySelector('[data-ff-campaign-navigation]') && !!document.querySelector('[data-ff-campaign-panel]')"), 'real main coherent Campaign presentation');
     assert.equal(await site.executeJavaScript("typeof window.settingsHub"), 'undefined', 'Website navigation has no privileged Hub bridge');
