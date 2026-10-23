@@ -5,7 +5,7 @@ const mode=process.env.FABLES_TEST_HANDOFF_MODE||'normal',rail=process.env.FABLE
 assert.ok(['normal','retained','guards','cancel'].includes(mode));assert.ok(['compact','expanded'].includes(rail));assert.ok(['dom','native'].includes(input));
 function nativePage(){
  const campaignId='01a0d854-78d5-7064-ae41-f63d561c8e01',chat=document.getElementById('chat'),gear=document.getElementById('campaign-gear'),composer=document.getElementById('composer');
- window.handoff={campaignOpens:0,campaignCloses:0,attackOpens:0,attackCloses:0,attackX:0,outsideAccepted:0,outsidePrevented:0,sidebarMouseDown:0,sidebarPointerDown:0,sidebarClick:0,closeSource:null,submits:0,closeMode:'immediate',closePending:false,completed:false,events:[]};
+ window.handoff={campaignOpens:0,campaignCloses:0,attackOpens:0,attackCloses:0,attackX:0,outsideAccepted:0,outsidePrevented:0,sidebarMouseDown:0,sidebarPointerDown:0,sidebarClick:0,closeSource:null,closeAttempts:[],xInvocations:[],submits:0,closeMode:'immediate',closePending:false,completed:false,events:[]};
  const state=window.handoff;
  // Observe real input before the injected capture listener intercepts Settings.
  for(const [type,counter] of [['mousedown','sidebarMouseDown'],['pointerdown','sidebarPointerDown'],['click','sidebarClick']])document.addEventListener(type,e=>{if(e.isTrusted&&gear.contains(e.target)){state[counter]++;state.events.push('sidebar-'+type);}},true);
@@ -32,22 +32,22 @@ function nativePage(){
    dialog.__reactFiber$fixture={type:'div',child:{type:function NativeActionsForm(){},memoizedProps:{campaignId,encounterId:1,isUsersCharacterTurn:true}}};
   }
   const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50';overlay.dataset.state='open';dialog.dataset.state='open';dialog.setAttribute('aria-modal','true');
-  state.attackOpens++;state.closeSource=null;state.closePending=false;state.completed=false;state.events.push('attack-launch');
+  state.attackOpens++;state.closeSource=null;state.closeAttempts=[];state.xInvocations=[];state.closePending=false;state.completed=false;state.events.push('attack-launch');
   const form=dialog.querySelector('form');form.onsubmit=e=>{e.preventDefault();state.submits++;};
   window.attackIdentity=dialog;window.attackForm=form;window.attackField=form.querySelector('input');window.attackField.value='unsaved attack draft';
   let closed=false;
   function finish(){if(closed)return;closed=true;state.closePending=false;state.completed=true;state.events.push('attack-complete');document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);overlay.remove();unlock();if(state.closeMode==='retained'){dialog.hidden=true;dialog.style.display='none';state.retainedShell=dialog;}else dialog.remove();}
-  function close(source){if(state.closePending||closed)return;state.closeSource=source;state.attackCloses++;state.closePending=true;state.events.push('attack-close-request');dialog.dataset.state='closed';if(state.closeMode==='held'||state.closeMode==='retained')state.releaseClose=finish;else if(state.closeMode==='async')setTimeout(finish,80);else finish();}
+  function close(source){const attempt={source,pending:state.closePending,closed,state:dialog.dataset.state,initiated:false};state.closeAttempts.push(attempt);if(state.closePending||closed)return false;attempt.initiated=true;state.closeSource=source;state.attackCloses++;state.closePending=true;state.events.push('attack-close-request');dialog.dataset.state='closed';if(state.closeMode==='held'||state.closeMode==='retained')state.releaseClose=finish;else if(state.closeMode==='async')setTimeout(finish,80);else finish();return true;}
   function outside(e){if(dialog.contains(e.target))return;const event=new CustomEvent('dismissableLayer.pointerDownOutside',{cancelable:true,detail:{originalEvent:e}});e.target.dispatchEvent(event);state[event.defaultPrevented?'outsidePrevented':'outsideAccepted']++;state.events.push(event.defaultPrevented?'attack-outside-prevented':'attack-outside-accepted');if(!event.defaultPrevented)close('outside');}
   function escape(e){if(e.key==='Escape')close('escape');}
-  dialog.querySelector('#attack-x').onclick=()=>{state.attackX++;state.events.push('attack-x');close('x');};window.finishAttack=finish;window.closeAttack=close;
+  dialog.querySelector('#attack-x').onclick=()=>{state.attackX++;state.events.push('attack-x');const call={pending:state.closePending,closed,state:dialog.dataset.state,before:state.attackCloses};call.initiated=close('x');call.after=state.attackCloses;state.xInvocations.push(call);};window.finishAttack=finish;window.closeAttack=close;
   document.body.append(overlay,dialog);locks();document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);
  };
  document.getElementById('actions').onclick=window.openAttack;
  document.getElementById('dice').onclick=window.openAttack;
  window.fixtureDiagnostic=()=>{
   const attack=document.getElementById('native-attack'),campaign=document.getElementById('native-campaign');
-  return {campaignOpens:state.campaignOpens,campaignCloses:state.campaignCloses,attackOpens:state.attackOpens,attackCloses:state.attackCloses,attackX:state.attackX,outsideAccepted:state.outsideAccepted,outsidePrevented:state.outsidePrevented,sidebarMouseDown:state.sidebarMouseDown,sidebarPointerDown:state.sidebarPointerDown,sidebarClick:state.sidebarClick,closeSource:state.closeSource,submits:state.submits,closePending:state.closePending,completed:state.completed,events:state.events,bodyPointer:document.body.style.pointerEvents,bodyOverflow:document.body.style.overflow,chatAria:chat.getAttribute('aria-hidden'),campaignController:!!window.__friendsFablesDesktopCampaignPanel,combatController:!!window.__friendsFablesDesktopCombatPanel,nav:!!document.querySelector('[data-ff-campaign-navigation]'),campaign:!!campaign,adopted:!!campaign?.hasAttribute('data-ff-campaign-panel'),attack:attack&&{connected:attack.isConnected,state:attack.dataset.state,hidden:attack.hidden,display:getComputedStyle(attack).display,docked:attack.hasAttribute('data-ff-combat-docked')},composerIdentity:document.querySelector('.tiptap')===originalComposer,nativeInputIdentity:document.getElementById('native-draft')===originalNativeInput,draftsPreserved:originalComposer.textContent==='preserved composer draft'&&originalNativeInput.value==='preserved native draft',attackIdentity:!attack||attack===window.attackIdentity,attackFormIdentity:!attack||attack.querySelector('form')===window.attackForm};
+  return {campaignOpens:state.campaignOpens,campaignCloses:state.campaignCloses,attackOpens:state.attackOpens,attackCloses:state.attackCloses,attackX:state.attackX,outsideAccepted:state.outsideAccepted,outsidePrevented:state.outsidePrevented,sidebarMouseDown:state.sidebarMouseDown,sidebarPointerDown:state.sidebarPointerDown,sidebarClick:state.sidebarClick,closeSource:state.closeSource,closeAttempts:state.closeAttempts,xInvocations:state.xInvocations,submits:state.submits,closePending:state.closePending,completed:state.completed,events:state.events,bodyPointer:document.body.style.pointerEvents,bodyOverflow:document.body.style.overflow,chatAria:chat.getAttribute('aria-hidden'),campaignController:!!window.__friendsFablesDesktopCampaignPanel,combatController:!!window.__friendsFablesDesktopCombatPanel,nav:!!document.querySelector('[data-ff-campaign-navigation]'),campaign:!!campaign,adopted:!!campaign?.hasAttribute('data-ff-campaign-panel'),attack:attack&&{connected:attack.isConnected,state:attack.dataset.state,hidden:attack.hidden,display:getComputedStyle(attack).display,docked:attack.hasAttribute('data-ff-combat-docked')},composerIdentity:document.querySelector('.tiptap')===originalComposer,nativeInputIdentity:document.getElementById('native-draft')===originalNativeInput,draftsPreserved:originalComposer.textContent==='preserved composer draft'&&originalNativeInput.value==='preserved native draft',attackIdentity:!attack||attack===window.attackIdentity,attackFormIdentity:!attack||attack.querySelector('form')===window.attackForm};
  };
 }
 const settings=rail==='compact'?'<button type="button" id="campaign-gear"><svg class="lucide-settings"></svg>Settings</button>':'<div id="campaign-gear" class="font-body group flex flex-row"><span class="font-header">Settings</span></div>';
@@ -94,9 +94,17 @@ if(process.env.FABLES_TEST_PARSE_ONLY==='1'){console.log('PASS: handoff fixture 
    assert.equal(after.sidebarMouseDown-before.sidebarMouseDown,1,'Genuine sidebar mousedown reaches capture once');assert.equal(after.sidebarClick-before.sidebarClick,1,'Genuine sidebar click reaches capture once');
    const pointers=after.sidebarPointerDown-before.sidebarPointerDown;assert.ok(pointers===0||pointers===1,'At most one native pointerdown per mouse press');assert.equal(accepted+prevented,pointers,'Each delivered outside pointer has an observed dismissal decision');assert.ok(accepted<=1&&prevented<=1);
   }else{assert.equal(accepted,0);assert.equal(prevented,0);}
-  // closeForSettings invokes X unless a preceding, unprevented native outside
-  // pointer already started the exact same close. Native input alone proves neither.
-  assert.equal(after.closeSource,accepted===1?'outside':'x','Close source matches the native outside decision');assert.equal(after.attackX,before.attackX+(accepted===1?0:1),'Exactly one genuine X when outside dismissal did not start close');assert.equal(after.campaignOpens,before.campaignOpens+1);await diagnostic(label+' complete');await closeSettings();
+  // Outside input can start an exit before capture/main requests Settings.
+  // A subsequent genuine X may run idempotently while that exit is pending.
+  assert.equal(after.closeSource,accepted===1?'outside':'x','First close initiator matches the native outside decision');
+  assert.equal(after.closeAttempts.filter(a=>a.initiated).length,1,'Exactly one close attempt starts a native exit');assert.equal(after.closeAttempts[0].source,after.closeSource);assert.equal(after.closeAttempts[0].initiated,true);
+  const xCalls=after.attackX-before.attackX;assert.equal(after.xInvocations.length,xCalls);
+  if(accepted===1){
+   assert.ok(xCalls===0||xCalls===1,'At most one main handoff X after outside initiation');
+   for(const call of after.xInvocations){assert.equal(call.initiated,false,'X cannot initiate a second close');assert.ok(call.pending||call.closed,'Redundant X must observe an existing native exit');assert.equal(call.state,'closed');assert.equal(call.after,call.before,'Redundant X cannot increment native close operations');}
+   for(const attempt of after.closeAttempts.slice(1)){assert.equal(attempt.source,'x');assert.equal(attempt.initiated,false);assert.ok(attempt.pending||attempt.closed);assert.equal(attempt.state,'closed');}
+  }else{assert.equal(xCalls,1,'Genuine X initiates close when outside did not');assert.equal(after.closeAttempts.length,1);assert.equal(after.xInvocations[0].initiated,true);assert.equal(after.xInvocations[0].after,after.xInvocations[0].before+1);}
+assert.equal(after.campaignOpens,before.campaignOpens+1);await diagnostic(label+' complete');await closeSettings();
  }
  void(async()=>{const profile=process.env.FABLES_TEST_PROFILE_DIR||await fs.mkdtemp(path.join(os.tmpdir(),'ff-settings-attack-'));app.setPath('userData',profile);
   void app.whenReady().then(async()=>{
