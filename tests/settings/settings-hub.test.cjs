@@ -484,3 +484,32 @@ test('Dock rejects Campaign navigation while a local opening owns the next opera
  assert.equal(await dock.navigateCampaignSection('general',model.ticket),false);assert.equal(opens,0);assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),true,'Rejected dispatch cannot consume another operation ticket');
  dock.opening=false;assert.equal(await dock.navigateCampaignSection('general',model.ticket),true);assert.equal(opens,1);assert.equal(await dock.navigateCampaignSection('general',model.ticket),false);assert.equal(opens,1);
 });
+
+// A consumed page link is one operation. A failed local surface must provide a
+// new operation on the still-committed Campaign, without replaying that request.
+for(const section of ['general','translation'])for(const phase of section==='general'?['terminal','paint']:['terminal','navigation','paint'])test('failed '+section+' '+phase+' readiness renews Campaign navigation exactly once',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},shown=[];let model;
+ f.hub.configure({translation:{...manager,createPanel:()=>{const v=new View();f.created.push(v);return v;}},instructions:manager,campaign:{prepare:async(b,n)=>{model=n;return true;},reveal:async()=>true,show:async(b,n)=>{shown.push({bounds:b,model:n});return true;},suspend(){},hide(){}}});
+ await f.hub.select('campaign');const old=model.ticket;assert.equal(f.hub.consumeCampaignNavigation(section,old),true);
+ const hubExecute=f.hub.view.webContents.executeJavaScript.bind(f.hub.view.webContents),create=f.hub.managers.translation.createPanel;
+ const reject=source=>phase==='terminal'?source.startsWith('new Promise')&&!source.includes('const advance='):source.includes('const advance=');
+ if(section==='general'||phase==='navigation')f.hub.view.webContents.executeJavaScript=source=>reject(source)?Promise.resolve(false):hubExecute(source);
+ else f.hub.managers.translation.createPanel=()=>{const v=create(),execute=v.webContents.executeJavaScript.bind(v.webContents);v.webContents.executeJavaScript=source=>reject(source)?Promise.resolve(false):execute(source);return v;};
+ await f.hub.select(section);
+ assert.equal(f.hub.currentSection(),'campaign');assert.deepEqual(f.remembered,['campaign'],'Failure cannot commit or replay the destination');
+ assert.equal(shown.length,1,'One bounded adapter show renews the surviving presentation');const fresh=shown[0].model;
+ assert.notEqual(fresh.ticket,old);assert.equal(f.hub.canNavigateCampaignSection(section,old),false);assert.equal(f.hub.canNavigateCampaignSection(section,fresh.ticket),true);
+ assert.deepEqual(fresh.destinations,model.destinations);assert.deepEqual(shown[0].bounds,{x:126,y:32,width:454,height:700});
+ f.hub.view.webContents.executeJavaScript=hubExecute;for(const v of f.created)v.webContents.executeJavaScript=hubExecute;
+ assert.equal(f.hub.consumeCampaignNavigation(section,fresh.ticket),true);await f.hub.select(section);assert.equal(f.hub.currentSection(),section);assert.deepEqual(f.remembered,['campaign',section]);assert.equal(shown.length,1,'Retry needs a new user operation; no duplicate section request');
+});
+for(const ending of ['hidden','unavailable','newer-section','newer-campaign','closed'])test('failed local readiness cannot renew Campaign after '+ending,async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},shown=[];let model,release;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{prepare:async(b,n)=>{model=n;return true;},reveal:async()=>true,show:async(b,n)=>{shown.push(n);return true;},suspend(){},hide(){}}});
+ await f.hub.select('campaign');const old=model.ticket;assert.equal(f.hub.consumeCampaignNavigation('general',old),true);
+ const execute=f.hub.view.webContents.executeJavaScript.bind(f.hub.view.webContents);f.hub.view.webContents.executeJavaScript=source=>source.startsWith('new Promise')?new Promise(resolve=>release=resolve):execute(source);
+ const pending=f.hub.select('general');await flush();f.hub.view.webContents.executeJavaScript=execute;
+ if(ending==='hidden')f.hub.setVisible(false);if(ending==='unavailable')f.hub.setCampaignAvailable(false);if(ending==='newer-section')await f.hub.select('music');if(ending==='newer-campaign'){f.hub.setVisible(false);await f.hub.select('campaign');}if(ending==='closed')f.window.emit('closed');
+ release(false);await pending;assert.equal(shown.length,0);assert.equal(f.hub.canNavigateCampaignSection('general',old),false);
+ if(ending==='newer-campaign')assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),true,'Stale failure cannot replace the new opening');
+});
