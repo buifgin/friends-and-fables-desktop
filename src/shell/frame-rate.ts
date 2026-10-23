@@ -26,6 +26,7 @@ export function configureFrameRateOverlay(enabled: boolean): void {
 
   const node = document.createElement('div');
   node.setAttribute('aria-hidden', 'true');
+  node.setAttribute('data-ff-translation-ignore', 'true');
   node.style.cssText = [
     'position:fixed',
     'right:10px',
@@ -41,7 +42,8 @@ export function configureFrameRateOverlay(enabled: boolean): void {
     'pointer-events:none',
     'white-space:nowrap',
   ].join(';');
-  node.textContent = 'Page frame cadence · warming up…';
+  const label = document.createTextNode('Page frame cadence · warming up…');
+  node.appendChild(label);
   document.body.appendChild(node);
 
   const state = {
@@ -70,7 +72,7 @@ export function configureFrameRateOverlay(enabled: boolean): void {
     if (timestamp - state.lastRender >= 250) {
       state.lastRender = timestamp;
       if (timestamp - state.samples[0] < 1000 || state.samples.length < 2) {
-        node.textContent = 'Page frame cadence · warming up…';
+        label.data = 'Page frame cadence · warming up…';
       } else {
         const intervals: number[] = [];
         for (let index = 1; index < state.samples.length; index++) {
@@ -79,13 +81,13 @@ export function configureFrameRateOverlay(enabled: boolean): void {
         }
         const elapsed = state.samples[state.samples.length - 1] - state.samples[0];
         if (elapsed <= 0 || intervals.length === 0) {
-          node.textContent = 'Page frame cadence · warming up…';
+          label.data = 'Page frame cadence · warming up…';
         } else {
           const mean = intervals.reduce((sum, delta) => sum + delta, 0) / intervals.length;
           intervals.sort((left, right) => left - right);
           const p95 = intervals[Math.ceil(intervals.length * 0.95) - 1];
           const fps = (intervals.length * 1000) / elapsed;
-          node.textContent = `Page frame cadence · ${Math.round(fps)} FPS · mean ${mean.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms`;
+          label.data = `Page frame cadence · ${Math.round(fps)} FPS · mean ${mean.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms`;
         }
       }
     }
@@ -98,7 +100,7 @@ export function configureFrameRateOverlay(enabled: boolean): void {
       state.frame = null;
       state.samples.length = 0;
       state.lastRender = Number.NEGATIVE_INFINITY;
-      node.textContent = 'Page frame cadence · warming up…';
+      label.data = 'Page frame cadence · warming up…';
     } else {
       schedule();
     }
