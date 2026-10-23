@@ -5,7 +5,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   type Fiber = { tag?: number; type?: unknown; memoizedProps?: Record<string, unknown>; memoizedState?: { memoizedState?: unknown; next?: unknown }; return?: Fiber; child?: Fiber; sibling?: Fiber; alternate?: Fiber; stateNode?: { current?: Fiber } };
   type Native = Record<string, any>;
   type Observer = { options: { mutationFn: Function }; getCurrentResult(): Native; subscribe(listener: (result: Native) => void): () => void };
-  type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; finished?: boolean; unsubscribe?: () => void; turnTemplate?: HTMLElement; turnName?: string; turnImage?: unknown; turnEntity?: string | number };
+  type Ticket = { campaign: string; encounter: string | number; character: string | number; target: string | number; dc: number; rollType: string; modifier: number; proficiency: number; observer: Observer; baseline: Native; started: number; request?: string; attackId?: string | number; finished?: boolean; waitingForLateDamage?: boolean; unsubscribe?: () => void; turnTemplate?: HTMLElement; turnName?: string; turnImage?: unknown; turnEntity?: string | number };
   type Outcome = { campaign: string; character: string | number; eventId: string | number; choiceId: string | number; started: number; status: 'claimed' | 'accepted' | 'failed' | 'unknown'; rollResultId?: string | number; rollSucceeded?: boolean; rollSignature?: string; final?: 'claimed' | 'success' | 'failed' | 'canceled' };
   type Preferences = { automaticDamage: boolean; hideIntermediateFranz: boolean; hideDamagePrompt: boolean };
   const key = '__friendsFablesDesktopCombatFlow';
@@ -707,8 +707,20 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
   function submitted(event: Event): void {
     traversalBudget = 50000; ancestryCache.clear(); currentFiberCache.clear(); rootCache.clear();
     if (!event.isTrusted || !(event.target instanceof HTMLFormElement) || !event.target.closest('[data-ff-combat-docked]')) return;
-    // A second own submission cancels rather than batching or guessing ownership.
-    if (ticket) { cancel(); return; }
+    if (ticket) {
+      const previous = ticket;
+      let successor = false;
+      try {
+        const result = previous.observer.getCurrentResult();
+        localResult(previous, result);
+        // A completed no-Damage response retains authority for late choices,
+        // but must not consume the user's next explicit Attack. An ongoing or
+        // unproven invocation still cancels rather than batching ownership.
+        successor = ticket === previous && result.status === 'success' && previous.finished === true && previous.waitingForLateDamage === true;
+      } catch { /* Unknown native state cannot authorize successor ownership. */ }
+      cancel();
+      if (!successor) return;
+    }
     clearCompletions(); releaseTurnPresentation();
     if (!prefs.automaticDamage || !campaign) return;
     const context = formContext(event.target);
@@ -1061,6 +1073,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     if (!current.request || !current.attackId || !prefs.automaticDamage) return;
     localResult(current, current.observer.getCurrentResult());
     if (ticket !== current) return;
+    current.waitingForLateDamage = false;
     const rows = Array.from(document.querySelectorAll('[id^="event-container-"]')).slice(-30).reverse();
     const entries = rows.map(row => ({ row, event: eventFor(row) }));
     if (traversalBudget <= 0) { cancel(); return; }
@@ -1094,6 +1107,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       // still follow mutation success and must keep native once-only authority.
       if (current.finished && Array.isArray(entry.event.rollChoices)
         && !entry.event.rollChoices.some((choice: Native) => choice?.type === 'Damage' && choice.character_id === current.character)) {
+        current.waitingForLateDamage = true;
         narrating.delete(entry.event.id); pendingPrompts.delete(entry.event.id); progress.delete(attack.id); return;
       }
       if (id(entry.event.id)) narrating.set(entry.event.id, { campaign, encounter: current.encounter, request: current.request });

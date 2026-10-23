@@ -671,3 +671,33 @@ test('late native Damage choice after owned GM success retains once-only authori
  f.notify();f.finish();assert.equal(f.calls(),1);
  assert.equal(f.context.window.__friendsFablesDesktopCombatFlowClaims.size,1);
 });
+test('completed no-Damage response allows the next explicit Attack to own fresh Damage',()=>{
+ const f=flowFixture({streaming:true});f.dmEvent.rollChoices=[];
+ f.submit();f.pending();f.finish();assert.equal(f.calls(),0);
+ const previous=f.result(),oldChoice={...f.choice},oldDm={...f.dmEvent};
+ f.submit();
+ Object.assign(f.attackEvent,{id:107655813,request_id:'request-successor'});
+ Object.assign(f.dmEvent,{id:107655822,request_id:'request-successor',rollChoices:[f.choice]});
+ f.rows[1].id='event-container-107655822';
+ Object.assign(f.choice,{id:6840926,event_id:107655822});
+ f.pending({submittedAt:previous.submittedAt+1,variables:{requestId:'request-successor',lastEventId:f.attackEvent.id,isMultiplayer:true}});
+ assert.equal(f.calls(),0,'New native GM is still pending');
+ f.finish();assert.equal(f.calls(),1);assert.deepEqual(f.passedChoice(),f.choice);
+ assert.equal(oldDm.request_id,'request-new');assert.notEqual(oldChoice.id,f.passedChoice().id);
+ f.notify();f.finish();assert.equal(f.calls(),1,'Successor callback remains once-only');
+});
+test('retained no-Damage ticket cannot rearm from unknown, pending, failed or mismatched observer state',()=>{
+ for(const variant of ['idle','pending','error','unknown','throw','other-request','stale']){
+  const f=flowFixture({streaming:true});f.dmEvent.rollChoices=[];
+  f.submit();f.pending();f.finish();const completed=f.result();let subscriptions=0;
+  const subscribe=f.observer.subscribe;f.observer.subscribe=fn=>{subscriptions++;return subscribe(fn)};
+  f.observer.getCurrentResult=()=>{
+   if(variant==='throw')throw Error('native observer unavailable');
+   if(variant==='other-request')return {...completed,variables:{...completed.variables,requestId:'foreign'}};
+   if(variant==='stale')return {...completed,submittedAt:0};
+   return {...completed,status:variant};
+  };
+  f.submit();assert.equal(subscriptions,0,variant+': no successor subscription');
+  f.dmEvent.rollChoices=[f.choice];f.notify();assert.equal(f.calls(),0,variant);
+ }
+});

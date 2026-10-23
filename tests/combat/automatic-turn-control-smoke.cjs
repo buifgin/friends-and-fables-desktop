@@ -324,6 +324,48 @@ app.on('window-all-closed', () => {});
       await until('fixture.finalCalls.length===1'); assert.equal(await js('fixture.calls'), 1, 'Late choice accepted only once');
     }
   };
+  const successor = async () => {
+    // An overlapping submission is still cancellation, not a new automatic
+    // sequence. Both requests are explicit trusted native form submissions.
+    await reset(); await begin('hit'); await click('#submit');
+    await until('fixture.submits===2');
+    await js('fixture.finishGM();fixture.setSpin("attack",false);void 0');
+    await paint(); await js('window.__friendsFablesDesktopCombatFlow.update("en");void 0'); await paint();
+    assert.equal(await js('fixture.calls'), 0, 'Pending initial GM duplicate remains manual');
+    assert.equal(await js('fixture.finalCalls.length'), 0, 'Canceled overlapping request has no automatic final GM');
+
+    await reset(); await begin('no-damage');
+    await js('fixture.finishGM();fixture.setSpin("attack",false);void 0');
+    await until('fixture.snapshot().nativeEnd');
+    const first = await sample('successor-terminal-no-damage');
+    assert.equal(first.calls, 0); assert.equal(first.finalCalls.length, 0);
+    assert.equal(await js('document.getElementById("event-message-card-111").getClientRects().length>0'), true, 'Out-of-reach/no-Damage final answer remains visible');
+    const preferences = await js('JSON.stringify(window.__friendsFablesDesktopCombatFlow.getPreferences())');
+    await js('window.successorProof={form:fixture.form,draft:fixture.draft,oldDm:fixture.latestDm,oldChoice:fixture.choice,oldRequest:fixture.gmObserver.getCurrentResult().variables.requestId};void 0');
+    // No reload, disposal, preference change or late-choice restoration clears
+    // the retained ticket before this independently submitted successor.
+    await js('fixture.mode="hit";void 0'); await click('#submit');
+    await until('fixture.submits===2&&fixture.gmObserver.getCurrentResult().status==="pending"');
+    assert.equal(await js('fixture.gmObserver.getCurrentResult().variables.requestId!==successorProof.oldRequest&&fixture.latestDm.id!==successorProof.oldDm.id&&fixture.choice.id!==successorProof.oldChoice.id'), true, 'Successor owns fresh native request/DM/choice IDs');
+    await js('fixture.finishGM();fixture.setSpin("attack",false);void 0');
+    console.log('SUCCESSOR_OWNERSHIP', JSON.stringify(await js('({oldRequest:successorProof.oldRequest,newRequest:fixture.gmObserver.getCurrentResult().variables.requestId,oldDm:successorProof.oldDm.id,newDm:fixture.latestDm.id,oldChoice:successorProof.oldChoice.id,newChoice:fixture.choice.id,...fixture.snapshot(),promptVisible:document.getElementById("native-damage-prompt").getClientRects().length>0})')));
+    await until('fixture.calls===1');
+    assert.equal(await js('fixture.choice.accepted===true&&fixture.damage.event.id===123'), true, 'Only successor native Damage accepted');
+    await js('fixture.finishDamage();fixture.setSpin("damage",false);void 0');
+    await until('fixture.finalCalls.length===1');
+    assert.equal(await js('fixture.finalCalls[0].lastEventId'), 121, 'Final Continue belongs to successor causal DM');
+    await js('fixture.finishFinalGM();fixture.publishFinalResponse();void 0'); await until('fixture.snapshot().nativeEnd');
+    for (let frame = 0; frame < 3; frame++) { await js('window.__friendsFablesDesktopCombatFlow.update("en");void 0'); await paint(); }
+    const finished = await sample('successor-complete');
+    assert.equal(finished.calls, 1); assert.equal(finished.finalCalls.length, 1); assert.equal(finished.submits, 2, 'Automation never initiates an extra Attack');
+    assert.equal(await js('fixture.form===successorProof.form&&fixture.draft===successorProof.draft'), true);
+    assert.equal(finished.draft, 'preserved native draft'); assert.equal(finished.endCalls, 0);
+    assert.equal(await js('JSON.stringify(window.__friendsFablesDesktopCombatFlow.getPreferences())'), preferences);
+    // A third explicit Attack also works; it is no longer the workaround.
+    await click('#submit'); await until('fixture.submits===3');
+    await js('fixture.finishGM();fixture.setSpin("attack",false);void 0'); await until('fixture.calls===2');
+    assert.equal(await js('fixture.choice.accepted===true&&fixture.damage.event.id===133'), true, 'Third explicit Attack retains normal automatic Damage');
+  };
   const nativeSafety = async () => {
     await reset(); await js('window.proof={button:fixture.nativeEnd,callback:fixture.nativeEndCallback,form:fixture.form,draft:fixture.draft};fixture.endPending=true;fixture.render();void 0'); await paint();
     assert.equal(await js('fixture.nativeEnd===proof.button&&fixture.nativeEnd.onclick===proof.callback&&fixture.nativeEnd.disabled'), true, 'Native busy node/callback/disabled retained');
@@ -491,6 +533,7 @@ app.on('window-all-closed', () => {});
     }
   };
   const scenario = process.env.FABLES_TURN_CONTROL_SCENARIO || 'all';
+  if (['all', 'successor'].includes(scenario)) await successor();
   if (['all', 'whole-safety'].includes(scenario)) await completionSafety();
   if (['all', 'whole-projection'].includes(scenario)) await wholeAttack(true, true);
   if (['all', 'whole-manual'].includes(scenario)) await wholeAttack(false);
@@ -499,6 +542,6 @@ app.on('window-all-closed', () => {});
   if (['all', 'completion'].includes(scenario)) { await completion('miss'); await completion('no-damage'); }
   if (['all', 'safety'].includes(scenario)) await nativeSafety();
   if (['all', 'negatives'].includes(scenario)) await negatives();
-  assert.ok(['all', 'whole-safety', 'whole-projection', 'whole-manual', 'whole-automatic-gap', 'phases', 'completion', 'safety', 'negatives'].includes(scenario), 'Known fixture scenario');
+  assert.ok(['all', 'successor', 'whole-safety', 'whole-projection', 'whole-manual', 'whole-automatic-gap', 'phases', 'completion', 'safety', 'negatives'].includes(scenario), 'Known fixture scenario');
   console.log(`Automatic turn control ${scenario} passed`); clearTimeout(watchdog); window.destroy(); app.exit(0);
 })().catch(error => { console.error(error); clearTimeout(watchdog); window?.destroy(); app.exit(1); });
