@@ -12,7 +12,7 @@ const websiteHtml = `<!doctype html><meta charset="utf-8"><title>Offline FPS fix
 #draft{position:fixed;left:24px;top:170px;z-index:2}</style>
 <main id="feed"><div id="native">Native feed content</div><textarea id="draft">Keep this draft</textarea>
 <div style="margin-top:900px">Scroll anchor</div></main>
-<script>window.fixtureReady=true;window.nativeIdentity=document.getElementById('native');window.draftIdentity=document.getElementById('draft');</script>`;
+<script>window.fixtureReady=true;window.fixtureDocumentId=Math.random().toString(36).slice(2);window.nativeIdentity=document.getElementById('native');window.draftIdentity=document.getElementById('draft');</script>`;
 
 function validateSerializedPrograms() {
   new Function('return ' + websiteHtml.match(/<script>([\s\S]*?)<\/script>/)[1]);
@@ -23,7 +23,7 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
 } else {
   if (!process.versions.electron) throw new Error('Run through the isolated Electron fixture runner.');
   const { app, BrowserWindow, Menu, session, webContents } = require('electron');
-  let host, site, profile, finished = false;
+  let host, site, profile, popup;
   const deadline = setTimeout(() => { console.error('FAIL: FPS overlay fixture deadline'); app.exit(1); }, 25000);
 
   async function until(predicate, label, timeoutMs = 8000) {
@@ -50,7 +50,9 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
       feed:document.getElementById('feed').getBoundingClientRect().toJSON(),
       nativeSame:window.nativeIdentity===document.getElementById('native'),
       draftSame:window.draftIdentity===document.getElementById('draft'),
-      draft:document.getElementById('draft').value,scrollY,rafState:!!window.__ffFrameRateOverlay})`);
+      draft:document.getElementById('draft').value,scrollY,rafState:!!window.__ffFrameRateOverlay,
+      rafFrame:window.__ffFrameRateOverlay?.frame??null,samples:window.__ffFrameRateOverlay?.samples.length??0,
+      fixtureDocumentId:window.fixtureDocumentId})`);
   }
 
   function toggle(item, expected) {
@@ -59,12 +61,17 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
     assert.equal(item.checked, expected, 'menu checkbox state follows click');
   }
 
-  void app.whenReady().then(async () => {
+  void (async () => {
     profile = process.env.FABLES_TEST_PROFILE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'ff-frame-rate-'));
+    await fs.mkdir(profile, { recursive: true });
     app.setPath('userData', profile);
     app.on('window-all-closed', () => {});
+    await app.whenReady();
     await session.fromPartition('persist:friends-and-fables').protocol.handle('https', () =>
       new Response(websiteHtml, { headers: { 'Content-Type': 'text/html' } }));
+    // Install the offline route before loading the real entry point; it creates
+    // the actual BrowserWindow as soon as app.whenReady() settles.
+    require(path.join(appRoot, 'dist/main'));
     await until(() => webContents.getAllWebContents().some(contents => !contents.isDestroyed() && contents.getURL().startsWith('https://play.fables.gg/')), 'main play page');
     site = webContents.getAllWebContents().find(contents => !contents.isDestroyed() && contents.getURL().startsWith('https://play.fables.gg/'));
     await until(() => !site.isLoading(), 'offline play document');
@@ -101,31 +108,54 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
     }, 'overlay and RAF cleanup');
     toggle(item, true);
     await until(async () => (await pageState()).rafState, 're-enabled overlay');
+    const beforeReload = await pageState();
+    const reloaded = new Promise(resolve => site.once('did-finish-load', resolve));
     await site.reload();
-    await until(() => !site.isLoading(), 'main document reload');
+    await reloaded;
+    await until(async () => !(await pageState()).hidden && (await pageState()).fixtureDocumentId !== beforeReload.fixtureDocumentId,
+      'fresh main document after reload');
     await until(async () => (await pageState()).rafState && !!(await pageState()).overlay, 'toggle reapplied after reload');
     assert.equal(menuItem().checked, true);
 
+    // A real hide/show exercises visibilitychange and proves the cadence starts
+    // from a fresh sample window when the page becomes visible again.
+    host.hide();
+    await until(async () => (await pageState()).hidden, 'hidden page visibility');
+    await until(async () => {
+      const hidden = await pageState();
+      return hidden.rafFrame === null && hidden.samples === 0;
+    }, 'hidden RAF and sample cleanup');
+    host.show(); host.focus(); site.focus();
+    await until(async () => !(await pageState()).hidden && (await pageState()).rafFrame !== null, 'visible page RAF resumed');
+    await until(async () => /warming up/.test((await pageState()).overlay || ''), 'fresh visible measurement warmup');
+    await until(async () => /\bFPS\b/.test((await pageState()).overlay || ''), 'visible cadence remeasured', 5000);
+
     // A popup gets its own document. It must not inherit a main-page overlay.
-    let popup;
     site.setWindowOpenHandler(({ url }) => {
       if (url === 'https://play.fables.gg/popup') {
-        setImmediate(() => { popup = webContents.getAllWebContents().find(contents => contents !== site && !contents.isDestroyed() && contents.getURL() === url); });
         return { action: 'allow' };
       }
       return { action: 'deny' };
     });
     await site.executeJavaScript('window.open("https://play.fables.gg/popup","fps-popup");true');
-    await until(() => popup && !popup.isLoading(), 'offline popup document');
+    await until(() => {
+      popup = webContents.getAllWebContents().find(contents => contents !== site && !contents.isDestroyed() && contents.getURL() === 'https://play.fables.gg/popup');
+      return popup && !popup.isLoading();
+    }, 'offline popup document');
     assert.equal(await popup.executeJavaScript('!!window.__ffFrameRateOverlay'), false, 'popup does not inherit main-page overlay');
 
     toggle(menuItem(), false);
     await until(async () => !(await pageState()).rafState, 'final overlay cleanup');
     if (popup && !popup.isDestroyed()) popup.close();
-    finished = true;
+    clearTimeout(deadline);
     console.log('PASS: actual-main FPS menu toggle, measurement, page preservation, reload and popup scope');
-  }).catch(error => {
+    host.close();
+    app.quit();
+  })().catch(error => {
     console.error('FAIL: FPS overlay fixture', error);
+    clearTimeout(deadline);
+    if (popup && !popup.isDestroyed()) popup.close();
+    if (host && !host.isDestroyed()) host.destroy();
     app.exit(1);
   });
 
