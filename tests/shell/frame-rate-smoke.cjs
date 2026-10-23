@@ -2,7 +2,7 @@
 // Coordinator owns native execution; this file can be syntax checked in Node.
 const assert = require('node:assert/strict');
 const path = require('node:path');
-const fs = require('node:fs/promises');
+const fs = require('node:fs');
 const os = require('node:os');
 
 const appRoot = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '../..');
@@ -23,7 +23,7 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
 } else {
   if (!process.versions.electron) throw new Error('Run through the isolated Electron fixture runner.');
   const { app, BrowserWindow, Menu, session, webContents } = require('electron');
-  let host, site, profile, popup;
+  let host, site, popup;
   const deadline = setTimeout(() => { console.error('FAIL: FPS overlay fixture deadline'); app.exit(1); }, 25000);
 
   async function until(predicate, label, timeoutMs = 8000) {
@@ -61,17 +61,15 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
     assert.equal(item.checked, expected, 'menu checkbox state follows click');
   }
 
-  void (async () => {
-    profile = process.env.FABLES_TEST_PROFILE_DIR || await fs.mkdtemp(path.join(os.tmpdir(), 'ff-frame-rate-'));
-    await fs.mkdir(profile, { recursive: true });
-    app.setPath('userData', profile);
-    app.on('window-all-closed', () => {});
-    await app.whenReady();
+  const profile = process.env.FABLES_TEST_PROFILE_DIR || fs.mkdtempSync(path.join(os.tmpdir(), 'ff-frame-rate-'));
+  fs.mkdirSync(profile, { recursive: true });
+  app.setPath('userData', profile);
+  app.on('window-all-closed', () => {});
+  void app.whenReady().then(async () => {
     await session.fromPartition('persist:friends-and-fables').protocol.handle('https', () =>
       new Response(websiteHtml, { headers: { 'Content-Type': 'text/html' } }));
-    // Install the offline route before loading the real entry point; it creates
-    // the actual BrowserWindow as soon as app.whenReady() settles.
-    require(path.join(appRoot, 'dist/main'));
+    // Register the offline handler in the first readiness callback. Main is
+    // required synchronously below, before its own app.whenReady callback runs.
     await until(() => webContents.getAllWebContents().some(contents => !contents.isDestroyed() && contents.getURL().startsWith('https://play.fables.gg/')), 'main play page');
     site = webContents.getAllWebContents().find(contents => !contents.isDestroyed() && contents.getURL().startsWith('https://play.fables.gg/'));
     await until(() => !site.isLoading(), 'offline play document');
@@ -151,7 +149,7 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
     console.log('PASS: actual-main FPS menu toggle, measurement, page preservation, reload and popup scope');
     host.close();
     app.quit();
-  })().catch(error => {
+  }).catch(error => {
     console.error('FAIL: FPS overlay fixture', error);
     clearTimeout(deadline);
     if (popup && !popup.isDestroyed()) popup.close();
@@ -160,4 +158,5 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
   });
 
   app.on('will-quit', () => clearTimeout(deadline));
+  require(path.join(appRoot, 'dist/main'));
 }
