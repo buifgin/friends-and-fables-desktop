@@ -1,6 +1,6 @@
 // Actual-main/controller handoff fixture. Coordinator owns native execution.
 // retained is a labeled robustness case, not a claim about the live website.
-const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs/promises'),os=require('node:os'),vm=require('node:vm');
+const crypto=require('node:crypto'),assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs/promises'),os=require('node:os'),vm=require('node:vm');
 const mode=process.env.FABLES_TEST_HANDOFF_MODE||'normal',rail=process.env.FABLES_TEST_HANDOFF_RAIL||'compact',input=process.env.FABLES_TEST_HANDOFF_INPUT||'dom';
 assert.ok(['normal','retained','guards','cancel'].includes(mode));assert.ok(['compact','expanded'].includes(rail));assert.ok(['dom','native'].includes(input));
 function nativePage(){
@@ -55,14 +55,24 @@ new vm.Script('('+nativePage.toString()+')()');new vm.Script(html.match(/<script
 if(process.env.FABLES_TEST_PARSE_ONLY==='1'){console.log('PASS: handoff fixture browser programs parse');}else{
  if(!process.versions.electron)throw Error('Coordinator must run through the isolated native runner.');
  const {app,BrowserWindow,session,webContents}=require('electron'),root=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'../..');
- let dock,host,site,openRequests=0;
- const {AppearanceManager}=require(path.join(root,'dist/appearance/appearance')),attach=AppearanceManager.prototype.attachMain;
- AppearanceManager.prototype.attachMain=function(...args){const c=args[1].webContents,handler=c.setWindowOpenHandler.bind(c);c.setWindowOpenHandler=fn=>handler(details=>{if(details.url==='fables-desktop://settings/open-campaign')openRequests++;return fn(details);});dock=attach.apply(this,args);return dock;};
+ let dock,host,site,manager,openRequests=0;
+ const started=Date.now(),lifecycle=[],applies=[];
+ const record=(events,value)=>{events.push({ms:Date.now()-started,...value});if(events.length>32)events.shift();};
+ const website=()=>manager&&Array.from(manager.websites).find(w=>w.contents===site);
+ function injectionState(){const w=website();return w?{ready:w.ready,document:w.document,pending:applies.filter(a=>a.contents===site.id&&!a.settled).length}:null;}
+
+ const {AppearanceManager}=require(path.join(root,'dist/appearance/appearance')),attach=AppearanceManager.prototype.attachMain,attachWebsite=AppearanceManager.prototype.attach,apply=AppearanceManager.prototype.apply;
+ // Observe the genuine manager pipeline without replacing an injected controller.
+ AppearanceManager.prototype.apply=function(w){const entry={contents:w.contents.id,document:w.document,ready:w.ready,url:w.contents.getURL(),ms:Date.now()-started,settled:false};applies.push(entry);const pending=apply.call(this,w);void pending.then(()=>{entry.settled=true;entry.endMs=Date.now()-started;},error=>{entry.settled=true;entry.endMs=Date.now()-started;entry.error=String(error);});return pending;};
+ AppearanceManager.prototype.attach=function(c){for(const event of ['did-start-navigation','did-navigate','dom-ready','did-finish-load','did-fail-load','render-process-gone'])c.on(event,()=>record(lifecycle,{event,contents:c.id,url:c.getURL(),loading:c.isLoading()}));return attachWebsite.call(this,c);};
+ AppearanceManager.prototype.attachMain=function(...args){manager=this;const c=args[1].webContents,handler=c.setWindowOpenHandler.bind(c);c.setWindowOpenHandler=fn=>handler(details=>{if(details.url==='fables-desktop://settings/open-campaign')openRequests++;return fn(details);});dock=attach.apply(this,args);return dock;};
  const timer=setTimeout(()=>{console.error('FAIL: handoff fixture total deadline');host?.destroy();app.exit(1);},30000);
  app.on('window-all-closed',()=>{});
- async function diagnostic(label){console.log('Handoff diagnostic '+JSON.stringify({label,mode,rail,input,openRequests,opened:dock?.isOpen(),opening:dock?.opening,openingSection:dock?.openingSection,section:dock?.hub.currentSection(),hubVisible:dock?.hub.isVisible(),retained:dock?.hub.hasRetainedCampaign(),reserved:dock?.hub.hasCampaignReservation(),page:site&&!site.isDestroyed()?await site.executeJavaScript('fixtureDiagnostic()'):null}));}
+ async function diagnostic(label){console.log('Handoff diagnostic '+JSON.stringify({label,mode,rail,input,openRequests,injection:injectionState(),lifecycle,applies,site:site&&!site.isDestroyed()?{id:site.id,url:site.getURL(),loading:site.isLoading(),focused:site.isFocused(),visible:host?.isVisible()}:null,opened:dock?.isOpen(),opening:dock?.opening,openingSection:dock?.openingSection,section:dock?.hub.currentSection(),hubVisible:dock?.hub.isVisible(),retained:dock?.hub.hasRetainedCampaign(),reserved:dock?.hub.hasCampaignReservation(),page:site&&!site.isDestroyed()?await site.executeJavaScript('fixtureDiagnostic()'):null}));}
  async function until(predicate,label){const end=Date.now()+4000;while(!await predicate()){if(Date.now()>end){await diagnostic(label);throw Error('Handoff prerequisite: '+label);}await new Promise(r=>setTimeout(r,10));}}
  const js=source=>site.executeJavaScript(source);
+ async function injected(label){await until(async()=>{const state=injectionState();return state?.ready&&state.pending===0&&await js('!!window.__friendsFablesDesktopCombatPanel&&!!window.__fablesDesktopWebsiteSettingsCleanup');},label);}
+ async function provenance(){const files=['dist/main.js','dist/appearance/appearance.js','dist/combat/combat-panel.js','dist/shell/website-settings.js'];const hashes={fixture:crypto.createHash('sha256').update(await fs.readFile(__filename)).digest('hex')};for(const file of files)hashes[file]=crypto.createHash('sha256').update(await fs.readFile(path.join(root,file))).digest('hex');console.log('Handoff provenance '+JSON.stringify({root,versions:{node:process.versions.node,electron:process.versions.electron,chrome:process.versions.chrome},hashes}));}
  const frames=()=>js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))');
  async function click(selector){if(input==='dom'){await js('document.querySelector('+JSON.stringify(selector)+').click();true');return;}const point=await js('(()=>{const b=document.querySelector('+JSON.stringify(selector)+').getBoundingClientRect();return {x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2),hit:document.querySelector('+JSON.stringify(selector)+').contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))}})()');assert.equal(point.hit,true,'Native target is actually hittable');site.focus();site.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:'left',clickCount:1});site.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:'left',clickCount:1});}
  async function assertDrafts(){assert.deepEqual(await js('(()=>{const d=fixtureDiagnostic();return [d.composerIdentity,d.nativeInputIdentity,d.draftsPreserved,d.attackIdentity,d.attackFormIdentity]})()'),[true,true,true,true,true]);}
@@ -80,8 +90,8 @@ if(process.env.FABLES_TEST_PARSE_ONLY==='1'){console.log('PASS: handoff fixture 
  }
  void(async()=>{const profile=process.env.FABLES_TEST_PROFILE_DIR||await fs.mkdtemp(path.join(os.tmpdir(),'ff-settings-attack-'));app.setPath('userData',profile);
   void app.whenReady().then(async()=>{
-   await session.fromPartition('persist:friends-and-fables').protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
-   await until(()=>dock&&webContents.getAllWebContents().some(c=>!c.isDestroyed()&&c.getURL()==='https://play.fables.gg/'),'actual main website');site=webContents.getAllWebContents().find(c=>!c.isDestroyed()&&c.getURL()==='https://play.fables.gg/');await until(()=>!site.isLoading(),'offline page loaded');host=BrowserWindow.getAllWindows().find(w=>w.contentView.children.some(v=>v.webContents===site));host.show();host.focus();site.focus();await site.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play');await until(()=>!site.isLoading(),'campaign route');await until(()=>js('!!window.__friendsFablesDesktopCombatPanel&&!!window.__fablesDesktopWebsiteSettingsCleanup'),'actual injected controllers');await until(()=>dock.hub.campaignAvailable===true,'main campaign availability');
+   await session.fromPartition('persist:friends-and-fables').protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));await provenance();
+   await until(()=>dock&&webContents.getAllWebContents().some(c=>!c.isDestroyed()&&c.getURL()==='https://play.fables.gg/'),'actual main website');site=webContents.getAllWebContents().find(c=>!c.isDestroyed()&&c.getURL()==='https://play.fables.gg/');await until(()=>!site.isLoading(),'offline page loaded');host=BrowserWindow.getAllWindows().find(w=>w.contentView.children.some(v=>v.webContents===site));host.show();host.focus();site.focus();await injected('initial actual injected controllers settled before navigation');await diagnostic('initial injection settled');await site.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play');await until(()=>!site.isLoading(),'campaign route');await injected('campaign actual injected controllers settled');await diagnostic('campaign injection settled');await until(()=>dock.hub.campaignAvailable===true,'main campaign availability');
    // No remembered section: genuine sidebar capture chooses Campaign itself.
    await click('#campaign-gear');await opened('first sidebar Settings');await closeSettings();
    await cycle('async','normal async control');await cycle('held','second held-close control');
