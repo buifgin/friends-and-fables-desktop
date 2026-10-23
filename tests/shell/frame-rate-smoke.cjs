@@ -45,6 +45,7 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
   async function pageState() {
     return site.executeJavaScript(`({ready:!!window.fixtureReady,url:location.href,hidden:document.hidden,
       overlay:[...document.querySelectorAll('div[aria-hidden="true"]')].find(node=>node.textContent.startsWith('Page frame cadence'))?.textContent||null,
+      overlayTranslationIgnore:[...document.querySelectorAll('div[aria-hidden="true"]')].find(node=>node.textContent.startsWith('Page frame cadence'))?.getAttribute('data-ff-translation-ignore')||null,
       overlayPointer:[...document.querySelectorAll('div[aria-hidden="true"]')].find(node=>node.textContent.startsWith('Page frame cadence'))?.style.pointerEvents||null,
       overlayFixed:[...document.querySelectorAll('div[aria-hidden="true"]')].find(node=>node.textContent.startsWith('Page frame cadence'))?.style.position||null,
       feed:document.getElementById('feed').getBoundingClientRect().toJSON(),
@@ -91,6 +92,7 @@ if (process.env.FABLES_TEST_PARSE_ONLY === '1') {
     }, 'overlay and RAF state');
     await until(async () => /\bFPS\b/.test((await pageState()).overlay || ''), 'one-second cadence measurement', 5000);
     state = await pageState();
+    assert.equal(state.overlayTranslationIgnore, 'true', 'dynamic counter text stays outside translation mutations');
     assert.equal(state.overlayPointer, 'none', 'counter does not intercept pointer input');
     assert.equal(state.overlayFixed, 'fixed', 'counter is fixed over the page');
     assert.deepEqual(state.feed, baseline.feed, 'feed geometry is unchanged');

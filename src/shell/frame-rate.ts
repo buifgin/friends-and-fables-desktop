@@ -26,6 +26,7 @@ export function configureFrameRateOverlay(enabled: boolean): void {
 
   const node = document.createElement('div');
   node.setAttribute('aria-hidden', 'true');
+  node.setAttribute('data-ff-translation-ignore', 'true');
   node.style.cssText = [
     'position:fixed',
     'right:10px',
