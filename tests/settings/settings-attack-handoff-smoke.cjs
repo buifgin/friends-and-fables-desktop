@@ -1,0 +1,100 @@
+// Actual-main/controller handoff fixture. Coordinator owns native execution.
+// retained is a labeled robustness case, not a claim about the live website.
+const assert=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs/promises'),os=require('node:os'),vm=require('node:vm');
+const mode=process.env.FABLES_TEST_HANDOFF_MODE||'normal',rail=process.env.FABLES_TEST_HANDOFF_RAIL||'compact',input=process.env.FABLES_TEST_HANDOFF_INPUT||'dom';
+assert.ok(['normal','retained','guards','cancel'].includes(mode));assert.ok(['compact','expanded'].includes(rail));assert.ok(['dom','native'].includes(input));
+function nativePage(){
+ const campaignId='01a0d854-78d5-7064-ae41-f63d561c8e01',chat=document.getElementById('chat'),gear=document.getElementById('campaign-gear'),composer=document.getElementById('composer');
+ window.handoff={campaignOpens:0,campaignCloses:0,attackOpens:0,attackCloses:0,attackX:0,submits:0,closeMode:'immediate',closePending:false,completed:false,events:[]};
+ const state=window.handoff;window.originalComposer=document.querySelector('.tiptap');window.originalNativeInput=document.getElementById('native-draft');
+ composer.__reactFiber$fixture={memoizedProps:{encounterActive:false}};
+ function locks(){document.body.style.pointerEvents='none';document.body.style.overflow='hidden';chat.setAttribute('aria-hidden','true');}
+ function unlock(){document.body.style.pointerEvents='';document.body.style.overflow='';chat.removeAttribute('aria-hidden');}
+ gear.onclick=()=>{
+  if(document.getElementById('native-campaign'))return;state.campaignOpens++;state.events.push('campaign-launch');
+  const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50';overlay.dataset.state='open';
+  const dialog=document.createElement('div');dialog.id='native-campaign';dialog.role='dialog';dialog.dataset.state='open';dialog.setAttribute('aria-modal','true');
+  dialog.innerHTML='<button type="button"><svg class="lucide-x"></svg>Close</button><div class="overflow-y-auto h-full"><div class="p-6 h-full"><div class="flex-1 items-center overflow-y-auto"><div class="mx-auto"><div><div><h3 class="font-header">Campaign Settings</h3></div><div><label>Name<textarea>Campaign draft</textarea></label></div></div></div></div></div></div>';
+  dialog.__reactFiber$fixture={type:'div',child:{type:function NativeCampaign(){return 'Campaign Settings';},memoizedProps:{campaignId,isHost:true}}};
+  dialog.querySelector('button').onclick=()=>{state.campaignCloses++;state.events.push('campaign-close');dialog.dataset.state='closed';dialog.remove();overlay.remove();unlock();};
+  document.body.append(overlay,dialog);locks();
+ };
+ window.openAttack=()=>{
+  composer.__reactFiber$fixture.memoizedProps.encounterActive=true;
+  let dialog=state.retainedShell;
+  if(dialog?.isConnected){dialog.hidden=false;dialog.style.removeProperty('display');state.events.push('reuse-completed-shell');}else{
+   dialog=document.createElement('div');dialog.id='native-attack';dialog.role='dialog';dialog.className='fixed native';
+   dialog.innerHTML='<h2>Choose Action</h2><div role="tablist"><button type="button" role="tab">Weapons</button><button type="button" role="tab">Spells</button><button type="button" role="tab">Custom</button></div><div class="md:min-w-[980px] md:min-h-[600px] md:max-h-[600px] overflow-y-auto py-4"><form><input name="description" value="custom draft"><button type="submit">Attack</button></form></div><button type="button" id="attack-x"><svg class="lucide-x"></svg>Close</button>';
+   // Native Actions topology copied from combat-panel-smoke; no fixture import.
+   dialog.__reactFiber$fixture={type:'div',child:{type:function NativeActionsForm(){},memoizedProps:{campaignId,encounterId:1,isUsersCharacterTurn:true}}};
+  }
+  const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50';overlay.dataset.state='open';dialog.dataset.state='open';dialog.setAttribute('aria-modal','true');
+  state.attackOpens++;state.closePending=false;state.completed=false;state.events.push('attack-launch');
+  const form=dialog.querySelector('form');form.onsubmit=e=>{e.preventDefault();state.submits++;};
+  window.attackIdentity=dialog;window.attackForm=form;window.attackField=form.querySelector('input');window.attackField.value='unsaved attack draft';
+  let closed=false;
+  function finish(){if(closed)return;closed=true;state.closePending=false;state.completed=true;state.events.push('attack-complete');document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);overlay.remove();unlock();if(state.closeMode==='retained'){dialog.hidden=true;dialog.style.display='none';state.retainedShell=dialog;}else dialog.remove();}
+  function close(){if(state.closePending||closed)return;state.attackCloses++;state.closePending=true;state.events.push('attack-close-request');dialog.dataset.state='closed';if(state.closeMode==='held'||state.closeMode==='retained')state.releaseClose=finish;else if(state.closeMode==='async')setTimeout(finish,80);else finish();}
+  function outside(e){if(dialog.contains(e.target))return;const event=new CustomEvent('dismissableLayer.pointerDownOutside',{cancelable:true,detail:{originalEvent:e}});e.target.dispatchEvent(event);if(!event.defaultPrevented)close();}
+  function escape(e){if(e.key==='Escape')close();}
+  dialog.querySelector('#attack-x').onclick=()=>{state.attackX++;close();};window.finishAttack=finish;window.closeAttack=close;
+  document.body.append(overlay,dialog);locks();document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);
+ };
+ document.getElementById('actions').onclick=window.openAttack;
+ document.getElementById('dice').onclick=window.openAttack;
+ window.fixtureDiagnostic=()=>{
+  const attack=document.getElementById('native-attack'),campaign=document.getElementById('native-campaign');
+  return {campaignOpens:state.campaignOpens,campaignCloses:state.campaignCloses,attackOpens:state.attackOpens,attackCloses:state.attackCloses,attackX:state.attackX,submits:state.submits,closePending:state.closePending,completed:state.completed,events:state.events,bodyPointer:document.body.style.pointerEvents,bodyOverflow:document.body.style.overflow,chatAria:chat.getAttribute('aria-hidden'),campaignController:!!window.__friendsFablesDesktopCampaignPanel,combatController:!!window.__friendsFablesDesktopCombatPanel,nav:!!document.querySelector('[data-ff-campaign-navigation]'),campaign:!!campaign,adopted:!!campaign?.hasAttribute('data-ff-campaign-panel'),attack:attack&&{connected:attack.isConnected,state:attack.dataset.state,hidden:attack.hidden,display:getComputedStyle(attack).display,docked:attack.hasAttribute('data-ff-combat-docked')},composerIdentity:document.querySelector('.tiptap')===originalComposer,nativeInputIdentity:document.getElementById('native-draft')===originalNativeInput,draftsPreserved:originalComposer.textContent==='preserved composer draft'&&originalNativeInput.value==='preserved native draft',attackIdentity:!attack||attack===window.attackIdentity,attackFormIdentity:!attack||attack.querySelector('form')===window.attackForm};
+ };
+}
+const settings=rail==='compact'?'<button type="button" id="campaign-gear"><svg class="lucide-settings"></svg>Settings</button>':'<div id="campaign-gear" class="font-body group flex flex-row"><span class="font-header">Settings</span></div>';
+const peers=rail==='compact'?'<button type="button">Play</button><button type="button">Sheet</button>':'<div class="font-body group flex flex-row"><span class="font-header">Play</span></div><div class="font-body group flex flex-row"><span class="font-header">Sheet</span></div>';
+const html='<!doctype html><meta charset="utf-8"><style>body{margin:0}.fixed{position:fixed}.inset-0{inset:0}.z-50{z-index:50}#sidebar{position:fixed;left:0;top:0;width:'+(rail==='compact'?60:240)+'px;height:100vh;z-index:2}#sidebar>div{display:flex;flex-direction:column;position:relative;gap:8px}#sidebar button,#campaign-gear{min-height:40px}#campaign{display:flex;margin-left:'+(rail==='compact'?60:240)+'px;height:100vh}#chat{width:750px}#native-campaign{position:fixed;right:0;top:5vh;width:500px;height:90vh;background:#203040;z-index:50}#native-campaign .mx-auto{min-height:1200px}.native{left:200px;top:60px;width:650px;min-height:300px;background:#203040;z-index:50;pointer-events:auto}#attack-x{position:absolute;top:8px;right:8px}[class~="md:min-w-[980px]"]{min-width:980px;min-height:600px;max-height:600px;overflow:auto}</style><aside id="sidebar"><div class="flex flex-col relative z-10">'+peers+settings+'</div></aside><div id="campaign" class="flex h-full w-full"><section id="chat" class="flex-1 h-full w-full"><div id="events-list"></div><div id="composer"><div class="tiptap" contenteditable="true">preserved composer draft</div><button type="button" id="dice"><svg class="lucide-dice-3"></svg></button><button type="button" id="actions"><svg class="lucide-swords"></svg></button></div><input id="native-draft" value="preserved native draft"></section></div><script>('+nativePage.toString()+')()</script>';
+// Offline mode parses every browser program without importing any native entry.
+new vm.Script('('+nativePage.toString()+')()');new vm.Script(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
+if(process.env.FABLES_TEST_PARSE_ONLY==='1'){console.log('PASS: handoff fixture browser programs parse');}else{
+ if(!process.versions.electron)throw Error('Coordinator must run through the isolated native runner.');
+ const {app,BrowserWindow,session,webContents}=require('electron'),root=process.env.FABLES_TEST_APP_ROOT||path.join(__dirname,'../..');
+ let dock,host,site,openRequests=0;
+ const {AppearanceManager}=require(path.join(root,'dist/appearance/appearance')),attach=AppearanceManager.prototype.attachMain;
+ AppearanceManager.prototype.attachMain=function(...args){const c=args[1].webContents,handler=c.setWindowOpenHandler.bind(c);c.setWindowOpenHandler=fn=>handler(details=>{if(details.url==='fables-desktop://settings/open-campaign')openRequests++;return fn(details);});dock=attach.apply(this,args);return dock;};
+ const timer=setTimeout(()=>{console.error('FAIL: handoff fixture total deadline');host?.destroy();app.exit(1);},30000);
+ app.on('window-all-closed',()=>{});
+ async function diagnostic(label){console.log('Handoff diagnostic '+JSON.stringify({label,mode,rail,input,openRequests,opened:dock?.isOpen(),opening:dock?.opening,openingSection:dock?.openingSection,section:dock?.hub.currentSection(),hubVisible:dock?.hub.isVisible(),retained:dock?.hub.hasRetainedCampaign(),reserved:dock?.hub.hasCampaignReservation(),page:site&&!site.isDestroyed()?await site.executeJavaScript('fixtureDiagnostic()'):null}));}
+ async function until(predicate,label){const end=Date.now()+4000;while(!await predicate()){if(Date.now()>end){await diagnostic(label);throw Error('Handoff prerequisite: '+label);}await new Promise(r=>setTimeout(r,10));}}
+ const js=source=>site.executeJavaScript(source);
+ const frames=()=>js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve(true))))');
+ async function click(selector){if(input==='dom'){await js('document.querySelector('+JSON.stringify(selector)+').click();true');return;}const point=await js('(()=>{const b=document.querySelector('+JSON.stringify(selector)+').getBoundingClientRect();return {x:Math.round(b.x+b.width/2),y:Math.round(b.y+b.height/2),hit:document.querySelector('+JSON.stringify(selector)+').contains(document.elementFromPoint(b.x+b.width/2,b.y+b.height/2))}})()');assert.equal(point.hit,true,'Native target is actually hittable');site.focus();site.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:'left',clickCount:1});site.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:'left',clickCount:1});}
+ async function assertDrafts(){assert.deepEqual(await js('(()=>{const d=fixtureDiagnostic();return [d.composerIdentity,d.nativeInputIdentity,d.draftsPreserved,d.attackIdentity,d.attackFormIdentity]})()'),[true,true,true,true,true]);}
+ async function opened(label){await until(()=>dock.isOpen()&&!dock.opening&&dock.hub.currentSection()==='campaign',label);await until(()=>js('!!document.querySelector("[data-ff-campaign-navigation]")&&!!document.querySelector("[data-ff-campaign-panel]")'),label+' genuine presentation');await assertDrafts();}
+ async function closeSettings(){await js('document.querySelector("[data-ff-campaign-panel] button:has(.lucide-x)").click();true');await until(()=>!dock.isOpen()&&!dock.opening,'native Campaign close reaches main');await until(()=>js('!window.__friendsFablesDesktopCampaignPanel'),'closed controller retired');}
+ async function openAttack(closeMode){await js('handoff.closeMode='+JSON.stringify(closeMode)+';document.getElementById("actions").click();true');await until(()=>js('!!document.querySelector("[data-ff-combat-docked]")'),'genuine Actions dock');await assertDrafts();}
+ async function cycle(closeMode,label){
+  await openAttack(closeMode);const before=await js('({closes:handoff.attackCloses,x:handoff.attackX,opens:handoff.campaignOpens})');const requests=openRequests;await click('#campaign-gear');await until(()=>openRequests===requests+1,'sidebar captured exactly one request');
+  if(closeMode==='held'||closeMode==='retained'){
+   await until(()=>js('handoff.closePending'),'owned native exit held');await frames();const held=await js('fixtureDiagnostic()');assert.equal(held.campaignOpens,before.opens,'Closing animation cannot launch Campaign');assert.equal(held.attack.connected,true);assert.equal(held.attack.state,'closed');assert.equal(held.bodyPointer,'none');assert.equal(held.chatAria,'true');assert.equal(held.attack.hidden,false);assert.notEqual(held.attack.display,'none');await diagnostic(label+' connected closed animation negative');
+   await js('handoff.releaseClose();true');
+   if(closeMode==='retained'){assert.deepEqual(await js('(()=>{const d=fixtureDiagnostic();return [d.attack.connected,d.attack.state,d.attack.hidden,d.attack.display,d.bodyPointer,d.bodyOverflow,d.chatAria]})()'),[true,'closed',true,'none','','',null],'Robustness case models positively completed native close with retained shell and restored locks');await diagnostic(label+' retained terminal shell');}
+  }
+  await opened(label+' Campaign opens after native exit');const after=await js('fixtureDiagnostic()');assert.equal(after.attackCloses,before.closes+1,'Native close operation occurs once');assert.equal(after.attackX,before.x+(input==='dom'?1:0),'DOM handoff invokes genuine X once; native outside pointer closes before click');assert.equal(after.campaignOpens,before.opens+1);await diagnostic(label+' complete');await closeSettings();
+ }
+ void(async()=>{const profile=process.env.FABLES_TEST_PROFILE_DIR||await fs.mkdtemp(path.join(os.tmpdir(),'ff-settings-attack-'));app.setPath('userData',profile);
+  void app.whenReady().then(async()=>{
+   await session.fromPartition('persist:friends-and-fables').protocol.handle('https',()=>new Response(html,{headers:{'Content-Type':'text/html'}}));
+   await until(()=>dock&&webContents.getAllWebContents().some(c=>!c.isDestroyed()&&c.getURL()==='https://play.fables.gg/'),'actual main website');site=webContents.getAllWebContents().find(c=>!c.isDestroyed()&&c.getURL()==='https://play.fables.gg/');await until(()=>!site.isLoading(),'offline page loaded');host=BrowserWindow.getAllWindows().find(w=>w.contentView.children.some(v=>v.webContents===site));host.show();host.focus();site.focus();await site.loadURL('https://play.fables.gg/01a0d854-78d5-7064-ae41-f63d561c8e01/play');await until(()=>!site.isLoading(),'campaign route');await until(()=>js('!!window.__friendsFablesDesktopCombatPanel&&!!window.__fablesDesktopWebsiteSettingsCleanup'),'actual injected controllers');await until(()=>dock.hub.campaignAvailable===true,'main campaign availability');
+   // No remembered section: genuine sidebar capture chooses Campaign itself.
+   await click('#campaign-gear');await opened('first sidebar Settings');await closeSettings();
+   await cycle('async','normal async control');await cycle('held','second held-close control');
+   if(mode==='retained'){console.log('Robustness case: native explicitly closes/hides/restores locks but retains exact shell; live website cause unproven');await cycle('retained','retained-shell robustness');await cycle('immediate','reused-shell subsequent operation');}
+   if(mode==='guards'){
+    await openAttack('immediate');const guardX=await js('handoff.attackX');await js('window.unknownLayer=document.createElement("div");unknownLayer.setAttribute("role","dialog");unknownLayer.textContent="Unknown modal";document.body.append(unknownLayer);true');assert.equal(await js('window.__friendsFablesDesktopCombatPanel.closeForSettings()'),false);await click('#campaign-gear');await frames();assert.equal(await js('handoff.attackX'),guardX,'Unknown modal cannot gain close authority');dock.hide();await js('unknownLayer.remove();true');await until(()=>js('!window.__friendsFablesDesktopCampaignPanel'),'canceled unknown-layer request retired');
+    await js('attackForm.requestSubmit();true');assert.equal(await js('window.__friendsFablesDesktopCombatPanel.closeForSettings()'),false,'Submission in flight remains protected');await assertDrafts();dock.hide();await js('window.finishAttack();true');
+   }
+   if(mode==='cancel'){
+    await openAttack('held');await click('#campaign-gear');await until(()=>js('handoff.closePending'),'cancel case native exit requested');dock.hide();await js('handoff.releaseClose();true');await until(()=>js('!window.__friendsFablesDesktopCampaignPanel'),'canceled owner retired');await frames();assert.equal(dock.isOpen(),false);assert.equal(await js('!!document.querySelector("[data-ff-campaign-panel]")'),false);await assertDrafts();
+   }
+   // Existing Translate→Settings selects an explicit local editor in main.
+   await dock.openSection('translation');assert.equal(dock.hub.currentSection(),'translation');assert.equal(dock.hub.editors.get('translation').view.getVisible(),true);dock.hide();await dock.openSection('campaign');await opened('topmenu/local recovery then Campaign');await closeSettings();await click('#campaign-gear');await opened('sidebar works after local topmenu recovery');await closeSettings();await assertDrafts();await dock.flushSettings();await diagnostic('final');clearTimeout(timer);console.log('PASS: actual main Settings/Attack handoff '+JSON.stringify({mode,rail,input}));host.close();app.quit();
+  }).catch(async error=>{console.error(error);await diagnostic('failure').catch(()=>{});clearTimeout(timer);host?.destroy();app.exit(1);});require(path.join(root,'dist/main'));
+ })().catch(error=>{console.error(error);clearTimeout(timer);app.exit(1);});
+}

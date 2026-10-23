@@ -43,7 +43,7 @@ function fixture({ unrelated = false, wrongIdentity = false, expandedRail = fals
   const document = {visibilityState:'visible',body,head,getElementById:id=>!missingWorkspace&&id==='events-list'&&knownWorkspace==='feed'?editor:null,createElement:()=>new Element(),querySelector:q=>q.startsWith('aside')?expandedRail?null:gear:missingWorkspace?null:q==='.tiptap[contenteditable="true"]'?removedComposer?null:editor:q.includes('data-ff-desktop-chat')?knownWorkspace==='marker'?workspace:null:q.includes('events-list')||q.includes('event-message-card-')?knownWorkspace==='card'?editor:null:null, querySelectorAll:q=>q.startsWith('aside') && expandedRail ? [gear] : dialogs.filter(d=>d.isConnected),addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
   const location = {origin:'https://play.fables.gg',pathname:'/01a0d854-78d5-7064-ae41-f63d561c8e01/play',search:''};
   const window = {setTimeout,open:(...args)=>opened.push(args),setInterval:()=>1,addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
-  const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,HTMLButtonElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block',visibility:'visible',paddingLeft:/padding-left:([\d.]+)px!important/.exec(head.children[0]?.textContent??'')?.[1]??'0'}),requestAnimationFrame,cancelAnimationFrame,setTimeout,clearTimeout,queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
+  const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,HTMLButtonElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:node=>({display:node.hasAttribute('hidden')?'none':node.style.getPropertyValue('display')||'block',visibility:node.style.getPropertyValue('visibility')||'visible',paddingLeft:/padding-left:([\d.]+)px!important/.exec(head.children[0]?.textContent??'')?.[1]??'0'}),requestAnimationFrame,cancelAnimationFrame,setTimeout,clearTimeout,queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
   dialog.getBoundingClientRect=()=>{const css=head.children[0]?.textContent??'';return {x:Number(/left:([\d.]+)px!important/.exec(css)?.[1]??0),y:0,width:Number(/width:([\d.]+)px!important/.exec(css)?.[1]??0),height:Number(/height:([\d.]+)px!important/.exec(css)?.[1]??0)};};
   const configure = (show,w=400,h=700,palette,offset=0,navigation)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${w},${h},${JSON.stringify(palette)},${offset},${JSON.stringify(navigation)})`,context);
   const flush = ()=>{while(microtasks.length) microtasks.shift()();};
@@ -269,4 +269,15 @@ test('localized navigation show remains separate from standalone no-navigation c
  const f=fixture(),shown=f.configure(true,454,700,undefined,126,{...navigation,locale:'ru',destinations:['general']});assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),null);f.paint();f.paint();f.paint();f.paint();assert.equal(await shown,true);
  const nav=f.body.children.find(node=>node.hasAttribute('data-ff-campaign-navigation'));assert.deepEqual(nav.children.map(node=>node.textContent),['Настройки','Кампания','Общие']);
  f.configure(false);assert.equal(nav.isConnected,false);
+});
+
+// Robustness counterexample, not evidence of the live website's native shape.
+// Preserve the connected closed-animation + locked body negative above.
+test('positively completed native close with retained hidden shell cannot poison Campaign handoff',()=>{
+ const f=fixture(),combat=new f.Element();combat.setAttribute('role','dialog');f.body.append(combat);f.dialogs.push(combat);let calls=0;
+ f.window.__friendsFablesDesktopCombatPanel={closeForSettings(){calls++;return combat;}};
+ f.body.style.setProperty('pointer-events','none');f.body.style.setProperty('overflow','hidden');f.background.setAttribute('aria-hidden','true');f.configure(true);assert.equal(f.clicks,0);
+ combat.setAttribute('data-state','closed');f.scan();assert.equal(f.clicks,0,'A still-visible close animation retains native locks');
+ combat.setAttribute('hidden','');combat.style.setProperty('display','none');f.body.style.removeProperty('pointer-events');f.body.style.removeProperty('overflow');f.background.removeAttribute('aria-hidden');f.scan();
+ assert.equal(combat.isConnected,true,'Native completed close retains its exact terminal shell');assert.equal(f.clicks,1,'A positive native terminal state with restored locks permits Settings');assert.equal(calls,1,'Native close is never dispatched twice');f.configure(false);assert.equal(f.body.style.pointerEvents,'');assert.equal(f.background.getAttribute('aria-hidden'),null);
 });
