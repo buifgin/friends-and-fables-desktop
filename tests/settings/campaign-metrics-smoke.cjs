@@ -70,6 +70,8 @@ if (!process.versions.electron) {
     assert.equal(await run('window.nativePanel?.hasAttribute("data-ff-campaign-panel")'),true,'native dialog adopted');
     for(const sample of [{name:'ordinary',width:552,zoom:1},{name:'narrow',width:360,zoom:1},{name:'zoom',width:552,zoom:1.25}]) {
     wc.setZoomFactor(sample.zoom);
+    const actualZoom=wc.getZoomFactor();
+    assert.ok(Math.abs(actualZoom-sample.zoom)<0.0001,`Electron zoom factor retained for ${sample.name}; got ${actualZoom}`);
     assert.equal(await configure(true,sample.width),true,'Campaign ready '+sample.name);
     const state=await run(geometry,'geometry '+sample.name);
     console.log('Campaign metrics geometry '+sample.name+' '+JSON.stringify(state));
@@ -77,11 +79,13 @@ if (!process.versions.electron) {
     for (const label of ['Speed','Intelligence','Скорость','Интеллект']) {
       const row=byLabel.get(label); assert.ok(row, 'captured label '+label);
       const gap=row.dots[0].x-row.glyph.right;
-      assert.ok(gap>=6, `${label} glyph gap must be >=6px; got ${gap}`);
+      // getBoundingClientRect reports zoomed CSS pixels. Keep these minimums
+      // in physical screen pixels so page zoom does not weaken the contract.
+      assert.ok(gap*actualZoom>=6, `${label} glyph gap must be >=6 physical px; got ${gap*actualZoom} (${gap} CSS px at ${actualZoom}x)`);
       assert.equal(row.dots.length,5,'native rating dot count preserved');
       assert.ok(row.row.x>=state.card.x&&row.row.right<=state.card.right,'rating remains in card');
-      assert.ok(Math.abs(row.dots[0].x-state.rows[0].dots[0].x)<0.5,'dot columns align across labels and values');
-      assert.ok(Math.abs(row.dots[0].width-6)<0.1,'native dot size retained');
+      assert.ok(Math.abs(row.dots[0].x-state.rows[0].dots[0].x)*actualZoom<0.5,'dot columns align within 0.5 physical px across labels and values');
+      assert.ok(Math.abs(row.dots[0].width*actualZoom-6)<0.1,`native dot size retained at 6 physical px; got ${row.dots[0].width*actualZoom} (${row.dots[0].width} CSS px at ${actualZoom}x)`);
     }
     assert.ok(state.card.x>=state.panel.x&&state.card.right<=state.panel.right,'metric card stays within Campaign panel');
     assert.equal(state.input,'keep native value');assert.equal(state.identity,true);assert.equal(state.nodesSame,true);assert.equal(state.draft,'draft preserved');
