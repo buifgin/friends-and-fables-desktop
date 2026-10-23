@@ -526,3 +526,15 @@ test('late failed navigation refresh cannot invalidate a newer Campaign opening'
  f.hub.setVisible(false);f.hub.view.webContents.executeJavaScript=execute;await f.hub.select('campaign');const fresh=model.ticket;release(false);await failed;
  assert.equal(f.hub.canNavigateCampaignSection('general',old),false);assert.equal(f.hub.canNavigateCampaignSection('general',fresh),true);assert.equal(shown,1);
 });
+test('rejected cold editor load renews surviving Campaign and permits a real retry',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},shown=[];let model,creates=0;
+ f.hub.configure({translation:{...manager,createPanel:()=>{const v=new View();f.created.push(v);if(creates++===0)v.webContents.loadURL=url=>{v.webContents.mainFrame.url=url;return Promise.reject(Error('editor load failed'));};return v;}},instructions:manager,campaign:{prepare:async(b,n)=>{model=n;return true;},reveal:async()=>true,show:async(b,n)=>{shown.push(n);return true;},suspend(){},hide(){}}});
+ await f.hub.select('campaign');const old=model.ticket;f.hub.consumeCampaignNavigation('translation',old);await assert.doesNotReject(f.hub.select('translation'));
+ assert.equal(f.hub.currentSection(),'campaign');assert.deepEqual(f.remembered,['campaign']);assert.equal(shown.length,1);assert.equal(f.hub.canNavigateCampaignSection('translation',old),false);assert.equal(f.created[0].visible,false);assert.equal(f.created[0].webContents.isDestroyed(),true);
+ const fresh=shown[0].ticket;assert.notEqual(fresh,old);assert.equal(f.hub.consumeCampaignNavigation('translation',fresh),true);await f.hub.select('translation');assert.equal(creates,2,'A rejected load is retired so retry can create a ready renderer');assert.equal(f.hub.currentSection(),'translation');assert.equal(shown.length,1);
+});
+for(const ending of ['hidden','unavailable','newer-section'])test('late editor load rejection cannot renew Campaign after '+ending,async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let model,rejectLoad,shown=0;
+ f.hub.configure({translation:{...manager,createPanel:()=>{const v=new View();v.webContents.loadURL=url=>{v.webContents.mainFrame.url=url;return new Promise((resolve,reject)=>rejectLoad=reject);};return v;}},instructions:manager,campaign:{prepare:async(b,n)=>{model=n;return true;},reveal:async()=>true,show:async()=>{shown++;return true;},suspend(){},hide(){}}});await f.hub.select('campaign');const old=model.ticket;f.hub.consumeCampaignNavigation('translation',old);const pending=f.hub.select('translation');await flush();
+ if(ending==='hidden')f.hub.setVisible(false);if(ending==='unavailable')f.hub.setCampaignAvailable(false);if(ending==='newer-section')await f.hub.select('music');rejectLoad(Error('late load failure'));await assert.doesNotReject(pending);assert.equal(shown,0);assert.equal(f.hub.canNavigateCampaignSection('translation',old),false);
+});
