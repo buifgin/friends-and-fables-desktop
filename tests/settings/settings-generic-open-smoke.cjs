@@ -105,6 +105,29 @@ void (async () => {
     assert.notEqual(currentLink, link, 'A new opening receives a new stale-operation identity');
     await site.executeJavaScript(`window.open(${JSON.stringify(link)},'_blank');true`);
     assert.equal(dock.hub.currentSection(), 'campaign', 'Old opening identity cannot navigate a newer Campaign');
+    // Fail the existing local readiness boundary once. Campaign must retain
+    // its genuine form and publish fresh links; the consumed ticket stays dead.
+    const rendered = dock.hub.rendered.bind(dock.hub);
+    let failedReadiness = false;
+    dock.hub.rendered = async (...args) => {
+      if (args[0] === 'general' && !failedReadiness) { failedReadiness = true; return false; }
+      return rendered(...args);
+    };
+    let retryLink;
+    try {
+      await site.executeJavaScript(`window.open(${JSON.stringify(currentLink)},'_blank');true`);
+      await until(() => failedReadiness && !dock.opening, 'failed local readiness completes without closing Campaign');
+      assert.equal(dock.hub.currentSection(), 'campaign');
+      await until(async () => {
+        retryLink = await site.executeJavaScript("document.querySelector('[data-ff-campaign-navigation] a[href*=\"section=general\"]').href");
+        return retryLink !== currentLink;
+      }, 'failed local handoff publishes a fresh Campaign navigation ticket');
+      await site.executeJavaScript(`window.open(${JSON.stringify(currentLink)},'_blank');true`);
+      assert.equal(dock.hub.currentSection(), 'campaign', 'Consumed handoff ticket cannot replay after recovery');
+      await site.executeJavaScript(`window.open(${JSON.stringify(retryLink)},'_blank');true`);
+      await until(() => dock.hub.currentSection() === 'general' && !dock.opening, 'fresh recovered ticket reaches actual main local navigation');
+      assert.equal(await site.executeJavaScript("nativeCampaignIdentity.isConnected && nativeCampaignField.value==='Keep Campaign draft'"), true);
+    } finally { dock.hub.rendered = rendered; }
     dock.hide();
     // Hold the main acknowledgment after genuine reveal. Its already-painted
     // link may cancel that opening; the late acknowledgment cannot commit it.
