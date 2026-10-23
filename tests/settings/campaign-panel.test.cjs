@@ -44,7 +44,7 @@ function fixture({ unrelated = false, wrongIdentity = false, expandedRail = fals
   const location = {origin:'https://play.fables.gg',pathname:'/01a0d854-78d5-7064-ae41-f63d561c8e01/play',search:''};
   const window = {setTimeout,open:(...args)=>opened.push(args),setInterval:()=>1,addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
   const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,HTMLButtonElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:node=>({display:node.style.getPropertyValue('display')||(node.hasAttribute('hidden')?'none':'block'),visibility:node.style.getPropertyValue('visibility')||'visible',paddingLeft:/padding-left:([\d.]+)px!important/.exec(head.children[0]?.textContent??'')?.[1]??'0'}),requestAnimationFrame,cancelAnimationFrame,setTimeout,clearTimeout,queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
-  dialog.getBoundingClientRect=()=>{const css=head.children[0]?.textContent??'';return {x:Number(/left:([\d.]+)px!important/.exec(css)?.[1]??0),y:0,width:Number(/width:([\d.]+)px!important/.exec(css)?.[1]??0),height:Number(/height:([\d.]+)px!important/.exec(css)?.[1]??0)};};
+  dialog.getBoundingClientRect=()=>{const css=head.children[0]?.textContent??'',zoom=Number(/zoom:([\d.]+)!important/.exec(css)?.[1]??1);return {x:zoom*Number(/left:([\d.]+)px!important/.exec(css)?.[1]??0),y:0,width:zoom*Number(/width:([\d.]+)px!important/.exec(css)?.[1]??0),height:zoom*Number(/height:([\d.]+)px!important/.exec(css)?.[1]??0)};};
   const configure = (show,w=400,h=700,palette,offset=0,navigation)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${w},${h},${JSON.stringify(palette)},${offset},${JSON.stringify(navigation)})`,context);
   const flush = ()=>{while(microtasks.length) microtasks.shift()();};
   return {configure,flush,paint(){const batch=Array.from(frames.values());frames.clear();for(const callback of batch)callback();flush();},frames,timers,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,gear,get clicks(){return clicks;},get closes(){return closes;}};
@@ -172,12 +172,26 @@ test('Campaign launches through the expanded native labelled Settings row withou
  const f=fixture({expandedRail:true}),nativeRow=f.gear;f.configure(true);assert.equal(f.clicks,1);assert.equal(f.gear,nativeRow);f.configure('suspend');f.configure(true);assert.equal(f.clicks,1);f.configure(false);assert.equal(f.closes,1);assert.equal(f.gear,nativeRow);
 });
 
-test('native Campaign converts reserved DIP dimensions to the current CSS viewport and reflows on website zoom',async()=>{
- const f=fixture();f.window.innerHeight=700;let opening=f.configure(true,400,700);f.paint();f.paint();assert.equal(await opening,true);
- f.window.innerHeight=800;f.listeners.get('resize')();f.flush();let css=f.head.children[0].textContent;
- assert.equal(Number(/height:([\d.]+)px!important/.exec(css)[1]),800,'A zoomed website still fills its CSS viewport');
- assert.ok(Math.abs(Number(/width:([\d.]+)px!important/.exec(css)[1])-400*800/700)<.01,'Reserved native width is converted with the same scale');
- opening=f.configure(true,450,750);f.paint();f.paint();assert.equal(await opening,true);css=f.head.children[0].textContent;assert.equal(Number(/height:([\d.]+)px!important/.exec(css)[1]),800);assert.ok(Math.abs(Number(/width:([\d.]+)px!important/.exec(css)[1])-480)<.01);assert.equal(f.clicks,1);f.configure(false);
+test('native Campaign normalizes owned physical scale while CSS readiness and workspace track website zoom',async()=>{
+ const f=fixture();
+ for(const q of [1,1.2,1/1.2]){
+  // Stub the browser's viewport and zoomed DOMRect; native renderer fixtures
+  // independently establish CSS zoom and actual font/control geometry.
+  f.window.innerHeight=700*q;
+  const opening=f.configure(true,454,700,undefined,126);f.paint();f.paint();assert.equal(await opening,true);
+  const css=f.head.children[0].textContent,panelRule=css.slice(0,css.indexOf('}'));
+  const navRule=/\[data-ff-campaign-navigation\]\{[^}]*width:[^}]+/.exec(css)[0];
+  for(const rule of [panelRule,navRule])assert.ok(Math.abs(Number(/zoom:([\d.]+)!important/.exec(rule)?.[1])-q)<1e-9,'Only owned surfaces cancel website scale');
+  assert.match(panelRule,/left:126px!important/);assert.match(panelRule,/width:454px!important/);assert.match(panelRule,/height:700px!important/);
+  assert.match(navRule,/width:126px!important/);assert.match(navRule,/height:700px!important/);
+  assert.ok(Math.abs(Number(/padding-left:([\d.]+)px!important/.exec(css)[1])-580*q)<1e-9,'Unzoomed workspace uses CSS target units');
+  const rect=f.dialog.getBoundingClientRect();assert.ok(Math.abs(rect.x-126*q)<1e-9);assert.ok(Math.abs(rect.width-454*q)<1e-9);assert.ok(Math.abs(rect.height-700*q)<1e-9);
+  assert.equal((css.match(/zoom:/g)||[]).length,2,'No workspace, body, or portal scale override');
+ }
+ f.window.visualViewport={height:800};f.window.innerHeight=799;f.listeners.get('resize')();f.flush();
+ let opening=f.configure(true,450,750);f.paint();f.paint();assert.equal(await opening,true);
+ assert.ok(Math.abs(f.dialog.getBoundingClientRect().width-480)<1e-9,'Resized readiness uses actual visual viewport');
+ assert.equal(f.clicks,1,'Zoom and resize retain the adopted native form');f.configure(false);assert.equal(f.head.children.length,0,'Cleanup retires only owned scale CSS');
 });
 
 test('native readiness waits for asynchronous adoption and two target geometry paint frames, then cancels promptly',async()=>{
@@ -216,7 +230,7 @@ test('passive eligible Campaign reservation keeps workspace gutter without launc
 test('passive gutter shares offset/zoom dimensions with adoption and survives native dismissal until close delivery',async()=>{
  const f=fixture();f.window.innerHeight=700;let ready=f.configure('reserve',580,700);f.paint();f.paint();assert.equal(await ready,true);assert.equal(f.clicks,0);
  ready=f.configure(true,454,700,undefined,126);f.flush();f.paint();f.paint();assert.equal(await ready,true);assert.equal(f.clicks,1);assert.match(f.head.children[0].textContent,/left:126px!important/);assert.match(f.head.children[0].textContent,/padding-left:580px!important/);
- f.window.innerHeight=350;f.listeners.get('resize')();f.flush();assert.match(f.head.children[0].textContent,/left:63px!important/);assert.match(f.head.children[0].textContent,/padding-left:290px!important/);
+ f.window.innerHeight=350;f.listeners.get('resize')();f.flush();assert.match(f.head.children[0].textContent,/left:126px!important/);assert.equal(f.dialog.getBoundingClientRect().x,63);assert.match(f.head.children[0].textContent,/padding-left:290px!important/);
  f.dialog.close.click();f.scan();assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),'');assert.equal(f.body.style.pointerEvents,'');assert.equal(f.dialog.getAttribute('data-ff-campaign-panel'),null);assert.equal(f.opened.length,1);
  f.configure(false);assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),null);assert.equal(f.head.children.length,0);assert.equal(f.window.__friendsFablesDesktopCampaignPanel,undefined);
 });
