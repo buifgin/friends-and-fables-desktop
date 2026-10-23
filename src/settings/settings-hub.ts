@@ -194,7 +194,13 @@ export class SettingsHub {
    view.webContents.on('did-navigate',()=>{entry.document++;if(this.preparing?.view===view)this.cancelPreparation();});
    editor=entry;entry.ready=view.webContents.loadURL(url);this.editors.set(section,entry);
   }
-  await editor?.ready;
+  try {await editor?.ready;} catch(error) {
+   // Retire only this failed renderer; retaining its rejected ready promise
+   // would make every explicit retry fail before readiness can run again.
+   if(editor&&this.editors.get(section)===editor){this.editors.delete(section);editor.view.setVisible(false);if(!this.window.isDestroyed())this.window.contentView.removeChildView(editor.view);if(!editor.view.webContents.isDestroyed())editor.view.webContents.close();}
+   if(!navigation||!this.coherentCampaign())throw error;
+   await this.recoverCampaignNavigation(revision,navigation);return;
+  }
   if(section==='combat')await this.refreshCombat();
   if(this.window.isDestroyed()||revision!==this.revision)return;
   if(this.section==='campaign'&&section!=='campaign'&&!editor) {
