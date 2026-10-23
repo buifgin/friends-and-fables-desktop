@@ -513,3 +513,16 @@ for(const ending of ['hidden','unavailable','newer-section','newer-campaign','cl
  release(false);await pending;assert.equal(shown.length,0);assert.equal(f.hub.canNavigateCampaignSection('general',old),false);
  if(ending==='newer-campaign')assert.equal(f.hub.canNavigateCampaignSection('general',model.ticket),true,'Stale failure cannot replace the new opening');
 });
+for(const result of ['false','error'])test('failed Campaign navigation refresh is bounded after adapter '+result,async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}},shown=[];let model;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{prepare:async(b,n)=>{model=n;return true;},reveal:async()=>true,show:async(b,n)=>{shown.push(n);if(result==='error')throw Error('refresh unavailable');return false;},suspend(){},hide(){}}});await f.hub.select('campaign');const old=model.ticket;f.hub.consumeCampaignNavigation('general',old);
+ f.hub.view.webContents.executeJavaScript=()=>Promise.resolve(false);const report=console.error;try{console.error=()=>{};await f.hub.select('general');}finally{console.error=report;}
+ assert.equal(shown.length,1);assert.equal(f.hub.currentSection(),'campaign');assert.equal(f.hub.canNavigateCampaignSection('general',old),false);assert.equal(f.hub.canNavigateCampaignSection('general',shown[0].ticket),false);assert.deepEqual(f.remembered,['campaign']);
+});
+test('late failed navigation refresh cannot invalidate a newer Campaign opening',async()=>{
+ const f=fixture(),manager={getSettings:()=>({enabled:false,showOriginal:false}),setSettingsOpener(){}};let model,release,shown=0;
+ f.hub.configure({translation:manager,instructions:manager,campaign:{prepare:async(b,n)=>{model=n;return true;},reveal:async()=>true,show:async()=>{shown++;return new Promise(resolve=>release=resolve);},suspend(){},hide(){}}});await f.hub.select('campaign');const old=model.ticket;f.hub.consumeCampaignNavigation('general',old);
+ const execute=f.hub.view.webContents.executeJavaScript.bind(f.hub.view.webContents);f.hub.view.webContents.executeJavaScript=()=>Promise.resolve(false);const failed=f.hub.select('general');await flush();assert.equal(shown,1);
+ f.hub.setVisible(false);f.hub.view.webContents.executeJavaScript=execute;await f.hub.select('campaign');const fresh=model.ticket;release(false);await failed;
+ assert.equal(f.hub.canNavigateCampaignSection('general',old),false);assert.equal(f.hub.canNavigateCampaignSection('general',fresh),true);assert.equal(shown,1);
+});

@@ -136,6 +136,17 @@ export class SettingsHub {
    this.update();
   }
  }
+ private async recoverCampaignNavigation(revision:number,navigation:CampaignNavigationModel|undefined):Promise<void> {
+  if(revision!==this.revision||!navigation||this.campaignNavigation!==navigation||!this.campaignNavigationConsumed||!this.coherentCampaign()||!this.visible||this.section!=='campaign'||this.campaignAvailable===false||this.preparing||!this.bounds||this.window.isDestroyed()||this.view.webContents.isDestroyed())return;
+  // The failed local operation consumed both the page ticket and main's
+  // capability. Refresh the surviving genuine presentation once; never replay
+  // its destination or make the consumed ticket eligible again.
+  const fresh={...navigation,ticket:randomUUID()},navWidth=Math.min(126,this.bounds.width);
+  const bounds={x:this.bounds.x+navWidth,y:this.bounds.y,width:Math.max(0,this.bounds.width-navWidth),height:this.bounds.height};
+  this.campaignNavigation=fresh;this.campaignNavigationConsumed=false;this.campaignBounds={...bounds};
+  let ready=false;try{ready=await this.managers!.campaign!.show(bounds,fresh)!==false;}catch(error){console.error(error);}
+  if(!ready&&revision===this.revision&&this.campaignNavigation===fresh){this.campaignNavigation=undefined;this.campaignNavigationConsumed=true;}
+ }
  private async rendered(section:SettingsSection,revision:number,view=this.view,url=SETTINGS_HUB_URL,paintBounds?:Rectangle):Promise<boolean> {
   const contents=view.webContents;
   if(contents.isDestroyed()||contents.getURL()!==url||paintBounds&&!view.getVisible())return false;
@@ -171,7 +182,7 @@ export class SettingsHub {
   if(section==='campaign'&&!this.managers?.campaign)throw new Error('Campaign settings are not connected.');
   if((section==='campaign'||section==='combat')&&this.campaignAvailable===false)throw new Error('Campaign settings are not available on this page.');
   if(section!=='campaign')this.campaignNavigationConsumed=true;
-  const revision=++this.revision;this.cancelPreparation();
+  const navigation=this.campaignNavigation,revision=++this.revision;this.cancelPreparation();
   await this.ready;
   let editor=this.editors.get(section);
   if(!editor&&['appearance','translation','instructions'].includes(section)) {
@@ -198,7 +209,7 @@ export class SettingsHub {
     ready=await this.rendered(section,revision,this.view,SETTINGS_HUB_URL,this.bounds);
    }
    if(this.preparing?.revision===revision){this.preparing.restoreThrottling?.();this.preparing=undefined;}
-   if(!ready){if(revision===this.revision){if(this.bounds)this.layout(this.bounds);this.update();}return;}
+   if(!ready){if(revision===this.revision){if(this.bounds)this.layout(this.bounds);this.update();await this.recoverCampaignNavigation(revision,navigation);}return;}
   }
   if(editor) {
    const url=section==='appearance'?'fables-desktop://settings/':section==='translation'?'fables-desktop://settings/translation.html':'fables-desktop://settings/host-instructions.html';
@@ -234,7 +245,7 @@ export class SettingsHub {
      }
     } catch { ready=false; }
    }
-   if(!ready){if(this.preparing?.revision===revision)this.cancelPreparation();return;}
+   if(!ready){if(this.preparing?.revision===revision)this.cancelPreparation();await this.recoverCampaignNavigation(revision,navigation);return;}
    if(this.preparing?.revision===revision){if(this.preparing.paintEditor)this.window.contentView.addChildView(editor.view);this.preparing.restoreThrottling?.();this.preparing=undefined;}
   }
   // A local first-open surface covers the future gutter before it is installed.
