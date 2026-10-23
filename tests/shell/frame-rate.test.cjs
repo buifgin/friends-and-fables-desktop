@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const { transformSync } = require('/home/buifgin/f&f/friends-and-fables-desktop/node_modules/esbuild');
+const { transformSync } = require('esbuild');
 
 const sourcePath = path.join(__dirname, '../../src/shell/frame-rate.ts');
 function loadConfigure(page) {
@@ -34,9 +34,11 @@ function makePage() {
   };
   const window = {
     document,
+    location: { origin: 'https://play.fables.gg' },
     requestAnimationFrame(fn) { const id = nextId++; callbacks.set(id, fn); return id; },
     cancelAnimationFrame(id) { callbacks.delete(id); },
   };
+  window.top = window;
   return {
     window, document, children, callbacks, listeners,
     paint(timestamp) { const [id, fn] = callbacks.entries().next().value || []; assert.ok(fn, 'a frame should be scheduled'); callbacks.delete(id); fn(timestamp); },
@@ -85,4 +87,18 @@ test('enable is idempotent, hidden pages pause and restart fresh, and disable fu
   assert.equal(page.window.__ffFrameRateOverlay, undefined);
   configure(false);
   assert.equal(page.children.length, 0);
+});
+
+test('enable is restricted to the top-level play origin', () => {
+  const topLevelWrongOrigin = makePage();
+  topLevelWrongOrigin.window.location.origin = 'https://example.com';
+  loadConfigure(topLevelWrongOrigin)(true);
+  assert.equal(topLevelWrongOrigin.children.length, 0);
+  assert.equal(topLevelWrongOrigin.callbacks.size, 0);
+
+  const embedded = makePage();
+  embedded.window.top = {};
+  loadConfigure(embedded)(true);
+  assert.equal(embedded.children.length, 0);
+  assert.equal(embedded.callbacks.size, 0);
 });

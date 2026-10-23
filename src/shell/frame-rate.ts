@@ -20,6 +20,8 @@ export function configureFrameRateOverlay(enabled: boolean): void {
     return;
   }
 
+  if (window !== window.top || window.location.origin !== 'https://play.fables.gg') return;
+
   if (existing) return;
 
   const node = document.createElement('div');
