@@ -46,9 +46,10 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
   let retirementTimer=0,launchGear:HTMLElement|null=null;
   let cssWidth=0,cssHeight=0,cssOffset=0,pendingReady:((ready:boolean)=>void)|undefined;
   const cancelPending=():void=>{pendingReady?.(false);};
-  // Snapshot only after the previous dock has natively unmounted: its temporary
+  // Snapshot only after native unmount or owner-proven retained close: temporary
   // modal locks and accessibility attributes are not Campaign's initial state.
-  let handoffAccepted = false, closingCombat: HTMLElement | null = null;
+  type CombatHandoff = { closeForSettings?(): HTMLElement | null | false; settingsCloseComplete?(node: HTMLElement): boolean };
+  let handoffAccepted = false, closingCombat: HTMLElement | null = null, closingCombatOwner: CombatHandoff | undefined;
   const existing = new Set<Element>();
   let bodyBefore: string[][] = [];
   const beforeAria = new Map<HTMLElement, string | null>();
@@ -170,14 +171,14 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
     if (panel && (!panel.isConnected || panel.getAttribute('data-state') === 'closed')) { suspend(true);for(const undo of layoutUndo.reverse())undo();layoutUndo.length=0;panel=null;nativeClosed=true;sectionSuspended=true;cancelPending();window.open('fables-desktop://settings/close-campaign', '_blank');return; }
     if(sectionSuspended&&!attempted)return;
     if (!handoffAccepted) {
-      const combat = (window as unknown as { __friendsFablesDesktopCombatPanel?: { closeForSettings?(): HTMLElement | null | false } }).__friendsFablesDesktopCombatPanel;
+      const combat = (window as unknown as { __friendsFablesDesktopCombatPanel?: CombatHandoff }).__friendsFablesDesktopCombatPanel;
       const result = combat?.closeForSettings?.();
       if (result === false) return;
-      closingCombat = result ?? null;
+      closingCombat = result ?? null; closingCombatOwner = combat;
       handoffAccepted = true;
     }
-    if (closingCombat?.isConnected) return;
-    closingCombat = null;
+    if (closingCombat?.isConnected && closingCombatOwner?.settingsCloseComplete?.(closingCombat) !== true) return;
+    closingCombat = null; closingCombatOwner = undefined;
     if (!attempted && !sectionSuspended && !otherLayer()) {
       const gear = document.querySelector<HTMLButtonElement>('aside button:has(svg.lucide-settings)')
         ?? Array.from(document.querySelectorAll<HTMLElement>('aside > div.flex.flex-col.relative.z-10 > div.font-body.group.flex.flex-row')).find(node => !!node.querySelector(':scope > .font-header') && /^(Settings|Настройки)$/.test(node.textContent?.trim() ?? ''));

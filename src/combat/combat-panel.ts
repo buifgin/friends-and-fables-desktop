@@ -1,6 +1,6 @@
 // Serialized into the sandboxed website. Keep this function self-contained.
 export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css: string): void {
-  type Controller = { update(locale: 'en' | 'ru', css: string): void; dispose(): void; closeForSettings(): HTMLElement | null | false };
+  type Controller = { update(locale: 'en' | 'ru', css: string): void; dispose(): void; closeForSettings(): HTMLElement | null | false; settingsCloseComplete(node: HTMLElement): boolean };
   const key = '__friendsFablesDesktopCombatPanel';
   const host = window as unknown as Record<string, Controller | undefined>;
   if (host[key]) { if (enabled) host[key]!.update(locale, css); else host[key]!.dispose(); return; }
@@ -20,7 +20,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
       : '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><polyline points="14.5 17.5 3 6 3 3 6 3 17.5 14.5"/><line x1="13" x2="19" y1="19" y2="13"/><line x1="16" x2="20" y1="16" y2="20"/><line x1="19" x2="21" y1="21" y2="19"/><polyline points="14.5 6.5 18 3 21 3 21 6 17.5 9.5"/><line x1="5" x2="9" y1="14" y2="18"/><line x1="7" x2="4" y1="17" y2="20"/><line x1="3" x2="5" y1="19" y2="21"/></svg>';
     const label = document.createElement('span'); label.setAttribute('data-ff-combat-label', ''); label.setAttribute('aria-hidden', 'true'); label.className = 'font-header'; button.append(label);
     button.addEventListener('click', () => {
-      if (button.disabled || otherLayer() || settingsClosing?.isConnected) return;
+      if (button.disabled || otherLayer() || settingsClosePending()) return;
       settingsSuppressed = false;
       if (reserved && mode === name) { close(); return; }
       if (reserved || picker) close(true); requested = name; schedule();
@@ -28,6 +28,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   }
   let reserved = false, pending = false, pendingReopened = false, internalLaunch = false, reopenDeadline = 0;
   let settingsSuppressed = false, settingsClosing: HTMLElement | null = null;
+  let settingsCloseProof: { node: HTMLElement; body: string[][]; aria: Map<HTMLElement, string | null> } | null = null;
   let retiringPicker: HTMLElement | null = null, retirementDeadline = 0;
   let retiringClose: HTMLElement | null = null, retiringHeading: HTMLElement | null = null;
   let retiringMode: 'actions' | 'skills' | null = null, retiringHeadingText = '';
@@ -45,7 +46,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (reset) { readinessMode = null; readinessDeadline = 0; }
   }
   function observeReadiness(dialogs: HTMLElement[]): void {
-    if (!launched || picker || settingsSuppressed || settingsClosing?.isConnected) { clearReadiness(); return; }
+    if (!launched || picker || settingsSuppressed || settingsClosePending()) { clearReadiness(); return; }
     if (readinessMode !== launched) {
       clearReadiness(); readinessMode = launched; readinessDeadline = Date.now() + 5000;
       readinessTimer = window.setTimeout(() => clearReadiness(false), 5000);
@@ -290,16 +291,33 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     current?.querySelector<HTMLButtonElement>('button:has(.lucide-x)')?.click();
     picker = null; launched = null; requested = null; updateControls();
   }
+  // Only the accepting owner can compare native cleanup with its pre-launch
+  // baseline. A closed state/hidden attribute alone can still be an exit animation.
+  function settingsCloseComplete(node: HTMLElement): boolean {
+    const proof = settingsCloseProof;
+    if (!proof || proof.node !== node) return false;
+    const complete = !node.isConnected || node.getAttribute('data-state') === 'closed'
+      && getComputedStyle(node).display === 'none'
+      && proof.body.every(([name, value, priority]) => document.body.style.getPropertyValue(name) === value && document.body.style.getPropertyPriority(name) === priority)
+      && Array.from(proof.aria).every(([background, before]) => !background.isConnected || background.getAttribute('aria-hidden') === before);
+    if (complete && settingsClosing === node) settingsClosing = null;
+    // Revalidate on every query: the same connected shell can host a new action.
+    return complete;
+  }
+  function settingsClosePending(): boolean {
+    return !!settingsClosing && !settingsCloseComplete(settingsClosing);
+  }
   // Settings may dismiss only our live owned dock through its native handler.
-  // Return the node so the caller can observe actual unmount, including animations.
+  // Wait for native unmount or positively completed retained-shell cleanup.
   function closeForSettings(): HTMLElement | null | false {
     // Submission is already in flight during the mounted-picker capture phase.
-    if (disposed || pending || launched || requested || otherLayer() || settingsClosing?.isConnected) return false;
+    if (disposed || pending || launched || requested || otherLayer() || settingsClosePending()) return false;
     if (picker) {
       if (!picker.isConnected || !reserved || !picker.hasAttribute('data-ff-combat-docked')) return false;
       const nativeClose = picker.querySelector<HTMLButtonElement>('button:has(.lucide-x)');
       if (!nativeClose || nativeClose.disabled) return false;
       settingsClosing = picker;
+      settingsCloseProof = { node: picker, body: bodyBefore.map(entry => entry.slice()), aria: new Map(hiddenBefore) };
       settingsSuppressed = true;
       close();
       return settingsClosing;
@@ -637,7 +655,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     // switch. Wait for the requested native surface instead.
     const awaitingDice = launched === 'skills' || requested === 'skills';
     const found = skills ?? (!awaitingDice ? Array.from(document.querySelectorAll<HTMLElement>('[role="dialog"]')).find(dialog => visible(dialog) && Array.from(dialog.querySelectorAll('h2')).some(heading => /^(Choose Action|Выберите действие)$/i.test(heading.textContent?.trim() ?? ''))) : undefined);
-    if (settingsClosing && !settingsClosing.isConnected) settingsClosing = null;
+    if (settingsClosing) settingsCloseComplete(settingsClosing);
     if (found && found !== retiringPicker && found !== settingsClosing && !preexisting.has(found)) { clearReadiness(); reopenDeadline = 0; picker = found; mode = skills ? 'skills' : 'actions'; launched = null; }
     filterAdventure();
     if (picker) { if (otherLayer()) { if (modalActive) suspendModal(); } else dock(); }
@@ -671,7 +689,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
     if (clicked && picker?.contains(clicked) && mode === 'skills' && clicked.querySelector('svg:is(#d4,#d6,#d8,#d10,#d12,#d20,#d100)') && /^(Roll|Бросок)$/i.test(clicked.innerText.trim())) { pending = true; pendingReopened = false; attempted = true; }
     if (picker?.querySelector('button:has(.lucide-x)')?.contains(event.target) && !otherLayer()) pending = false;
     const next = dice?.contains(event.target) ? 'skills' : action?.contains(event.target) ? 'actions' : null;
-    if (!next || internalLaunch || otherLayer() || settingsClosing?.isConnected) return;
+    if (!next || internalLaunch || otherLayer() || settingsClosePending()) return;
     if (picker && mode === next) { event.preventDefault(); event.stopImmediatePropagation(); close(); return; }
     settingsSuppressed = false;
     // Observe before native handlers; do not cancel or replace their event.
@@ -693,7 +711,7 @@ export function configureCombatPanel(enabled: boolean, locale: 'en' | 'ru', css:
   // Native Escape handles picker dismissal, including its own nested layers.
   document.addEventListener('click', schedule, true); window.addEventListener('popstate', schedule);
   host[key] = {
-    closeForSettings,
+    closeForSettings, settingsCloseComplete,
     update(value, nextCss) { language = value; if (style.textContent !== nextCss) style.textContent = nextCss; labels(); schedule(); },
     dispose() { disposed = true; clearReadiness(); observer.disconnect(); clearInterval(timer); if (picker || reserved) close();
       document.removeEventListener('ff-spell-helper-change', schedule);
