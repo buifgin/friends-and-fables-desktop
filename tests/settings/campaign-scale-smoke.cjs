@@ -32,10 +32,31 @@ const selectors={
 };
 const frameSource=`new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Visible RAF budget')),1500);requestAnimationFrame(()=>{clearTimeout(timer);resolve(true)})})`;
 const identitySource=`(()=>({nativeSame:document.querySelector('#native')===window.originalNative,fieldSame:document.querySelector('#native textarea')===window.originalField,nativeConnected:window.originalNative?.isConnected,nativeDraft:window.originalField?.value,mounts:nativeMounts,composerSame:document.querySelector('.tiptap')===window.originalComposer,composerDraft:document.querySelector('.tiptap').textContent}))()`;
+// Probe only the retained native textarea; no popup/portal markup is synthesized.
+const fieldProbePrograms={
+ prepare:`(()=>{
+  const field=document.querySelector('#native textarea'),scroller=document.querySelector('#native .flex-1.items-center.overflow-y-auto'),panel=document.querySelector('#native');
+  if(field!==window.originalField)throw Error('Pointer probe requires original native field');
+  const saved={value:field.value,start:field.selectionStart,end:field.selectionEnd,direction:field.selectionDirection,scrollTop:scroller.scrollTop,scrollLeft:scroller.scrollLeft,fieldTop:field.scrollTop,fieldLeft:field.scrollLeft};
+  const probe=window.__ffScaleFieldProbe={field,scroller,saved};
+  probe.pointerReady=new Promise(resolve=>{probe.pointerListener=event=>{probe.pointer={trusted:event.isTrusted,targetSame:event.target===field};resolve();};});
+  probe.inputReady=new Promise(resolve=>{probe.inputListener=event=>{probe.input={trusted:event.isTrusted,data:event.data,targetSame:event.target===field};resolve();};});
+  field.addEventListener('mousedown',probe.pointerListener,{once:true});field.addEventListener('input',probe.inputListener,{once:true});
+  // Establish a non-focused field precondition; only the real pointer may focus it.
+  if(document.activeElement===field)field.blur();
+  const r=field.getBoundingClientRect(),v=scroller.getBoundingClientRect(),q=parseFloat(getComputedStyle(panel).zoom)||1;
+  scroller.scrollTop+=(r.y-v.y-(v.height-r.height)/2)/q;
+  return {saved,unfocused:document.activeElement!==field};
+ })()`,
+ point:`(()=>{const p=window.__ffScaleFieldProbe,r=p.field.getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2,width:r.width,height:r.height}})()`,
+ pointer:`(async()=>{const p=window.__ffScaleFieldProbe;await p.pointerReady;await new Promise(resolve=>requestAnimationFrame(resolve));return {...p.pointer,focused:document.activeElement===p.field,fieldSame:p.field===window.originalField}})()`,
+ input:`(async()=>{const p=window.__ffScaleFieldProbe;await p.inputReady;return {...p.input,focused:document.activeElement===p.field,value:p.field.value,fieldSame:p.field===window.originalField}})()`,
+ restore:`(()=>{const p=window.__ffScaleFieldProbe;if(!p)return null;const {field,scroller,saved}=p;field.removeEventListener('mousedown',p.pointerListener);field.removeEventListener('input',p.inputListener);field.value=saved.value;field.setSelectionRange(saved.start,saved.end,saved.direction);field.blur();field.scrollTop=saved.fieldTop;field.scrollLeft=saved.fieldLeft;scroller.scrollTop=saved.scrollTop;scroller.scrollLeft=saved.scrollLeft;delete window.__ffScaleFieldProbe;return {value:field.value,start:field.selectionStart,end:field.selectionEnd,direction:field.selectionDirection,scrollTop:scroller.scrollTop,scrollLeft:scroller.scrollLeft,fieldTop:field.scrollTop,fieldLeft:field.scrollLeft}})()`,
+};
 const programs=Object.fromEntries(Object.entries(selectors).map(([name,value])=>[name,`(${measure.toString()})(${JSON.stringify(value)})`]));
-for(const program of [...Object.values(programs),frameSource,identitySource,websiteHtml.match(/<script>([\s\S]*)<\/script>/)[1]])new vm.Script(program);
+for(const program of [...Object.values(programs),...Object.values(fieldProbePrograms),frameSource,identitySource,websiteHtml.match(/<script>([\s\S]*)<\/script>/)[1]])new vm.Script(program);
 if(!process.versions.electron) {
- module.exports={websiteHtml,programs,frameSource,identitySource};
+ module.exports={websiteHtml,programs,fieldProbePrograms,frameSource,identitySource};
 } else {
  const fs=require('node:fs/promises'),os=require('node:os'),crypto=require('node:crypto');
  const {promisify}=require('node:util'),exec=promisify(require('node:child_process').execFile);
@@ -60,6 +81,30 @@ if(!process.versions.electron) {
  async function frame(contents){assert.equal(await js(contents,"document.visibilityState"),'visible','RAF target visible');await js(contents,frameSource);}
  async function painted(contents){contents.focus();assert.equal(await js(contents,'document.hasFocus()'),true);await frame(contents);await frame(contents);}
  async function select(section){stage='open '+section;console.log('Campaign scale stage '+stage);await bounded(dock.openSection(section),stage);const contents=section==='campaign'?website.webContents:dock.hub.editors.get(section).view.webContents;await painted(contents);}
+ async function probeField(record){
+  const contents=website.webContents,probe=record.inputProbe={};stage='native pointer/input zoom '+record.level;
+  try {
+   probe.prepared=await js(contents,fieldProbePrograms.prepare);assert.equal(probe.prepared.unfocused,true,'Field is not already focused before native pointer');
+   await frame(contents);const point=await js(contents,fieldProbePrograms.point),factor=contents.getZoomFactor();
+   assert.ok(point.width>0&&point.height>0);probe.point={css:point,x:Math.round(point.x*factor),y:Math.round(point.y*factor),factor,viewBounds:website.getBounds()};
+   assert.ok(probe.point.x>=0&&probe.point.x<website.getBounds().width&&probe.point.y>=0&&probe.point.y<website.getBounds().height,'Pointer lies within native website view');
+   const hit=`document.elementFromPoint(${probe.point.x/factor},${probe.point.y/factor})===window.originalField`;
+   probe.hit=await js(contents,hit);assert.equal(probe.hit,true,'Rounded native DIP pointer hits exact textarea');
+   contents.sendInputEvent({type:'mouseMove',x:probe.point.x,y:probe.point.y});
+   contents.sendInputEvent({type:'mouseDown',x:probe.point.x,y:probe.point.y,button:'left',clickCount:1});
+   contents.sendInputEvent({type:'mouseUp',x:probe.point.x,y:probe.point.y,button:'left',clickCount:1});
+   probe.pointer=await js(contents,fieldProbePrograms.pointer);
+   assert.deepEqual(probe.pointer,{trusted:true,targetSame:true,focused:true,fieldSame:true},'Trusted native pointer focuses retained textarea');
+   contents.sendInputEvent({type:'keyDown',keyCode:'X'});contents.sendInputEvent({type:'char',keyCode:'X'});contents.sendInputEvent({type:'keyUp',keyCode:'X'});
+   probe.input=await js(contents,fieldProbePrograms.input);
+   assert.equal(probe.input.trusted,true);assert.equal(probe.input.targetSame,true);assert.equal(probe.input.focused,true);assert.equal(probe.input.fieldSame,true);
+   assert.equal(probe.input.data,'X');assert.notEqual(probe.input.value,probe.prepared.saved.value,'Native keyboard changes textarea draft');
+   assert.equal(probe.input.value.length,probe.prepared.saved.value.length+1,'Exactly one native character is inserted');
+  } finally {
+   probe.restored=await js(contents,fieldProbePrograms.restore);
+   if(probe.prepared)assert.deepEqual(probe.restored,probe.prepared.saved,'Fixture value, selection and native scroll restored after input probe');
+  }
+ }
  async function capture(label,marker){
   if(!captures)return;
   assert.ok(process.env.DISPLAY,'Private X11 DISPLAY required');assert.equal(Boolean(process.env.WAYLAND_DISPLAY),false);
@@ -101,6 +146,7 @@ if(!process.versions.electron) {
   const campaign=await sample(website.webContents,'campaign',website);
   const record={level,factor,local,campaign,identity:await js(website.webContents,identitySource),beforeScroll,hubBounds:dock.hub.bounds,editorId:editor.webContents.id,windowSize:window.getContentSize()};records.push(record);
   console.log('Campaign physical scale '+JSON.stringify(record));await capture('campaign-'+level,campaign.nodes.marker);
+  await probeField(record);
   await select('appearance');await select('campaign');
   record.returnIdentity=await js(website.webContents,identitySource);
   record.afterScroll=await js(website.webContents,"document.querySelector('#native .flex-1.items-center.overflow-y-auto').scrollTop");
