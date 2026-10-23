@@ -4,6 +4,8 @@ import path from 'node:path';
 import type { WindowControls } from './shell/window-controls';
 import type { AppearanceDock } from './shell/appearance-dock';
 import { configureNativeCampaignPanel } from './settings/campaign-panel';
+import type { CampaignNavigationModel } from './settings/campaign-panel';
+import { authorizeCampaignNavigation, parseCampaignNavigationRequest, type CampaignNavigationCapability, type CampaignNavigationContext } from './settings/campaign-navigation';
 import { settingsPalette } from './settings/settings-palette';
 import type { CombatPreferences } from './settings/settings-core';
 import { mainWindowChrome } from './shell/window-chrome';
@@ -30,6 +32,7 @@ let translation: TranslationManager;
 let music: MusicManager;
 let hostInstructions:HostInstructionsManager;
 let websiteContents: WebContents | null = null;
+const campaignNavigationHandlers = new WeakMap<WebContents, (url: string) => boolean>();
 let applicationMenu: Menu;
 let linuxMenu: LinuxMenuBar | undefined;
 let settingsDock: AppearanceDock | undefined;
@@ -59,6 +62,7 @@ function configureWebsiteContents(contents: WebContents, window: BrowserWindow, 
   });
 
   contents.setWindowOpenHandler(({ url }) => {
+    if (contents === websiteContents && campaignNavigationHandlers.get(contents)?.(url)) return { action: 'deny' };
     const current=new URL(contents.getURL()||'about:blank');
     if(contents===websiteContents&&settingsDock&&current.origin==='https://play.fables.gg'
       &&url==='fables-desktop://settings/open-global'){
@@ -158,11 +162,32 @@ function createWindow(): void {
   let campaignUpdates:Promise<unknown> = Promise.resolve();
   let campaignRequest=0;
   let campaignDocument=0;
-  view.webContents.on('did-navigate',()=>{campaignDocument++;});
-  const updateCampaignPanel = (show: boolean | 'suspend' | 'reserve', width = 0, height = 0, offset = 0): Promise<boolean> => {
+  let campaignNavigation: CampaignNavigationCapability | null = null;
+  let preparedNavigation: { navigation: CampaignNavigationModel; context: CampaignNavigationContext } | null = null;
+  const invalidateCampaignNavigation = () => { campaignNavigation = null; preparedNavigation = null; };
+  view.webContents.on('did-start-navigation', (_event, _url, _inPlace, isMainFrame) => {
+    if (isMainFrame) { campaignRequest++;invalidateCampaignNavigation();dock.closeCampaign(); }
+  });
+  view.webContents.on('did-navigate',()=>{campaignDocument++;invalidateCampaignNavigation();});
+  view.webContents.on('did-navigate-in-page', (_event, _url, isMainFrame) => {
+    if (isMainFrame) { campaignRequest++;invalidateCampaignNavigation();dock.closeCampaign(); }
+  });
+  view.webContents.on('destroyed', () => { campaignRequest++;invalidateCampaignNavigation();campaignNavigationHandlers.delete(view.webContents); });
+  const updateCampaignPanel = (show: boolean | 'suspend' | 'reserve' | 'prepare' | 'reveal', width = 0, height = 0, offset = 0, navigation?: CampaignNavigationModel): Promise<boolean> => {
+    const prepared = preparedNavigation;
     const request=++campaignRequest,contents=view.webContents;
+    invalidateCampaignNavigation();
     if(contents.isDestroyed())return Promise.resolve(false);
     const expectedURL=contents.getURL(),expectedDocument=campaignDocument;
+    const visual = show === true || show === 'prepare' || show === 'reveal';
+    if (visual && (!navigation || !['en','ru'].includes(navigation.locale) || !Array.isArray(navigation.destinations)
+      || navigation.destinations.length > 6 || new Set(navigation.destinations).size !== navigation.destinations.length
+      || typeof navigation.ticket !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(navigation.ticket)
+      || navigation.destinations.some(section => !parseCampaignNavigationRequest(`fables-desktop://settings/select-campaign-section?section=${section}&ticket=${navigation.ticket}`)))) return Promise.resolve(false);
+    if (show === 'reveal' && (!prepared || prepared.navigation.ticket !== navigation?.ticket
+      || prepared.context.contentsId !== contents.id || prepared.context.url !== expectedURL
+      || prepared.context.document !== expectedDocument || prepared.context.request !== request - 1)) return Promise.resolve(false);
+    const model = navigation && { ticket: navigation.ticket, locale: navigation.locale, destinations: [...navigation.destinations] };
     let allowed=false;
     // Owned cleanup must still run after same-origin SPA route departure.
     // Every operation that can reserve or mount remains Campaign-only.
@@ -173,13 +198,32 @@ function createWindow(): void {
     const update=campaignUpdates.catch(console.error).then(async () => {
       if(request!==campaignRequest||contents.isDestroyed()||contents.getURL()!==expectedURL||campaignDocument!==expectedDocument)return false;
       const previous=contents.getBackgroundThrottling();
-      if(show===true)contents.setBackgroundThrottling(false);
-      try {return await contents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))},${offset})`)===true;}
-      finally {if(show===true&&!contents.isDestroyed())contents.setBackgroundThrottling(previous);}
+      if(visual)contents.setBackgroundThrottling(false);
+      const context: CampaignNavigationContext = { contentsId: contents.id, url: expectedURL, document: expectedDocument, request };
+      // Only this owned reveal/show can arm links. A ticket is stale-operation
+      // identity; exact contents/document/URL/request remain the authority.
+      if (model && (show === true || show === 'reveal')) campaignNavigation = { ...context, ticket: model.ticket, destinations: model.destinations };
+      try {
+        const ready = await contents.executeJavaScript(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${width},${height},${JSON.stringify(settingsPalette(appearance.getSettings()))},${offset},${JSON.stringify(model)})`) === true;
+        const current = request === campaignRequest && !contents.isDestroyed() && contents.getURL() === expectedURL && campaignDocument === expectedDocument;
+        if (!ready || !current) { if (request === campaignRequest) invalidateCampaignNavigation(); return false; }
+        if (show === 'prepare' && model) preparedNavigation = { navigation: model, context };
+        return true;
+      } catch (error) { if (request === campaignRequest) invalidateCampaignNavigation(); throw error; }
+      finally {if(visual&&!contents.isDestroyed())contents.setBackgroundThrottling(previous);}
     });
     campaignUpdates=update;
     return update;
   };
+  campaignNavigationHandlers.set(view.webContents, url => {
+    const contents = view.webContents;
+    if (contents.isDestroyed()) return false;
+    const request = authorizeCampaignNavigation(url, campaignNavigation, { contentsId: contents.id, url: contents.getURL(), document: campaignDocument, request: campaignRequest });
+    if (!request) return false;
+    invalidateCampaignNavigation();
+    void dock.navigateCampaignSection(request.section, request.ticket).catch(console.error);
+    return true;
+  });
   const combatCampaign = (): string | null => {
     if (view.webContents.isDestroyed()) return null;
     try {
@@ -199,7 +243,10 @@ function createWindow(): void {
     },
   }, campaign: {
     reserve: bounds => updateCampaignPanel('reserve', bounds.width, bounds.height, bounds.x),
-    show: bounds => updateCampaignPanel(true, bounds.width, bounds.height, bounds.x),
+    prepare: (bounds, navigation) => updateCampaignPanel('prepare', bounds.width, bounds.height, bounds.x, navigation),
+    reveal: (bounds, ticket) => preparedNavigation?.navigation.ticket === ticket
+      ? updateCampaignPanel('reveal', bounds.width, bounds.height, bounds.x, preparedNavigation.navigation) : Promise.resolve(false),
+    show: (bounds, navigation) => updateCampaignPanel(true, bounds.width, bounds.height, bounds.x, navigation),
     suspend: bounds => { void updateCampaignPanel('suspend',bounds.width,bounds.height,bounds.x).catch(console.error); },
     hide: () => { void updateCampaignPanel(false).catch(console.error); },
   } });
