@@ -11,6 +11,7 @@ import type { CombatPreferences } from './settings/settings-core';
 import { mainWindowChrome } from './shell/window-chrome';
 import { configureZoomShortcuts } from './shell/zoom';
 import { configureFullscreenShortcuts } from './shell/window-shortcuts';
+import { configureFrameRateOverlay } from './shell/frame-rate';
 import { AppearanceManager, registerAppearanceScheme } from './appearance/appearance';
 import { LinuxMenuBar, MENU_URL } from './shell/linux-menu';
 import { TranslationManager } from './translation/translation';
@@ -36,6 +37,12 @@ const campaignNavigationHandlers = new WeakMap<WebContents, (url: string) => boo
 let applicationMenu: Menu;
 let linuxMenu: LinuxMenuBar | undefined;
 let settingsDock: AppearanceDock | undefined;
+let showFrameRate = false;
+
+function updateFrameRateOverlay(contents: WebContents | null = websiteContents): void {
+  if (!contents || contents.isDestroyed()) return;
+  void contents.executeJavaScript(`(${configureFrameRateOverlay.toString()})(${showFrameRate})`).catch(console.error);
+}
 
 function isHttpsUrl(value: string): boolean {
   try {
@@ -157,6 +164,9 @@ function createWindow(): void {
   } });
   mainWindow.contentView.addChildView(view);
   websiteContents = view.webContents;
+  view.webContents.on('did-finish-load', () => {
+    if (showFrameRate) updateFrameRateOverlay(view.webContents);
+  });
   const dock = appearance.attachMain(mainWindow, view);
   settingsDock = dock;
   let campaignUpdates:Promise<unknown> = Promise.resolve();
@@ -377,6 +387,8 @@ function createMenu(): void {
         { id: 'reload', label: 'Reload', accelerator: 'CmdOrCtrl+R', click: () => targetContents()?.reload() },
         { id: 'force-reload', label: 'Force Reload', accelerator: 'CmdOrCtrl+Shift+R', click: () => targetContents()?.reloadIgnoringCache() },
         { id: 'devtools', label: 'Developer Tools', accelerator: 'F12', click: () => targetContents()?.toggleDevTools() },
+        { id: 'show-fps', label: 'Show FPS and Frame Times', type: 'checkbox', checked: showFrameRate,
+          click: item => { showFrameRate = item.checked; updateFrameRateOverlay(); linuxMenu?.setMenu(applicationMenu, appearance.getLocale()); } },
         { type: 'separator' },
         { label: 'Reset Zoom', accelerator: 'CmdOrCtrl+0', click: () => targetContents()?.setZoomLevel(0) },
         { label: 'Zoom In', accelerator: 'CmdOrCtrl+=', click: () => { const target = targetContents(); if (target) target.setZoomLevel(Math.min(5, target.getZoomLevel() + .5)); } },

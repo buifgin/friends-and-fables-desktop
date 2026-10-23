@@ -9,6 +9,7 @@ const RUSSIAN: Record<string, string> = {
   'Quit':'Выход', 'Minimize':'Свернуть', 'Close':'Закрыть', 'Settings…':'Настройки…', 'General settings':'Общие настройки', 'General settings…':'Общие настройки…', 'Customize Appearance…':'Общие настройки…',
   'Translate into Russian':'Переводить на русский', 'Show original text':'Показать оригинал', 'Translation Settings…':'Настройки перевода…',
   'Reload':'Обновить', 'Force Reload':'Обновить без кэша', 'Developer Tools':'Инструменты разработчика',
+  'Show FPS and Frame Times':'Показывать FPS и время кадра',
   'Reset Zoom':'Сбросить масштаб', 'Zoom In':'Увеличить масштаб', 'Zoom Out':'Уменьшить масштаб',
   'Toggle Fullscreen (Alt+Enter)':'Полноэкранный режим (Alt+Enter)', 'Retry':'Повторить',
   'Friends & Fables could not be opened.':'Не удалось открыть Friends & Fables.',
