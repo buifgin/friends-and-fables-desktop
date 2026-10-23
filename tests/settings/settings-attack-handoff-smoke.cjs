@@ -5,8 +5,11 @@ const mode=process.env.FABLES_TEST_HANDOFF_MODE||'normal',rail=process.env.FABLE
 assert.ok(['normal','retained','guards','cancel'].includes(mode));assert.ok(['compact','expanded'].includes(rail));assert.ok(['dom','native'].includes(input));
 function nativePage(){
  const campaignId='01a0d854-78d5-7064-ae41-f63d561c8e01',chat=document.getElementById('chat'),gear=document.getElementById('campaign-gear'),composer=document.getElementById('composer');
- window.handoff={campaignOpens:0,campaignCloses:0,attackOpens:0,attackCloses:0,attackX:0,submits:0,closeMode:'immediate',closePending:false,completed:false,events:[]};
- const state=window.handoff;window.originalComposer=document.querySelector('.tiptap');window.originalNativeInput=document.getElementById('native-draft');
+ window.handoff={campaignOpens:0,campaignCloses:0,attackOpens:0,attackCloses:0,attackX:0,outsideAccepted:0,outsidePrevented:0,sidebarMouseDown:0,sidebarPointerDown:0,sidebarClick:0,closeSource:null,submits:0,closeMode:'immediate',closePending:false,completed:false,events:[]};
+ const state=window.handoff;
+ // Observe real input before the injected capture listener intercepts Settings.
+ for(const [type,counter] of [['mousedown','sidebarMouseDown'],['pointerdown','sidebarPointerDown'],['click','sidebarClick']])document.addEventListener(type,e=>{if(e.isTrusted&&gear.contains(e.target)){state[counter]++;state.events.push('sidebar-'+type);}},true);
+ window.originalComposer=document.querySelector('.tiptap');window.originalNativeInput=document.getElementById('native-draft');
  composer.__reactFiber$fixture={memoizedProps:{encounterActive:false}};
  function locks(){document.body.style.pointerEvents='none';document.body.style.overflow='hidden';chat.setAttribute('aria-hidden','true');}
  function unlock(){document.body.style.pointerEvents='';document.body.style.overflow='';chat.removeAttribute('aria-hidden');}
@@ -29,22 +32,22 @@ function nativePage(){
    dialog.__reactFiber$fixture={type:'div',child:{type:function NativeActionsForm(){},memoizedProps:{campaignId,encounterId:1,isUsersCharacterTurn:true}}};
   }
   const overlay=document.createElement('div');overlay.className='fixed inset-0 z-50';overlay.dataset.state='open';dialog.dataset.state='open';dialog.setAttribute('aria-modal','true');
-  state.attackOpens++;state.closePending=false;state.completed=false;state.events.push('attack-launch');
+  state.attackOpens++;state.closeSource=null;state.closePending=false;state.completed=false;state.events.push('attack-launch');
   const form=dialog.querySelector('form');form.onsubmit=e=>{e.preventDefault();state.submits++;};
   window.attackIdentity=dialog;window.attackForm=form;window.attackField=form.querySelector('input');window.attackField.value='unsaved attack draft';
   let closed=false;
   function finish(){if(closed)return;closed=true;state.closePending=false;state.completed=true;state.events.push('attack-complete');document.removeEventListener('pointerdown',outside);document.removeEventListener('keydown',escape);overlay.remove();unlock();if(state.closeMode==='retained'){dialog.hidden=true;dialog.style.display='none';state.retainedShell=dialog;}else dialog.remove();}
-  function close(){if(state.closePending||closed)return;state.attackCloses++;state.closePending=true;state.events.push('attack-close-request');dialog.dataset.state='closed';if(state.closeMode==='held'||state.closeMode==='retained')state.releaseClose=finish;else if(state.closeMode==='async')setTimeout(finish,80);else finish();}
-  function outside(e){if(dialog.contains(e.target))return;const event=new CustomEvent('dismissableLayer.pointerDownOutside',{cancelable:true,detail:{originalEvent:e}});e.target.dispatchEvent(event);if(!event.defaultPrevented)close();}
-  function escape(e){if(e.key==='Escape')close();}
-  dialog.querySelector('#attack-x').onclick=()=>{state.attackX++;close();};window.finishAttack=finish;window.closeAttack=close;
+  function close(source){if(state.closePending||closed)return;state.closeSource=source;state.attackCloses++;state.closePending=true;state.events.push('attack-close-request');dialog.dataset.state='closed';if(state.closeMode==='held'||state.closeMode==='retained')state.releaseClose=finish;else if(state.closeMode==='async')setTimeout(finish,80);else finish();}
+  function outside(e){if(dialog.contains(e.target))return;const event=new CustomEvent('dismissableLayer.pointerDownOutside',{cancelable:true,detail:{originalEvent:e}});e.target.dispatchEvent(event);state[event.defaultPrevented?'outsidePrevented':'outsideAccepted']++;state.events.push(event.defaultPrevented?'attack-outside-prevented':'attack-outside-accepted');if(!event.defaultPrevented)close('outside');}
+  function escape(e){if(e.key==='Escape')close('escape');}
+  dialog.querySelector('#attack-x').onclick=()=>{state.attackX++;state.events.push('attack-x');close('x');};window.finishAttack=finish;window.closeAttack=close;
   document.body.append(overlay,dialog);locks();document.addEventListener('pointerdown',outside);document.addEventListener('keydown',escape);
  };
  document.getElementById('actions').onclick=window.openAttack;
  document.getElementById('dice').onclick=window.openAttack;
  window.fixtureDiagnostic=()=>{
   const attack=document.getElementById('native-attack'),campaign=document.getElementById('native-campaign');
-  return {campaignOpens:state.campaignOpens,campaignCloses:state.campaignCloses,attackOpens:state.attackOpens,attackCloses:state.attackCloses,attackX:state.attackX,submits:state.submits,closePending:state.closePending,completed:state.completed,events:state.events,bodyPointer:document.body.style.pointerEvents,bodyOverflow:document.body.style.overflow,chatAria:chat.getAttribute('aria-hidden'),campaignController:!!window.__friendsFablesDesktopCampaignPanel,combatController:!!window.__friendsFablesDesktopCombatPanel,nav:!!document.querySelector('[data-ff-campaign-navigation]'),campaign:!!campaign,adopted:!!campaign?.hasAttribute('data-ff-campaign-panel'),attack:attack&&{connected:attack.isConnected,state:attack.dataset.state,hidden:attack.hidden,display:getComputedStyle(attack).display,docked:attack.hasAttribute('data-ff-combat-docked')},composerIdentity:document.querySelector('.tiptap')===originalComposer,nativeInputIdentity:document.getElementById('native-draft')===originalNativeInput,draftsPreserved:originalComposer.textContent==='preserved composer draft'&&originalNativeInput.value==='preserved native draft',attackIdentity:!attack||attack===window.attackIdentity,attackFormIdentity:!attack||attack.querySelector('form')===window.attackForm};
+  return {campaignOpens:state.campaignOpens,campaignCloses:state.campaignCloses,attackOpens:state.attackOpens,attackCloses:state.attackCloses,attackX:state.attackX,outsideAccepted:state.outsideAccepted,outsidePrevented:state.outsidePrevented,sidebarMouseDown:state.sidebarMouseDown,sidebarPointerDown:state.sidebarPointerDown,sidebarClick:state.sidebarClick,closeSource:state.closeSource,submits:state.submits,closePending:state.closePending,completed:state.completed,events:state.events,bodyPointer:document.body.style.pointerEvents,bodyOverflow:document.body.style.overflow,chatAria:chat.getAttribute('aria-hidden'),campaignController:!!window.__friendsFablesDesktopCampaignPanel,combatController:!!window.__friendsFablesDesktopCombatPanel,nav:!!document.querySelector('[data-ff-campaign-navigation]'),campaign:!!campaign,adopted:!!campaign?.hasAttribute('data-ff-campaign-panel'),attack:attack&&{connected:attack.isConnected,state:attack.dataset.state,hidden:attack.hidden,display:getComputedStyle(attack).display,docked:attack.hasAttribute('data-ff-combat-docked')},composerIdentity:document.querySelector('.tiptap')===originalComposer,nativeInputIdentity:document.getElementById('native-draft')===originalNativeInput,draftsPreserved:originalComposer.textContent==='preserved composer draft'&&originalNativeInput.value==='preserved native draft',attackIdentity:!attack||attack===window.attackIdentity,attackFormIdentity:!attack||attack.querySelector('form')===window.attackForm};
  };
 }
 const settings=rail==='compact'?'<button type="button" id="campaign-gear"><svg class="lucide-settings"></svg>Settings</button>':'<div id="campaign-gear" class="font-body group flex flex-row"><span class="font-header">Settings</span></div>';
@@ -80,13 +83,20 @@ if(process.env.FABLES_TEST_PARSE_ONLY==='1'){console.log('PASS: handoff fixture 
  async function closeSettings(){await js('document.querySelector("[data-ff-campaign-panel] button:has(.lucide-x)").click();true');await until(()=>!dock.isOpen()&&!dock.opening,'native Campaign close reaches main');await until(()=>js('!window.__friendsFablesDesktopCampaignPanel'),'closed controller retired');}
  async function openAttack(closeMode){await js('handoff.closeMode='+JSON.stringify(closeMode)+';document.getElementById("actions").click();true');await until(()=>js('!!document.querySelector("[data-ff-combat-docked]")'),'genuine Actions dock');await assertDrafts();}
  async function cycle(closeMode,label){
-  await openAttack(closeMode);const before=await js('({closes:handoff.attackCloses,x:handoff.attackX,opens:handoff.campaignOpens})');const requests=openRequests;await click('#campaign-gear');await until(()=>openRequests===requests+1,'sidebar captured exactly one request');
+  await openAttack(closeMode);const before=await js('fixtureDiagnostic()');const requests=openRequests;await click('#campaign-gear');await until(()=>openRequests===requests+1,'sidebar captured exactly one request');
   if(closeMode==='held'||closeMode==='retained'){
-   await until(()=>js('handoff.closePending'),'owned native exit held');await frames();const held=await js('fixtureDiagnostic()');assert.equal(held.campaignOpens,before.opens,'Closing animation cannot launch Campaign');assert.equal(held.attack.connected,true);assert.equal(held.attack.state,'closed');assert.equal(held.bodyPointer,'none');assert.equal(held.chatAria,'true');assert.equal(held.attack.hidden,false);assert.notEqual(held.attack.display,'none');await diagnostic(label+' connected closed animation negative');
+   await until(()=>js('handoff.closePending'),'owned native exit held');await frames();const held=await js('fixtureDiagnostic()');assert.equal(held.campaignOpens,before.campaignOpens,'Closing animation cannot launch Campaign');assert.equal(held.attack.connected,true);assert.equal(held.attack.state,'closed');assert.equal(held.bodyPointer,'none');assert.equal(held.chatAria,'true');assert.equal(held.attack.hidden,false);assert.notEqual(held.attack.display,'none');await diagnostic(label+' connected closed animation negative');
    await js('handoff.releaseClose();true');
    if(closeMode==='retained'){assert.deepEqual(await js('(()=>{const d=fixtureDiagnostic();return [d.attack.connected,d.attack.state,d.attack.hidden,d.attack.display,d.bodyPointer,d.bodyOverflow,d.chatAria]})()'),[true,'closed',true,'none','','',null],'Robustness case models positively completed native close with retained shell and restored locks');await diagnostic(label+' retained terminal shell');}
   }
-  await opened(label+' Campaign opens after native exit');const after=await js('fixtureDiagnostic()');assert.equal(after.attackCloses,before.closes+1,'Native close operation occurs once');assert.equal(after.attackX,before.x+(input==='dom'?1:0),'DOM handoff invokes genuine X once; native outside pointer closes before click');assert.equal(after.campaignOpens,before.opens+1);await diagnostic(label+' complete');await closeSettings();
+  await opened(label+' Campaign opens after native exit');const after=await js('fixtureDiagnostic()');assert.equal(after.attackCloses,before.attackCloses+1,'Native close operation occurs once');const accepted=after.outsideAccepted-before.outsideAccepted,prevented=after.outsidePrevented-before.outsidePrevented;
+  if(input==='native'){
+   assert.equal(after.sidebarMouseDown-before.sidebarMouseDown,1,'Genuine sidebar mousedown reaches capture once');assert.equal(after.sidebarClick-before.sidebarClick,1,'Genuine sidebar click reaches capture once');
+   const pointers=after.sidebarPointerDown-before.sidebarPointerDown;assert.ok(pointers===0||pointers===1,'At most one native pointerdown per mouse press');assert.equal(accepted+prevented,pointers,'Each delivered outside pointer has an observed dismissal decision');assert.ok(accepted<=1&&prevented<=1);
+  }else{assert.equal(accepted,0);assert.equal(prevented,0);}
+  // closeForSettings invokes X unless a preceding, unprevented native outside
+  // pointer already started the exact same close. Native input alone proves neither.
+  assert.equal(after.closeSource,accepted===1?'outside':'x','Close source matches the native outside decision');assert.equal(after.attackX,before.attackX+(accepted===1?0:1),'Exactly one genuine X when outside dismissal did not start close');assert.equal(after.campaignOpens,before.campaignOpens+1);await diagnostic(label+' complete');await closeSettings();
  }
  void(async()=>{const profile=process.env.FABLES_TEST_PROFILE_DIR||await fs.mkdtemp(path.join(os.tmpdir(),'ff-settings-attack-'));app.setPath('userData',profile);
   void app.whenReady().then(async()=>{
