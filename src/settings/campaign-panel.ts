@@ -1,8 +1,11 @@
+import type { SettingsSection } from './settings-core';
+export type CampaignNavDestination = Exclude<SettingsSection, 'campaign'>;
+export interface CampaignNavigationModel { ticket:string; locale:'en'|'ru'; destinations:readonly CampaignNavDestination[]; }
 export interface CampaignPanelPalette { background:string; foreground:string; border:string; accent:string; panel:string; selected:string; }
 
 // Serialized into the website: all runtime dependencies must remain local.
-export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserve', width: number, height: number, palette?:CampaignPanelPalette, offset = 0): Promise<boolean> {
-  type Controller = { route:string;update(width: number, height: number, palette?:CampaignPanelPalette,offset?:number): void; suspend(width: number,height: number,palette?:CampaignPanelPalette,offset?:number): void; reserve(width:number,height:number):Promise<boolean>; dispose(retainClosed?:boolean): void; ready(): Promise<boolean>; cancelPending(): void };
+export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserve' | 'prepare' | 'reveal', width: number, height: number, palette?:CampaignPanelPalette, offset = 0, navigation?:CampaignNavigationModel): Promise<boolean> {
+  type Controller = { route:string; prepare(width:number,height:number,palette:CampaignPanelPalette|undefined,offset:number,navigation:CampaignNavigationModel):Promise<boolean>; reveal(width:number,height:number,palette:CampaignPanelPalette|undefined,offset:number,navigation:CampaignNavigationModel):Promise<boolean>;update(width: number, height: number, palette?:CampaignPanelPalette,offset?:number,navigation?:CampaignNavigationModel): void; suspend(width: number,height: number,palette?:CampaignPanelPalette,offset?:number): void; reserve(width:number,height:number):Promise<boolean>; dispose(retainClosed?:boolean): void; ready(): Promise<boolean>; cancelPending(): void };
   type Fiber = { type?: unknown; memoizedProps?: Record<string, unknown>; return?: Fiber; child?: Fiber; sibling?: Fiber };
   const key = '__friendsFablesDesktopCampaignPanel';
   const host = window as unknown as Record<string, Controller | undefined>;
@@ -12,14 +15,34 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
   if(show===false){host[key]?.dispose();return Promise.resolve(false);}
   const match=/^\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/play\/?$/i.exec(location.pathname);
   if(!match)return Promise.resolve(false);
-  if(host[key]){if(show==='reserve')return host[key]!.reserve(width,height);if(show==='suspend'){host[key]!.suspend(width,height,palette,offset);return Promise.resolve(false);}host[key]!.update(width,height,palette,offset);return host[key]!.ready();}
-  if(show!==true&&show!=='reserve')return Promise.resolve(false);
+  if(show==='reveal')return navigation&&host[key]?host[key]!.reveal(width,height,palette,offset,navigation):Promise.resolve(false);
+  if(show==='prepare'&&!navigation)return Promise.resolve(false);
+  if(host[key]){if(show==='prepare')return host[key]!.prepare(width,height,palette,offset,navigation!);if(show==='reserve')return host[key]!.reserve(width,height);if(show==='suspend'){host[key]!.suspend(width,height,palette,offset);return Promise.resolve(false);}host[key]!.update(width,height,palette,offset,navigation);return host[key]!.ready();}
+  if(show!==true&&show!=='reserve'&&show!=='prepare')return Promise.resolve(false);
   const campaignId = match[1].toLowerCase();
   let disposed = false, queued = false, attempted = false, panel: HTMLElement | null = null;
   let panelWidth = width, panelHeight = height, panelOffset=offset, modalActive = false;
   let workspace:HTMLElement|null=null,nativeClosed=false;
   const reservationUndo:(()=>void)[]=[];
   let desktopPalette=palette, sectionSuspended=show==='reserve', closingRequested=false;
+  let navigationModel=navigation, presentationHidden=show==='prepare'||show===true&&!!navigation, navigationNode:HTMLElement|null=null;
+  // Navigation, native form and workspace padding are owned by this renderer.
+  // Preparation never installs a new gutter; reveal updates all three together.
+  function renderNavigation():void {
+    navigationNode?.remove();navigationNode=null;
+    if(!navigationModel)return;
+    const labels=navigationModel.locale==='ru'?{campaign:'Кампания',combat:'Бой',appearance:'Оформление',translation:'Перевод',instructions:'/sp',music:'Музыка',general:'Общие'}:{campaign:'Campaign',combat:'Combat',appearance:'Appearance',translation:'Translation',instructions:'/sp',music:'Music',general:'General'};
+    const node=document.createElement('nav');node.setAttribute('data-ff-campaign-navigation','');node.setAttribute('data-ff-campaign-ticket',navigationModel.ticket);node.setAttribute('aria-label',navigationModel.locale==='ru'?'Разделы настроек':'Settings sections');
+    const title=document.createElement('div');title.setAttribute('data-ff-campaign-navigation-title','');title.textContent=navigationModel.locale==='ru'?'Настройки':'Settings';node.append(title);
+    for(const section of ['campaign','appearance','translation','instructions','music','combat','general'] as const){
+      if(section!=='campaign'&&!navigationModel.destinations.includes(section))continue;
+      const link=document.createElement('a');link.textContent=labels[section];
+      if(section==='campaign'){link.setAttribute('aria-current','page');link.setAttribute('tabindex','-1');}
+      else {link.setAttribute('href',`fables-desktop://settings/select-campaign-section?section=${section}&ticket=${encodeURIComponent(navigationModel.ticket)}`);link.setAttribute('target','_blank');link.setAttribute('rel','noopener');}
+      node.append(link);
+    }
+    navigationNode=node;document.body.append(node);
+  }
   let retirementTimer=0,launchGear:HTMLElement|null=null;
   let cssWidth=0,cssHeight=0,cssOffset=0,pendingReady:((ready:boolean)=>void)|undefined;
   const cancelPending=():void=>{pendingReady?.(false);};
@@ -60,11 +83,13 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
     // Match the captured rating topology only, leaving other fixed labels alone.
     const ratingRow = '[data-ff-campaign-panel] div.flex.items-center[class~="gap-1.5"]:has(> span.w-14 + div.flex[class~="gap-0.5"] > .rounded-full)';
     style.textContent += `${ratingRow} > span.w-14{width:7em!important;min-width:max-content!important;flex-shrink:0!important}`;
-    if(sectionSuspended)style.textContent+='[data-ff-campaign-panel]{visibility:hidden!important;pointer-events:none!important}';
+    if(sectionSuspended||presentationHidden)style.textContent+='[data-ff-campaign-panel],[data-ff-campaign-navigation]{visibility:hidden!important;pointer-events:none!important}';
+    style.textContent+=`[data-ff-campaign-navigation]{position:fixed!important;left:0!important;top:0!important;width:${cssOffset}px!important;height:${cssHeight}px!important;z-index:50!important;box-sizing:border-box!important;padding:10px 6px!important;overflow:auto!important;font:14px system-ui,-apple-system,"Segoe UI",sans-serif!important;line-height:1.5!important;border-right:1px solid!important}[data-ff-campaign-navigation-title]{font-size:17px!important;font-weight:600!important;letter-spacing:-.02em!important;margin:8px 0 16px!important}[data-ff-campaign-navigation] a{display:block!important;box-sizing:border-box!important;width:100%!important;padding:10px 6px!important;border:1px solid transparent!important;border-radius:6px!important;text-align:left!important;text-decoration:none!important;color:inherit!important;background:transparent!important;font:inherit!important;cursor:pointer!important}[data-ff-campaign-navigation] a:focus-visible{outline:2px solid var(--ff-campaign-accent,currentColor)!important;outline-offset:1px!important}`;
     const p=desktopPalette;
     // Only app-generated CSS colors are accepted; never interpolate arbitrary CSS.
     const color=(value:unknown):value is string=>typeof value==='string'&&/^(?:#[0-9a-f]{6}|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i.test(value);
     if(p&&[p.background,p.foreground,p.border,p.accent,p.panel,p.selected].every(color))style.textContent+=`[data-ff-campaign-panel]{font:14px system-ui,-apple-system,"Segoe UI",sans-serif!important;color:${p.foreground}!important;background:${p.background}!important;border-color:${p.border}!important;--ff-campaign-accent:${p.accent};--ff-campaign-border:${p.border};--ff-campaign-button:${p.panel}}[data-ff-campaign-panel] :is(.bg-card,.border){border-color:${p.border}!important}[data-ff-campaign-panel] .bg-card{background:${p.panel}!important;color:${p.foreground}!important}[data-ff-campaign-panel] :is(.text-muted-foreground,.text-gray-400){color:color-mix(in srgb,${p.foreground} 72%,${p.background})!important}[data-ff-campaign-panel] *{font-family:inherit!important}[data-ff-campaign-panel] :is(button,input,textarea,[role="combobox"]){font-size:14px!important;color:${p.foreground}!important;background:${p.panel}!important;border:1px solid ${p.border}!important;border-radius:8px!important}[data-ff-campaign-panel] button:hover{background:${p.selected}!important;border-color:${p.accent}!important}[data-ff-campaign-panel] :is(button,input,textarea,[role="combobox"]):focus-visible{outline:2px solid ${p.accent}!important;outline-offset:2px}[data-ff-campaign-panel] :is(input[type="checkbox"],[role="checkbox"],[role="switch"]){accent-color:${p.accent}!important}[data-ff-campaign-panel] :is([role="checkbox"],[role="switch"])[data-state="checked"]{background:${p.accent}!important}`;
+    if(p&&[p.background,p.foreground,p.border,p.accent,p.panel,p.selected].every(color))style.textContent+=`[data-ff-campaign-navigation]{color:${p.foreground}!important;background:${p.panel}!important;border-color:${p.border}!important;--ff-campaign-accent:${p.accent}}[data-ff-campaign-navigation] a:hover,[data-ff-campaign-navigation] a[aria-current="page"]{background:${p.selected}!important;border-color:${p.border}!important}`;
     if(p&&[p.foreground,p.accent,p.selected].every(color))style.textContent+=`[data-ff-campaign-panel] :is(button[class~="bg-green-500/10"][class~="border-green-500/30"],[role="radio"][data-state="on"],[role="radio"][aria-checked="true"],button[data-state="on"],button[aria-pressed="true"]){background:${p.selected}!important;border-color:${p.accent}!important;color:${p.foreground}!important}`;
   }
   function attr(node: HTMLElement, name: string, value: string | null, undo: (() => void)[]): void {
@@ -171,13 +196,13 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
         attr(panel, 'data-ff-campaign-panel', '', layoutUndo);
         const scroller = panel.querySelector<HTMLElement>(':scope > div.overflow-y-auto.h-full > div.p-6.h-full > div.flex-1.items-center.overflow-y-auto');
         if (scroller && !scroller.hasAttribute('tabindex')) attr(scroller, 'tabindex', '0', layoutUndo);
-        if(!closingRequested)reserveWorkspace();
+        if(!closingRequested&&!presentationHidden)reserveWorkspace();
       }
     }
     if(panel&&closingRequested){dispose();return;}
     if (panel) { if (otherLayer()) { if (modalActive) suspend(); } else dock(); }
   }
-  function ready():Promise<boolean> {
+  function ready(preparing=false):Promise<boolean> {
     cancelPending();
     return new Promise(resolve=>{
       let frame=0,timer=0,painted=0,finished=false;
@@ -186,9 +211,9 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
       const advance=():void=>{
         if(disposed||sectionSuspended||location.pathname+location.search!==route){finish(false);return;}
         const rect=panel?.isConnected?panel.getBoundingClientRect():null;
-        const visible=panel&&getComputedStyle(panel).visibility!=='hidden'&&getComputedStyle(panel).display!=='none';
+        const visible=panel&&(preparing||presentationHidden||getComputedStyle(panel).visibility!=='hidden')&&getComputedStyle(panel).display!=='none';
         if(document.visibilityState==='visible'&&visible&&modalActive&&rect&&Math.abs(rect.x-cssOffset)<1&&Math.abs(rect.y)<1&&Math.abs(rect.width-cssWidth)<1&&Math.abs(rect.height-cssHeight)<1)painted++;else painted=0;
-        if(painted>=2){finish(true);return;}
+        if(painted>=2){if(presentationHidden&&!preparing){reserveWorkspace();presentationHidden=false;dimensions();painted=0;}else{finish(true);return;}}
         frame=requestAnimationFrame(advance);
       };
       frame=requestAnimationFrame(advance);timer=window.setTimeout(()=>finish(false),1500);
@@ -228,7 +253,7 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
     const owned = panel;
     suspend(!owned?.isConnected);
     for (const undo of layoutUndo.reverse()) undo();
-    style.remove(); panel = null;
+    navigationNode?.remove();navigationNode=null;style.remove(); panel = null;
     document.removeEventListener('wheel', wheelGate); document.removeEventListener('focusin', focusGate); document.removeEventListener('focusout', focusGate);
     document.removeEventListener('dismissableLayer.pointerDownOutside', outside, true); document.removeEventListener('dismissableLayer.focusOutside', outside, true);
     window.removeEventListener('popstate', schedule); window.removeEventListener('resize', resize);
@@ -239,7 +264,18 @@ export function configureNativeCampaignPanel(show: boolean | 'suspend' | 'reserv
   document.addEventListener('dismissableLayer.pointerDownOutside', outside, true); document.addEventListener('dismissableLayer.focusOutside', outside, true);
   window.addEventListener('popstate', schedule); window.addEventListener('resize', resize);
   document.addEventListener('click',newLaunch,true);
-  const controller:Controller = { route,update(nextWidth, nextHeight, nextPalette,nextOffset=0) { if (disposed||nativeClosed) return; cancelPending();clearTimeout(retirementTimer);retirementTimer=0;closingRequested=false;sectionSuspended=false;watchNative(); panelWidth = nextWidth; panelHeight = nextHeight;panelOffset=nextOffset;if(nextPalette)desktopPalette=nextPalette; dimensions(); schedule(); }, suspend(nextWidth,nextHeight,nextPalette,nextOffset=0) { if(disposed)return; cancelPending();sectionSuspended=true; panelWidth=nextWidth;panelHeight=nextHeight;panelOffset=nextOffset;if(nextPalette)desktopPalette=nextPalette;dimensions(); }, reserve,dispose,ready,cancelPending };
+  function prepare(nextWidth:number,nextHeight:number,nextPalette:CampaignPanelPalette|undefined,nextOffset:number,model:CampaignNavigationModel):Promise<boolean> {
+    if(disposed||nativeClosed||closingRequested)return Promise.resolve(false);
+    cancelPending();presentationHidden=true;navigationModel=model;sectionSuspended=false;
+    panelWidth=nextWidth;panelHeight=nextHeight;panelOffset=nextOffset;if(nextPalette)desktopPalette=nextPalette;
+    renderNavigation();dimensions();watchNative();scan();return ready(true);
+  }
+  function reveal(nextWidth:number,nextHeight:number,nextPalette:CampaignPanelPalette|undefined,nextOffset:number,model:CampaignNavigationModel):Promise<boolean> {
+    if(disposed||nativeClosed||closingRequested||sectionSuspended||!panel?.isConnected||!navigationModel||model.ticket!==navigationModel.ticket||location.pathname+location.search!==route)return Promise.resolve(false);
+    cancelPending();panelWidth=nextWidth;panelHeight=nextHeight;panelOffset=nextOffset;if(nextPalette)desktopPalette=nextPalette;
+    reserveWorkspace();presentationHidden=false;dimensions();return ready();
+  }
+  const controller:Controller = { route,prepare,reveal,update(nextWidth, nextHeight, nextPalette,nextOffset=0,nextNavigation) { if (disposed||nativeClosed) return; cancelPending();clearTimeout(retirementTimer);retirementTimer=0;closingRequested=false;sectionSuspended=false;presentationHidden=!!nextNavigation&&!panel;if(nextNavigation){navigationModel=nextNavigation;renderNavigation();}watchNative(); panelWidth = nextWidth; panelHeight = nextHeight;panelOffset=nextOffset;if(nextPalette)desktopPalette=nextPalette; dimensions(); schedule(); }, suspend(nextWidth,nextHeight,nextPalette,nextOffset=0) { if(disposed)return; cancelPending();sectionSuspended=true;navigationModel=undefined;navigationNode?.remove();navigationNode=null; panelWidth=nextWidth;panelHeight=nextHeight;panelOffset=nextOffset;if(nextPalette)desktopPalette=nextPalette;dimensions(); }, reserve,dispose,ready,cancelPending };
   host[key]=controller;
-  dimensions(); if(show==='reserve')return reserve(width,height);watchNative();scan();return ready();
+  if(navigation)renderNavigation();dimensions();if(show==='prepare'){watchNative();scan();return ready(true);} if(show==='reserve')return reserve(width,height);watchNative();scan();return ready();
 }

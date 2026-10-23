@@ -1,5 +1,6 @@
 import { SettingsHub } from '../settings/settings-hub';
 import type { SettingsManagers } from '../settings/settings-hub';
+import type { CampaignNavDestination } from '../settings/campaign-panel';
 import type { SettingsSection } from '../settings/settings-core';
 import { desktopBarVisible, settingsGeometry } from '../settings/settings-core';
 import { GeneralSettings } from '../settings/general-settings';
@@ -105,6 +106,12 @@ export class AppearanceDock {
   refreshCampaign():void { this.hub.refreshCampaign(); }
   closeCampaign(): void { if (this.opening?this.openingSection==='campaign':this.opened&&this.hub.currentSection()==='campaign') this.hide(); }
 
+  async navigateCampaignSection(destination:CampaignNavDestination,ticket:string):Promise<boolean> {
+    if(this.window.isDestroyed()||this.opening&&this.openingSection!=='campaign'||!(this.opened||this.opening&&this.openingSection==='campaign')||!this.hub.consumeCampaignNavigation(destination,ticket))return false;
+    this.opened=true;
+    await this.openSection(destination);return true;
+  }
+
   async flushSettings(): Promise<void> { await this.generalReady; await this.general.flush(); }
   configureSettings(managers: SettingsManagers): void { this.hub.configure(managers); }
   async toggle(): Promise<void> { if (this.opened||this.opening) this.hide(); else await this.openSettings(); }
@@ -127,6 +134,7 @@ export class AppearanceDock {
     });}finally{if(revision===this.revision){this.opening=false;this.openingSection=undefined;}}
     if(revision!==this.revision||this.window.isDestroyed()||!this.hub.isVisible()){return;}
     this.opened=true;this.layout();this.update();
+    if(this.hub.currentSection()==='campaign'&&!this.hub.view.getVisible()&&!this.website.webContents.isDestroyed())this.website.webContents.focus();
   }
   hide(): void {
     this.revision++; this.opened = false;this.opening=false;this.openingSection=undefined;

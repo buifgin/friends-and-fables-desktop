@@ -45,7 +45,7 @@ function fixture({ unrelated = false, wrongIdentity = false, expandedRail = fals
   const window = {setTimeout,open:(...args)=>opened.push(args),setInterval:()=>1,addEventListener:(n,fn)=>listeners.set(n,fn),removeEventListener:n=>listeners.delete(n)};
   const context = vm.createContext({window,document,location,Node:Element,Element,HTMLElement:Element,HTMLButtonElement:Element,MutationObserver:class{constructor(fn){observe=fn;}observe(){}disconnect(){}},getComputedStyle:()=>({display:'block',visibility:'visible',paddingLeft:/padding-left:([\d.]+)px!important/.exec(head.children[0]?.textContent??'')?.[1]??'0'}),requestAnimationFrame,cancelAnimationFrame,setTimeout,clearTimeout,queueMicrotask:fn=>microtasks.push(fn),clearInterval(){},URLSearchParams});
   dialog.getBoundingClientRect=()=>{const css=head.children[0]?.textContent??'';return {x:Number(/left:([\d.]+)px!important/.exec(css)?.[1]??0),y:0,width:Number(/width:([\d.]+)px!important/.exec(css)?.[1]??0),height:Number(/height:([\d.]+)px!important/.exec(css)?.[1]??0)};};
-  const configure = (show,w=400,h=700,palette,offset=0)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${w},${h},${JSON.stringify(palette)},${offset})`,context);
+  const configure = (show,w=400,h=700,palette,offset=0,navigation)=>vm.runInContext(`(${configureNativeCampaignPanel.toString()})(${JSON.stringify(show)},${w},${h},${JSON.stringify(palette)},${offset},${JSON.stringify(navigation)})`,context);
   const flush = ()=>{while(microtasks.length) microtasks.shift()();};
   return {configure,flush,paint(){const batch=Array.from(frames.values());frames.clear();for(const callback of batch)callback();flush();},frames,timers,opened,scan:()=>{observe();flush();},body,head,background,workspace,dialog,dialogs,listeners,location,window,Element,gear,get clicks(){return clicks;},get closes(){return closes;}};
 }
@@ -244,4 +244,29 @@ test('same-document Campaign reselection retires old native ownership before ado
  const f=fixture();f.window.innerHeight=700;let ready=f.configure(true,454,700,undefined,126);f.paint();f.paint();assert.equal(await ready,true);const old=f.window.__friendsFablesDesktopCampaignPanel;
  const next='01a0d854-78d5-7064-ae41-f63d561c8e02';f.location.pathname='/'+next+'/play';f.dialog.__reactFiber$fixture.child.memoizedProps.campaignId=next;
  ready=f.configure(true,454,700,undefined,126);f.paint();f.paint();assert.equal(await ready,true);assert.notEqual(f.window.__friendsFablesDesktopCampaignPanel,old);assert.equal(f.window.__friendsFablesDesktopCampaignPanel.route,f.location.pathname);assert.equal(f.clicks,2);assert.equal(f.closes,1,'Only previous owned form closed before current native launch');assert.equal(f.dialog.getAttribute('data-ff-campaign-panel'),'');assert.equal(f.head.children.length,1);f.configure(false);assert.equal(f.closes,2);
+});
+
+const navigation={ticket:'fixture-ticket',locale:'en',destinations:['appearance','translation','instructions','music','combat','general']};
+test('navigation preparation reveals genuine form, rail and reservation together, with fixed navigation-only links',async()=>{
+ const f=fixture(),preparing=f.configure('prepare',454,700,undefined,126,navigation);
+ assert.equal(f.dialog.getAttribute('data-ff-campaign-panel'),'');assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),null);
+ assert.match(f.head.children[0].textContent,/visibility:hidden!important/);
+ const nav=f.body.children.find(node=>node.hasAttribute('data-ff-campaign-navigation'));assert.ok(nav);assert.equal(nav.children[0].textContent,'Settings');
+ assert.deepEqual(nav.children.slice(1).map(node=>node.textContent),['Campaign','Appearance','Translation','/sp','Music','Combat','General']);
+ assert.equal(nav.children[1].getAttribute('aria-current'),'page');assert.equal(nav.children[1].getAttribute('href'),null);
+ for(const link of nav.children.slice(2)){const url=new URL(link.getAttribute('href'));assert.equal(url.protocol,'fables-desktop:');assert.equal(url.pathname,'/select-campaign-section');assert.equal(url.searchParams.get('ticket'),navigation.ticket);assert.equal([...url.searchParams].length,2);}
+ f.paint();f.paint();assert.equal(await preparing,true);
+ assert.equal(await f.configure('reveal',454,700,undefined,126,{...navigation,ticket:'stale'}),false);assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),null);
+ const revealing=f.configure('reveal',454,700,undefined,126,navigation);assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),'');assert.doesNotMatch(f.head.children[0].textContent,/visibility:hidden!important/);f.paint();f.paint();assert.equal(await revealing,true);
+ assert.equal(f.clicks,1);f.configure('suspend',454,700,undefined,126);assert.equal(nav.isConnected,false);assert.equal(await f.configure('reveal',454,700,undefined,126,navigation),false);
+ f.configure(false);assert.equal(f.head.children.length,0);
+});
+test('reveal cannot create a controller, relaunch a disposed native form, or accept a canceled preparation',async()=>{
+ const f=fixture();assert.equal(await f.configure('reveal',454,700,undefined,126,navigation),false);assert.equal(f.clicks,0);
+ const preparing=f.configure('prepare',454,700,undefined,126,navigation);f.configure(false);assert.equal(await preparing,false);assert.equal(await f.configure('reveal',454,700,undefined,126,navigation),false);assert.equal(f.clicks,1);assert.equal(f.closes,1);
+});
+test('localized navigation show remains separate from standalone no-navigation compatibility',async()=>{
+ const f=fixture(),shown=f.configure(true,454,700,undefined,126,{...navigation,locale:'ru',destinations:['general']});assert.equal(f.workspace.getAttribute('data-ff-campaign-workspace'),null);f.paint();f.paint();f.paint();f.paint();assert.equal(await shown,true);
+ const nav=f.body.children.find(node=>node.hasAttribute('data-ff-campaign-navigation'));assert.deepEqual(nav.children.map(node=>node.textContent),['Настройки','Кампания','Общие']);
+ f.configure(false);assert.equal(nav.isConnected,false);
 });
