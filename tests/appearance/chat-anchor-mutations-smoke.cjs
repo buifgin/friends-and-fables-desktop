@@ -107,20 +107,35 @@ async function scenario(source, settings, selected = 'all') {
       } });
       restores.push(() => { if (descriptor) Object.defineProperty(style, 'setProperty', descriptor); else delete style.setProperty; });
     }
-    const glyph = () => { const range = document.createRange(); range.selectNodeContents(items[10].text); const ink = range.getBoundingClientRect(), card = items[10].card.getBoundingClientRect(); return { offset: ink.top - card.top, height: ink.height }; };
+    const glyph = () => { const range = document.createRange(); range.selectNodeContents(items[10].text); const ink = range.getBoundingClientRect(), card = items[10].card.getBoundingClientRect(); return { top: ink.top, offset: ink.top - card.top, height: ink.height }; };
     try {
       check(document.visibilityState === 'visible' && document.hasFocus(), 'Visible focused document required');
       feed.scrollTop = 15; await frame(); await frame(); eval(`(${source})`)(settings); await settle();
-      const initialInk = glyph(); trace.length = 0; processed.length = 0; g.delivered = g.snapshots = g.scans = 0; ownWrites = 0;
+      const initialInk = glyph(), victimHeight = victim.card.getBoundingClientRect().height; trace.length = 0; processed.length = 0; g.delivered = g.snapshots = g.scans = 0; ownWrites = 0;
       async function move(target, smooth) {
+        const concealment = armed && (name === 'class-hidden' || name === 'hidden');
+        const initialTop = feed.scrollTop, beforeInk = concealment ? glyph() : null;
+        // Removing an earlier card lets native scroll anchoring compensate its
+        // measured height. The intended reading glyph must still move by only
+        // the requested scroll distance, rather than jump by that removed height.
+        const expectedTarget = concealment ? target - victimHeight : target;
         let events = 0, ended = false; const scrolled = () => events++, finished = () => { ended = true; };
         feed.addEventListener('scroll', scrolled); feed.addEventListener('scrollend', finished);
         try {
           feed.scrollTo({ top: target, behavior: smooth ? 'smooth' : 'instant' });
           let stable = 0, prior = feed.scrollTop, count = 0;
-          for (; count < 90; count++) { await frame(); const top = feed.scrollTop; stable = Math.abs(top - prior) <= .5 ? stable + 1 : 0; prior = top; if (events && Math.abs(top - target) <= 1 && stable >= 3) break; }
+          for (; count < 90; count++) { await frame(); const top = feed.scrollTop; stable = Math.abs(top - prior) <= .5 ? stable + 1 : 0; prior = top; if (events && Math.abs(top - expectedTarget) <= 1 && stable >= 3 && (!concealment || ended)) break; }
           check(count < 90, 'Native scroll did not settle'); await settle();
-          return { target, actual: feed.scrollTop, events, ended, frames: count };
+          let anchor;
+          if (concealment) {
+            check(injected && victimHeight > 0 && beforeInk, 'Concealment compensation precondition');
+            const expectedY = beforeInk.top - (target - initialTop), actualY = glyph().top;
+            check(Math.abs(actualY - expectedY) <= .5, 'Concealment changed absolute reading glyph Y: ' + JSON.stringify({ expectedY, actualY, initialTop, target, victimHeight }));
+            check(ended, 'Concealment native scrollend missing');
+            anchor = { initialY: beforeInk.top, expectedY, actualY, removedHeight: victimHeight };
+          }
+          check(Math.abs(feed.scrollTop - expectedTarget) <= 1, 'Native scroll target changed after settling');
+          return { target, expectedTarget, actual: feed.scrollTop, events, ended, frames: count, anchor };
         } finally { feed.removeEventListener('scroll', scrolled); feed.removeEventListener('scrollend', finished); }
       }
       let natural, outcome;
