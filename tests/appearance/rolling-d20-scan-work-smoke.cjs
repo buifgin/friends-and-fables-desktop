@@ -11,7 +11,7 @@ function prepare() {
   const root = process.env.FABLES_TEST_APP_ROOT || path.resolve(__dirname, '../..');
   const compiled = path.join(root, 'dist/appearance/chat-appearance.js');
   const themes = path.join(root, 'dist/appearance/themes.js');
-  const { configureChatAppearance } = require(compiled);
+  const { configureChatAppearance, chatCss } = require(compiled);
   const { DEFAULT_APPEARANCE } = require(themes);
   const source = configureChatAppearance.toString();
   const settings = {
@@ -24,18 +24,20 @@ function prepare() {
       natural1: { enabled: true, faceColor: '#a51d2d', edgeColor: '#efb0b8', numberColor: '#ffffff' },
     },
   };
+  const css = chatCss(settings, null);
   new vm.Script(`(${source})`);
   new vm.Script(`(${scenario.toString()})`);
   return {
-    root, source, settings,
+    root, source, settings, css,
     metadata: {
       functionSHA256: sha(source), compiledSHA256: sha(fs.readFileSync(compiled)),
+      chatCssSHA256: sha(css),
       fixtureSHA256: sha(fs.readFileSync(__filename)),
     },
   };
 }
 
-async function scenario(source, settings) {
+async function scenario(source, settings, css) {
   const cardSelector = '[id^="event-message-card-"]';
   const check = (condition, message, evidence) => {
     if (!condition) throw Error(`${message}: ${JSON.stringify(evidence)}`);
@@ -103,6 +105,10 @@ async function scenario(source, settings) {
   const die = document.getElementById('d20');
   const face = die.querySelector('text').firstChild;
   die.scrollIntoView({ block: 'center' });
+  const appearanceStyle = document.createElement('style');
+  appearanceStyle.dataset.fixtureAppearance = 'true';
+  appearanceStyle.textContent = css;
+  document.head.append(appearanceStyle);
   const originalQuerySelectorAll = document.querySelectorAll;
   const querySelectorAllDescriptor = Object.getOwnPropertyDescriptor(document, 'querySelectorAll');
   const scans = { cards: 0 };
@@ -113,12 +119,12 @@ async function scenario(source, settings) {
   let textObserver;
   try {
     check(cards.length === 40 && cards.every(card => card.isConnected), 'Forty native history cards required');
-    const initial20 = rect(cards[39]);
     eval(`(${source})`)(settings);
     await until(() => die.dataset.ffDesktopCriticalDie === 'natural20', 'Initial settled natural 20 paint');
     check(getComputedStyle(die.querySelector('.cls-4')).fill === 'rgb(229, 183, 59)', 'Initial critical face paint', {
       critical: die.dataset.ffDesktopCriticalDie, fill: getComputedStyle(die.querySelector('.cls-4')).fill,
     });
+    const initial20 = rect(cards[39]);
     const initialScans = scans.cards;
     const beforeSpinScan = scans.cards;
     die.classList.add('animate-spin');
@@ -234,7 +240,7 @@ if (!process.versions.electron) {
         await new Promise(resolve => setTimeout(resolve, 25));
       }
       assert(win.isVisible() && win.isFocused() && ready, 'Fixture visibility/focus precondition');
-      const result = await win.webContents.executeJavaScript(`(${scenario.toString()})(${JSON.stringify(code.source)},${JSON.stringify(code.settings)})`);
+      const result = await win.webContents.executeJavaScript(`(${scenario.toString()})(${JSON.stringify(code.source)},${JSON.stringify(code.settings)},${JSON.stringify(code.css)})`);
       console.log('ROLLING_D20_SCAN_RESULT', JSON.stringify(result));
       assert.equal(result.passed, true, 'Rolling D20 scan contract');
       passed = true;
