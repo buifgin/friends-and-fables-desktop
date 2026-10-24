@@ -191,7 +191,26 @@ async function scenario(source, settings, css) {
     const beforeNativeClass = scans.cards;
     cards[1].classList.add('native-class-change');
     await until(() => scans.cards > beforeNativeClass, 'Ordinary native class mutation still schedules a scan');
+    const ordinaryMutationScans = scans.cards - beforeNativeClass;
     check(cards[39].getBoundingClientRect().height === initial20.height, 'History card geometry remains stable after ordinary scan');
+    const unknownSurface = document.createElement('aside');
+    unknownSurface.id = 'unknown-die-surface';
+    const unknownDie = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    unknownDie.id = 'd20';
+    unknownDie.classList.add('animate-spin');
+    unknownDie.innerHTML = '<text>7</text>';
+    unknownSurface.append(unknownDie);
+    document.body.append(unknownSurface);
+    const beforeUnknownMount = scans.cards;
+    await until(() => scans.cards > beforeUnknownMount, 'Unknown spinning D20 mount retains global scan');
+    await frame(); await frame();
+    const unknownAnimations = unknownDie.getAnimations().filter(animation => animation.animationName === 'fixture-spin');
+    check(unknownAnimations.length === 1 && unknownAnimations[0].playState === 'running', 'Unknown-scope D20 spin must be active',
+      unknownAnimations.map(animation => ({ name: animation.animationName, state: animation.playState })));
+    const beforeUnknownFace = scans.cards;
+    unknownDie.querySelector('text').firstChild.data = '11';
+    await until(() => scans.cards > beforeUnknownFace, 'Unknown-scope spinning D20 text retains global scan');
+    const unknownScopeScans = scans.cards - beforeUnknownFace;
     return {
       passed: true,
       initialScans,
@@ -202,7 +221,8 @@ async function scenario(source, settings, css) {
       geometry: { cardAtStart, cardAtEnd, dieGeometryAtStart, dieGeometryAtEnd },
       retained: { cards: cards.length, proseNodes: proseNodes.length, draft: draftNode.data },
       settled: { natural20: 'rgb(229, 183, 59)', natural1: 'rgb(165, 29, 45)', ordinaryFace: face.data },
-      ordinaryMutationScans: scans.cards - beforeNativeClass,
+      ordinaryMutationScans,
+      unknownScopeScans,
     };
   } finally {
     textObserver?.disconnect();

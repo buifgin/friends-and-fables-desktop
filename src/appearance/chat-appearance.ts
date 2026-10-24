@@ -976,7 +976,15 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
     if (cards.size || detached || firstRows.size) snapshotMessages(cards, changedBodies);
     scrollMutations(records);
-    if (records.some(record => record.type !== 'characterData' || record.target.parentElement?.closest('svg[id="d20"]'))) schedule();
+    if (records.some(record => {
+      if (record.type !== 'characterData') return true;
+      const die = record.target.parentElement?.closest('svg[id="d20"]');
+      if (!die) return false;
+      const nativeCard = die.closest('[id^="event-message-card-"]');
+      const rollPanel = die.closest('[class~="from-slate-900/95"][class~="to-slate-950/95"]');
+      const spinning = die.closest('[class~="animate-spin"]');
+      return !(nativeCard && rollPanel && spinning);
+    })) schedule();
   });
   observer.observe(document.documentElement, {
     childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true,
