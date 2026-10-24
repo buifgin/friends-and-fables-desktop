@@ -375,7 +375,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     // Favorites hide the native list through this CSS marker rather than hidden.
     // Rescan its subtree when All checks reveals the original native captions.
     attributeFilter: ['contenteditable', 'hidden', 'data-ff-dice-native-hidden', 'translate', 'class', 'style','placeholder','data-placeholder','title','aria-label','data-ff-translation-ignore','data-ff-desktop-instruction-block'] });
-  const onScroll = (): void => schedule(document.body);
+  const onResize = (): void => schedule(document.body);
   function progressionRegion(node:Text|Attr):Element|null {
     const panel=parent(node)?.closest('[role=tabpanel],[data-progression]');
     if(!panel || panel.matches('[data-state=inactive],[aria-hidden=true],[hidden]'))return null;
@@ -393,10 +393,9 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     if (target) for (const entry of entries.values()) if (entry.node instanceof Text && target.contains(entry.node)) restore(entry);
     updateStatus();
   };
-  document.addEventListener('scroll', onScroll, true);
   document.addEventListener('focusin', onFocus, true);
   document.addEventListener('beforeinput', onFocus, true);
-  window.addEventListener('resize', onScroll);
+  window.addEventListener('resize', onResize);
   host[key] = {
     retry() { for (const entry of entries.values()) if (!entry.complete && !entry.waiting) entry.due = 0; updateStatus(); },
     collect() {
@@ -449,7 +448,7 @@ export function installTranslationDom(token: string, dictionary: Record<string, 
     dispose() {
       disposed=true;
       observer.disconnect();previewSizes.disconnect(); if (timer) clearTimeout(timer);
-      document.removeEventListener('scroll', onScroll, true); window.removeEventListener('resize', onScroll);
+      window.removeEventListener('resize', onResize);
       document.removeEventListener('focusin', onFocus, true);
       document.removeEventListener('beforeinput', onFocus, true);
       for (const entry of entries.values()) restore(entry);
