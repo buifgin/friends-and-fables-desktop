@@ -61,7 +61,9 @@ function page() {
   feed.scrollTo = function(...args) {
     if (state.calls.length === 96) throw Error('Bounded scroll trace exceeded');
     state.calls.push({ ...state.snapshot(), actor: state.actor || 'desktop', requested: args[0]?.top ?? args[1], behavior: args[0]?.behavior || 'auto' });
-    return Reflect.apply(original, this, args);
+    const result = Reflect.apply(original, this, args);
+    if (!state.actor && args[0]?.behavior === 'smooth' && state.phase === 'damage') state.onDamageMotion?.();
+    return result;
   };
   state.tracedScroll = feed.scrollTo;
   state.nativeScroll = () => { state.actor = 'native'; feed.scrollTo({ top: 83, behavior: 'instant' }); state.actor = null; };
@@ -112,6 +114,42 @@ function page() {
     });
     observer.observe(list,{childList:true});
   });
+  // Observe a real opacity-positive dispatch, then hand off on the next visible
+  // frame while its native smooth correction is still active. No adapter state
+  // or scheduling is replaced. The queued variant publishes real row growth;
+  // this observer is registered after the adapter's mutation observer, so native
+  // authority arrives after that callback has queued its next follow frame.
+  state.activeHandoff = queued => new Promise((resolve, reject) => {
+    let observer, frame;
+    const timer = setTimeout(() => finish(Error('Missed active native handoff: '+JSON.stringify({queued,snapshot:state.snapshot(),calls:state.calls}))), 900);
+    const finish = (error, evidence) => { clearTimeout(timer); cancelAnimationFrame(frame); observer?.disconnect(); state.onDamageMotion = null; error ? reject(error) : resolve(evidence); };
+    state.onDamageMotion = () => {
+      state.onDamageMotion = null;
+      frame = requestAnimationFrame(() => {
+        const active = state.snapshot(), method = feed.scrollTo;
+        const last = state.calls.filter(call => call.actor === 'desktop' && call.behavior === 'smooth').at(-1);
+        if (document.visibilityState !== 'visible' || !document.hasFocus() || active.opacity <= 0 || active.top >= last.requested - 1 || method === state.tracedScroll) {
+          finish(Error('Missed actual active correction: '+JSON.stringify({queued,active,last,wrapped:method!==state.tracedScroll}))); return;
+        }
+        const row = state.damage.row, panel = state.damage.panel, svg = state.damage.svg;
+        const handoff = () => {
+          const before = state.snapshot(), count = state.calls.length;
+          // This is the actual current method, never a direct scrollTop write or
+          // a bypass of the wrapper whose authority contract is under test.
+          state.nativeScroll();
+          finish(null, { queued, active, before, after: state.snapshot(), count,
+            nativeCalls: state.calls.slice(count), sameMethod: feed.scrollTo === state.tracedScroll,
+            sameRow: state.damage.row === row && row.isConnected,
+            samePanel: state.damage.panel === panel && panel.contains(svg),
+            queuedTarget: queued ? feed.scrollHeight - feed.clientHeight : null });
+        };
+        if (!queued) { handoff(); return; }
+        observer = new MutationObserver(() => { observer.disconnect(); handoff(); });
+        observer.observe(panel, { attributes: true, attributeFilter: ['style'] });
+        panel.style.height = '216px';
+      });
+    };
+  });
   // For the no-prior-motion boundary, establish pinned tail without a motion.
   state.pinWithoutMotion = () => { original.call(feed, { top: feed.scrollHeight, behavior: 'instant' }); state.noAttack = true; };
 }
@@ -136,10 +174,11 @@ app.on('window-all-closed', () => {});
     await configure(); await paint();
   };
   const submit = async () => {
+    const expected = await js('fixture.submits+1');
     const point = await js('(()=>{const n=document.querySelector("button"),r=n.getBoundingClientRect(),x=Math.round(r.x+r.width/2),y=Math.round(r.y+r.height/2);return{x,y,hit:n.contains(document.elementFromPoint(x,y))}})()');
     assert.ok(point.hit && window.isFocused() && window.webContents.isFocused(), 'Trusted submit focus/hit');
     for (const type of ['mouseDown','mouseUp']) window.webContents.sendInputEvent({ type, x: point.x, y: point.y, button: 'left', clickCount: 1 });
-    await until('fixture.submits===1');
+    await until('fixture.submits==='+expected);
   };
   const smooth = calls => calls.filter(call => call.actor === 'desktop' && call.behavior === 'smooth');
   const preserved = snapshot => { assert.ok(snapshot.sameForm && snapshot.sameDraft && snapshot.sameRoll); assert.equal(snapshot.draft, 'Preserved native draft'); };
@@ -163,6 +202,37 @@ app.on('window-all-closed', () => {});
     const rollGrowth = await js('fixture.damage.panel.style.height="216px";fixture.snapshot().target');
     await until(`fixture.calls.some(call=>call.behavior==="smooth"&&call.requested===${rollGrowth})`);
     await js('fixture.prose(120);void 0'); await until('fixture.calls.some(call=>call.behavior==="smooth"&&call.requested===fixture.snapshot().target)');
+  }
+  for (const queued of [false, true]) {
+    await reset(); await begin();
+    const evidence = await js(`(()=>{const handoff=fixture.activeHandoff(${queued});fixture.roll('damage');return handoff})()`);
+    console.log('DICE_NATIVE_ACTIVE_HANDOFF',JSON.stringify(evidence));
+    assert.ok(evidence.sameMethod && evidence.sameRow && evidence.samePanel, 'Handoff restores the traced descriptor and preserves native roll nodes');
+    assert.equal(evidence.nativeCalls.length,1,'Current wrapper delegates the native call exactly once without an injected stop');
+    assert.equal(evidence.nativeCalls[0].actor,'native');
+    assert.equal(evidence.nativeCalls[0].requested,83);
+    assert.equal(evidence.nativeCalls[0].behavior,'instant');
+    assert.ok(Math.abs(evidence.after.top-83)<=1,'Actual native method reaches its non-tail destination');
+    const stages = [];
+    // The queued variant must survive its already pending follow RAF before any
+    // later growth. Both variants then receive ordinary same-tail/prose updates.
+    stages.push({stage:'handoff',frames:await js('fixture.observeFrames(4)')});
+    await js('fixture.damage.panel.style.height="276px";void 0');
+    stages.push({stage:'same-tail-growth',frames:await js('fixture.observeFrames(4)')});
+    await js('fixture.prose(120);void 0');
+    stages.push({stage:'prose-growth',frames:await js('fixture.observeFrames(4)')});
+    const calls = await js('fixture.calls');
+    console.log('DICE_NATIVE_ACTIVE_GROWTH',JSON.stringify({queued,evidence,stages,calls}));
+    assert.equal(smooth(calls.slice(evidence.count+1)).length,0,'Native authority survives queued follow and later native growth');
+    for (const stage of stages) for (const snapshot of stage.frames) {
+      assert.ok(Math.abs(snapshot.top-83)<=1,stage.stage+': desktop cannot reclaim the native destination'); preserved(snapshot);
+    }
+    assert.equal(await js('document.getElementById("feed").scrollTo===fixture.tracedScroll'),true,'Growth cannot reacquire the native method');
+    const beforeRearm = calls.length;
+    await js('fixture.noAttack=true;void 0'); await submit();
+    await until(`fixture.calls.slice(${beforeRearm}).some(call=>call.actor==='desktop'&&call.behavior==='smooth'&&call.requested===fixture.snapshot().target)`);
+    await until('Math.abs(fixture.snapshot().top-fixture.snapshot().target)<=1');
+    preserved(await js('fixture.snapshot()'));
   }
   // Native publication may expose an empty event outer before roll enrichment.
   await reset(); await begin(); await js('fixture.emptyDamage();void 0'); await paint();

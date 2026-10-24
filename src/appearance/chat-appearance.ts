@@ -386,10 +386,10 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     if (typeof original !== 'function' || descriptor && !('value' in descriptor)) return null;
     const motion: TailMotion = { feed, original, descriptor, wrapper: original };
     motion.wrapper = function(this: HTMLElement, ...args: unknown[]) {
-      // Native calls retire even a gate-only wrapper before delegating. They
-      // must not be followed by a deferred target reclaiming native authority.
+      // Native calls retire both pending reveal and active follow intent before
+      // delegating, so queued frames or late growth cannot reclaim authority.
       if (this === feed && tailMotion === motion) {
-        if (tailEntry) { tailEntry = null; cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false; }
+        tailEntry = null; cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false;
         releaseTailMotion();
       }
       return Reflect.apply(original, this, args);
