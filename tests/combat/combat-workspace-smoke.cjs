@@ -117,6 +117,21 @@ app.on('window-all-closed', () => {});
   const repeatedUpdateWrites = await js('window.labelMutationRecords.filter(record=>record.oldValue===record.value).length');
   await js('window.labelMutationObserver.disconnect();delete window.labelMutationObserver;delete window.labelMutationRecords');
   const unchangedLabelRed = repeatedUpdateWrites > 0;
+  console.log('WORKSPACE_LABEL_MUTATION_RESULT ' + JSON.stringify({
+    idleLabelRed,
+    idleSameValueWrites: idleProbe.sameValueWrites,
+    repeatedUpdateWrites,
+    elapsedMs: Math.round(idleProbe.elapsed),
+    russianLabels,
+    changedWidthLabels: { value: changedWidthLabels.value, width: changedWidthLabels.width },
+    preservationControlsPass: {
+      visibleAndFocused: idleProbe.focused,
+      dockGeometryStable: JSON.stringify(idleProbe.panel) === JSON.stringify(probeSetup.panel),
+      handleGeometryStable: JSON.stringify(idleProbe.handle) === JSON.stringify(probeSetup.handle),
+      draftPreserved: idleProbe.draft === probeSetup.draft,
+      selectionPreserved: idleProbe.selection === probeSetup.selection,
+    },
+  }));
   assert.equal(idleLabelRed, false, `${idleProbe.sameValueWrites} unchanged label attribute writes during two idle schedule ticks`);
   assert.equal(unchangedLabelRed, false, `${repeatedUpdateWrites} unchanged label attribute writes after repeated update`);
   await configure(true, 'en');
