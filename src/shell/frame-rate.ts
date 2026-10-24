@@ -45,6 +45,9 @@ export function configureFrameRateOverlay(enabled: boolean): void {
   const label = document.createTextNode('Page frame cadence · warming up…');
   node.appendChild(label);
   document.body.appendChild(node);
+  const setLabel = (value: string) => {
+    if (label.data !== value) label.data = value;
+  };
 
   const state = {
     node,
@@ -72,7 +75,7 @@ export function configureFrameRateOverlay(enabled: boolean): void {
     if (timestamp - state.lastRender >= 250) {
       state.lastRender = timestamp;
       if (timestamp - state.samples[0] < 1000 || state.samples.length < 2) {
-        label.data = 'Page frame cadence · warming up…';
+        setLabel('Page frame cadence · warming up…');
       } else {
         const intervals: number[] = [];
         for (let index = 1; index < state.samples.length; index++) {
@@ -81,13 +84,13 @@ export function configureFrameRateOverlay(enabled: boolean): void {
         }
         const elapsed = state.samples[state.samples.length - 1] - state.samples[0];
         if (elapsed <= 0 || intervals.length === 0) {
-          label.data = 'Page frame cadence · warming up…';
+          setLabel('Page frame cadence · warming up…');
         } else {
           const mean = intervals.reduce((sum, delta) => sum + delta, 0) / intervals.length;
           intervals.sort((left, right) => left - right);
           const p95 = intervals[Math.ceil(intervals.length * 0.95) - 1];
           const fps = (intervals.length * 1000) / elapsed;
-          label.data = `Page frame cadence · ${Math.round(fps)} FPS · mean ${mean.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms`;
+          setLabel(`Page frame cadence · ${Math.round(fps)} FPS · mean ${mean.toFixed(1)} ms · p95 ${p95.toFixed(1)} ms`);
         }
       }
     }
@@ -100,7 +103,7 @@ export function configureFrameRateOverlay(enabled: boolean): void {
       state.frame = null;
       state.samples.length = 0;
       state.lastRender = Number.NEGATIVE_INFINITY;
-      label.data = 'Page frame cadence · warming up…';
+      setLabel('Page frame cadence · warming up…');
     } else {
       schedule();
     }
