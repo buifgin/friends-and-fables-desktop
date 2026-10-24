@@ -396,10 +396,20 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         if (eligible) {
           if (args.length > 1 && typeof args[0] === 'number') top = args[1];
           else if (args.length === 1 && args[0] !== null && typeof args[0] === 'object') {
-            // Inspect data only: native dictionary conversion owns all getters
-            // and coercions, including their exceptions and side effects.
-            try { top = Object.getOwnPropertyDescriptor(args[0], 'top')?.value; }
-            catch { /* An opaque dictionary retains native authority. */ }
+            // Rich dictionaries can fail asynchronously during native conversion.
+            // Retain intent only for plain known data, without reading getters,
+            // coercing values or observing/changing the native returned promise.
+            try {
+              const prototype = Object.getPrototypeOf(args[0]);
+              if (prototype === Object.prototype || prototype === null) {
+                const target = Object.getOwnPropertyDescriptor(args[0], 'top');
+                const left = Object.getOwnPropertyDescriptor(args[0], 'left');
+                const behavior = Object.getOwnPropertyDescriptor(args[0], 'behavior');
+                if (target && 'value' in target
+                  && (!left || 'value' in left && (left.value === undefined || typeof left.value === 'number' && Number.isFinite(left.value)))
+                  && (!behavior || 'value' in behavior && (behavior.value === undefined || behavior.value === 'auto' || behavior.value === 'instant' || behavior.value === 'smooth'))) top = target.value;
+              }
+            } catch { /* An opaque dictionary retains native authority. */ }
           }
         }
         const pinned = eligible && typeof top === 'number' && Number.isFinite(top) && top >= Math.max(0, feed.scrollHeight - feed.clientHeight);
@@ -410,7 +420,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
         const unchanged = motion.descriptor ? restored?.value === original
           && restored.configurable === motion.descriptor.configurable && restored.enumerable === motion.descriptor.enumerable
           && restored.writable === motion.descriptor.writable : restored === undefined;
-        // A throwing native call never reaches this restoration. New intent or
+        // A synchronous native failure never reaches restoration. New intent or
         // a newer method owner during native conversion keeps its own state.
         if (pinned && unchanged && valid() && !tailMotion && !tailFrame && !tailPinned) tailPinned = true;
         return result;
