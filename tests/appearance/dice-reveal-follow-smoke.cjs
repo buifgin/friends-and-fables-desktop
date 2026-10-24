@@ -150,6 +150,36 @@ function page() {
       });
     };
   });
+  // Keep native authority through the actual finite CSS height transition.
+  // Rearm is tested separately once growth has stopped changing its target.
+  state.growUnderNativeAuthority = height => new Promise((resolve, reject) => {
+    const { row, panel, svg } = state.damage, frames = [];
+    let frame, timer, finished = false, stable = 0, previousTarget;
+    const finish = error => { cancelAnimationFrame(frame); clearTimeout(timer); error ? reject(error) : resolve(frames); };
+    panel.style.height = `${height}px`;
+    const transitions = panel.getAnimations().filter(animation => animation instanceof CSSTransition && animation.transitionProperty === 'height');
+    const transition = transitions[0], timing = transition?.effect.getComputedTiming();
+    if (transitions.length !== 1 || transition.playState !== 'running' || !Number.isFinite(timing?.endTime) || timing.endTime <= 0) {
+      finish(Error('Missed actual finite height transition: '+JSON.stringify({count:transitions.length,timing,snapshot:state.snapshot()}))); return;
+    }
+    timer = setTimeout(() => finish(Error('Native growth did not finish: '+JSON.stringify({frames,timing}))), 1000);
+    transition.finished.then(() => { finished = true; }, error => finish(error));
+    const sample = () => {
+      const snapshot = { ...state.snapshot(), height:panel.getBoundingClientRect().height,
+        sameNodes:state.damage.row===row && row.isConnected && state.damage.panel===panel && panel.contains(svg),
+        sameMethod:feed.scrollTo===state.tracedScroll, heightTime:transition.currentTime, heightState:transition.playState };
+      frames.push(snapshot);
+      if (document.visibilityState !== 'visible' || !document.hasFocus() || Math.abs(snapshot.top-83)>1 || !snapshot.sameNodes || !snapshot.sameMethod) {
+        finish(Error('Native authority lost during height transition: '+JSON.stringify({snapshot,frames,calls:state.calls}))); return;
+      }
+      const growing = panel.getAnimations().some(animation => animation instanceof CSSTransition && animation.transitionProperty === 'height' && animation.playState !== 'finished');
+      stable = finished && !growing && Math.abs(snapshot.height-height)<=1 && snapshot.target===previousTarget ? stable+1 : 0;
+      previousTarget = snapshot.target;
+      if (stable===2) { finish(); return; }
+      frame = requestAnimationFrame(sample);
+    };
+    frame = requestAnimationFrame(sample);
+  });
   // For the no-prior-motion boundary, establish pinned tail without a motion.
   state.pinWithoutMotion = () => { original.call(feed, { top: feed.scrollHeight, behavior: 'instant' }); state.noAttack = true; };
 }
@@ -217,8 +247,7 @@ app.on('window-all-closed', () => {});
     // The queued variant must survive its already pending follow RAF before any
     // later growth. Both variants then receive ordinary same-tail/prose updates.
     stages.push({stage:'handoff',frames:await js('fixture.observeFrames(4)')});
-    await js('fixture.damage.panel.style.height="276px";void 0');
-    stages.push({stage:'same-tail-growth',frames:await js('fixture.observeFrames(4)')});
+    stages.push({stage:'same-tail-growth',frames:await js('fixture.growUnderNativeAuthority(276)')});
     await js('fixture.prose(120);void 0');
     stages.push({stage:'prose-growth',frames:await js('fixture.observeFrames(4)')});
     const calls = await js('fixture.calls');
