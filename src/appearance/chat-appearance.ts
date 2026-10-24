@@ -386,11 +386,34 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     if (typeof original !== 'function' || descriptor && !('value' in descriptor)) return null;
     const motion: TailMotion = { feed, original, descriptor, wrapper: original };
     motion.wrapper = function(this: HTMLElement, ...args: unknown[]) {
-      // Native calls retire both pending reveal and active follow intent before
-      // delegating, so queued frames or late growth cannot reclaim authority.
-      if (this === feed && tailMotion === motion) {
+      // Native calls retire queued targets. Only an explicit bottom request can
+      // retain existing pinned intent for later growth on this same surface.
+      if (this === feed && tailMotion === motion && Object.getOwnPropertyDescriptor(feed, 'scrollTo')?.value === motion.wrapper) {
+        const valid = (): boolean => !disposed && scrollFeed === feed && feed.isConnected
+          && scrollRoute === location.pathname + location.search && !scrollYield && !scrollGesture && !selectedInFeed();
+        let top: unknown;
+        const eligible = tailPinned && valid();
+        if (eligible) {
+          if (args.length > 1 && typeof args[0] === 'number') top = args[1];
+          else if (args.length === 1 && args[0] !== null && typeof args[0] === 'object') {
+            // Inspect data only: native dictionary conversion owns all getters
+            // and coercions, including their exceptions and side effects.
+            try { top = Object.getOwnPropertyDescriptor(args[0], 'top')?.value; }
+            catch { /* An opaque dictionary retains native authority. */ }
+          }
+        }
+        const pinned = eligible && typeof top === 'number' && Number.isFinite(top) && top >= Math.max(0, feed.scrollHeight - feed.clientHeight);
         tailEntry = null; cancelAnimationFrame(tailFrame); tailFrame = 0; tailPinned = false;
         releaseTailMotion();
+        const result = Reflect.apply(original, this, args);
+        const restored = Object.getOwnPropertyDescriptor(feed, 'scrollTo');
+        const unchanged = motion.descriptor ? restored?.value === original
+          && restored.configurable === motion.descriptor.configurable && restored.enumerable === motion.descriptor.enumerable
+          && restored.writable === motion.descriptor.writable : restored === undefined;
+        // A throwing native call never reaches this restoration. New intent or
+        // a newer method owner during native conversion keeps its own state.
+        if (pinned && unchanged && valid() && !tailMotion && !tailFrame && !tailPinned) tailPinned = true;
+        return result;
       }
       return Reflect.apply(original, this, args);
     } as typeof original;
