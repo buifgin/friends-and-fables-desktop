@@ -6,7 +6,6 @@ const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
-const cardSelector = '[id^="event-message-card-"]';
 
 function prepare() {
   const root = process.env.FABLES_TEST_APP_ROOT || path.resolve(__dirname, '../..');
@@ -37,6 +36,7 @@ function prepare() {
 }
 
 async function scenario(source, settings) {
+  const cardSelector = '[id^="event-message-card-"]';
   const check = (condition, message, evidence) => {
     if (!condition) throw Error(`${message}: ${JSON.stringify(evidence)}`);
   };
@@ -53,10 +53,14 @@ async function scenario(source, settings) {
     const box = element.getBoundingClientRect();
     return { x: box.x, y: box.y, width: box.width, height: box.height };
   };
+  const localRect = element => {
+    const box = element.getBBox();
+    return { x: box.x, y: box.y, width: box.width, height: box.height };
+  };
   window.__friendsFablesDesktopChatAppearance?.dispose();
   document.body.innerHTML = '<style>' +
-    'html,body{margin:0;min-height:100%;font:16px sans-serif}#chat{width:900px;margin:20px auto}' +
-    '#events-list{display:flex;flex-direction:column;gap:8px}.history{height:90px;padding:8px;border:1px solid #777}' +
+    'html,body{margin:0;min-height:100%;font:16px sans-serif}#chat{width:900px;height:700px;overflow-y:auto;margin:20px auto}' +
+    '#events-list{display:flex;flex-direction:column;gap:8px}.history{flex:none;height:90px;padding:8px;border:1px solid #777}' +
     '.prose{height:100%;overflow:hidden}.prose p{margin:0}.roll-panel{height:180px;padding:12px}' +
     'svg#d20{width:128px;height:128px;display:block}.cls-4{fill:#203da6}.cls-1{stroke:#c59045}' +
     '@keyframes fixture-spin{to{transform:rotate(360deg)}}.animate-spin{animation:fixture-spin 1s linear infinite}' +
@@ -98,12 +102,14 @@ async function scenario(source, settings) {
   const draftNode = draft.firstChild;
   const die = document.getElementById('d20');
   const face = die.querySelector('text').firstChild;
+  die.scrollIntoView({ block: 'center' });
   const originalQuerySelectorAll = document.querySelectorAll;
+  const querySelectorAllDescriptor = Object.getOwnPropertyDescriptor(document, 'querySelectorAll');
   const scans = { cards: 0 };
-  document.querySelectorAll = function (selector) {
+  Object.defineProperty(document, 'querySelectorAll', { configurable: true, writable: true, value: function (selector) {
     if (selector === cardSelector) scans.cards++;
     return Reflect.apply(originalQuerySelectorAll, this, arguments);
-  };
+  } });
   let textObserver;
   try {
     check(cards.length === 40 && cards.every(card => card.isConnected), 'Forty native history cards required');
@@ -114,14 +120,21 @@ async function scenario(source, settings) {
       critical: die.dataset.ffDesktopCriticalDie, fill: getComputedStyle(die.querySelector('.cls-4')).fill,
     });
     const initialScans = scans.cards;
+    const beforeSpinScan = scans.cards;
     die.classList.add('animate-spin');
-    await until(() => !die.hasAttribute('data-ff-desktop-critical-die'), 'Spin removes critical paint');
+    await until(() => !die.hasAttribute('data-ff-desktop-critical-die') && scans.cards > beforeSpinScan,
+      'Global card scan removes spinning critical paint');
     const spinAnimations = die.getAnimations().filter(animation => animation.animationName === 'fixture-spin');
     check(spinAnimations.length === 1 && spinAnimations[0].playState === 'running', 'Native CSS spin must be running', spinAnimations.map(item => ({ name: item.animationName, state: item.playState })));
     const spin = spinAnimations[0];
     const spinningAtStart = Number(spin.currentTime);
     const cardAtStart = rect(cards[39]);
-    const dieAtStart = rect(die);
+    const chat = document.getElementById('chat');
+    const chatBox = chat.getBoundingClientRect(), dieBox = die.getBoundingClientRect();
+    check(dieBox.bottom > chatBox.top && dieBox.top < chatBox.bottom && dieBox.right > chatBox.left && dieBox.left < chatBox.right,
+      'D20 must be in the visible chat viewport before mutation sampling', { chat: rect(chat), die: rect(die) });
+    const dieGeometryAtStart = { box: localRect(die), width: getComputedStyle(die).width, height: getComputedStyle(die).height,
+      clientWidth: die.clientWidth, clientHeight: die.clientHeight };
     scans.cards = 0;
     const changes = [];
     textObserver = new MutationObserver(records => {
@@ -144,9 +157,14 @@ async function scenario(source, settings) {
     const spinningPasses = scans.cards;
     check(die.getAnimations().includes(spin) && spin.playState === 'running' && Number(spin.currentTime) > spinningAtStart,
       'Native animation identity and progress must survive changing faces', { sameAnimation: die.getAnimations().includes(spin), state: spin.playState, start: spinningAtStart, end: spin.currentTime });
-    const cardAtEnd = rect(cards[39]), dieAtEnd = rect(die);
+    const spinningEvidence = { sameObject: die.getAnimations().includes(spin), animationName: spin.animationName,
+      playState: spin.playState, start: spinningAtStart, end: spin.currentTime };
+    const cardAtEnd = rect(cards[39]);
+    const dieGeometryAtEnd = { box: localRect(die), width: getComputedStyle(die).width, height: getComputedStyle(die).height,
+      clientWidth: die.clientWidth, clientHeight: die.clientHeight };
     const closeRect = (a, b) => ['x', 'y', 'width', 'height'].every(key => Math.abs(a[key] - b[key]) <= 1);
-    check(closeRect(cardAtStart, cardAtEnd) && closeRect(dieAtStart, dieAtEnd), 'Intended spin does not alter card or die layout geometry', { cardAtStart, cardAtEnd, dieAtStart, dieAtEnd });
+    check(closeRect(cardAtStart, cardAtEnd) && JSON.stringify(dieGeometryAtStart) === JSON.stringify(dieGeometryAtEnd),
+      'Card layout and SVG local geometry remain stable through intended rotation', { cardAtStart, cardAtEnd, dieGeometryAtStart, dieGeometryAtEnd });
     textObserver.disconnect(); textObserver = null;
     check(cards.every((card, index) => card === list.children[index].firstElementChild && card.isConnected), 'Native card identities retained');
     check(prose.every((body, index) => body === cards[index].firstElementChild && body.isConnected)
@@ -174,8 +192,8 @@ async function scenario(source, settings) {
       spinningCardEnumerationPasses: spinningPasses,
       changes,
       cadence,
-      spin: { sameObject: die.getAnimations().includes(spin), playState: spin.playState, start: spinningAtStart, end: spin.currentTime },
-      geometry: { cardAtStart, cardAtEnd, dieAtStart, dieAtEnd },
+      spin: spinningEvidence,
+      geometry: { cardAtStart, cardAtEnd, dieGeometryAtStart, dieGeometryAtEnd },
       retained: { cards: cards.length, proseNodes: proseNodes.length, draft: draftNode.data },
       settled: { natural20: 'rgb(229, 183, 59)', natural1: 'rgb(165, 29, 45)', ordinaryFace: face.data },
       ordinaryMutationScans: scans.cards - beforeNativeClass,
@@ -183,7 +201,8 @@ async function scenario(source, settings) {
   } finally {
     textObserver?.disconnect();
     window.__friendsFablesDesktopChatAppearance?.dispose();
-    document.querySelectorAll = originalQuerySelectorAll;
+    if (querySelectorAllDescriptor) Object.defineProperty(document, 'querySelectorAll', querySelectorAllDescriptor);
+    else delete document.querySelectorAll;
   }
 }
 
