@@ -46,8 +46,18 @@ export function configureInstructionHiding(enabled: boolean): void {
       mark(element,'data-ff-desktop-hidden-instructions',hidden?'true':null);
     }
   }
-  const observer=new MutationObserver(()=>{if(!queued){queued=true;queueMicrotask(scan);}});
-  observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true});
+  const observer=new MutationObserver(records=>{
+    const relevant=records.some(record=>{
+      if(record.type!=='characterData')return true;
+      const parent=record.target.parentElement;
+      // SVG text can contribute to prose/draft eligibility, but unrelated dice
+      // numbers cannot change any instruction text consumed by this scan.
+      return !parent?.closest('svg')||!!parent.closest('.prose,[data-ff-desktop-sp-draft],[data-ff-desktop-instruction-block]');
+    });
+    if(relevant&&!queued){queued=true;queueMicrotask(scan);}
+  });
+  // Discover native eligibility changes directly, before an unrelated update.
+  observer.observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['class','contenteditable']});
   // /sp can open its editor before any instructions or commands are enabled.
   function launcher(target:EventTarget|null):HTMLElement|null{
     if(!(target instanceof Element)||!/\/play\/?$/.test(location.pathname))return null;
