@@ -495,16 +495,61 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
   }
   const scrollStyles = new Map<HTMLElement, { value: string; priority: string }>();
+  type ScrollMutation = { before: string | null; after: string | null };
+  const scrollMutationLimit = 128;
+  let scrollMutationWrites = new Map<HTMLElement, ScrollMutation[]>(), scrollMutationCount = 0, scrollMutationAmbiguous = false;
+  function clearScrollMutations(): void {
+    scrollMutationWrites = new Map(); scrollMutationCount = 0; scrollMutationAmbiguous = false;
+  }
+  function writeScrollAnchor(node: HTMLElement, value: string, priority: string): void {
+    const before = node.getAttribute('style');
+    if (value) node.style.setProperty('overflow-anchor', value, priority); else node.style.removeProperty('overflow-anchor');
+    const after = node.getAttribute('style');
+    if (disposed) return;
+    // A no-op, unobserved target or exhausted ledger cannot establish ownership.
+    if (!node.isConnected || node.ownerDocument !== document || before === after || ++scrollMutationCount > scrollMutationLimit) {
+      scrollMutationWrites.clear(); scrollMutationAmbiguous = true; return;
+    }
+    if (scrollMutationAmbiguous) return;
+    const writes = scrollMutationWrites.get(node) ?? [];
+    writes.push({ before, after }); scrollMutationWrites.set(node, writes);
+  }
+  function nativeScrollMutations(records: MutationRecord[]): MutationRecord[] {
+    // Writes made while handling this delivery belong only to the next delivery.
+    const writes = scrollMutationWrites, ambiguous = scrollMutationAmbiguous;
+    clearScrollMutations();
+    if (ambiguous || !writes.size) return records;
+    const styles = new Map<HTMLElement, MutationRecord[]>();
+    for (const record of records) if (record.type === 'attributes' && record.attributeName === 'style' && record.target instanceof HTMLElement) {
+      const chain = styles.get(record.target) ?? []; chain.push(record); styles.set(record.target, chain);
+    }
+    const owned = new Set<MutationRecord>();
+    for (const [node, expected] of writes) {
+      const chain = styles.get(node);
+      if (!node.isConnected || node.ownerDocument !== document || !chain || chain.length !== expected.length
+        || records.some(record => record.type === 'childList' && Array.from(record.removedNodes).some(removed => removed.contains(node)))) continue;
+      const finalStyle = node.getAttribute('style');
+      // A native write anywhere in this target's chain retains the entire chain.
+      // Never match a subsequence or infer ownership from the current anchor value.
+      if (chain.every((record, index) => record.oldValue === expected[index].before
+        && (index + 1 < chain.length ? chain[index + 1].oldValue : finalStyle) === expected[index].after)) {
+        for (const record of chain) owned.add(record);
+      }
+    }
+    return owned.size ? records.filter(record => !owned.has(record)) : records;
+  }
+
   function restoreScrollStyles(): void {
     for (const [node, previous] of scrollStyles) {
       if (node.style.getPropertyValue('overflow-anchor') !== 'none' || node.style.getPropertyPriority('overflow-anchor') !== 'important') continue;
-      if (previous.value) node.style.setProperty('overflow-anchor', previous.value, previous.priority); else node.style.removeProperty('overflow-anchor');
+      writeScrollAnchor(node, previous.value, previous.priority);
     }
     scrollStyles.clear();
   }
   function releaseScrollFeed(): void {
     cancelTail(); tailResize?.disconnect(); tailResize = null; tailSizes.clear();
     releaseTailSpace(); restoreScrollStyles(); scrollResize?.disconnect(); scrollResize = null; scrollSize = null;
+    clearScrollMutations();
     scrollFeed = null; scrollTried = false; scrollSelectionYield = false;
     // A retired feed may never deliver scrollend/pointerup. Its intent must not
     // suspend anchoring on the next native surface.
@@ -566,13 +611,13 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     }
     for (const [node, previous] of scrollStyles) if (!desired.has(node)) {
       if (node.style.getPropertyValue('overflow-anchor') === 'none' && node.style.getPropertyPriority('overflow-anchor') === 'important') {
-        if (previous.value) node.style.setProperty('overflow-anchor', previous.value, previous.priority); else node.style.removeProperty('overflow-anchor');
+        writeScrollAnchor(node, previous.value, previous.priority);
       }
       scrollStyles.delete(node);
     }
     for (const node of desired) {
       if (!scrollStyles.has(node)) scrollStyles.set(node, { value: node.style.getPropertyValue('overflow-anchor'), priority: node.style.getPropertyPriority('overflow-anchor') });
-      if (node.style.getPropertyValue('overflow-anchor') !== 'none' || node.style.getPropertyPriority('overflow-anchor') !== 'important') node.style.setProperty('overflow-anchor', 'none', 'important');
+      if (node.style.getPropertyValue('overflow-anchor') !== 'none' || node.style.getPropertyPriority('overflow-anchor') !== 'important') writeScrollAnchor(node, 'none', 'important');
     }
   }
   function rebaseScrollAnchor(): void {
@@ -851,6 +896,8 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
   }
   function schedule(): void { if (!disposed && !frame) frame = requestAnimationFrame(scan); }
   const observer = new MutationObserver(records => {
+    records = nativeScrollMutations(records);
+    if (!records.length) return;
     // MutationObserver runs before paint; a RAF-only scan leaves one empty
     // native body frame during optimistic/confirmed component replacement.
     const cards = new Set<HTMLElement>(), changedBodies = new Set<HTMLElement>();
@@ -899,7 +946,7 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     if (records.some(record => record.type !== 'characterData' || record.target.parentElement?.closest('svg[id="d20"]'))) schedule();
   });
   observer.observe(document.documentElement, {
-    childList: true, subtree: true, attributes: true, characterData: true,
+    childList: true, subtree: true, attributes: true, attributeOldValue: true, characterData: true,
     attributeFilter: ['id', 'class', 'src', 'type', 'name', 'contenteditable', 'title', 'role', 'aria-label', 'aria-pressed', 'data-state', 'data-panel', 'data-panel-group-id', 'data-panel-id', 'data-panel-size', 'style', 'hidden', 'inert', 'aria-hidden', 'data-ff-translation-blank', 'data-ff-translation-pending', 'data-ff-desktop-hidden-instructions'],
   });
   function translationReady(): void { clearSnapshots(); snapshotMessages(); rebaseScrollAnchor(); }
