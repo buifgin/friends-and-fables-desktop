@@ -72,11 +72,16 @@ async function scenario(source, settings, selected = 'all') {
       card.__reactFiber$fixture = { memoizedProps: { event: { id, role: 'dm', content: text.data, campaign_id: 'fixture' } } };
       list.append(row); items.push({ row, card, body, text });
     }
-    const victim = items[2]; let armed = false, injected = false, ownWrites = 0;
+    const victim = items[2];
+    // removeProperty preserves an empty style attribute; start with that exact
+    // raw value so set/remove inside the owned operation really is a no-op.
+    if (name === 'native-noop') victim.row.setAttribute('style', '');
+    let armed = false, injected = false, ownWrites = 0, noopTransition;
     for (const item of items) {
       const style = item.row.style, original = style.setProperty, descriptor = Object.getOwnPropertyDescriptor(style, 'setProperty');
       Object.defineProperty(style, 'setProperty', { configurable: true, value: function (property, value, priority) {
         const trigger = armed && !injected && item === victim && property === 'overflow-anchor' && value === 'none';
+        const triggerBefore = trigger ? item.row.getAttribute('style') : undefined;
         const nativeWrite = () => Reflect.apply(original, style, ['opacity', '.8', '']);
         if (trigger) {
           injected = true;
@@ -88,7 +93,11 @@ async function scenario(source, settings, selected = 'all') {
           if (name === 'native-after') nativeWrite();
           if (name === 'native-revert') Reflect.apply(original, style, ['opacity', '1', '']);
           // Native revert makes the complete owned operation a raw-style no-op.
-          if (name === 'native-noop') style.removeProperty('overflow-anchor');
+          if (name === 'native-noop') {
+            style.removeProperty('overflow-anchor');
+            noopTransition = { before: triggerBefore, after: item.row.getAttribute('style') };
+            check(noopTransition.before === noopTransition.after, 'Raw style no-op precondition failed');
+          }
           if (name === 'class-hidden') victim.card.classList.add('native-hidden');
           if (name === 'hidden') victim.card.hidden = true;
           if (name === 'inert') victim.card.inert = true;
@@ -164,7 +173,7 @@ async function scenario(source, settings, selected = 'all') {
         if (name === 'body-gap') functional = overlay?.textContent === 'Native history 3' && victim.text.data === '';
         const nativePreserved = name.startsWith('native-') ? mixedStyleProcessed : name === 'body-gap' ? processed.some(row => row[0] === 'characterData') : nativeAttributeProcessed;
         outcome = injected && nativePreserved && functional && (name === 'native-noop' ? ownOnlyTargetProcessed : !ownOnlyTargetProcessed);
-        natural = { motion, injected, nativePreserved, functional, ownOnlyTargetProcessed, mixedStyleProcessed, processed, delivered: g.delivered, snapshots: g.snapshots, scans: g.scans };
+        natural = { motion, injected, nativePreserved, functional, noopTransition, ownOnlyTargetProcessed, mixedStyleProcessed, processed, delivered: g.delivered, snapshots: g.snapshots, scans: g.scans };
       }
       const finalInk = glyph();
       check(items.every(item => item.card.parentElement.parentElement === item.row && item.card.querySelector('.prose') === item.body && item.body.firstChild.firstChild === item.text && item.text.isConnected), `${name}: native identity changed`);
