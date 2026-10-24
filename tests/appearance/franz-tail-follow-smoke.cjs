@@ -90,7 +90,20 @@ async function scenario(configure, settings, selected = 'all') {
       const delegated = calls.slice(callStart);
       check(delegated.length === 1 && delegated[0].actor === 'native' && delegated[0].sameArguments, 'Native must delegate exactly once with original this/args and no inserted stop', delegated);
       const nativeReturn = { type: typeof nativeResult, null: nativeResult === null, returned: nativeReturned, sameIdentity: Object.is(nativeResult, inheritedNativeResult) };
-      check(name === 'throwing-behavior' ? nativeError === marker && behaviorReads === 1 && !nativeReturned : nativeError === undefined && nativeReturned && nativeReturn.sameIdentity, 'Native return/exception semantics', {nativeError:String(nativeError),behaviorReads,nativeReturn});
+      let observedFailure = nativeError, failureMode = nativeError === undefined ? 'none' : 'synchronous';
+      if (name === 'throwing-behavior' && nativeReturned) {
+        // Modern native scroll APIs may report dictionary conversion failure by
+        // rejecting the original return. Observe only this error case; positive
+        // cases retain their real in-flight timing without awaiting completion.
+        let deadline;
+        try {
+          await Promise.race([Promise.resolve(nativeResult), new Promise((resolve,reject) => {
+            deadline = setTimeout(() => reject(Error('Native getter failure observation deadline')), 1000);
+          })]);
+        } catch(error) { observedFailure = error; failureMode = 'returned-rejection'; }
+        finally { clearTimeout(deadline); }
+      }
+      check(name === 'throwing-behavior' ? observedFailure === marker && behaviorReads === 1 && (!nativeReturned || nativeReturn.sameIdentity) : nativeError === undefined && nativeReturned && nativeReturn.sameIdentity, 'Native return/exception semantics', {nativeError:String(nativeError),observedFailure:String(observedFailure),failureMode,behaviorReads,nativeReturn});
       check(topReads === (name === 'accessor-top' ? 1 : 0) && coercions === (name === 'coerced-top' ? 1 : 0), 'Native alone owns target getters/coercion', {topReads,coercions});
       const handoff = { at: performance.now(), top: feed.scrollTop, oldMax, nativeTarget, delegated, restored: feed.scrollTo === traced };
       // The test does not prescribe whether a future valid design keeps/replaces
@@ -133,7 +146,7 @@ async function scenario(configure, settings, selected = 'all') {
       const visible = ink.height > 0 && ink.top >= after.feed.top - .5 && ink.bottom <= Math.min(after.feed.bottom, after.footer.top) + .5;
       const selectionPreserved = name !== 'selection' || getSelection().toString() === selectedText;
       const passed = identity && selectionPreserved && (name !== 'newer-owner' || feed.scrollTo === newer) && (name !== 'foreign-this' || Math.abs(foreign.scrollTop - nativeTarget) <= 1) && (negative ? laterDesktop.length === 0 && (!expectedReader || Math.abs(after.top - readerTarget) <= 1) : after.distance <= 1 && visible);
-      const result = { name, passed, identity, nativeReturn, argumentEffects: {topReads,coercions,behaviorReads,exceptionPreserved:nativeError===marker}, selectionPreserved, visible, active, handoff, growthAt, oldMax, newMax, after, calls, ends, samples };
+      const result = { name, passed, identity, nativeReturn, argumentEffects: {topReads,coercions,behaviorReads,exceptionPreserved:observedFailure===marker,failureMode}, selectionPreserved, visible, active, handoff, growthAt, oldMax, newMax, after, calls, ends, samples };
       cases.push(result); console.log('FRANZ_TAIL_CASE', JSON.stringify(result));
     } finally {
       feed.removeEventListener('scroll', scrolled); feed.removeEventListener('scrollend', ended);
