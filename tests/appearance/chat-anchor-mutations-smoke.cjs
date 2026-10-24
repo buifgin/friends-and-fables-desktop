@@ -65,7 +65,9 @@ async function scenario(source, settings, selected = 'all') {
     history.replaceState({}, '', '/fixture/play');
     document.body.innerHTML = '<style>body{margin:0}.card{height:100px;box-sizing:border-box;padding:12px}.prose p{margin:0;line-height:24px}.native-hidden{display:none}#feed{height:400px;width:640px;overflow-y:scroll;margin:40px}</style><main id="feed"><div id="events-list"></div></main><div class="tiptap" contenteditable="true">Preserve draft.</div>';
     const feed = document.getElementById('feed'), list = document.getElementById('events-list'), draft = document.querySelector('.tiptap'), draftText = draft.firstChild, items = [];
-    for (let id = 1; id <= 40; id++) {
+    // Keep the body-gap victim inside the bounded source snapshot cache.
+    const rowCount = name === 'body-gap' ? 32 : 40;
+    for (let id = 1; id <= rowCount; id++) {
       const row = document.createElement('div'); row.id = `event-${id}`;
       row.innerHTML = `<div id="event-container-${id}"><div class="card" id="event-message-card-${id}">${id === 3 ? '<svg id="d8" width="18" height="18"></svg>' : ''}<div class="prose"><p>Native history ${id}</p></div></div></div>`;
       const card = row.querySelector('.card'), body = row.querySelector('.prose'), text = body.firstChild.firstChild;
