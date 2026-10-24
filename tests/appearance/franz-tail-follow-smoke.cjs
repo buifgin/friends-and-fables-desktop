@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
 const css = 'body{margin:0}#chat{position:relative;width:900px;height:556px;margin:40px}#feed{box-sizing:border-box;height:100%;overflow-y:auto;overflow-anchor:auto;scroll-behavior:smooth;padding:0 0 64px}#turn-controls{position:absolute;bottom:0;left:0;right:0;height:56px;background:#123;z-index:5}.prose{box-sizing:border-box;height:100%;padding:10px;display:flex;flex-direction:column;justify-content:flex-end}.prose p{margin:0;line-height:24px}';
 async function scenario(configure, settings, selected = 'all') {
-  const names = ['bottom-options', 'bottom-numeric', 'non-tail', 'bottom-after-arrival', 'manual-wheel', 'selection', 'accessor-top', 'coerced-top', 'nonfinite-top', 'throwing-behavior', 'foreign-this', 'newer-owner'];
+  const names = ['bottom-options', 'bottom-numeric', 'non-tail', 'bottom-after-arrival', 'manual-wheel', 'selection', 'accessor-top', 'coerced-top', 'nonfinite-top', 'throwing-behavior', 'foreign-this', 'newer-owner', 'plain-left', 'left-getter'];
   const check = (condition, message, data) => { if (!condition) throw Error(message + ': ' + JSON.stringify(data)); };
   check(selected === 'all' || names.includes(selected), 'Unknown case', selected);
   const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
@@ -18,7 +18,7 @@ async function scenario(configure, settings, selected = 'all') {
     const feed = document.getElementById('feed'), list = document.getElementById('events-list'), footer = document.getElementById('turn-controls');
     const draft = document.querySelector('.tiptap'), draftText = draft.firstChild, retained = [], calls = [], ends = [], samples = [];
     let actor = 'desktop', stage = 'setup', events = 0, nativeArguments, nativeThis;
-    let topReads = 0, coercions = 0, behaviorReads = 0, inheritedNativeResult, nativeReturned = false;
+    let topReads = 0, leftReads = 0, coercions = 0, behaviorReads = 0, inheritedNativeResult, nativeReturned = false;
     const maximum = () => feed.scrollHeight - feed.clientHeight;
     const box = node => { const r = node.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, height: r.height }; };
     const message = (id, height, text) => {
@@ -76,6 +76,8 @@ async function scenario(configure, settings, selected = 'all') {
       const marker = new Error('Native behavior getter marker'); let nativeError, nativeResult;
       nativeThis = name === 'foreign-this' ? foreign : feed;
       const options = { top: nativeTarget, behavior: name === 'non-tail' || name === 'nonfinite-top' || name === 'foreign-this' ? 'instant' : 'smooth' };
+      if (name === 'plain-left') options.left = 0;
+      if (name === 'left-getter') Object.defineProperty(options,'left',{get(){leftReads++;return 0;}});
       if (name === 'accessor-top') Object.defineProperty(options,'top',{get(){topReads++;return oldMax;}});
       if (name === 'coerced-top') options.top = { valueOf(){coercions++;return oldMax;} };
       if (name === 'nonfinite-top') options.top = Infinity;
@@ -104,7 +106,7 @@ async function scenario(configure, settings, selected = 'all') {
         finally { clearTimeout(deadline); }
       }
       check(name === 'throwing-behavior' ? observedFailure === marker && behaviorReads === 1 && (!nativeReturned || nativeReturn.sameIdentity) : nativeError === undefined && nativeReturned && nativeReturn.sameIdentity, 'Native return/exception semantics', {nativeError:String(nativeError),observedFailure:String(observedFailure),failureMode,behaviorReads,nativeReturn});
-      check(topReads === (name === 'accessor-top' ? 1 : 0) && coercions === (name === 'coerced-top' ? 1 : 0), 'Native alone owns target getters/coercion', {topReads,coercions});
+      check(topReads === (name === 'accessor-top' ? 1 : 0) && leftReads === (name === 'left-getter' ? 1 : 0) && coercions === (name === 'coerced-top' ? 1 : 0), 'Native alone owns target getters/coercion', {topReads,leftReads,coercions});
       const handoff = { at: performance.now(), top: feed.scrollTop, oldMax, nativeTarget, delegated, restored: feed.scrollTo === traced };
       // The test does not prescribe whether a future valid design keeps/replaces
       // the wrapper; exact native dispatch and observable intent are the contract.
@@ -142,11 +144,11 @@ async function scenario(configure, settings, selected = 'all') {
       const after = { top: feed.scrollTop, max: maximum(), distance: maximum() - feed.scrollTop, feed: box(feed), footer: box(footer), card: box(franz.card), glyph: ink };
       const identity = retained.every(item => item.row.isConnected && item.row.firstElementChild.firstElementChild === item.card && item.card.querySelector('.prose') === item.body && item.body.firstChild.firstChild === item.text) && franz.body.lastChild === paragraph && paragraph.firstChild === finalText && draft.firstChild === draftText && draft.textContent === 'Preserve Franz draft.';
       const laterDesktop = calls.slice(growthCallStart).filter(call => call.actor === 'desktop');
-      const negative = expectedReader || ['selection','accessor-top','coerced-top','throwing-behavior','newer-owner'].includes(name);
+      const negative = expectedReader || ['selection','accessor-top','coerced-top','throwing-behavior','newer-owner','left-getter'].includes(name);
       const visible = ink.height > 0 && ink.top >= after.feed.top - .5 && ink.bottom <= Math.min(after.feed.bottom, after.footer.top) + .5;
       const selectionPreserved = name !== 'selection' || getSelection().toString() === selectedText;
       const passed = identity && selectionPreserved && (name !== 'newer-owner' || feed.scrollTo === newer) && (name !== 'foreign-this' || Math.abs(foreign.scrollTop - nativeTarget) <= 1) && (negative ? laterDesktop.length === 0 && (!expectedReader || Math.abs(after.top - readerTarget) <= 1) : after.distance <= 1 && visible);
-      const result = { name, passed, identity, nativeReturn, argumentEffects: {topReads,coercions,behaviorReads,exceptionPreserved:observedFailure===marker,failureMode}, selectionPreserved, visible, active, handoff, growthAt, oldMax, newMax, after, calls, ends, samples };
+      const result = { name, passed, identity, nativeReturn, argumentEffects: {topReads,leftReads,coercions,behaviorReads,exceptionPreserved:observedFailure===marker,failureMode}, selectionPreserved, visible, active, handoff, growthAt, oldMax, newMax, after, calls, ends, samples };
       cases.push(result); console.log('FRANZ_TAIL_CASE', JSON.stringify(result));
     } finally {
       feed.removeEventListener('scroll', scrolled); feed.removeEventListener('scrollend', ended);
