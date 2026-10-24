@@ -49,9 +49,12 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
   const slot = document.createElement('div'); slot.setAttribute('data-ff-combat-shortcuts-slot', ''); tools.append(slot);
   const handle = document.createElement('div'); handle.setAttribute('data-ff-combat-resizer', ''); handle.setAttribute('role', 'separator'); handle.setAttribute('aria-orientation', 'vertical'); handle.setAttribute('data-ff-translation-ignore', 'true'); handle.tabIndex = 0;
   function labels(): void {
-    handle.setAttribute('aria-label', language === 'ru' ? 'Ширина панели боя' : 'Combat panel width');
-    handle.title = language === 'ru' ? 'Перетащите или используйте стрелки. Home или двойной щелчок — сброс.' : 'Drag or use arrow keys. Home or double-click resets width.';
-    handle.setAttribute('aria-valuetext', `${applied} ${language === 'ru' ? 'пикселей' : 'pixels'}`);
+    const label = language === 'ru' ? 'Ширина панели боя' : 'Combat panel width';
+    if (handle.getAttribute('aria-label') !== label) handle.setAttribute('aria-label', label);
+    const title = language === 'ru' ? 'Перетащите или используйте стрелки. Home или двойной щелчок — сброс.' : 'Drag or use arrow keys. Home or double-click resets width.';
+    if (handle.title !== title) handle.title = title;
+    const value = `${applied} ${language === 'ru' ? 'пикселей' : 'pixels'}`;
+    if (handle.getAttribute('aria-valuetext') !== value) handle.setAttribute('aria-valuetext', value);
   }
   function geometry(): void {
     if (!panel) return;
