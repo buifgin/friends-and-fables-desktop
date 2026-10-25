@@ -202,8 +202,9 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     snapshot.gapAt ??= Date.now();
     const properties = new Map<string, { value: string; priority: string; applied: string }>();
     const own = (name: string, applied: string): void => {
-      properties.set(name, { value: card.style.getPropertyValue(name), priority: card.style.getPropertyPriority(name), applied });
+      const previous = { value: card.style.getPropertyValue(name), priority: card.style.getPropertyPriority(name), applied: '' };
       card.style.setProperty(name, applied, 'important');
+      previous.applied = card.style.getPropertyValue(name); properties.set(name, previous);
     };
     const style = getComputedStyle(card);
     if (style.position === 'static') own('position', 'relative');
