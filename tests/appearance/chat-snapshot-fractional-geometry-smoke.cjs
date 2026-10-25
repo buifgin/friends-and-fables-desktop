@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const crypto = require('node:crypto');
 const sha = value => crypto.createHash('sha256').update(value).digest('hex');
-const css = 'body{margin:0;font:16px Arial}#events-list{margin:20px}.card{position:relative;box-sizing:border-box;width:480px;padding:4px 16px 16px;border:1px solid transparent}.author{height:40px}.prose{font-size:16px;line-height:23.9971px}.integer .prose{line-height:24px}.prose p{margin:0}.space-y-4>p+p{margin-top:16px}';
+const css = 'body{margin:0;font:16px Arial}#events-list{margin:20px}.card{position:relative;box-sizing:border-box;width:480px;padding:4px 16px 16px;border:1px solid transparent}.author{height:40px}.prose{font-size:16px;line-height:23.3px}.integer .prose{line-height:24px}.prose p{margin:0}.space-y-4>p+p{margin-top:16px}';
 async function scenario(configure, hide, settings) {
   const modes = ['fractional-empty-prior', 'fractional-existing-prior', 'integer-control', 'newer-native-value', 'newer-native-priority', 'dispose'];
   const cases = [];
@@ -39,6 +39,8 @@ async function scenario(configure, hide, settings) {
       const temporary = mount(null, true); configure(settings); await settle();
       check(document.visibilityState === 'visible' && document.hasFocus(), 'Visible focused native fixture required', mode);
       const snapshotHeight = temporary.card.getBoundingClientRect().height, rawApplied = `${snapshotHeight}px`;
+      const cardStyle = getComputedStyle(temporary.card), bodyStyle = getComputedStyle(temporary.body), paragraphStyle = getComputedStyle(temporary.p);
+      const rendered = { fontSize: bodyStyle.fontSize, lineHeight: bodyStyle.lineHeight, paragraphLineHeight: paragraphStyle.lineHeight, paddingTop: cardStyle.paddingTop, paddingBottom: cardStyle.paddingBottom, borderTop: cardStyle.borderTopWidth, borderBottom: cardStyle.borderBottomWidth, width: temporary.card.getBoundingClientRect().width, bodyHeight: temporary.body.getBoundingClientRect().height };
       check(snapshotHeight > 150 && temporary.text.data === ordinary && getComputedStyle(temporary.guide).display !== 'none', 'Real naturally tall visible body prerequisite', { mode, snapshotHeight });
       // This is the existing optimistic→confirmed hydration-gap contract, before
       // any SP hide action; SP toggle is never represented as emptying native text.
@@ -49,8 +51,8 @@ async function scenario(configure, hide, settings) {
       const during = sample(confirmed), serializedApplied = during.minHeight.value;
       check(getComputedStyle(confirmed.card).boxSizing === 'border-box' && during.minHeight.priority === 'important', 'Actual owned geometry prerequisite', { mode, during });
       const normalized = rawApplied !== serializedApplied;
-      if (mode === 'integer-control') check(!normalized && Math.abs(snapshotHeight - Math.round(snapshotHeight)) < .001, 'Integer normalization control must match', { snapshotHeight, rawApplied, serializedApplied });
-      else check(normalized && Math.abs(snapshotHeight - Math.round(snapshotHeight)) > .001, 'Fractional native CSSOM normalization must actually occur (otherwise inconclusive)', { mode, snapshotHeight, rawApplied, serializedApplied });
+      if (mode === 'integer-control') check(!normalized && Math.abs(snapshotHeight - Math.round(snapshotHeight)) < .001, 'Integer normalization control must match', { snapshotHeight, rawApplied, serializedApplied, rendered });
+      else check(normalized && Math.abs(snapshotHeight - Math.round(snapshotHeight)) > .001, 'Fractional native CSSOM normalization must actually occur (otherwise inconclusive)', { mode, snapshotHeight, rawApplied, serializedApplied, rendered });
       let expected = prior;
       if (mode === 'newer-native-value') { confirmed.card.style.setProperty('min-height', '120px', 'important'); expected = declaration(confirmed.card); }
       if (mode === 'newer-native-priority') { confirmed.card.style.setProperty('min-height', serializedApplied, ''); expected = declaration(confirmed.card); }
@@ -71,7 +73,7 @@ async function scenario(configure, hide, settings) {
       const glyph = node => { const r = document.createRange(); r.selectNodeContents(node); const ink = r.getBoundingClientRect(); return { top: ink.top - node.parentElement.closest('.card').getBoundingClientRect().top, height: ink.height }; };
       const ink = glyph(confirmed.text), controlInk = glyph(control.text), glyphPreserved = ink.height > 0 && Math.abs(ink.top - controlInk.top) <= .1;
       check(glyphPreserved, 'Native recovered ordinary glyph anchor', { mode, ink, controlInk });
-      cases.push({ mode, passed: restored && geometry && preserved && glyphPreserved, snapshotHeight, rawApplied, serializedApplied, normalized, prior, expected, during, firstPaint, secondPaint, final, control: controlState, restored, geometry, preserved, ink, controlInk });
+      cases.push({ mode, passed: restored && geometry && preserved && glyphPreserved, rendered, snapshotHeight, rawApplied, serializedApplied, normalized, prior, expected, during, firstPaint, secondPaint, final, control: controlState, restored, geometry, preserved, ink, controlInk });
       // Ownership failures remain result flags so integer/newer-owner/disposal
       // controls still run on the same frozen baseline.
     } finally { window.__friendsFablesDesktopChatAppearance?.dispose(); selection.removeAllRanges(); }
