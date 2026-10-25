@@ -71,6 +71,12 @@ async function scenario(install) {
     root.style.setProperty('--ff-combat-rail-width','60px'); await wait('Restore root rail',()=>handle.getAttribute('aria-valuenow')==='350');
     stage='tools-size-content'; nav.textContent += ' resized'; nav.style.height='54px';
     await wait('Real toolbar resize must update height',()=>root.style.getPropertyValue('--ff-combat-tools-height')==='55px'); const toolbar=geometry();
+    stage='inherited-tools-size'; nav.style.height='3em';
+    await wait('Native em toolbar size prerequisite',()=>root.style.getPropertyValue('--ff-combat-tools-height')==='49px');
+    document.body.style.fontSize='20px';
+    await wait('Outside ancestor style resize remains observed',()=>root.style.getPropertyValue('--ff-combat-tools-height')==='61px'); const inheritedToolbar=geometry();
+    document.body.style.removeProperty('font-size'); nav.style.height='54px';
+    await wait('Restore native toolbar size',()=>root.style.getPropertyValue('--ff-combat-tools-height')==='55px');
     stage='panel-replacement'; const previous=panel, replacement=document.createElement('section'); replacement.setAttribute('data-ff-combat-docked',''); replacement.append(heading,form); previous.replaceWith(replacement); panel=replacement;
     await wait('Actual panel replacement must remount owned tools',()=>tools.parentElement===panel && handle.parentElement===panel); const replaced=geometry();
     stage='close'; root.setAttribute('data-ff-combat-open','false'); await wait('Close removes tools/restores owned variables',()=>!tools.isConnected && !root.style.getPropertyValue('--ff-combat-width')); check(identity(),'Close preserves native identity');
@@ -86,11 +92,11 @@ async function scenario(install) {
         install(false,'en'); await paint(); check(!tools.isConnected && !handle.isConnected && !root.style.getPropertyValue('--ff-combat-width') && !root.style.getPropertyValue('--ff-combat-tools-height'),'Dispose releases owned layout');
         stage='disposed'; counters[stage]={rootStyle:0,toolsRect:0}; outside.style.color='rgb(90, 100, 110)'; window.dispatchEvent(new Event('resize')); await new Promise(resolve=>setTimeout(resolve,650)); await paint();
         const disposed={...counters[stage]}; check(disposed.rootStyle===0 && disposed.toolsRect===0 && identity(),'Dispose leaves no geometry reads/actions',{disposed,identity:identity()});
-        const result={passed:stable.passed,stable,fallback,controls:{rail,toolbar,replaced,reopened,viewport,disposed,identity:identity(),actions},counters,outsideWrites,outsideDeliveries}; cleanup(); return result;
+        const result={passed:stable.passed,stable,fallback,controls:{rail,toolbar,inheritedToolbar,replaced,reopened,viewport,disposed,identity:identity(),actions},counters,outsideWrites,outsideDeliveries}; cleanup(); return result;
       };
       return viewport;
     };
-    return {stable,fallback,controls:{rail,toolbar,replaced,reopened}};
+    return {stable,fallback,controls:{rail,toolbar,inheritedToolbar,replaced,reopened}};
   } catch(error) { cleanup(); throw error; }
 }
 function prepare() {
