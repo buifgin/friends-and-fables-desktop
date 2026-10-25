@@ -33,7 +33,7 @@ async function scenario(configure,settings) {
   const own=()=>items.filter(item=>item.row.style.getPropertyValue('overflow-anchor')==='none'&&item.row.style.getPropertyPriority('overflow-anchor')==='important').map(item=>item.row.id);
   const identity=()=>form===footer.querySelector('form')&&draft===form.querySelector('input')&&draft.value==='Native retained draft'&&actions===0&&items.every(item=>item.row.isConnected&&item.container.parentElement===item.row&&item.card.parentElement===item.container&&item.text.parentElement===item.p&&item.text.data===item.source);
   const snapshot=()=>({top:feed.scrollTop,feed:box(feed),footer:box(footer),gm:box(gm.card),roll:box(roll.card),glyph:glyph(roll),owned:own(),identity:identity()});
-  let stage='setup',scrollEvents=0,intermediates=0,wheelEvents=0;
+  let stage='setup',scrollEvents=0,intermediates=0,wheelEvents=0,nativeWriters=null;
   const writes=[],records=[],ends=[],samples=[],styleOwners=new Map(items.map(item=>[item.row.style,item.row.id]));
   const setDescriptor=Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype,'setProperty'),removeDescriptor=Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype,'removeProperty');
   const recordWrite=(style,property,invoke)=>{
@@ -46,7 +46,15 @@ async function scenario(configure,settings) {
   observer.observe(list,{attributes:true,subtree:true,attributeFilter:['style'],attributeOldValue:true});
   // Registered before the product so this capture observes the exact style set
   // before scrollFinished executes. No dispatched/synthetic scroll completion.
-  const ended=event=>{if(event.target!==feed)return;check(ends.length<16,'Native completion budget',{stage});ends.push({stage,trusted:event.isTrusted,at:performance.now(),writeStart:writes.length,recordStart:records.length,before:snapshot()});};
+  const ended=event=>{
+    if(event.target!==feed)return;check(ends.length<16,'Native completion budget',{stage});
+    if(stage==='native-writer-completion'&&nativeWriters&&!nativeWriters.applied){
+      check(event.isTrusted&&Math.abs(feed.scrollTop-nativeWriters.target)<=1&&nativeWriters.rows.every(row=>own().includes(row.id)),'Native writer must replace currently owned declarations before genuine completion');
+      nativeWriters.rows[0].style.setProperty('overflow-anchor','auto','important');nativeWriters.rows[1].style.setProperty('overflow-anchor','none','');
+      nativeWriters.applied={at:performance.now(),top:feed.scrollTop,trusted:event.isTrusted,values:nativeWriters.rows.map(row=>({id:row.id,value:row.style.getPropertyValue('overflow-anchor'),priority:row.style.getPropertyPriority('overflow-anchor')}))};
+    }
+    ends.push({stage,trusted:event.isTrusted,at:performance.now(),writeStart:writes.length,recordStart:records.length,before:snapshot()});
+  };
   const scrolled=event=>{if(event.target===feed){scrollEvents++;if(stage==='stable-motion'&&feed.scrollTop>startTop+1&&feed.scrollTop<target-1)intermediates++;}};
   const wheeled=event=>{if(feed.contains(event.target)&&event.isTrusted)wheelEvents++;};
   document.addEventListener('scrollend',ended,true);document.addEventListener('scroll',scrolled,true);document.addEventListener('wheel',wheeled,true);
@@ -84,6 +92,18 @@ async function scenario(configure,settings) {
       const selected=selection.toString();following.card.style.height='180px';await paint();await paint();
       check(selection.anchorNode===reader.text&&selection.toString()===selected&&Math.abs(glyph(reader).top-reading.top)<=.5&&Math.abs(feed.scrollTop-manualTop)<=.5&&identity(),'Manual/selection authority after native tail growth',{reading,after:glyph(reader),manualTop,top:feed.scrollTop});
       selection.removeAllRanges();await paint();await paint();
+      stage='native-writer-completion';const writerRows=items.filter(item=>own().includes(item.row.id)).slice(0,2).map(item=>item.row);check(writerRows.length===2,'Two native ownership targets');
+      nativeWriters={rows:writerRows,applied:null,target:feed.scrollTop+40};const writerEnds=ends.length,writerTarget=nativeWriters.target;
+      feed.scrollTo({top:writerTarget,behavior:'smooth'});await wait('Native writer requires genuine completion before reconciliation',()=>ends.length>writerEnds&&nativeWriters.applied&&Math.abs(feed.scrollTop-writerTarget)<=1);await paint();
+      const reconciled=writerRows.map(row=>({id:row.id,value:row.style.getPropertyValue('overflow-anchor'),priority:row.style.getPropertyPriority('overflow-anchor')}));
+      check(reconciled.every(row=>row.value==='none'&&row.priority==='important'),'Still-desired rows must undergo normal policy reconciliation',reconciled);
+      window.__friendsFablesDesktopChatAppearance.dispose();await paint();
+      const released=writerRows.map(row=>({id:row.id,value:row.style.getPropertyValue('overflow-anchor'),priority:row.style.getPropertyPriority('overflow-anchor')}));
+      const writerOwnership={applied:nativeWriters.applied,target:writerTarget,reconciled,released,restored:JSON.stringify(released)===JSON.stringify(nativeWriters.applied.values)};
+      window.__scrollendAnchorFixture.partial={stable,writerOwnership};
+      check(writerOwnership.restored&&identity(),'Completion cleanup restores newer native value/priority, not stale prior',writerOwnership);
+      // Remount only after the cleanup assertion: later resets cannot mask it.
+      configure(settings);await paint();await paint();check(own().length>=2,'Remounted current feed after native ownership control');
       stage='feed-replacement';const retired=feed,replacement=feed.cloneNode(false),retainedTop=feed.scrollTop;replacement.append(list);retired.replaceWith(replacement);feed=replacement;feed.scrollTop=retainedTop;
       await wait('Replacement feed adopts bounded anchor ownership',()=>own().length>=2);await paint();check(!retired.isConnected&&identity(),'Replacement native identity');
       stage='route-leave';history.pushState({},'', '/fixture/settings');window.dispatchEvent(new PopStateEvent('popstate'));await wait('Route exit restores owned styles',()=>own().length===0);check(identity(),'Route identity');
@@ -92,7 +112,7 @@ async function scenario(configure,settings) {
       value.style.setProperty('overflow-anchor','auto','important');priority.style.setProperty('overflow-anchor','none','');
       window.__friendsFablesDesktopChatAppearance.dispose();await paint();
       check(value.style.getPropertyValue('overflow-anchor')==='auto'&&value.style.getPropertyPriority('overflow-anchor')==='important'&&priority.style.getPropertyValue('overflow-anchor')==='none'&&priority.style.getPropertyPriority('overflow-anchor')===''&&own().length===0&&identity(),'Dispose preserves newer native value/priority and restores only owned rows');
-      const result={passed:stable.passed,stable,controls:{hydrationBefore,hydrationAfter,preferred,manual:{wheelEvents:wheelEvents-wheelStart,top:manualTop,selected},replacement:true,route:true,newerValue:value.id,newerPriority:priority.id,identity:identity(),actions},totalWrites:writes.length,totalRecords:records.length};cleanup();return result;
+      const result={passed:stable.passed,stable,controls:{hydrationBefore,hydrationAfter,preferred,manual:{wheelEvents:wheelEvents-wheelStart,top:manualTop,selected},writerOwnership,replacement:true,route:true,newerValue:value.id,newerPriority:priority.id,identity:identity(),actions},totalWrites:writes.length,totalRecords:records.length};cleanup();return result;
     };
     return {stable,controls:{hydrationBefore,hydrationAfter,preferred},wheel:{x:Math.round(point.width/2+40),y:Math.round(point.top+100)}};
   }catch(error){cleanup();throw error;}
