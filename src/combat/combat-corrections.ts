@@ -40,7 +40,11 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   function button(marker: string, action: () => void): HTMLButtonElement {
     const result = document.createElement('button'); result.type = 'button'; result.setAttribute(`data-ff-correction-${marker}`, ''); result.addEventListener('click', action); return result;
   }
-  const writable = (field: HTMLInputElement): boolean => field.isConnected && !field.disabled && !field.readOnly && !field.matches(':disabled') && !field.closest('[aria-disabled="true"],[data-disabled]:not([data-disabled="false"]),[hidden],[aria-hidden="true"]') && field.getClientRects().length > 0 && getComputedStyle(field).visibility !== 'hidden' && getComputedStyle(field).visibility !== 'collapse';
+  const writable = (field: HTMLInputElement): boolean => {
+    if (!field.isConnected || field.disabled || field.readOnly || field.matches(':disabled') || field.closest('[aria-disabled="true"],[data-disabled]:not([data-disabled="false"]),[hidden],[aria-hidden="true"]') || field.getClientRects().length === 0) return false;
+    const visibility = getComputedStyle(field).visibility;
+    return visibility !== 'hidden' && visibility !== 'collapse';
+  };
   const status = document.createElement('p'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
   function message(en: string, ru: string): void { status.textContent = language === 'ru' ? ru : en; }
   function write(index: number, value: number): boolean {
