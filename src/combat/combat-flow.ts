@@ -333,6 +333,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       turnFootprint = { source: current, right, entity: turn.entityId,
         value: right.style.getPropertyValue('min-height'), priority: right.style.getPropertyPriority('min-height'), applied };
       right.style.setProperty('min-height', applied, 'important');
+      turnFootprint.applied = right.style.getPropertyValue('min-height');
     }
     current.turnName = turn.name; current.turnImage = turn.image;
     template.setAttribute('data-ff-combat-turn-control', 'true'); template.setAttribute('data-ff-translation-ignore', 'true'); template.setAttribute('aria-hidden', 'true');
