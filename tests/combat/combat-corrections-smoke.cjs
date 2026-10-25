@@ -115,9 +115,19 @@ app.on('window-all-closed', () => {});
   }
  };
  const set = (selector,value) => js(`document.querySelector(${JSON.stringify(selector)}).value=${JSON.stringify(value)}`);
- const identity = () => js("native.form===document.querySelector('form')&&native.submit===document.querySelector('#submit')&&native.modifier===document.querySelector('#modifier_value')&&native.proficiency===document.querySelector('#proficiency_bonus')&&native.description.value==='attack draft'&&native.draft.textContent==='preserved draft'&&native.canvas===document.querySelector('canvas')&&document.querySelector('#unrecognised').value==='keep'");
+ const identity = () => js("native.form===document.querySelector('form')&&native.submit===document.querySelector('#submit')&&native.modifier===document.querySelector('#modifier_value')&&native.proficiency===document.querySelector('#proficiency_bonus')&&native.description.value==='attack draft'&&native.draft.textContent==='preserved draft'&&getSelection().anchorNode===native.draft.firstChild&&getSelection().anchorOffset===2&&getSelection().focusNode===native.draft.firstChild&&getSelection().focusOffset===10&&native.canvas===document.querySelector('canvas')&&document.querySelector('#unrecognised').value==='keep'");
+ const installVisibilityProbe = () => mutate(`
+  const rects=Element.prototype.getClientRects,computed=window.getComputedStyle;
+  window.visibilityProbe={rects:0,computed:0,rectsByField:{modifier_value:0,proficiency_bonus:0},computedByField:{modifier_value:0,proficiency_bonus:0},calls:[],restore(){Element.prototype.getClientRects=rects;window.getComputedStyle=computed}};
+  Element.prototype.getClientRects=function(...args){if(this===native.modifier||this===native.proficiency){visibilityProbe.rects++;visibilityProbe.rectsByField[this.id]++;if(visibilityProbe.calls.length<128)visibilityProbe.calls.push({kind:'rects',id:this.id})}return rects.apply(this,args)};
+  window.getComputedStyle=function(...args){if(args[0]===native.modifier||args[0]===native.proficiency){visibilityProbe.computed++;visibilityProbe.computedByField[args[0].id]++;if(visibilityProbe.calls.length<128)visibilityProbe.calls.push({kind:'computed',id:args[0].id})}return computed.apply(this,args)};
+  window.restoreVisibilityProbe=()=>visibilityProbe.restore();
+ `);
+ const resetVisibilityProbe = () => mutate('visibilityProbe.rects=0;visibilityProbe.computed=0;visibilityProbe.rectsByField={modifier_value:0,proficiency_bonus:0};visibilityProbe.computedByField={modifier_value:0,proficiency_bonus:0};visibilityProbe.calls=[]');
+ const restoreVisibilityProbe = () => window?.webContents.executeJavaScript('window.restoreVisibilityProbe?.()').catch(()=>{});
  await window.loadURL('https://play.fables.gg/campaign-one/play'); window.showInactive(); window.focus(); window.webContents.focus();
  await until("document.visibilityState==='visible'&&document.hasFocus()",true);
+ await mutate("const range=document.createRange(),text=native.draft.firstChild;range.setStart(text,2);range.setEnd(text,10);const selection=getSelection();selection.removeAllRanges();selection.addRange(range)");
  // A direct assignment plus events fools a controlled value tracker. Ensure this fixture detects it.
  await mutate("native.modifier.value='9';native.modifier.dispatchEvent(new Event('input',{bubbles:true}))");
  assert.equal(await js('state.modifier_value'),'0');
@@ -151,6 +161,18 @@ app.on('window-all-closed', () => {});
  await mutate("native.proficiency.disabled=false;native.modifier.readOnly=true"); await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
  await click('[data-ff-correction-modifier_value-plus]'); assert.equal(await js('state.modifier_value'),'0');
  await mutate('native.modifier.readOnly=false'); await until("!document.querySelector('[data-ff-correction-load]').disabled");
+ for (const visibility of ['hidden','collapse']) {
+  await mutate(`native.modifier.style.visibility=${JSON.stringify(visibility)}`);
+  await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+  await click('[data-ff-correction-modifier_value-plus]'); assert.equal(await js('state.modifier_value'),'0',`CSS visibility ${visibility} prevents corrections.`);
+  await mutate("native.modifier.style.visibility='visible'");
+  await until("!document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ }
+ await mutate('native.modifier.parentElement.hidden=true');
+ await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ await click('[data-ff-correction-modifier_value-plus]'); assert.equal(await js('state.modifier_value'),'0','An ancestor-hidden native field cannot be corrected.');
+ await mutate('native.modifier.parentElement.hidden=false');
+ await until("!document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
  for (const [attribute,value] of [['aria-disabled','true'],['data-disabled',''],['hidden','']]) {
   await mutate(`native.modifier.setAttribute(${JSON.stringify(attribute)},${JSON.stringify(value)})`);
   await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
@@ -186,6 +208,30 @@ app.on('window-all-closed', () => {});
  await mutate("history.pushState({},'', '/campaign-two/play');dispatchEvent(new PopStateEvent('popstate'))"); await until("!!document.querySelector('[data-ff-combat-corrections]')");
  await configure(false); assert.equal(await js("document.querySelector('[data-ff-correction-shortcut]')"),null); assert.equal(await js("document.querySelector('[data-ff-combat-corrections-style]')"),null); assert.equal(await js("document.querySelector('[data-ff-combat-corrections]')"),null); assert.equal(await identity(),true);
  assert.equal(await js('submits.length'),1); assert.ok(await js('changes>0&&inputs>0'));
+ // Count delegated native field queries from one actual public controller
+ // update. Keep the RED assertion until every fixture control has completed.
+ await configure(); await until("!!document.querySelector('[data-ff-combat-corrections]')");
+ await installVisibilityProbe(); await resetVisibilityProbe();
+ await click('[data-ff-correction-modifier_value-plus]');
+ await until("state.modifier_value==='1'"); await new Promise(resolve=>setTimeout(resolve,80));
+ const visibleUpdate=await js('({rects:visibilityProbe.rects,computed:visibilityProbe.computed,rectsByField:{...visibilityProbe.rectsByField},computedByField:{...visibilityProbe.computedByField},calls:visibilityProbe.calls.slice()})');
+ await resetVisibilityProbe(); await new Promise(resolve=>setTimeout(resolve,80));
+ const unchangedControl=await js('({rects:visibilityProbe.rects,computed:visibilityProbe.computed,rectsByField:{...visibilityProbe.rectsByField},computedByField:{...visibilityProbe.computedByField}})');
+ await mutate("native.modifier.style.visibility='hidden'"); await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ const hiddenVisibility=await js("({disabled:document.querySelector('[data-ff-correction-value=modifier_value]').disabled,state:state.modifier_value})");
+ await mutate("native.modifier.style.visibility='visible'"); await until("!document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ await mutate("native.modifier.style.visibility='collapse'"); await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ const collapseVisibility=await js("({disabled:document.querySelector('[data-ff-correction-value=modifier_value]').disabled,state:state.modifier_value})");
+ await mutate("native.modifier.style.visibility='visible'"); await until("!document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ await mutate('native.modifier.disabled=true'); await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ const disabledGuard=await js("({disabled:document.querySelector('[data-ff-correction-value=modifier_value]').disabled,state:state.modifier_value})");
+ await mutate('native.modifier.disabled=false;native.modifier.readOnly=true'); await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ const readOnlyGuard=await js("({disabled:document.querySelector('[data-ff-correction-value=modifier_value]').disabled,state:state.modifier_value})");
+ await mutate('native.modifier.readOnly=false;native.modifier.parentElement.hidden=true'); await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ const ancestorHiddenGuard=await js("({disabled:document.querySelector('[data-ff-correction-value=modifier_value]').disabled,state:state.modifier_value})");
+ await mutate('native.modifier.parentElement.hidden=false'); await until("!document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ assert.equal(await identity(),true); assert.equal(await js('state.modifier_value'),'1');
+ await restoreVisibilityProbe();
  await configure(false); await mutate('mountPending()');
  const pendingIdentity=()=>js("pendingNative.form===document.querySelector('#pending-form')&&pendingNative.message===document.querySelector('textarea')&&pendingNative.message.value==='pending message'&&pendingNative.cards.every(x=>x.card.isConnected&&x.target.isConnected&&x.target.getAttribute('aria-checked')==='true')");
  await configure(); await until("document.querySelectorAll('[data-ff-pending-corrections]').length===2");
@@ -344,5 +390,13 @@ app.on('window-all-closed', () => {});
  await click('#vantage');assert.equal(await js('checkMode'),'advantage','The native ordinary-check mode control retains its click behavior.');
  await click('#vantage');assert.equal(await js('checkMode'),'normal','The native ordinary-check mode control can return to normal.');
  await configure(false);assert.equal(await js("document.querySelector('#vantage[role=combobox]')!==null"),true,'Disposing corrections leaves the native check interface intact.');
+ console.log('COMBAT_VISIBILITY_METRICS_JSON='+JSON.stringify({revision:require('node:child_process').execFileSync('git',['rev-parse','HEAD'],{cwd:fixtureRoot,encoding:'utf8'}).trim(),environment:{platform:process.platform,arch:process.arch,electron:process.versions.electron},visibleUpdate,unchangedControl,hiddenVisibility,collapseVisibility,disabledGuard,readOnlyGuard,ancestorHiddenGuard,identity:await identity()}));
+ assert.ok(visibleUpdate.rects>0,'Visible public update must reach native field rect checks.');
+ assert.ok(visibleUpdate.computed>0,'Visible public update must reach native computed visibility checks.');
+ for(const id of ['modifier_value','proficiency_bonus']) assert.ok(visibleUpdate.computedByField[id]<=visibleUpdate.rectsByField[id],`${id} has at most one computed visibility query per reached native rect check.`);
+ assert.deepEqual(unchangedControl,{rects:0,computed:0,rectsByField:{modifier_value:0,proficiency_bonus:0},computedByField:{modifier_value:0,proficiency_bonus:0}},'Matched unchanged control performs no native field visibility queries.');
+ assert.equal(hiddenVisibility.disabled,true); assert.equal(collapseVisibility.disabled,true);
+ assert.equal(disabledGuard.disabled,true); assert.equal(readOnlyGuard.disabled,true); assert.equal(ancestorHiddenGuard.disabled,true);
+ assert.equal(await identity(),true); assert.equal(await js('submits.length'),1); assert.equal(await js('pendingSubmits'),0);
  console.log('Combat corrections fixture PASS'); window.destroy(); clearTimeout(timer); app.exit(0);
-})().catch(error=>{console.error(error);window?.destroy();clearTimeout(timer);app.exit(1)});
+})().catch(async error=>{console.error(error);await restoreVisibilityProbe();window?.destroy();clearTimeout(timer);app.exit(1)});
