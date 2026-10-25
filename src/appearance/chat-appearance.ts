@@ -684,7 +684,10 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     const navigated = scrollGesture || scrollYield;
     scrollGesture = false; scrollYield = false;
     if (navigated) tailPinned = atTail() && !selectedInFeed();
-    rebaseScrollAnchor();
+    // Completion reconciles the current exclusions without clearing unchanged
+    // rows; explicit rebase/cleanup paths still restore their owned styles.
+    cancelAnimationFrame(scrollFrame);
+    scrollFrame = requestAnimationFrame(() => { scrollFrame = 0; preferScrollAnchor(); });
   }
   function scrollSelection(): void {
     if (!scrollFeed) return;
