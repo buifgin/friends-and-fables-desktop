@@ -108,7 +108,10 @@ export function configureCombatWorkspace(enabled: boolean, locale: 'en' | 'ru'):
   });
   const resize = new ResizeObserver(schedule);
   const observer = new MutationObserver(records => {
-    if (records.some(record => !tools.contains(record.target) && record.target !== handle)) schedule();
+    // Unrelated page styles do not invalidate this workspace. Actual inherited
+    // size changes still arrive through the dock/tools ResizeObserver.
+    if (records.some(record => !tools.contains(record.target) && record.target !== handle
+      && (record.type !== 'attributes' || record.attributeName !== 'style' || record.target === root || panel?.contains(record.target)))) schedule();
   });
   observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ff-combat-open', 'data-ff-combat-docked', 'style'] });
   window.addEventListener('pointermove', move); window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
