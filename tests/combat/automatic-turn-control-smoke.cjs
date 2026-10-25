@@ -251,10 +251,25 @@ function nativePage() {
   };
   state.render();
 }
+// Read only the real committed native right slot; the product owns all writes.
+function footprintSnapshot() {
+  const right = document.getElementById('right'), style = getComputedStyle(right), rect = right.getBoundingClientRect();
+  const number = key => parseFloat(style.getPropertyValue(key)) || 0;
+  const children = [...right.children].filter(node => node.getClientRects().length && getComputedStyle(node).visibility !== 'hidden');
+  const childHeight = Math.max(0, ...children.map(node => { const css = getComputedStyle(node); return node.getBoundingClientRect().height + (parseFloat(css.marginTop) || 0) + (parseFloat(css.marginBottom) || 0); }));
+  const naturalHeight = childHeight + ['padding-top','padding-bottom','border-top-width','border-bottom-width'].reduce((sum,key) => sum + number(key), 0);
+  const proof = window.footprintProof;
+  return { height: rect.height, width: rect.width, naturalHeight, paddingTop: style.paddingTop, paddingBottom: style.paddingBottom,
+    minHeight: { value: right.style.getPropertyValue('min-height'), priority: right.style.getPropertyPriority('min-height') },
+    shells: right.querySelectorAll('[data-ff-combat-turn-control]').length, nativeEnd: !!document.getElementById('native-end'),
+    nativeBadge: !!document.getElementById('native-your-turn')?.getClientRects().length, endCalls: fixture.endCalls.length, continueCalls: fixture.continueCalls, damageCalls: fixture.calls, finalCalls: fixture.finalCalls.length, submits: fixture.submits,
+    identity: !proof || proof.right === right && proof.form === fixture.form && proof.draft === fixture.draft && proof.nativeEnd === fixture.nativeEnd && proof.callback === fixture.nativeEndCallback,
+    draft: fixture.draft.value };
+}
 const css = `*{box-sizing:border-box}body{margin:0;background:#18202c;color:white;font:14px Arial}button{color:inherit;font:inherit;background:none;border:0}#surface{width:min(760px,100%);margin:auto}#footer{display:flex;justify-content:space-between;gap:8px;padding:0 12px 8px}#right{display:flex;align-items:center;justify-content:flex-end;gap:8px}#left{flex:1}#composer{padding:8px}main{padding:8px}.flex{display:flex}.items-center{align-items:center}.gap-1{gap:4px}.gap-2{gap:8px}.rounded-full{border-radius:9999px}.border{border:1px solid #374151}.h-12{height:48px}.h-10{height:40px}.h-8{height:32px}.w-8{width:32px}.mt-2{margin-top:8px}.pl-1{padding-left:4px}.pr-4{padding-right:16px}.px-3{padding-left:12px;padding-right:12px}.py-2{padding-top:8px;padding-bottom:8px}.bg-gray-800\\/70{background:#1f2937}.bg-blue-600\\/20{background:#163962}.chevrons{font-size:10px}.animate-spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}button:disabled{opacity:.5}#submit{padding:8px;border:1px solid #999}#native-continue{white-space:nowrap}`;
 const html = `<!doctype html><meta charset="utf-8"><style>${css}</style><div id="surface"><div id="footer"><div id="left"></div><div id="right"></div></div><section id="composer" data-ff-combat-docked data-ff-combat-panel-mode="actions"><form><input value="preserved native draft"><button id="submit" type="submit">Attack</button></form></section><main></main></div><script>(${nativePage.toString()})()</script>`;
 let window;
-const watchdog = setTimeout(() => { console.error('Automatic turn control fixture timeout'); window?.destroy(); app.exit(1); }, 40000);
+const watchdog = setTimeout(() => { console.error('Automatic turn control fixture timeout'); window?.destroy(); app.exit(1); }, process.env.FABLES_TURN_CONTROL_SCENARIO === 'fractional-owner' ? 30000 : 40000);
 app.on('window-all-closed', () => {});
 (async () => {
   await app.whenReady();
@@ -532,7 +547,44 @@ app.on('window-all-closed', () => {});
       assert.equal(await js('document.querySelectorAll("[data-ff-combat-turn-control]").length'), 0, 'Failed final releases owned presentation');
     }
   };
+  const fractionalOwner = async () => {
+    const modes = ['fractional-off', 'fractional-prior-dispose', 'integer-control', 'newer-native-value', 'newer-native-priority', 'turn-release'];
+    const cases = [];
+    console.log('TURN_FOOTPRINT_SOURCE', JSON.stringify({ compiledSHA256: require('node:crypto').createHash('sha256').update(require('node:fs').readFileSync(path.join(appRoot,'dist/combat/combat-flow.js'))).digest('hex'), fixtureSHA256: require('node:crypto').createHash('sha256').update(require('node:fs').readFileSync(__filename)).digest('hex') }));
+    const footprint = () => js(`(${footprintSnapshot.toString()})()`);
+    for (const mode of modes) {
+      await reset();
+      await js(`(()=>{const right=document.getElementById('right');right.style.paddingTop=${JSON.stringify(mode === 'integer-control' ? '4px' : '4.3px')};window.footprintProof={right,form:fixture.form,draft:fixture.draft,nativeEnd:fixture.nativeEnd,callback:fixture.nativeEndCallback};})()`);
+      if (mode === 'fractional-prior-dispose') await js('document.getElementById("right").style.setProperty("min-height","12px","important");void 0');
+      await paint(); const before = await footprint(), rawApplied = `${before.height}px`;
+      assert.ok(before.nativeEnd && before.identity && before.endCalls === 0 && before.continueCalls === 0, 'Native committed End slot prerequisite');
+      await begin('hit'); await until('document.querySelectorAll("[data-ff-combat-turn-control]").length===1'); await paint();
+      const during = await footprint(), serializedApplied = during.minHeight.value, normalized = rawApplied !== serializedApplied;
+      assert.equal(during.minHeight.priority,'important','Actual owned native slot footprint must exist');
+      if (mode === 'integer-control') assert.ok(!normalized && Number.isInteger(before.height), 'Integer CSSOM control: '+JSON.stringify({before,rawApplied,serializedApplied}));
+      else assert.ok(normalized && !Number.isInteger(before.height), 'Actual fractional CSSOM mismatch required (otherwise inconclusive): '+JSON.stringify({mode,before,rawApplied,serializedApplied}));
+      assert.ok(during.identity && !during.nativeEnd && during.endCalls === 0 && during.continueCalls === 0 && during.damageCalls === 0 && during.finalCalls === 0 && during.submits === 1, 'Only trusted native Attack occurred');
+      let expected = before.minHeight;
+      if (mode === 'newer-native-value') { await js('document.getElementById("right").style.setProperty("min-height","120px","important");void 0'); expected = (await footprint()).minHeight; }
+      if (mode === 'newer-native-priority') { await js(`document.getElementById('right').style.setProperty('min-height',${JSON.stringify(serializedApplied)},'');void 0`); expected = (await footprint()).minHeight; }
+      if (mode === 'fractional-prior-dispose' || mode === 'newer-native-priority') await configure(false);
+      else if (mode === 'turn-release') await js('fixture.encounter.currentTurnEntity={...fixture.encounter.currentTurnEntity,entityId:302,name:"Next native turn"};fixture.render();window.__friendsFablesDesktopCombatFlow.update("en");void 0');
+      else await js('window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:"campaign-a",automaticDamage:false,hideIntermediateFranz:false,hideDamagePrompt:false});void 0');
+      await paint(); const firstPaint = await footprint(); await paint(); const after = await footprint();
+      assert.equal(after.shells,0,'Legitimate release removes owned presentation');
+      assert.ok(after.identity && after.draft === 'preserved native draft' && after.endCalls === 0 && after.continueCalls === 0 && after.damageCalls === 0 && after.finalCalls === 0 && after.submits === 1,'Footprint cleanup cannot invoke native actions or replace form/draft/right');
+      const restored = after.minHeight.value === expected.value && after.minHeight.priority === expected.priority;
+      const expectedHeight = Math.max(after.naturalHeight, parseFloat(expected.value) || 0), geometry = Math.abs(after.height - expectedHeight) <= .1;
+      const result = { mode, passed: restored && geometry, rawApplied, serializedApplied, normalized, before, during, expected, firstPaint, after, restored, geometry, expectedHeight };
+      cases.push(result); console.log('TURN_FRACTIONAL_FOOTPRINT_CASE',JSON.stringify(result));
+      // Keep expected ownership RED flags while integer/newer-native controls run.
+      await configure(false);
+    }
+    console.log('TURN_FRACTIONAL_FOOTPRINT_RESULT',JSON.stringify({passed:cases.every(value=>value.passed),cases}));
+    assert.ok(cases.every(value=>value.passed),'Native footprint fractional ownership cleanup contract');
+  };
   const scenario = process.env.FABLES_TURN_CONTROL_SCENARIO || 'all';
+  if (['all', 'fractional-owner'].includes(scenario)) await fractionalOwner();
   if (['all', 'successor'].includes(scenario)) await successor();
   if (['all', 'whole-safety'].includes(scenario)) await completionSafety();
   if (['all', 'whole-projection'].includes(scenario)) await wholeAttack(true, true);
@@ -542,6 +594,6 @@ app.on('window-all-closed', () => {});
   if (['all', 'completion'].includes(scenario)) { await completion('miss'); await completion('no-damage'); }
   if (['all', 'safety'].includes(scenario)) await nativeSafety();
   if (['all', 'negatives'].includes(scenario)) await negatives();
-  assert.ok(['all', 'successor', 'whole-safety', 'whole-projection', 'whole-manual', 'whole-automatic-gap', 'phases', 'completion', 'safety', 'negatives'].includes(scenario), 'Known fixture scenario');
+  assert.ok(['all', 'fractional-owner', 'successor', 'whole-safety', 'whole-projection', 'whole-manual', 'whole-automatic-gap', 'phases', 'completion', 'safety', 'negatives'].includes(scenario), 'Known fixture scenario');
   console.log(`Automatic turn control ${scenario} passed`); clearTimeout(watchdog); window.destroy(); app.exit(0);
 })().catch(error => { console.error(error); clearTimeout(watchdog); window?.destroy(); app.exit(1); });
