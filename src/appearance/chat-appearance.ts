@@ -650,8 +650,10 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
       scrollStyles.delete(node);
     }
     for (const node of desired) {
-      if (!scrollStyles.has(node)) scrollStyles.set(node, { value: node.style.getPropertyValue('overflow-anchor'), priority: node.style.getPropertyPriority('overflow-anchor') });
-      if (node.style.getPropertyValue('overflow-anchor') !== 'none' || node.style.getPropertyPriority('overflow-anchor') !== 'important') writeScrollAnchor(node, 'none', 'important');
+      const value = node.style.getPropertyValue('overflow-anchor'), priority = node.style.getPropertyPriority('overflow-anchor');
+      // A differing native declaration becomes the prior before policy reapplies.
+      if (!scrollStyles.has(node) || value !== 'none' || priority !== 'important') scrollStyles.set(node, { value, priority });
+      if (value !== 'none' || priority !== 'important') writeScrollAnchor(node, 'none', 'important');
     }
   }
   function rebaseScrollAnchor(): void {

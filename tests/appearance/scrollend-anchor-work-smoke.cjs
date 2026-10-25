@@ -34,41 +34,36 @@ async function scenario(configure,settings) {
   const identity=()=>form===footer.querySelector('form')&&draft===form.querySelector('input')&&draft.value==='Native retained draft'&&actions===0&&items.every(item=>item.row.isConnected&&item.container.parentElement===item.row&&item.card.parentElement===item.container&&item.text.parentElement===item.p&&item.text.data===item.source);
   const snapshot=()=>({top:feed.scrollTop,feed:box(feed),footer:box(footer),gm:box(gm.card),roll:box(roll.card),glyph:glyph(roll),owned:own(),identity:identity()});
   let stage='setup',scrollEvents=0,intermediates=0,wheelEvents=0,nativeWriters=null;
-  const nativeOrder=[];
-  const markOrder=(kind,data={})=>{if(stage==='native-writer-completion'){check(nativeOrder.length<64,'Native writer order budget');nativeOrder.push({sequence:nativeOrder.length,kind,at:performance.now(),...data});}};
   const writes=[],records=[],ends=[],samples=[],styleOwners=new Map(items.map(item=>[item.row.style,item.row.id]));
   const setDescriptor=Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype,'setProperty'),removeDescriptor=Object.getOwnPropertyDescriptor(CSSStyleDeclaration.prototype,'removeProperty');
   const recordWrite=(style,property,invoke)=>{
     const id=styleOwners.get(style),before=id&&property==='overflow-anchor'?style.cssText:null,result=invoke();
-    if(before!==null&&style.cssText!==before){check(writes.length<800,'Targeted style write budget',{stage});writes.push({stage,id,at:performance.now(),before,after:style.cssText,value:style.getPropertyValue('overflow-anchor'),priority:style.getPropertyPriority('overflow-anchor')});if(nativeWriters?.rows.some(row=>row.id===id))markOrder('style-transition',{...writes.at(-1),stack:new Error().stack.split('\n').slice(1,9)});}return result;
+    if(before!==null&&style.cssText!==before){check(writes.length<800,'Targeted style write budget',{stage});writes.push({stage,id,at:performance.now(),before,after:style.cssText,value:style.getPropertyValue('overflow-anchor'),priority:style.getPropertyPriority('overflow-anchor')});}return result;
   };
   Object.defineProperty(CSSStyleDeclaration.prototype,'setProperty',{...setDescriptor,value:function(...args){return recordWrite(this,args[0],()=>Reflect.apply(setDescriptor.value,this,args));}});
   Object.defineProperty(CSSStyleDeclaration.prototype,'removeProperty',{...removeDescriptor,value:function(...args){return recordWrite(this,args[0],()=>Reflect.apply(removeDescriptor.value,this,args));}});
-  const observer=new MutationObserver(delivery=>{for(const record of delivery)if(record.target instanceof HTMLElement&&styleOwners.has(record.target.style)){check(records.length<1000,'Targeted style record budget',{stage});records.push({stage,id:record.target.id,oldValue:record.oldValue,at:performance.now()});if(nativeWriters?.rows.includes(record.target))markOrder('observer-record',{...records.at(-1),current:record.target.style.cssText});}});
+  const observer=new MutationObserver(delivery=>{for(const record of delivery)if(record.target instanceof HTMLElement&&styleOwners.has(record.target.style)){check(records.length<1000,'Targeted style record budget',{stage});records.push({stage,id:record.target.id,oldValue:record.oldValue,at:performance.now()});}});
   observer.observe(list,{attributes:true,subtree:true,attributeFilter:['style'],attributeOldValue:true});
   // Registered before the product so this capture observes the exact style set
   // before scrollFinished executes. No dispatched/synthetic scroll completion.
   const ended=event=>{
     if(event.target!==feed)return;check(ends.length<16,'Native completion budget',{stage});
     if(stage==='native-writer-completion'&&nativeWriters&&!nativeWriters.applied){
-      markOrder('pre-product-listener');
       check(event.isTrusted&&Math.abs(feed.scrollTop-nativeWriters.target)<=1&&nativeWriters.rows.every(row=>own().includes(row.id)),'Native writer must replace currently owned declarations before genuine completion');
       nativeWriters.rows[0].style.setProperty('overflow-anchor','auto','important');nativeWriters.rows[1].style.setProperty('overflow-anchor','none','');
-      queueMicrotask(()=>markOrder('pre-listener-microtask',{styles:nativeWriters.rows.map(row=>({id:row.id,style:row.style.cssText}))}));
       nativeWriters.applied={at:performance.now(),top:feed.scrollTop,trusted:event.isTrusted,values:nativeWriters.rows.map(row=>({id:row.id,value:row.style.getPropertyValue('overflow-anchor'),priority:row.style.getPropertyPriority('overflow-anchor')}))};
     }
     ends.push({stage,trusted:event.isTrusted,at:performance.now(),writeStart:writes.length,recordStart:records.length,before:snapshot()});
   };
-  const afterEnded=event=>{if(event.target===feed&&stage==='native-writer-completion')markOrder('post-product-listener',{styles:nativeWriters.rows.map(row=>({id:row.id,style:row.style.cssText}))});};
   const scrolled=event=>{if(event.target===feed){scrollEvents++;if(stage==='stable-motion'&&feed.scrollTop>startTop+1&&feed.scrollTop<target-1)intermediates++;}};
   const wheeled=event=>{if(feed.contains(event.target)&&event.isTrusted)wheelEvents++;};
   document.addEventListener('scrollend',ended,true);document.addEventListener('scroll',scrolled,true);document.addEventListener('wheel',wheeled,true);
-  const cleanup=()=>{observer.disconnect();document.removeEventListener('scrollend',ended,true);document.removeEventListener('scrollend',afterEnded,true);document.removeEventListener('scroll',scrolled,true);document.removeEventListener('wheel',wheeled,true);Object.defineProperty(CSSStyleDeclaration.prototype,'setProperty',setDescriptor);Object.defineProperty(CSSStyleDeclaration.prototype,'removeProperty',removeDescriptor);};
+  const cleanup=()=>{observer.disconnect();document.removeEventListener('scrollend',ended,true);document.removeEventListener('scroll',scrolled,true);document.removeEventListener('wheel',wheeled,true);Object.defineProperty(CSSStyleDeclaration.prototype,'setProperty',setDescriptor);Object.defineProperty(CSSStyleDeclaration.prototype,'removeProperty',removeDescriptor);};
   window.__scrollendAnchorFixture={cleanup};
   let startTop=0,target=0;
   try {
     target=gm.row.offsetTop+30;feed.scrollTo({top:target-120,behavior:'instant'});await paint();
-    configure(settings);document.addEventListener('scrollend',afterEnded,true);await paint();await paint();
+    configure(settings);await paint();await paint();
     check(items.length===48&&own().length>=3&&own().length<=39&&items.slice(0,8).every(item=>!own().includes(item.row.id)),'Actual bounded last40 suppression prerequisite',{cards:items.length,owned:own()});
     startTop=feed.scrollTop;stage='stable-motion';const endStart=ends.length,scrollStart=scrollEvents;
     const nativeOptions={top:target,behavior:'smooth'};feed.scrollTo(nativeOptions);
@@ -104,7 +99,7 @@ async function scenario(configure,settings) {
       check(reconciled.every(row=>row.value==='none'&&row.priority==='important'),'Still-desired rows must undergo normal policy reconciliation',reconciled);
       window.__friendsFablesDesktopChatAppearance.dispose();await paint();
       const released=writerRows.map(row=>({id:row.id,value:row.style.getPropertyValue('overflow-anchor'),priority:row.style.getPropertyPriority('overflow-anchor')}));
-      const writerOwnership={applied:nativeWriters.applied,target:writerTarget,reconciled,released,nativeOrder,restored:JSON.stringify(released)===JSON.stringify(nativeWriters.applied.values)};
+      const writerOwnership={applied:nativeWriters.applied,target:writerTarget,reconciled,released,restored:JSON.stringify(released)===JSON.stringify(nativeWriters.applied.values)};
       window.__scrollendAnchorFixture.partial={stable,writerOwnership};
       check(writerOwnership.restored&&identity(),'Completion cleanup restores newer native value/priority, not stale prior',writerOwnership);
       // Remount only after the cleanup assertion: later resets cannot mask it.
