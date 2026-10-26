@@ -152,8 +152,8 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   }
   const nativeModes = ['normal', 'advantage', 'disadvantage'];
   type ModeBinding = { methods: NativeMethods; trigger: HTMLElement; field: string; value: string };
-  function customModeBinding(): ModeBinding | null {
-    if (!form || !panel || !form.isConnected || fields.some(field => !writable(field))) return null;
+  function customModeBinding(fieldsWritable?: boolean): ModeBinding | null {
+    if (!form || !panel || !form.isConnected || !(fieldsWritable ?? fields.every(field => writable(field)))) return null;
     const submits = form.querySelectorAll<HTMLButtonElement>('button[type="submit"]');
     if (submits.length !== 1 || submits[0].disabled || submits[0].matches(':disabled')) return null;
     const candidates: ModeBinding[] = [];
@@ -188,8 +188,8 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   customMode.setAttribute('data-ff-correction-roll-mode', ''); customModeLabel.append(customModeText, customMode); customModeLabel.hidden = true;
   for (const value of nativeModes) { const option = document.createElement('option'); option.value = value; customMode.append(option); }
   ui.insertBefore(customModeLabel, nameLabel);
-  function refreshCustomMode(): void {
-    const current = customModeBinding(); customModeLabel.hidden = !current; customMode.disabled = !current;
+  function refreshCustomMode(fieldsWritable?: boolean): void {
+    const current = customModeBinding(fieldsWritable); customModeLabel.hidden = !current; customMode.disabled = !current;
     customModeText.textContent = language === 'ru' ? 'Тип броска' : 'Roll mode';
     Array.from(customMode.options).forEach((option, i) => option.textContent = language === 'ru' ? ['Обычный', 'Преимущество', 'Помеха'][i] : ['Normal', 'Advantage', 'Disadvantage'][i]);
     if (current && document.activeElement !== customMode) customMode.value = current.value;
@@ -460,7 +460,10 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
       form!.insertAdjacentElement('afterend', ui);
     }
     fields.forEach((field, i) => { const disabled = !writable(field); edits[i].disabled = disabled; for (const b of ui.querySelectorAll<HTMLButtonElement>(`.ff-correction-row:nth-of-type(${i + 1}) button`)) b.disabled = disabled; });
-    load.disabled = fields.some(f => !writable(f)); refreshCustomMode();
+    const loadDisabled = fields.some(f => !writable(f)), loadChanged = load.disabled !== loadDisabled;
+    load.disabled = loadDisabled;
+    // Host relational CSS can change native visibility when Load changes state.
+    refreshCustomMode(loadChanged ? undefined : !loadDisabled);
   }
   function schedule(): void { if (!frame && !disposed) frame = requestAnimationFrame(scan); }
   const observer = new MutationObserver(records => { if (records.some(record => !(record.target instanceof Element ? record.target : record.target.parentElement)?.closest('[data-ff-combat-corrections]'))) schedule(); });
