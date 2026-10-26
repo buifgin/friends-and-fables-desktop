@@ -61,6 +61,19 @@ window.mountPending=()=>{
  window.pendingNative={form,message:form.querySelector('textarea'),list,cards:pendingCards.slice()};form.addEventListener('submit',event=>{event.preventDefault();pendingSubmits++});
 };
 </script>`;
+// Runs inside the first RAF after the public update's scheduled scan. Read real
+// geometry/styles and exercise action-time guards before a later scan can repair
+// a stale mode binding caused by the owned Load disabled transition.
+const coupledStyleSnapshot = `
+ const mode=document.querySelector('[data-ff-combat-corrections] [data-ff-correction-roll-mode]');
+ const result={loadDisabled:document.querySelector('[data-ff-correction-load]').disabled,visibility:getComputedStyle(native.modifier).visibility,fieldRects:native.modifier.getClientRects().length,modeDisabled:mode.disabled,modeHidden:mode.parentElement.hidden,modeRects:mode.getClientRects().length,geometry:{field:native.modifier.getBoundingClientRect().toJSON(),form:native.form.getBoundingClientRect().toJSON()},values:[native.modifier.value,native.proficiency.value],modeWrites:customModeWrites.length,submits:submits.length,changes,inputs};
+ for(const value of ['normal','advantage','disadvantage']){mode.value=value;mode.dispatchEvent(new Event('change',{bubbles:true}));}
+ document.querySelector('[data-ff-correction-modifier_value-plus]').click();
+ document.querySelector('[data-ff-correction-load]').click();
+ result.after={values:[native.modifier.value,native.proficiency.value],modeWrites:customModeWrites.length,submits:submits.length,changes,inputs};
+ return result;
+`;
+new Function(coupledStyleSnapshot);
 for (const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g)) new Function(match[1]);
 const output = require('esbuild').transformSync(fs.readFileSync(path.join(fixtureRoot, 'src/combat/combat-corrections.ts'), 'utf8'), { loader: 'ts', target: 'es2022', format: 'cjs' });
 new Function(output.code);
@@ -230,6 +243,34 @@ app.on('window-all-closed', () => {});
  await mutate('native.modifier.readOnly=false;native.modifier.parentElement.hidden=true'); await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
  const ancestorHiddenGuard=await js("({disabled:document.querySelector('[data-ff-correction-value=modifier_value]').disabled,state:state.modifier_value})");
  await mutate('native.modifier.parentElement.hidden=false'); await until("!document.querySelector('[data-ff-correction-value=modifier_value]').disabled");
+ // Real host CSS can couple owned disabled state back into native visibility.
+ // Begin with Load disabled by a native field; enabling it during scan must force
+ // a fresh mode eligibility read after that write. Visibility preserves layout.
+ if(!await js("document.querySelector('[data-ff-combat-corrections]').open")) await click('[data-ff-combat-corrections] summary');
+ await mutate('attachCustomMode(true)'); await configure();
+ await until("!document.querySelector('[data-ff-correction-roll-mode]').disabled&&document.querySelector('[data-ff-correction-roll-mode]').getClientRects().length>0");
+ const coupledStyleControls=[];
+ for(const visibility of ['hidden','collapse']) {
+  await mutate('native.proficiency.disabled=true'); await configure();
+  await until("document.querySelector('[data-ff-correction-load]').disabled");
+  await mutate(`window.coupledStyle=document.createElement('style');coupledStyle.textContent='section:has([data-ff-correction-load]:not(:disabled)) #modifier_value{visibility:${visibility}!important}';document.head.append(coupledStyle)`);
+  const before=await js("({loadDisabled:document.querySelector('[data-ff-correction-load]').disabled,visibility:getComputedStyle(native.modifier).visibility,geometry:{field:native.modifier.getBoundingClientRect().toJSON(),form:native.form.getBoundingClientRect().toJSON()}})");
+  assert.equal(before.loadDisabled,true,'Coupling starts from an actually disabled owned Load control.');
+  assert.equal(before.visibility,'visible','Disabled Load leaves the native field visible before the transition.');
+  // Release native authority and call the actual public update in one renderer
+  // task, so no observer/interval scan can consume the transition beforehand.
+  const after=await js(`(()=>{native.proficiency.disabled=false;(${configureCombatCorrections.toString()})(true,'en');return new Promise(resolve=>requestAnimationFrame(()=>resolve((()=>{${coupledStyleSnapshot}})())))})()`, 'coupled '+visibility+' first-scan authority');
+  coupledStyleControls.push({visibility,before,after});
+  assert.equal(after.loadDisabled,false,'The scan actually changes Load from disabled to enabled.');
+  assert.equal(after.visibility,visibility,'Real relational host CSS changes native computed visibility after the owned write.');
+  assert.ok(after.fieldRects>0,'The hidden/collapsed native field retains real layout rects.');
+  assert.deepEqual(after.geometry,before.geometry,'Visibility coupling preserves native field and form geometry.');
+  assert.equal(after.modeDisabled,true,'Mode binding rechecks native visibility after Load changes disabled state.');
+  assert.equal(after.modeHidden,true); assert.equal(after.modeRects,0);
+  assert.deepEqual(after.after,{values:after.values,modeWrites:after.modeWrites,submits:after.submits,changes:after.changes,inputs:after.inputs},'All mode changes, quick corrections and preset load respect fresh native authority.');
+  await mutate('coupledStyle.remove()'); await configure();
+  await until("!document.querySelector('[data-ff-correction-load]').disabled&&!document.querySelector('[data-ff-correction-roll-mode]').disabled&&document.querySelector('[data-ff-correction-roll-mode]').getClientRects().length>0");
+ }
  const queryIdentityAfter=await js("(()=>{const text=window.queryPhase.text,selection=getSelection();return {form:native.form===document.querySelector('form'),modifier:native.modifier===document.querySelector('#modifier_value'),proficiency:native.proficiency===document.querySelector('#proficiency_bonus'),draft:native.draft===document.querySelector('#draft')&&native.draft.firstChild===text&&native.draft.textContent==='preserved draft',selection:selection.anchorNode===text&&selection.anchorOffset===2&&selection.focusNode===text&&selection.focusOffset===10,values:[native.modifier.value,native.proficiency.value],submits,changes,inputs}})()");
  const queryIdentityStable=JSON.stringify(queryIdentityBefore)===JSON.stringify(queryIdentityAfter);
  await restoreVisibilityProbe();
@@ -391,7 +432,7 @@ app.on('window-all-closed', () => {});
  await click('#vantage');assert.equal(await js('checkMode'),'advantage','The native ordinary-check mode control retains its click behavior.');
  await click('#vantage');assert.equal(await js('checkMode'),'normal','The native ordinary-check mode control can return to normal.');
  await configure(false);assert.equal(await js("document.querySelector('#vantage[role=combobox]')!==null"),true,'Disposing corrections leaves the native check interface intact.');
- console.log('COMBAT_VISIBILITY_METRICS_JSON='+JSON.stringify({environment:{platform:process.platform,arch:process.arch,electron:process.versions.electron},visibleUpdate,unchangedControl,hiddenVisibility,collapseVisibility,disabledGuard,readOnlyGuard,ancestorHiddenGuard,queryIdentityBefore,queryIdentityAfter,queryIdentityStable}));
+ console.log('COMBAT_VISIBILITY_METRICS_JSON='+JSON.stringify({environment:{platform:process.platform,arch:process.arch,electron:process.versions.electron},visibleUpdate,unchangedControl,hiddenVisibility,collapseVisibility,disabledGuard,readOnlyGuard,ancestorHiddenGuard,queryIdentityBefore,queryIdentityAfter,queryIdentityStable,coupledStyleControls}));
  assert.ok(visibleUpdate.rects>0,'Visible public update must reach native field rect checks.');
  assert.ok(visibleUpdate.computed>0,'Visible public update must reach native computed visibility checks.');
  for(const id of ['modifier_value','proficiency_bonus']) { assert.ok(visibleUpdate.rectsByField[id]>0,`${id} reaches native rect checks.`); assert.ok(visibleUpdate.computedByField[id]>0,`${id} reaches native computed visibility checks.`); assert.ok(visibleUpdate.computedByField[id]<=visibleUpdate.rectsByField[id],`${id} has at most one computed visibility query per reached native rect check.`); }
@@ -402,5 +443,13 @@ app.on('window-all-closed', () => {});
  assert.equal(disabledGuard.disabled,true); assert.equal(readOnlyGuard.disabled,true); assert.equal(ancestorHiddenGuard.disabled,true);
  assert.equal(queryIdentityStable,true,'Public configure updates and authority controls preserve native form, fields, values, action counts, draft, and selection.');
  assert.equal(await js('submits.length'),1); assert.equal(await js('pendingSubmits'),0);
+ // Keep the reduction assertion last: baseline product RED must occur only
+ // after every reached guard, coupled-style control and existing action check.
+ for(const [label,measurement] of Object.entries({visibleUpdate,unchangedControl})) {
+  for(const id of ['modifier_value','proficiency_bonus']) {
+   assert.ok(measurement.rectsByField[id]<=3,`${label} ${id} uses at most three native rect checks per public update (actual ${measurement.rectsByField[id]}).`);
+   assert.ok(measurement.computedByField[id]<=3,`${label} ${id} uses at most three native computed visibility checks per public update (actual ${measurement.computedByField[id]}).`);
+  }
+ }
  console.log('Combat corrections fixture PASS'); window.destroy(); clearTimeout(timer); app.exit(0);
 })().catch(async error=>{console.error(error);await restoreVisibilityProbe();window?.destroy();clearTimeout(timer);app.exit(1)});
