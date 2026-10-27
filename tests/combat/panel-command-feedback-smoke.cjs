@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const fixtureRoot = path.join(__dirname, '..', '..');
 const root = process.env.FABLES_TEST_APP_ROOT || fixtureRoot;
 const route = '/11111111-1111-4111-8111-111111111111/play';
-const definitions = { corrections: ['combat/combat-corrections', 'configureCombatCorrections'], commands: ['commands/message-commands', 'configureMessageCommands'], website: ['shell/website-settings', 'configureWebsiteSettings'] };
+const definitions = { workspace: ['combat/combat-workspace', 'configureCombatWorkspace'], corrections: ['combat/combat-corrections', 'configureCombatCorrections'], commands: ['commands/message-commands', 'configureMessageCommands'], website: ['shell/website-settings', 'configureWebsiteSettings'] };
 function sourceModules() {
   const cache = new Map();
   const load = name => {
@@ -66,7 +66,7 @@ function programs(load) {
   const features = Object.fromEntries(Object.entries(definitions).map(([key, [file, name]]) => [key, load(file)[name]]));
   const commands = load('commands/message-commands');
   const call = (key, enabled = true, locale = 'en') => `(${features[key].toString()})(${enabled},${JSON.stringify(locale)}${key === 'commands' ? ',(' + commands.formatMessageCommand.toString() + ')' : key === 'website' ? ',{token:"fixture-token",state:{paused:true,available:true,next:true,volume:0.5}}' : ''})`;
-  return {features, call, updateMusic: load('shell/website-settings').updateWebsiteMusicState};
+  return {features, call, commandCall: (enabled, locale, preferences) => `(${features.commands.toString()})(${enabled},${JSON.stringify(locale)},(${commands.formatMessageCommand.toString()}),${JSON.stringify(preferences)})`, updateMusic: load('shell/website-settings').updateWebsiteMusicState};
 }
 function installProbe(phase) {
   const started=performance.now(), maxRecords=12000, maxDeliveries=2000;
@@ -136,13 +136,37 @@ function installNumericProbe(phase) {
   observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeOldValue:true,attributeFilter:['hidden','disabled','aria-label','title']});
   window.feedbackProbe={stop(){receive(observer.takeRecords());observer.disconnect();result.elapsedMs=+(performance.now()-start).toFixed(2);return result}};
 }
+function commandWorkSetup() {
+  document.documentElement.setAttribute('data-ff-combat-open','true');
+  document.documentElement.style.setProperty('--ff-combat-rail-width','60px');
+  document.documentElement.style.setProperty('--ff-combat-rail-top','120px');
+  const style=document.createElement('style');style.textContent='[data-ff-combat-docked]{position:fixed;left:60px;top:120px;width:var(--ff-combat-width);height:500px;overflow:auto}';document.head.append(style);
+  const stimulus=document.createElement('div');stimulus.id='command-work-stimulus';stimulus.style.cssText='position:fixed;right:0;bottom:0';document.body.append(stimulus);
+  const mode=document.createElement('button');mode.type='button';mode.setAttribute('role','combobox');mode.textContent='Everyone';document.querySelector('#composer').append(mode);
+  window.commandNativeMode=mode;
+}
+function installCommandWorkProbe() {
+  const root=document.documentElement,tools=document.querySelector('[data-ff-combat-workspace-tools]'),panel=document.querySelector('[data-ff-combat-docked]'),controls=document.querySelector('[data-ff-desktop-command-controls]'),stimulus=document.querySelector('#command-work-stimulus');
+  const computedDescriptor=Object.getOwnPropertyDescriptor(window,'getComputedStyle'),rectDescriptor=Object.getOwnPropertyDescriptor(Element.prototype,'getBoundingClientRect'),computed=window.getComputedStyle,rect=rectDescriptor.value;
+  const labels=[controls.firstElementChild,controls.querySelector('[role=status]'),controls.querySelector('[data-ff-desktop-sp-status]')],textNodes=labels.map(node=>node.firstChild);
+  let metrics=null,observer=null,started=0;
+  const computedWrapper=function(...args){if(metrics&&args[0]===root)metrics.rootStyle++;return Reflect.apply(computed,this,args)};
+  const rectWrapper=function(...args){if(metrics&&this===tools)metrics.toolsRect++;return Reflect.apply(rect,this,args)};
+  Object.defineProperty(window,'getComputedStyle',{...(computedDescriptor??{configurable:true,enumerable:true,writable:true}),value:computedWrapper});Object.defineProperty(Element.prototype,'getBoundingClientRect',{...rectDescriptor,value:rectWrapper});
+  const receive=records=>{if(!metrics)return;const next=new WeakMap(),writes=new Map();for(let i=records.length-1;i>=0;i--){const r=records[i];if(r.type!=='attributes')continue;let values=next.get(r.target);if(!values){values=new Map();next.set(r.target,values)}const value=values.has(r.attributeName)?values.get(r.attributeName):r.target.getAttribute(r.attributeName);values.set(r.attributeName,r.oldValue);writes.set(r,{value,same:r.oldValue===value})}
+    let external=false;for(const r of records){if(metrics.records++>=3000){metrics.capReached=true;observer.disconnect();break}if(r.target===stimulus){metrics.stimulusRecords++;external=true}if(controls.contains(r.target)){if(r.type==='childList')metrics.commandChildList++;else if(writes.get(r)?.same)metrics.sameAttributes++;if(metrics.trace.length<40)metrics.trace.push({type:r.type,tag:r.target.nodeName,attribute:r.attributeName,...writes.get(r)})}}if(external)metrics.stimulusDeliveries++};
+  observer=new MutationObserver(receive);observer.observe(document.documentElement,{subtree:true,childList:true,attributes:true,attributeOldValue:true,attributeFilter:['class','hidden','title']});
+  const geometry=()=>({panel:Reflect.apply(rect,panel,[]).toJSON(),tools:Reflect.apply(rect,tools,[]).toJSON(),width:root.style.getPropertyValue('--ff-combat-width'),height:root.style.getPropertyValue('--ff-combat-tools-height')});
+  window.commandWork={geometry,start(phase){observer.takeRecords();started=performance.now();metrics={phase,records:0,capReached:false,commandChildList:0,sameAttributes:0,stimulusRecords:0,stimulusDeliveries:0,rootStyle:0,toolsRect:0,trace:[]}},stop(){receive(observer.takeRecords());const output={...metrics,elapsedMs:performance.now()-started,labelTextIdentity:labels.every((node,i)=>node.firstChild===textNodes[i])};metrics=null;return output},cleanup(){metrics=null;observer.disconnect();if(window.getComputedStyle===computedWrapper){if(computedDescriptor)Object.defineProperty(window,'getComputedStyle',computedDescriptor);else delete window.getComputedStyle}if(Element.prototype.getBoundingClientRect===rectWrapper)Object.defineProperty(Element.prototype,'getBoundingClientRect',rectDescriptor)}};
+}
 function syntax() {
   const compiled=programs(sourceModules());
   new Function(editorScript);
   for(const match of html.matchAll(/<script>([\s\S]*?)<\/script>/g))new Function(match[1]);
   for(const key of Object.keys(definitions))for(const enabled of [true,false])for(const locale of ['en','ru'])new Function(compiled.call(key,enabled,locale));
   new Function('return ('+compiled.updateMusic.toString()+')');
-  for(const fn of [installProbe,snapshot,selectionProgram,numericSetup,numericSnapshot,installNumericProbe])new Function('return ('+fn.toString()+')');
+  for(const configured of [false,true])new Function(compiled.commandCall(true,'en',{text:'Keep continuity.',enabled:configured,configured,hideMarked:true}));
+  for(const fn of [installProbe,snapshot,selectionProgram,numericSetup,numericSnapshot,installNumericProbe,commandWorkSetup,installCommandWorkProbe])new Function('return ('+fn.toString()+')');
   const fixture=fs.readFileSync(__filename,'utf8');
   for(const match of fixture.matchAll(/\bjs\(\s*(["'])/g)){const quote=match[1],start=match.index+match[0].length-1;let end=start+1;while(end<fixture.length){if(fixture[end]==='\\'){end+=2;continue}if(fixture[end]===quote)break;end++}assert.ok(end<fixture.length);const program=new Function('return ('+fixture.slice(start,end+1)+')')();new Function(program);new Function(program+';\n'+program)}
   console.log('Panel command feedback embedded, editor bundle and serialized public programs syntax PASS');
@@ -267,9 +291,43 @@ const deadline=setTimeout(()=>{emit('deadline');window?.destroy();app.exit(1)},4
     await call('corrections',false);if(commands)await call('commands',false);await frames();assert.equal(await js("document.querySelectorAll('[data-ff-combat-corrections],[data-ff-desktop-command-controls]').length"),0);assert.deepEqual(await js(`(${numericSnapshot.toString()})()`),before,'Numeric dispose preserves native identity and state.');
     await call('corrections');if(commands)await call('commands');await frames();assert.equal(await js("document.querySelectorAll('[data-ff-combat-corrections]').length"),1);if(commands)assert.equal(await js("document.querySelectorAll('[data-ff-desktop-command-controls]').length"),1);await call('corrections',false);if(commands)await call('commands',false);
   }
+  for(const configured of [false,true]){
+    const scenario='command-work-'+(configured?'configured':'unconfigured');stage=scenario+'/setup';console.log('Panel feedback stage:',stage);
+    await window.loadURL('https://play.fables.gg'+route);window.show();window.focus();window.webContents.focus();await until("!!window.editor&&document.visibilityState==='visible'&&document.hasFocus()");await frames();
+    await js(`(${commandWorkSetup.toString()})()`);
+    const preferences={text:'Keep continuity.',enabled:configured,configured,hideMarked:true};
+    const commands=(prefs=preferences,locale='en')=>js(compiled.commandCall(true,locale,prefs));await commands();await until("!!document.querySelector('[data-ff-desktop-command-controls]')");
+    stage=scenario+'/functional';assert.equal(await js("document.querySelector('[data-ff-desktop-command-controls] button').hidden"),false,'A real /me prefix offers Format.');
+    await click('[data-ff-desktop-command-controls] button');assert.equal(await js('editor.getHTML()'),'<p><em>preserved draft selection</em></p>');assert.equal(await js('sent.length'),0);assert.equal(await js("document.querySelector('[data-ff-desktop-command-controls] [role=status]').textContent"),'Draft formatted. Enter checks and sends it.');
+    // Submit check uses explicitly unconfigured instructions; preference-only UI checks follow.
+    await commands({...preferences,configured:false,enabled:false});await js("editor.commands.setContent('<p>/gm Send once.</p>');editor.view.dom.dispatchEvent(new Event('input',{bubbles:true}));document.querySelector('#send').click()");await until('sent.length===1');assert.equal(await js('sent[0]'),'<p>#Send once.#</p>');
+    await commands({...preferences,configured:true,enabled:true});assert.equal(await js("document.querySelector('[data-ff-desktop-sp-status]').hidden"),false);assert.equal(await js("document.querySelector('[data-ff-desktop-sp-status]').textContent"),'/sp active');
+    await commands({...preferences,configured:true,enabled:false});assert.equal(await js("document.querySelector('[data-ff-desktop-sp-status]').textContent"),'/sp inactive');
+    await js("commandNativeMode.textContent='Players Only'");await commands({...preferences,configured:true,enabled:true});assert.equal(await js("document.querySelector('[data-ff-desktop-sp-status]').textContent"),'/sp paused · Players Only');
+    await js("commandNativeMode.textContent='Everyone'");await commands({...preferences,configured:true,enabled:true},'ru');assert.equal(await js("document.querySelector('[data-ff-desktop-command-controls] button').textContent"),'Оформить команду');assert.equal(await js("document.querySelector('[data-ff-desktop-sp-status]').title"),'Изменить сохранённые инструкции /sp');assert.equal(await js("document.querySelector('[data-ff-desktop-sp-status]').textContent"),'/sp активен');
+    await commands(preferences);await js("editor.commands.setContent('<p>preserved draft selection</p>');editor.view.dom.dispatchEvent(new Event('input',{bubbles:true}))");
+    assert.equal(await js("document.querySelector('[data-ff-desktop-command-controls] button').hidden"),true);assert.equal(await js("document.querySelector('[data-ff-desktop-sp-status]').hidden"),!configured);assert.equal(await js("document.querySelector('[data-ff-desktop-command-controls]').hidden"),!configured);
+    await call('workspace');await until("!!document.querySelector('[data-ff-combat-workspace-tools]')");await js("{const nav=document.createElement('nav');nav.style.height='30px';nav.textContent='Native shortcut navigation';document.querySelector('[data-ff-combat-shortcuts-slot]').append(nav)}");await frames();await frames();await js(`(${selectionProgram.toString()})()`);await js(`(${installCommandWorkProbe.toString()})()`);
+    const before=await js(`(${snapshot.toString()})()`),geometry=await js('commandWork.geometry()');assert.equal(before.identity&&before.selection,true);assert.ok(geometry.panel.width>0&&geometry.tools.height>0);
+    const phases=[];
+    for(const phase of ['quiet','outside-childList','outside-class','unchanged-public-update']){
+      stage=scenario+'/'+phase;await js(`commandWork.start(${JSON.stringify(phase)})`);
+      for(let i=0;i<6;i++){
+        await frames();
+        if(phase==='outside-childList')await js("document.querySelector('#command-work-stimulus').append(document.createComment('fixture outside stimulus'))");
+        if(phase==='outside-class')await js(`document.querySelector('#command-work-stimulus').className='fixture-${i%2}'`);
+        if(phase==='unchanged-public-update')await commands();
+      }
+      await frames();const metrics=await js('commandWork.stop()');assert.ok(metrics.elapsedMs<450,'SETUP INCONCLUSIVE: six-delivery phase must remain below500ms fallback period');
+      assert.deepEqual(await js(`(${snapshot.toString()})()`),before,'Command stimuli preserve native and composer identity/drafts/selection/actions.');assert.deepEqual(await js('commandWork.geometry()'),geometry,'Native workspace geometry stays unchanged.');
+      if(phase==='outside-childList'||phase==='outside-class')assert.equal(metrics.stimulusDeliveries,6,'Six distinct native stimulus deliveries.');phases.push(metrics);
+    }
+    const report={scenario,functionalPassed:true,before,geometry,phases};reports.push(report);console.log('PANEL_COMMAND_FEEDBACK_PHASE_JSON='+JSON.stringify(report));await js('commandWork.cleanup()');await call('workspace',false);await call('commands',false);await frames();
+  }
   // All controls and captured native records are emitted before the expected baseline RED.
   stage='final-no-repeat';emit('functional-controls-complete');
-  for(const report of reports.filter(report=>!report.scenario.startsWith('numeric'))){assert.equal(report.metrics.capReached,false,report.scenario+' record budget exceeded');for(const [owner,bucket]of Object.entries(report.metrics.owners)){assert.equal(bucket.childList,0,report.scenario+'/'+owner+' repeats unchanged owned childList after adoption');assert.equal(bucket.sameAttributes,0,report.scenario+'/'+owner+' repeats unchanged owned attributes after adoption')}}
+  for(const report of reports.filter(report=>!report.scenario.startsWith('numeric')&&!report.scenario.startsWith('command-work'))){assert.equal(report.metrics.capReached,false,report.scenario+' record budget exceeded');for(const [owner,bucket]of Object.entries(report.metrics.owners)){assert.equal(bucket.childList,0,report.scenario+'/'+owner+' repeats unchanged owned childList after adoption');assert.equal(bucket.sameAttributes,0,report.scenario+'/'+owner+' repeats unchanged owned attributes after adoption')}}
   for(const report of reports.filter(report=>report.scenario.startsWith('numeric'))){assert.equal(report.metrics.capReached,false,report.scenario+' budget exceeded');assert.equal(report.metrics.childList.numeric,0,report.scenario+' repeats numeric custom-mode labels/options');assert.equal(report.metrics.childList.commands,0,report.scenario+' repeats command labels after adoption')}
+  for(const report of reports.filter(report=>report.scenario.startsWith('command-work')))for(const phase of report.phases){assert.equal(phase.capReached,false);assert.equal(phase.commandChildList,0,report.scenario+'/'+phase.phase+' repeats unchanged owned labels');assert.equal(phase.sameAttributes,0,report.scenario+'/'+phase.phase+' repeats unchanged hidden/title');assert.equal(phase.labelTextIdentity,true,report.scenario+'/'+phase.phase+' retains owned label Text nodes');const allowance=phase.phase==='outside-childList'?7:1;assert.ok(phase.rootStyle<=allowance&&phase.toolsRect<=allowance,report.scenario+'/'+phase.phase+' avoids secondary workspace read fan-out')}
   console.log('Panel command feedback native PASS');clearTimeout(deadline);window.destroy();app.exit(0);
-})().catch(error=>{console.error('Panel feedback failure at',stage,error);emit('failure');clearTimeout(deadline);window?.destroy();app.exit(1)});
+})().catch(async error=>{console.error('Panel feedback failure at',stage,error);await window?.webContents.executeJavaScript('window.commandWork?.cleanup()').catch(()=>{});emit('failure');clearTimeout(deadline);window?.destroy();app.exit(1)});
