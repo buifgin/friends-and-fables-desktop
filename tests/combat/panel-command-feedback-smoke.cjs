@@ -144,7 +144,7 @@ function syntax() {
   new Function('return ('+compiled.updateMusic.toString()+')');
   for(const fn of [installProbe,snapshot,selectionProgram,numericSetup,numericSnapshot,installNumericProbe])new Function('return ('+fn.toString()+')');
   const fixture=fs.readFileSync(__filename,'utf8');
-  for(const match of fixture.matchAll(/\bjs\(\s*(["'])/g)){const quote=match[1],start=match.index+match[0].length-1;let end=start+1;while(end<fixture.length){if(fixture[end]==='\\'){end+=2;continue}if(fixture[end]===quote)break;end++}assert.ok(end<fixture.length);new Function(new Function('return ('+fixture.slice(start,end+1)+')')())}
+  for(const match of fixture.matchAll(/\bjs\(\s*(["'])/g)){const quote=match[1],start=match.index+match[0].length-1;let end=start+1;while(end<fixture.length){if(fixture[end]==='\\'){end+=2;continue}if(fixture[end]===quote)break;end++}assert.ok(end<fixture.length);const program=new Function('return ('+fixture.slice(start,end+1)+')')();new Function(program);new Function(program+';\n'+program)}
   console.log('Panel command feedback embedded, editor bundle and serialized public programs syntax PASS');
 }
 if(process.argv.includes('--syntax')){syntax();process.exit(0)}
@@ -162,7 +162,8 @@ const deadline=setTimeout(()=>{emit('deadline');window?.destroy();app.exit(1)},4
   await app.whenReady();const site=session.fromPartition('panel-command-feedback-'+process.pid);
   site.protocol.handle('https',request=>new Response(new URL(request.url).pathname==='/editor.js'?editorScript:html,{headers:{'content-type':new URL(request.url).pathname==='/editor.js'?'text/javascript':'text/html; charset=utf-8'}}));
   window=new BrowserWindow({show:false,width:1000,height:800,webPreferences:{session:site,sandbox:true,contextIsolation:true,nodeIntegration:false}});
-  const js=async source=>{try{return await window.webContents.executeJavaScript(source)}catch(error){throw Error(stage+': '+source.slice(0,180),{cause:error})}};
+  let consoleRecords=0;window.webContents.on('console-message',(_event,details,...legacy)=>{if(consoleRecords++>=20)return;const entry=typeof details==='object'?details:{level:details,message:legacy[0],lineNumber:legacy[1],sourceId:legacy[2]};console.error('PANEL_FEEDBACK_RENDERER_CONSOLE='+JSON.stringify({stage,...entry}))});
+  const js=async source=>{try{return await window.webContents.executeJavaScript(source)}catch(error){throw Error(stage+': '+source.slice(0,180)+'; '+String(error?.stack??error),{cause:error})}};
   const until=async expression=>{for(let i=0;i<100;i++){if(await js(expression))return;await new Promise(resolve=>setTimeout(resolve,20))}throw Error(stage+' timed out: '+expression)};
   const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
   const frames=()=>js('new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
@@ -247,9 +248,9 @@ const deadline=setTimeout(()=>{emit('deadline');window?.destroy();app.exit(1)},4
     await js("Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(native.modifier,'0');native.modifier.dispatchEvent(new Event('input',{bubbles:true}))");
     await js("document.querySelector('[data-ff-correction-value=modifier_value]').value='4'");await click('[data-ff-correction-apply-modifier_value]');assert.equal(await js('state.modifier_value'),'4');
     const events=await js('({inputs,changes})');await click('[data-ff-correction-modifier_value-plus]');assert.equal(await js('state.modifier_value'),'5');assert.deepEqual(await js('({inputs,changes})'),{inputs:events.inputs+1,changes:events.changes+1});
-    await js("const mode=document.querySelector('[data-ff-correction-roll-mode]');mode.value='advantage';mode.dispatchEvent(new Event('change',{bubbles:true}))");assert.equal(await js('customModeValues.attack_roll_type'),'advantage');assert.equal(await js('customModeWrites.length'),1);
+    await js("{const mode=document.querySelector('[data-ff-correction-roll-mode]');mode.value='advantage';mode.dispatchEvent(new Event('change',{bubbles:true}))}");assert.equal(await js('customModeValues.attack_roll_type'),'advantage');assert.equal(await js('customModeWrites.length'),1);
     const beforeBlock=await js('({inputs,changes,modeWrites:customModeWrites.length})');
-    await js("native.modifier.disabled=true;document.querySelector('[data-ff-correction-modifier_value-plus]').click();const mode=document.querySelector('[data-ff-correction-roll-mode]');mode.value='disadvantage';mode.dispatchEvent(new Event('change',{bubbles:true}))");
+    await js("{native.modifier.disabled=true;document.querySelector('[data-ff-correction-modifier_value-plus]').click();const mode=document.querySelector('[data-ff-correction-roll-mode]');mode.value='disadvantage';mode.dispatchEvent(new Event('change',{bubbles:true}))}");
     assert.equal(await js('state.modifier_value'),'5');assert.equal(await js('customModeValues.attack_roll_type'),'advantage');assert.deepEqual(await js('({inputs,changes,modeWrites:customModeWrites.length})'),beforeBlock,'Fresh native disabled authority rejects numeric and enum actions.');
     await until("document.querySelector('[data-ff-correction-value=modifier_value]').disabled");await js('native.modifier.disabled=false');await until("!document.querySelector('[data-ff-correction-value=modifier_value]').disabled&&!document.querySelector('[data-ff-correction-roll-mode]').disabled");
     await click('[data-ff-correction-modifier_value-plus]');assert.equal(await js('state.modifier_value'),'6');
