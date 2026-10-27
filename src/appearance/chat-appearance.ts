@@ -834,7 +834,14 @@ export function configureChatAppearance(settings: AppearanceSettings): void {
     if (settings.preset !== 'website') {
       // Character dialogs are application surfaces. Limit these neutral-card
       // overrides to dialogs rather than classifying arbitrary campaign rows.
-      for (const detail of document.querySelectorAll('div.border.rounded-md, div.border.rounded-lg, [class~="rounded-md"][class~="border"][class~="bg-card"]')) {
+      const detailSelector = 'div.border.rounded-md, div.border.rounded-lg, [class~="rounded-md"][class~="border"][class~="bg-card"]';
+      const details = new Set<Element>();
+      // Outer dialogs precede nested ones; first insertion keeps document order.
+      for (const dialog of document.querySelectorAll('[role="dialog"]')) {
+        if (dialog.matches(detailSelector)) details.add(dialog);
+        for (const detail of dialog.querySelectorAll(detailSelector)) details.add(detail);
+      }
+      for (const detail of details) {
         if (!detail.closest('[role="dialog"]') || detail.closest('[id^="event-"],[contenteditable="true"],nav,aside,[data-sidebar]') || inContext(detail) || Array.from(composers).some(composer => composer.contains(detail))) continue;
         if (!detail.querySelector('img,h2,h3,h4,strong,input[type="number"]')) continue;
         mark(detail, 'data-ff-desktop-detail-card', 'true');
