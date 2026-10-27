@@ -190,8 +190,12 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
   ui.insertBefore(customModeLabel, nameLabel);
   function refreshCustomMode(fieldsWritable?: boolean): void {
     const current = customModeBinding(fieldsWritable); customModeLabel.hidden = !current; customMode.disabled = !current;
-    customModeText.textContent = language === 'ru' ? 'Тип броска' : 'Roll mode';
-    Array.from(customMode.options).forEach((option, i) => option.textContent = language === 'ru' ? ['Обычный', 'Преимущество', 'Помеха'][i] : ['Normal', 'Advantage', 'Disadvantage'][i]);
+    const label = language === 'ru' ? 'Тип броска' : 'Roll mode';
+    if (customModeText.textContent !== label) customModeText.textContent = label;
+    Array.from(customMode.options).forEach((option, i) => {
+      const text = language === 'ru' ? ['Обычный', 'Преимущество', 'Помеха'][i] : ['Normal', 'Advantage', 'Disadvantage'][i];
+      if (option.textContent !== text) option.textContent = text;
+    });
     if (current && document.activeElement !== customMode) customMode.value = current.value;
   }
   customMode.addEventListener('change', () => {
