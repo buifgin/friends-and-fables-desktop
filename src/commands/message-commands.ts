@@ -143,17 +143,22 @@ export function configureMessageCommands(enabled: boolean, locale: 'en' | 'ru', 
   }
   function render(entry: Entry): void {
     const command = hasCommand(entry);
-    entry.button.textContent = text('Format command', 'Оформить команду');
-    entry.button.hidden = !command;
-    entry.status.textContent = entry.note === 'ready' ? text('Draft formatted. Enter checks and sends it.', 'Текст оформлен. Enter проверяет и отправляет сообщение.')
+    const buttonText = text('Format command', 'Оформить команду');
+    if (entry.button.textContent !== buttonText) entry.button.textContent = buttonText;
+    if (entry.button.hidden !== !command) entry.button.hidden = !command;
+    const statusText = entry.note === 'ready' ? text('Draft formatted. Enter checks and sends it.', 'Текст оформлен. Enter проверяет и отправляет сообщение.')
       : entry.note === 'empty' ? text('Add text after the command.', 'Добавьте текст после команды.')
       : entry.note === 'unavailable' ? text('Could not format this draft. Use the editor controls.', 'Не удалось оформить текст. Используйте кнопки редактора.')
       : entry.note === 'configure' ? text('Configure /sp in the instruction settings.', 'Настройте /sp в окне инструкций.')
       : commandsEnabled ? text('/me: italic text · /gm: #text#', '/me: курсив · /gm: #текст#') : '';
-    entry.badge.hidden=!preferences.configured;
-    entry.badge.textContent=active(entry)?preferences.combatEnabled?(combat(entry)?text('/sp · combat','/sp · бой'):text('/sp · adventure','/sp · приключение')):text('/sp active','/sp активен'):preferences.enabled&&playersOnly(entry)?text('/sp paused · Players Only','/sp приостановлен · Только игроки'):text('/sp inactive','/sp выключен');
-    entry.badge.title=text('Edit saved /sp instructions','Изменить сохранённые инструкции /sp');
-    entry.controls.hidden = !command && !entry.note && !preferences.configured;
+    if (entry.status.textContent !== statusText) entry.status.textContent = statusText;
+    if (entry.badge.hidden !== !preferences.configured) entry.badge.hidden = !preferences.configured;
+    const badgeText=active(entry)?preferences.combatEnabled?(combat(entry)?text('/sp · combat','/sp · бой'):text('/sp · adventure','/sp · приключение')):text('/sp active','/sp активен'):preferences.enabled&&playersOnly(entry)?text('/sp paused · Players Only','/sp приостановлен · Только игроки'):text('/sp inactive','/sp выключен');
+    if (entry.badge.textContent !== badgeText) entry.badge.textContent = badgeText;
+    const badgeTitle = text('Edit saved /sp instructions','Изменить сохранённые инструкции /sp');
+    if (entry.badge.title !== badgeTitle) entry.badge.title = badgeTitle;
+    const hidden = !command && !entry.note && !preferences.configured;
+    if (entry.controls.hidden !== hidden) entry.controls.hidden = hidden;
     entry.controls.style.display = entry.controls.hidden ? 'none' : 'flex';
   }
   function prepare(entry: Entry, newline?: 'paragraph' | 'soft' | 'none'): boolean {
