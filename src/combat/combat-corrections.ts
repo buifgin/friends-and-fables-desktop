@@ -407,27 +407,31 @@ export function configureCombatCorrections(enabled: boolean, locale: 'en' | 'ru'
     node.addEventListener('click', event => event.stopPropagation());
     node.addEventListener('keydown', event => { event.stopPropagation(); if (event.key === 'Enter' && event.target instanceof HTMLInputElement) event.preventDefault(); });
     const last: unknown[] = [];
+    // Compare the live owned labels; native binding and eligibility still refresh each scan.
+    function setText(element: HTMLElement, value: string): void { if (element.textContent !== value) element.textContent = value; }
     function refresh(force = false): void {
       const current = native(); if (current) autoDefault(current);
       const disabled = !current || !pendingWritable(card, current);
-      saveHere.textContent = language === 'ru' ? 'Сохранить здесь' : 'Save here'; clearDefault.textContent = language === 'ru' ? 'Удалить настройку' : 'Delete here';
-      saveDefault.textContent = language === 'ru' ? 'Сохранить по умолчанию' : 'Save default'; overwriteAll.textContent = language === 'ru' ? 'Перезаписать всё' : 'Overwrite all';
+      setText(saveHere, language === 'ru' ? 'Сохранить здесь' : 'Save here'); setText(clearDefault, language === 'ru' ? 'Удалить настройку' : 'Delete here');
+      setText(saveDefault, language === 'ru' ? 'Сохранить по умолчанию' : 'Save default'); setText(overwriteAll, language === 'ru' ? 'Перезаписать всё' : 'Overwrite all');
       const identity = current && attackIdentity(current); saveHere.disabled = disabled || !identity; clearDefault.disabled = !identity; saveDefault.disabled = overwriteAll.disabled = disabled || !current || !stableId(current.character.id);
       modeLabel.hidden = !current || !rollModes.includes(current.attack.attack_roll_type ?? '') || !rollModes.includes(current.snapshot.attack_roll_type ?? '');
-      rollMode.disabled = disabled || modeLabel.hidden; modeText.textContent = language === 'ru' ? 'Тип броска' : 'Roll mode';
-      Array.from(rollMode.options).forEach((option, i) => option.textContent = language === 'ru' ? ['Обычный', 'Преимущество', 'Помеха'][i] : ['Normal', 'Advantage', 'Disadvantage'][i]);
+      rollMode.disabled = disabled || modeLabel.hidden; setText(modeText, language === 'ru' ? 'Тип броска' : 'Roll mode');
+      Array.from(rollMode.options).forEach((option, i) => setText(option, language === 'ru' ? ['Обычный', 'Преимущество', 'Помеха'][i] : ['Normal', 'Advantage', 'Disadvantage'][i]));
       if (current && !modeLabel.hidden) rollMode.value = current.attack.attack_roll_type!;
-      title.textContent = language === 'ru' ? 'Поправки к броску' : 'Roll corrections'; abilityText.textContent = language === 'ru' ? 'Характеристика' : 'Ability'; empty.textContent = '—';
-      texts.forEach((text, i) => text.textContent = language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус умения') : (i === 0 ? 'Modifier' : 'Proficiency bonus')); applyButtons.forEach(b => b.textContent = language === 'ru' ? 'Применить' : 'Apply');
-      Array.from(ability.options).slice(1).forEach((option, i) => option.textContent = language === 'ru' ? ['СИЛ — Сила', 'ЛОВ — Ловкость', 'ТЕЛ — Телосложение', 'ИНТ — Интеллект', 'МДР — Мудрость', 'ХАР — Харизма'][i] : ['STR — Strength', 'DEX — Dexterity', 'CON — Constitution', 'INT — Intelligence', 'WIS — Wisdom', 'CHA — Charisma'][i]);
+      setText(title, language === 'ru' ? 'Поправки к броску' : 'Roll corrections'); setText(abilityText, language === 'ru' ? 'Характеристика' : 'Ability'); setText(empty, '—');
+      texts.forEach((text, i) => setText(text, language === 'ru' ? (i === 0 ? 'Модификатор' : 'Бонус умения') : (i === 0 ? 'Modifier' : 'Proficiency bonus'))); applyButtons.forEach(b => setText(b, language === 'ru' ? 'Применить' : 'Apply'));
+      Array.from(ability.options).slice(1).forEach((option, i) => setText(option, language === 'ru' ? ['СИЛ — Сила', 'ЛОВ — Ловкость', 'ТЕЛ — Телосложение', 'ИНТ — Интеллект', 'МДР — Мудрость', 'ХАР — Харизма'][i] : ['STR — Strength', 'DEX — Dexterity', 'CON — Constitution', 'INT — Intelligence', 'WIS — Wisdom', 'CHA — Charisma'][i]));
       ability.disabled = disabled; if (current && (force || document.activeElement !== ability)) ability.value = current.attack.modifier_stat ?? '';
       inputs.forEach((edit, i) => { edit.disabled = disabled; const value = current?.attack[ids[i]]; if (force || last[i] !== value && document.activeElement !== edit) edit.value = value === undefined ? '' : String(value); last[i] = value; }); buttons.forEach(b => b.disabled = disabled);
       for (const quick of node.querySelectorAll<HTMLButtonElement>('[data-ff-correction-delta]')) {
         const delta = Number(quick.getAttribute('data-ff-correction-delta')), label = texts[quick.getAttribute('data-ff-correction-field') === 'modifier_value' ? 0 : 1].textContent;
-        quick.setAttribute('aria-label', `${label}: ${language === 'ru' ? (delta === 0 ? 'сбросить на 0' : delta > 0 ? 'увеличить на 1' : 'уменьшить на 1') : (delta === 0 ? 'reset to 0' : delta > 0 ? 'increase by 1' : 'decrease by 1')}`);
+        const ariaLabel = `${label}: ${language === 'ru' ? (delta === 0 ? 'сбросить на 0' : delta > 0 ? 'увеличить на 1' : 'уменьшить на 1') : (delta === 0 ? 'reset to 0' : delta > 0 ? 'increase by 1' : 'decrease by 1')}`;
+        if (quick.getAttribute('aria-label') !== ariaLabel) quick.setAttribute('aria-label', ariaLabel);
       }
-      const sum = Number(current?.attack.modifier_value) + Number(current?.attack.proficiency_bonus); total.textContent = `${language === 'ru' ? 'К попаданию' : 'To Hit'}: ${Number.isFinite(sum) ? (sum >= 0 ? '+' : '') + sum : '—'}`;
-      node.setAttribute('data-ff-pending-corrections', String(current?.index ?? initial.index));
+      const sum = Number(current?.attack.modifier_value) + Number(current?.attack.proficiency_bonus); setText(total, `${language === 'ru' ? 'К попаданию' : 'To Hit'}: ${Number.isFinite(sum) ? (sum >= 0 ? '+' : '') + sum : '—'}`);
+      const index = String(current?.index ?? initial.index);
+      if (node.getAttribute('data-ff-pending-corrections') !== index) node.setAttribute('data-ff-pending-corrections', index);
     }
     card.append(node); refresh(true); return { node, control: initial.methods.control, id: initial.id, refresh };
   }
