@@ -876,7 +876,7 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
     }
   }
   function syncPresentation(): void {
-    restoreEmptyRows();
+    const desiredRows = new Set<HTMLElement>();
     // Collapse only a fully concealed, structurally validated intermediate.
     // Dice and other native outcomes make the row nonempty and remain visible.
     if (prefs.hideIntermediateFranz && prefs.hideDamagePrompt) {
@@ -888,9 +888,17 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
         const row = document.getElementById(`event-container-${eventId}`);
         if (!row || !narrationLayout.has(row) || !concealed(row)) continue;
         for (const node of [row, ...(row.parentElement?.id === `event-${eventId}` && row.parentElement.children.length === 1 ? [row.parentElement] : [])]) {
-          emptyRows.set(node, { value: node.style.getPropertyValue('display'), priority: node.style.getPropertyPriority('display') }); node.style.setProperty('display', 'none', 'important');
+          desiredRows.add(node);
         }
       }
+    }
+    for (const [node, previous] of emptyRows) if (!desiredRows.has(node)) {
+      if (previous.value) node.style.setProperty('display', previous.value, previous.priority); else node.style.removeProperty('display');
+      emptyRows.delete(node);
+    }
+    for (const node of desiredRows) {
+      if (!emptyRows.has(node)) emptyRows.set(node, { value: node.style.getPropertyValue('display'), priority: node.style.getPropertyPriority('display') });
+      if (node.style.getPropertyValue('display') !== 'none' || node.style.getPropertyPriority('display') !== 'important') node.style.setProperty('display', 'none', 'important');
     }
     const desired = new Set<HTMLElement>();
     if (prefs.automaticDamage) for (const [attackId, proof] of progress) {
