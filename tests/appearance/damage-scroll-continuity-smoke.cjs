@@ -3,6 +3,10 @@
 // ej grid ownership follows combat-flow-smoke; reveal CSS follows dice-reveal-follow.
 // This executes the exported desktop controllers against committed-Fiber models,
 // not production React. No executable fixture imports, private pin or fake timing.
+// Native-latest variants additionally model the retained20Oct uJ latest-ID hook
+// publication/listener predicates with its exact w arrow literal and real RAF.
+// This is source-accurate modeling, not React effect/runtime execution or a
+// claim of current site parity. Full captured chunk SHA77e91750...e0b86eb.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -51,7 +55,7 @@ function nativePage() {
   const campaign = { id: 'campaign-a', active_encounter_id: 412456 };
   const encounter = { id: 412456, currentTurnEntity: { entityId: 301, characterId: character.id, name: character.name, image: character.image, is_npc: false, type: 'player', hp: 20, conditions: [] } };
   const root = { tag: 3, stateNode: {} }; root.stateNode.current = root;
-  const state = window.fixture = { campaign, character, encounter, root, sequence: 100, mode: 'hit', profile: 'profile-a', manual: true, endPending: false, gmPending: false, damagePending: false, calls: 0, endCalls: [], continueCalls: 0, submits: 0, lastEvent: { role: 'dm', command_used: 'encounter_player_turn_action_response', profile_id: 'profile-a' }, latestDm: null, footerEnabled: true, footerCommitted: true, otherSpinner: false };
+  const state = window.fixture = { campaign, character, encounter, root, events: [], sequence: 100, mode: 'hit', profile: 'profile-a', manual: true, endPending: false, gmPending: false, damagePending: false, calls: 0, endCalls: [], continueCalls: 0, submits: 0, lastEvent: { role: 'dm', command_used: 'encounter_player_turn_action_response', profile_id: 'profile-a' }, latestDm: null, footerEnabled: true, footerCommitted: true, otherSpinner: false };
   const rootChildren = [];
   function link(parent, children) { parent.child = children[0]; children.forEach((child, index) => { child.return = parent; child.sibling = children[index + 1]; }); }
   function nodeFiber(node, props, parent, type = node.tagName.toLowerCase()) { const value = { tag: 5, type, stateNode: node, memoizedProps: props, return: parent }; node.__reactFiber$fixture = value; return value; }
@@ -179,6 +183,7 @@ function nativePage() {
     const footer = uZ({ campaignId: campaign.id, campaign, encounter, usersCharacter: character, mostRecentDmEvent: state.latestDm, hasAccess: true, continueMode: state.manual ? 'manual' : 'auto', globalIsPending: state.gmPending || state.damagePending, showContinueButton: state.manual && state.lastEvent?.role !== 'dm' && !state.gmPending, isGmResponding: state.gmPending, showEncounterButtons: !!campaign.active_encounter_id, encounterId: campaign.active_encounter_id, shouldShowEndTurnButton, shouldShowRunNpcTurnButton: !!turn?.is_npc, shouldShowDeathSaveButton: turn?.hp <= 0, isAnotherPlayersTurn: turn?.characterId !== character.id && turn?.type === 'player', currentTurnEntityName: turn?.name, isUsersTurn, isInputBarMinimized: false, isHost: true });
     if (!state.footerEnabled) $('#footer').remove();
     link(root, [owner, ...rootChildren, ...(state.footerCommitted ? [footer] : [])]);
+    state.nativeLatest?.publish(state.events);
   };
   state.finishGM = (error = false) => {
     state.gmPending = false;
@@ -224,12 +229,12 @@ function nativePage() {
       rollObserver.publish({ status: 'pending', submittedAt: Date.now(), variables: { rollResult, rollChoice: choice, rollCharacter: character, campaign, shouldTriggerFranz: true }, data: null });
       const damageEvent = { id: attackId + 3, role: 'player', request_id: `damage-${attackId}`, campaign_id: campaign.id, character_id: character.id, character, created_at: new Date().toISOString(), command_used: 'roll', events_roll: { event_id: attackId + 3, campaign_id: campaign.id, roll_type: 'Damage', total_roll: 12, base_roll: 9, base_rolls_array: [9], dice: [10], modifier_stat: 'strength', modifier_value: 0, proficiency_bonus: 0, vantage: 'normal' } };
       Object.assign(choice, { accepted: true, roll_result_id: damageEvent.id });
-      state.damage = mountRoll(damageEvent, true); state.lastEvent = damageEvent; state.render(); return dice_expression && undefined;
+      state.damage = mountRoll(damageEvent, true); state.events.push(damageEvent); state.lastEvent = damageEvent; state.render(); return dice_expression && undefined;
     };
     button.onclick = callback; link(promptHost, [nodeFiber(button, { disabled: false, onClick: callback }, promptHost)]);
     link(middleHost, [cardOwner, choiceOwner]);
     if (state.mode === 'no-damage') { prompt.remove(); link(middleHost, [cardOwner]); }
-    state.gmPending = true; state.render();
+    state.events.push(attack, dm); state.gmPending = true; state.render();
     gmObserver.publish({ status: 'pending', submittedAt: Date.now(), variables: { requestId: request, lastEventId: attackId, isMultiplayer: true } });
   });
   state.restoreLatePrompt = () => { const dmHost = state.choiceOwner.return; const row = dmHost.stateNode; row.append(state.choiceOwner.child.stateNode); link(dmHost, [dmHost.child, state.choiceOwner]); state.publishLateChoice(); };
@@ -244,14 +249,14 @@ function nativePage() {
   function historyRows() {
     for (let id = 1; id <= 24; id++) {
       const row = appendElement($('#events-list'), 'div', 'history'); row.id = `event-${id}`;
-      const card = appendElement(row, 'div'); card.id = `event-message-card-${id}`; appendElement(card, 'p', '', `Native narration ${id}`);
+      const card = appendElement(row, 'div'); card.id = `event-message-card-${id}`; appendElement(card, 'p', '', `Native narration ${id}`); state.events.push({id,role:'dm'});
     }
   }
   historyRows();
   const feed = $('#feed'), list = $('#events-list'), originalScrollTo = feed.scrollTo;
   state.targets = [];
   feed.scrollTo = function(...args) {
-    state.targets.push({ at: performance.now(), top: args[0]?.top ?? args[1], behavior: args[0]?.behavior ?? 'auto', height: this.clientHeight, scrollHeight: this.scrollHeight });
+    state.targets.push({ phase:state.phase, stack:new Error().stack, nativeLatest:state.events.at(-1)?.id, actualTop:feed.scrollTop, feedTop:feed.getBoundingClientRect().top, maximum:feed.scrollHeight-feed.clientHeight, nativeRows:state.events.slice(-3).map(event=>{const node=document.getElementById('event-'+event.id),r=node?.getBoundingClientRect();return{id:event.id,top:r?.top,height:r?.height,display:node?getComputedStyle(node).display:null}}), at: performance.now(), top: args[0]?.top ?? args[1], behavior: args[0]?.behavior ?? 'auto', height: this.clientHeight, scrollHeight: this.scrollHeight });
     return Reflect.apply(originalScrollTo, this, args);
   };
   state.nativeTrace = feed.scrollTo;
@@ -269,6 +274,40 @@ function nativePage() {
       rollHeights: state.rolls.map(roll => roll.panel.getBoundingClientRect().height),
       sameDice: !state.damage || state.damage.dice.every(die => die.isConnected && die.__reactFiber$fixture.stateNode === die), targets: state.targets.slice(-16) };
   };
+  // uJ inline hook char704725..707363, retained07rvyszl7fdx0.js (20Oct).
+  // The exact w literal below resolves browser geometry at its second real RAF.
+  // UI-setter equivalents retain native model state; no React hooks are faked.
+  state.nativeLatest = (() => {
+    const t = {current:null}, n = 'smooth', v = {current:undefined}, j = {current:false}, y = {current:new Set()};
+    let enabled=false, nearBottom=true, previousID=null, searching=false, showButton=false, hasNew=false, firstNew=null, scrolling=false, scrollTimer;
+    const l=value=>{showButton=value}, d=value=>{hasNew=value}, u=value=>{firstNew=value};
+    const publications=[], searchEvents=[];
+    // Exact captured arrow, unmodified; SHA256 62b84d65665ca9c974f1f75045cbcdfadda3e07d12d6ec2386e54b82ae45f7c5.
+    const w = (e,a=n)=>{t.current&&(v.current&&clearTimeout(v.current),requestAnimationFrame(()=>{requestAnimationFrame(()=>{if(!t.current)return;let r=a??"smooth",s=t.current;if(e){let t=s.querySelector(`#event-${e}`);if(t){let e,a=s.getBoundingClientRect(),n=t.getBoundingClientRect(),i=n.height,l=a.height,o=s.scrollTop+(n.top-a.top);e=Math.max(0,e=i<=l-40?o-20:o-200),s.scrollTo({top:e,behavior:r})}else s.scrollTo({top:s.scrollHeight,behavior:r})}else s.scrollTo({top:s.scrollHeight,behavior:r})})}),l(!1),d(!1),u(null),j.current=!1,y.current.clear())};
+    const scrolled = () => {
+      clearTimeout(scrollTimer); scrolling=true; scrollTimer=setTimeout(()=>{scrolling=false},150);
+      const gap=feed.scrollHeight-feed.scrollTop-feed.clientHeight;
+      nearBottom=gap<=300; showButton=gap>300;
+      if(nearBottom&&hasNew){hasNew=false;firstNew=null;j.current=false;y.current.clear()}
+    };
+    const searchStart=()=>{searching=true;searchEvents.push({at:performance.now(),active:true})};
+    const searchEnd=()=>{searching=false;searchEvents.push({at:performance.now(),active:false})};
+    const publish = events => {
+      if(!enabled)return;
+      const latest=events.at(-1)?.id??null, prior=previousID;
+      if(latest===prior)return;
+      const row=latest===null?null:document.getElementById('event-'+latest), r=row?.getBoundingClientRect();
+      publications.push({at:performance.now(),phase:state.phase,latest,prior,nearBottom,searching,row:row?{top:r.top,height:r.height,display:getComputedStyle(row).display}:null});
+      if(prior===null){previousID=latest;return}
+      // Same latest-ID/near-bottom/search predicates as captured useEffect.
+      if(nearBottom&&!searching){if(v.current)clearTimeout(v.current);w(latest)}
+      else {if(!hasNew&&latest!==null){firstNew=latest;hasNew=true;j.current=false}if(latest!==null)y.current.add(latest)}
+      previousID=latest;
+    };
+    return {publish, enable(){enabled=true;t.current=feed;feed.addEventListener('scroll',scrolled,{passive:true});window.addEventListener('search-jump-start',searchStart);window.addEventListener('search-jump-end',searchEnd);scrolled();publish(state.events)},
+      evidence:()=>({enabled,nearBottom,previousID,searching,showButton,hasNew,firstNew,scrolling,publications,searchEvents}),
+      dispose(){enabled=false;t.current=null;clearTimeout(scrollTimer);if(v.current)clearTimeout(v.current);feed.removeEventListener('scroll',scrolled);window.removeEventListener('search-jump-start',searchStart);window.removeEventListener('search-jump-end',searchEnd)} };
+  })();
   state.phase = 'initial'; state.frames = []; state.ends = []; state.trustedSubmits = [];
   form.addEventListener('submit', event => state.trustedSubmits.push(event.isTrusted));
   feed.addEventListener('scrollend', event => state.ends.push({ phase: state.phase, trusted: event.isTrusted, at: performance.now(), top: feed.scrollTop }));
@@ -287,7 +326,7 @@ function nativePage() {
     outcome: [...(window.__friendsFablesDesktopCombatFlowOutcomes || new Map()).values()].map(value => ({ campaign:value.campaign, eventId:value.eventId, choiceId:value.choiceId, status:value.status, rollResultId:value.rollResultId, rollSucceeded:value.rollSucceeded }))
   });
   state.record = () => { state.recording = true; const frame = () => { if (!state.recording) return; if (state.frames.length >= 1000) throw Error('Frame evidence budget exceeded'); state.frames.push(state.snapshot()); state.frameId = requestAnimationFrame(frame); }; state.frameId = requestAnimationFrame(frame); };
-  state.stop = () => { state.recording = false; cancelAnimationFrame(state.frameId); return { frames:state.frames, targets:state.targets, ends:state.ends }; };
+  state.stop = () => { state.recording = false; cancelAnimationFrame(state.frameId); return { frames:state.frames, targets:state.targets, ends:state.ends, nativeLatest:state.nativeLatest.evidence() }; };
   state.render();
 }
 const css = `*{box-sizing:border-box}body{margin:0;background:#18202c;color:white;font:14px Arial}button{color:inherit;font:inherit;background:none;border:0}#surface{width:min(950px,100%);margin:auto}#footer{display:flex;justify-content:space-between;gap:8px;padding:0 12px 8px}#right{display:flex;align-items:center;justify-content:flex-end;gap:8px}#left{flex:1}#composer{padding:8px}main{padding:8px}.flex{display:flex}.items-center{align-items:center}.gap-1{gap:4px}.gap-2{gap:8px}.rounded-full{border-radius:9999px}.border{border:1px solid #374151}.h-12{height:48px}.h-10{height:40px}.h-8{height:32px}.w-8{width:32px}.mt-2{margin-top:8px}.pl-1{padding-left:4px}.pr-4{padding-right:16px}.px-3{padding-left:12px;padding-right:12px}.py-2{padding-top:8px;padding-bottom:8px}.bg-gray-800\\/70{background:#1f2937}.bg-blue-600\\/20{background:#163962}.chevrons{font-size:10px}.animate-spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}button:disabled{opacity:.5}#submit{padding:8px;border:1px solid #999}#native-continue{white-space:nowrap}`;
@@ -316,7 +355,7 @@ if (!process.versions.electron) {
       throw Error('Functional readiness failed: ' + expression + '; ' + JSON.stringify(await js('({snapshot:fixture.snapshot(),targets:fixture.targets,frames:fixture.frames.slice(-8)})')));
     };
     const preferences = hide => js(`window.__friendsFablesDesktopCombatFlow.setPreferences({campaignId:'campaign-a',automaticDamage:true,hideIntermediateFranz:${hide},hideDamagePrompt:${hide}});void 0`);
-    const reset = async hide => {
+    const reset = async (hide, nativeLatest = false) => {
       await win.loadURL('https://play.fables.gg/campaign-a/play'); win.show(); win.focus(); win.webContents.focus();
       await until('document.visibilityState==="visible"&&document.hasFocus()'); await paint();
       // Initial real native tail arrival precedes adapter discovery. No private
@@ -324,6 +363,7 @@ if (!process.versions.electron) {
       await js('document.getElementById("feed").scrollTo({top:document.getElementById("feed").scrollHeight,behavior:"instant"});void 0'); await paint();
       await js(`(${prepared.configure.appearance})(${JSON.stringify(prepared.settings)});(${prepared.configure.combat})(true,'en')`);
       await preferences(hide); await paint();
+      if(nativeLatest) await js('fixture.nativeLatest.enable();void 0');
       const before = await js('fixture.snapshot()'); assert.ok(Math.abs(before.tailGap)<=1,'Actual initial tail arrival');
       assert.equal(before.nativeEnd,true,'Validated initial native End host'); assert.equal(before.sameCommon,true);
       await js('fixture.targets.length=0;fixture.record();void 0'); return before;
@@ -350,7 +390,7 @@ if (!process.versions.electron) {
       assert.equal(snapshot.endCalls,0,'No End action generated'); assert.equal(snapshot.continueCalls,0,'Manual Continue never generated');
     };
     const cleanup = async () => {
-      await js('fixture.stop();window.__friendsFablesDesktopCombatFlow.dispose();window.__friendsFablesDesktopChatAppearance.dispose();void 0'); await paint();
+      await js('fixture.stop();fixture.nativeLatest.dispose();window.__friendsFablesDesktopCombatFlow.dispose();window.__friendsFablesDesktopChatAppearance.dispose();void 0'); await paint();
       const result = await js('({gm:fixture.gmObserver.count(),damage:fixture.damageObserver?.count()||0,shells:document.querySelectorAll("[data-ff-combat-turn-control],[data-ff-combat-damage-progress]").length,min:document.getElementById("right").style.getPropertyValue("min-height"),anchors:[...document.querySelectorAll("#events-list > div")].filter(n=>n.style.getPropertyValue("overflow-anchor")).length})');
       assert.deepEqual(result,{gm:0,damage:0,shells:0,min:'',anchors:0},'Disposed subscriptions, footprints, shell and anchor ownership'); return result;
     };
@@ -391,8 +431,9 @@ if (!process.versions.electron) {
     }
     console.log('DAMAGE_CONTINUITY_CONTROLS',JSON.stringify(controls));
     const results=[];
-    for(const variant of ['automatic-conceal','public-settled-conceal']) {
-      const initial=await reset(variant==='automatic-conceal'); await js('fixture.phase="attack"'); await clickAttack();
+    for(const variant of ['automatic-conceal','public-settled-conceal','native-latest-hidden','native-latest-visible']) {
+      const nativeLatest=variant.startsWith('native-latest-'), hide=['automatic-conceal','native-latest-hidden'].includes(variant);
+      const initial=await reset(hide,nativeLatest); await js('fixture.phase="attack"'); await clickAttack();
       const attack=await stable(); assert.ok(attack.gmSubscriptions>0,'Real GM observer subscription');
       assert.ok(attack.rightMinHeight&&attack.rightMinPriority==='important','Real native footer footprint reserved');
       assert.ok(attack.targets.some(value=>value.behavior==='smooth'),'Real browser smooth dispatch');
@@ -404,10 +445,10 @@ if (!process.versions.electron) {
       assert.equal(entry.outcome[0].status,'accepted','Native mutation/choice accepted proof');
       assert.equal(entry.outcome[0].rollResultId,await js('fixture.damage.event.id'),'Accepted exact native result relationship');
       assert.ok(await js('fixture.frames.some(f=>f.phase==="auto-entry"&&f.panelAnimations.some(a=>a.name==="enter"&&a.state==="running"))'), 'Actual native CSS entrance animation sampled');
-      if(variant==='automatic-conceal') {
-        assert.equal(entry.intermediate.display,'none','Fully concealed validated ej outer row collapses');
+      if(hide) {
+        assert.equal(entry.intermediate.height,0,'Fully concealed validated ej outer row has zero layout height');
         assert.equal(entry.narration.display,'none'); assert.equal(entry.avatar.display,'none'); assert.equal(entry.feedback.display,'none');
-      } else assert.notEqual(entry.intermediate.display,'none','Control retains native intermediate before public preference change');
+      } else assert.ok(entry.intermediate.height>100,'Visible control retains meaningful native intermediate extent');
       await js('fixture.phase="damage-spinning";fixture.finishDamage();void 0'); await paint();
       const spinning=await js('fixture.snapshot()'); preserved(spinning); assert.equal(spinning.continueVisible,false,'Own spinning result retains busy presentation');
       await js('fixture.phase="settled";fixture.setSpin("damage",false);document.body.append(document.createElement("i"));void 0');
@@ -422,7 +463,7 @@ if (!process.versions.electron) {
       if(variant==='public-settled-conceal') {
         // Supported public preference control, NOT a claim that the video
         // changed preferences or that a native delayed commit was reproduced.
-        await js('fixture.phase="public-settled-conceal"'); await preferences(true); await until('fixture.snapshot().intermediate.display==="none"');
+        await js('fixture.phase="public-settled-conceal"'); await preferences(true); await until('fixture.snapshot().intermediate.height===0');
         const concealed=await stable(); preserved(concealed);
         assert.ok(concealed.listHeight<settled.listHeight-100,'Validated public conceal removes meaningful intermediate extent');
       }
@@ -431,6 +472,12 @@ if (!process.versions.electron) {
       await until('fixture.snapshot().nativeEnd&&fixture.snapshot().rightMinHeight===""'); const final=await stable(); preserved(final);
       assert.equal(final.listHeight,beforeFooter.listHeight,'Footprint release retains native event content');
       const evidence=await js('fixture.stop()');
+      if(nativeLatest) {
+        const publications=evidence.nativeLatest.publications;
+        assert.deepEqual(publications.map(value=>value.latest),[24,111,113],'Actual native event-array latest-ID publications');
+        assert.ok(publications.slice(1).every(value=>value.nearBottom&&!value.searching),'Native near-bottom/search predicates authorize these publications');
+        assert.ok(publications.find(value=>value.latest===111).row.height>100,'Native intermediate publishes with real extent before concealment');
+      }
       assert.ok(evidence.frames.every(frame=>frame.sameCommon&&frame.sameForm&&frame.sameDraft&&frame.sameDice&&(!frame.attackGlyph||frame.attackGlyph.sameText)&&(!frame.damageGlyph||frame.damageGlyph.sameText)),'Every painted frame retains native identities');
       assert.ok(evidence.frames.some(frame=>frame.phase==='auto-entry'&&frame.panelAnimations.some(a=>a.name==='enter'&&a.state==='running')),'Sampled actual reveal frames');
       const retired=await cleanup();
@@ -440,11 +487,12 @@ if (!process.versions.electron) {
     // Only after native proof, manual authority, identities, footer invariance,
     // preference behavior and cleanup pass may a failure be classified RED.
     console.log('DAMAGE_CONTINUITY_FUNCTIONAL_PASSED',JSON.stringify({controls:controls.length,variants:results.map(value=>value.variant)}));
+    const verdicts=[];
     for(const result of results) {
       const excursions=[]; const frames=result.evidence.frames;
       for(let index=1;index<frames.length;index++) {
         const before=frames[index-1],after=frames[index];
-        if(!before.attack||!after.attack||!['auto-entry','damage-spinning','settled','public-settled-conceal','footer-handoff'].includes(after.phase)) continue;
+        if(!before.attack||!after.attack||!['attack','auto-entry','damage-spinning','settled','public-settled-conceal','footer-handoff'].includes(after.phase)) continue;
         // A browser clamp after extent shrink is legitimate. A native anchor
         // correction that keeps the same Attack card fixed is legitimate too.
         // An older-history excursion decreases actual scrollTop beyond a max
@@ -453,8 +501,11 @@ if (!process.versions.electron) {
       }
       const tails=['auto-entry','settled','public-settled-conceal','footer-handoff'].map(phase=>frames.filter(frame=>frame.phase===phase).at(-1)).filter(Boolean);
       console.log('DAMAGE_CONTINUITY_DIRECTION',JSON.stringify({variant:result.variant,excursions,tails:tails.map(value=>({phase:value.phase,top:value.scrollTop,height:value.scrollHeight,clientHeight:value.clientHeight,gap:value.tailGap}))}));
-      assert.equal(excursions.length,0,result.variant+': no artificial painted older-history excursion');
-      for(const tail of tails) assert.ok(Math.abs(tail.tailGap)<=2,result.variant+': settled tail gap at '+tail.phase+' = '+tail.tailGap);
+      verdicts.push({variant:result.variant,excursions,tails});
+    }
+    for(const verdict of verdicts) {
+      assert.equal(verdict.excursions.length,0,verdict.variant+': no artificial painted older-history excursion');
+      for(const tail of verdict.tails) assert.ok(Math.abs(tail.tailGap)<=2,verdict.variant+': settled tail gap at '+tail.phase+' = '+tail.tailGap);
     }
     console.log('Damage scroll continuity passed'); clearTimeout(watchdog); win.destroy(); app.exit(0);
   })().catch(error=>{console.error('Damage continuity fixture failure',error);clearTimeout(watchdog);win?.destroy();app.exit(1)});
