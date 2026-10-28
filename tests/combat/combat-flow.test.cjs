@@ -428,11 +428,12 @@ test('status absent for manual misses and unrelated flows, restores on failure a
  for(const action of [f=>f.submit(),f=>f.setPreferences({automaticDamage:false}),f=>f.install(false),f=>{f.context.location.pathname='/campaign-b/play';f.notify()}]){const f=flowFixture({streaming:true});f.submit();f.pending();assert.equal(f.attackPanel.children.length,1);action(f);f.notify();assert.equal(f.attackPanel.children.length,0);}
 });
 
-test('fully concealed intermediate contributes no outer event slot; native result sibling prevents collapse',()=>{
+test('fully concealed inner row preserves native outer presentation; native result sibling prevents collapse',()=>{
  const f=flowFixture({streaming:true,prompt:true,wrapper:true,hide:true,hidePrompt:true});
- f.damageResult.remove();f.finalReply.remove();const outer=new f.Element();outer.id='event-'+f.dmEvent.id;outer.append(f.rows[1]);f.submit();f.pending();
- assert.equal(f.rows[1].style.getPropertyValue('display'),'none');assert.equal(outer.style.getPropertyValue('display'),'none');
- f.middle.append(f.damageResult);f.notify();assert.equal(f.rows[1].style.getPropertyValue('display'),'');assert.equal(outer.style.getPropertyValue('display'),'');
+ f.damageResult.remove();f.finalReply.remove();const outer=new f.Element();outer.id='event-'+f.dmEvent.id;outer.append(f.rows[1]);outer.style.setProperty('display','grid','important');f.submit();f.pending();
+ assert.equal(f.rows[1].style.getPropertyValue('display'),'none');assert.equal(outer.style.getPropertyValue('display'),'grid');assert.equal(outer.style.getPropertyPriority('display'),'important');
+ outer.style.setProperty('display','inline-flex','important');f.notify();assert.equal(outer.style.getPropertyValue('display'),'inline-flex','A newer native outer display remains authoritative');
+ f.middle.append(f.damageResult);f.notify();assert.equal(f.rows[1].style.getPropertyValue('display'),'');assert.equal(outer.style.getPropertyValue('display'),'inline-flex');assert.equal(outer.style.getPropertyPriority('display'),'important');
  f.setPreferences({hideDamagePrompt:false});f.notify();assert.equal(f.prompt.style.getPropertyValue('display'),'');assert.equal(f.card.style.getPropertyValue('display'),'none');
 });
 
