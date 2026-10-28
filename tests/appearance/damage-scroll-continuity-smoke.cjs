@@ -370,9 +370,17 @@ if (!process.versions.electron) {
         win.webContents.sendInputEvent({type:'mouseWheel',x:point.x,y:point.y,deltaY:220,deltaX:0,canScroll:true});
         await until('fixture.snapshot().scrollTop<'+(before-20));
       } else if(intent==='selection') await js('const range=document.createRange();range.selectNodeContents(fixture.common);getSelection().removeAllRanges();getSelection().addRange(range);void 0');
-      else if(intent==='route') await js('history.pushState({},"","/campaign-b/play");dispatchEvent(new PopStateEvent("popstate"));void 0');
+      // A different /play route may rediscover this still-connected tail feed.
+      // Leaving play tests retirement without forbidding valid new-route follow.
+      else if(intent==='route') await js('history.pushState({},"","/campaign-a/settings");dispatchEvent(new PopStateEvent("popstate"));void 0');
       else await js(`(()=>{const feed=document.getElementById('feed');${intent==='newer'?"const prior=feed.scrollTo;fixture.newer=function(...args){return Reflect.apply(prior,this,args)};Object.defineProperty(feed,'scrollTo',{configurable:true,writable:true,value:fixture.newer});":""}feed.scrollTo({top:83,behavior:'instant'})})()`);
-      await paint(); const stopped=await js('fixture.targets.length');
+      await paint();
+      if(intent==='route') {
+        assert.equal(await js('location.pathname'),'/campaign-a/settings','Actual non-play route exit');
+        assert.equal(await js('fixture.gmObserver.count()'),0,'Route exit retires native observer subscription');
+        assert.equal(await js('[...document.querySelectorAll("#events-list > div")].filter(n=>n.style.getPropertyValue("overflow-anchor")).length'),0,'Route exit restores prior-feed anchor ownership');
+      }
+      const stopped=await js('fixture.targets.length');
       await js('document.querySelector(".history").style.height="240px";void 0'); await paint(); await paint();
       assert.equal(await js('fixture.targets.length'),stopped,intent+': history growth cannot restart owned follow');
       if(intent==='selection') assert.equal(await js('getSelection().toString()'), 'Native narration 24','Selection remains native');
