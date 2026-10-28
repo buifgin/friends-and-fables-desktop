@@ -364,7 +364,10 @@ if (!process.versions.electron) {
       if(intent==='wheel') {
         const point=await js('(()=>{const r=document.getElementById("feed").getBoundingClientRect();return{x:Math.round(r.x+r.width/2),y:Math.round(r.y+r.height/2)}})()');
         const before=await js('fixture.snapshot().scrollTop');
-        win.webContents.sendInputEvent({type:'mouseWheel',x:point.x,y:point.y,deltaY:-220,deltaX:0});
+        // Electron native wheel sign differs from DOM WheelEvent deltaY.
+        // Match the proven scrollend-anchor-work native input contract.
+        win.webContents.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
+        win.webContents.sendInputEvent({type:'mouseWheel',x:point.x,y:point.y,deltaY:220,deltaX:0,canScroll:true});
         await until('fixture.snapshot().scrollTop<'+(before-20));
       } else if(intent==='selection') await js('const range=document.createRange();range.selectNodeContents(fixture.common);getSelection().removeAllRanges();getSelection().addRange(range);void 0');
       else if(intent==='route') await js('history.pushState({},"","/campaign-b/play");dispatchEvent(new PopStateEvent("popstate"));void 0');
