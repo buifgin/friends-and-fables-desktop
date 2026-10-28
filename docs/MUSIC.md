@@ -1,6 +1,6 @@
 # Music player
 
-Music is the first control in the Friends & Fables website header, before the existing background and grouping controls. Expanding this header control group provides **Previous**, **Play/Pause**, **Next**, **Volume**, and **Music library**. The library opens the full music panel, whose player also provides Stop, seeking, mute, and repeat. Collapse the header controls without interrupting playback or changing the open library. The player follows the app's appearance and English/Russian interface setting. These controls describe current source; the published 0.7.2.7 release predates the UI correction that moved Music to the first header position.
+Music is the first control in the Friends & Fables website header, before the existing background and grouping controls. Expanding this header control group provides **Previous**, **Play/Pause**, **Next**, **Volume**, and **Music library**. The library opens the full music panel, whose player also provides Stop, seeking, mute, and repeat. Collapse the header controls without interrupting playback or changing the open library. The player follows the app's appearance and English/Russian interface setting. These controls are included in release 0.8.0.
 
 Add a track name and a direct HTTPS audio link. MP3, OGG, WAV, and other formats supported by the included Chromium runtime can play. YouTube and Spotify page links are not audio files. Links must remain accessible; expiring download links will eventually stop working.
 

@@ -108,9 +108,9 @@
 - [x] Preserve search-icon padding and theme the sidebar account tile.
 - [x] Center command hints and prepare/check the complete draft before Enter or Send submission; convert № to # outside code.
 
-## Current source UI corrections (unpublished)
+## Release 0.8.0 corrections
 
-The following corrections are present in current source after the published 0.7.2.7 release. They do not change that release, its tag, or its packages. The broad Windows/live coverage items elsewhere in this roadmap remain open where marked.
+The following corrections are included in release 0.8.0. The broad Windows/live coverage items elsewhere in this roadmap remain open where marked.
 
 - [x] Move Music to the first website-header position and retain expandable inline transport, volume, and library controls.
 - [x] Preserve the existing General option for hiding the desktop top bar in fullscreen and its Ctrl+Shift+B toggle.
@@ -123,7 +123,7 @@ The following corrections are present in current source after the published 0.7.
 - [x] Keep pending Franz status dots from shifting the background/gutter; retain resizing for actual pending prose.
 - [x] Add separate campaign-local options, dependent on Automatic Damage, to hide the intermediate Franz response and the linked completed Damage prompt/card. The actual damage-number/dice result, attack result, final Franz response, unrelated events, and text-based attacks remain visible. Local hiding does not prevent server generation, context use, or credits.
 
-## Next features (unreleased)
+## Deferred ideas and open work
 
 - [x] Add a direct audio link player beside the campaign dice button and in the app menu, with a saved playlist, volume/mute, seeking, track navigation, and repeat.
 - [x] Keep music through campaign reloads, start saved tracks paused, and support built-in Russian labels and app themes.
@@ -145,7 +145,7 @@ These ideas are recorded for later consideration only. They are not implemented,
 
 ## Future combat workspace changes
 
-The left combat workspace and native action/check docking are implemented. The original three-column proposal was superseded by the left-panel workspace request. Named local presets are already available and loaded manually; saved weapon/spell overrides apply automatically to matching untouched native attack forms. Future work is limited to evaluating stat-derived or role-aware modifier rules and inspecting supported fields/write paths before promising or enabling character-sheet updates. See [the plan](COMBAT-WORKSPACE-PLAN.md).
+The left combat workspace and native action/check docking are included in release 0.8.0. The original three-column proposal was superseded by the left-panel workspace request. Named local presets are available and loaded manually; saved weapon/spell overrides apply automatically to matching untouched native attack forms. See [the plan](COMBAT-WORKSPACE-PLAN.md). Development is paused; listed ideas do not promise future work.
 
 ## Future character progression improvements
 
