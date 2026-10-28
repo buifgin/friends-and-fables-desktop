@@ -4,9 +4,9 @@ An unofficial desktop wrapper for [Friends & Fables](https://play.fables.gg/), t
 
 The app opens the existing website and adds local themes, campaign chat pictures, and message styling. Optional local English-to-Russian translation is available from the Translation menu.
 
-The current release is [0.7.2.7](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.7.2-7). Its package and tag version is `0.7.2-7`; the public release title is `0.7.2.7`. See [release notes](docs/releases/v0.7.2.7.md).
+The current release is [0.8.0](https://github.com/buifgin/friends-and-fables-desktop/releases/tag/v0.8.0). See [release notes](docs/releases/v0.8.0.md).
 
-The source tree also contains completed, unpublished UI corrections for the next development version. They are not part of the published 0.7.2.7 packages or tag; see the current-source notes in [Music](docs/MUSIC.md), [the roadmap](docs/ROADMAP.md), and [the combat workspace plan](docs/COMBAT-WORKSPACE-PLAN.md).
+This is an unofficial community project and is not affiliated with or supported by Friends & Fables. Development is paused after this release because of subscription costs; no future work is promised.
 
 ## Current features
 
@@ -43,11 +43,11 @@ Download the Linux AppImage or Windows portable EXE from [GitHub Releases](https
 On Arch/Linux, make the AppImage executable and run it:
 
 ```sh
-chmod +x friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage
-./friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage
+chmod +x friends-and-fables-desktop-0.8.0-linux-x86_64.AppImage
+./friends-and-fables-desktop-0.8.0-linux-x86_64.AppImage
 ```
 
-On Windows, run `friends-and-fables-desktop-0.7.2-7-windows-x64.exe`. The build is unsigned. The Windows package includes the English–Russian translator and model.
+On Windows, run `friends-and-fables-desktop-0.8.0-windows-x64.exe`. The build is unsigned. The Windows package includes the English–Russian translator and model.
 
 The [AUR guide](docs/AUR.md) includes a prepared binary-package recipe and submission steps. AUR publication requires an AUR account and SSH key.
 
@@ -121,9 +121,9 @@ In source version 0.4.0, open **App**, enable **Resizable campaign map**, and ap
 
 ### Combat workspace
 
-The source includes the combat workspace. Open the dice panel with the dice button; the actions panel opens automatically during combat, and its button can close it or reopen it. Both panels sit on the left while chat and the map remain visible. Right-sidebar spell slots can be used and refilled while any left panel is open, including Settings. Drag a panel's right edge or focus it and use the arrow keys to resize; hold Shift for larger steps, and press Home or double-click the edge to reset. Panel width is stored per campaign. Appearance → **Side panel** → **Customize side panel appearance** changes panel styling only. The published 0.7.2.7 release predates the current UI corrections described below.
+The source includes the combat workspace. Open the dice panel with the dice button; the actions panel opens automatically during combat, and its button can close it or reopen it. Both panels sit on the left while chat and the map remain visible. Right-sidebar spell slots can be used and refilled while any left panel is open, including Settings. Drag a panel's right edge or focus it and use the arrow keys to resize; hold Shift for larger steps, and press Home or double-click the edge to reset. Panel width is stored per campaign. Appearance → **Side panel** → **Customize side panel appearance** changes panel styling only. These workspace corrections are included in release 0.8.0.
 
-The dice panel opens **Favorites** first. Use the top **All checks** and **Favorites** buttons to switch views. **Add** or **Add more** opens the original check tiles with selection checkboxes; the checkbox-style **Confirm** icon saves campaign-local favorites, while **Cancel** discards changes. Favorite tiles open the native check form without rolling. Attack and spell correction controls retain their native modifier fields and defaults. Separate weapon and spell overrides can target a stable attack identity for a character in the current campaign or define a character-and-campaign category default; saved defaults apply automatically to matching untouched native forms. Named presets are separate and loaded manually. Advantage/disadvantage changes apply only to the current form and are not saved in these defaults. The duplicate quick-correction block for ordinary checks has been removed from current source. Removal of the duplicate ordinary-check block is an unpublished current-source correction. Shortcuts do not roll or write to character sheets. Workspace preferences stay local and are excluded from shared themes.
+The dice panel opens **Favorites** first. Use the top **All checks** and **Favorites** buttons to switch views. **Add** or **Add more** opens the original check tiles with selection checkboxes; the checkbox-style **Confirm** icon saves campaign-local favorites, while **Cancel** discards changes. Favorite tiles open the native check form without rolling. Attack and spell correction controls retain their native modifier fields and defaults. Separate weapon and spell overrides can target a stable attack identity for a character in the current campaign or define a character-and-campaign category default; saved defaults apply automatically to matching untouched native forms. Named presets are separate and loaded manually. Advantage/disadvantage changes apply only to the current form and are not saved in these defaults. The duplicate quick-correction block for ordinary checks has been removed from current source. Release 0.8.0 removes the duplicate ordinary-check block. Shortcuts do not roll or write to character sheets. Workspace preferences stay local and are excluded from shared themes.
 
 In source version 0.4.0, **App → Enable /me and /gm commands** adds an opt-in draft formatter. `/me I look closer.` becomes italic rich text, while `/gm Keep the party together.` becomes `#Keep the party together.#`. Enter, **Format command**, or the first Send click prepares a command for review; then send normally. Shift+Enter keeps newline behavior. Mentions, links, literal text, and code remain structured. See [message-command behavior](docs/MESSAGE-COMMANDS.md).
 
@@ -131,7 +131,7 @@ Color swatches open an in-app picker. Drag hue, saturation, or lightness, or ent
 
 In **Sharing**, click **Export theme…** to save the current preview as a `.fables-theme.json` file. **Include the selected chat picture** embeds that picture so friends can import the same look without copying a separate file. **Import theme…** loads a theme into the preview; click **Apply changes** to use it. A theme without an embedded picture keeps the recipient's selected picture. Login, campaign data, folder paths, and Linux window/menu preferences are not exported.
 
-Home navigation includes a **Settings** entry for global sections; the former desktop palette shortcut is removed. In a campaign, the website gear opens unified Settings in a resizable panel. Campaign and Combat sections are available only inside a campaign. Section changes reuse the panel without closing it, navigation scrolls only when needed, and the panel has one close control. Closing the panel preserves its draft. Current-source campaign controls include Automatic Damage and two separate display options: hide the intermediate Franz response, or hide only the completed linked Damage prompt/card. Both display options require Automatic Damage. The resulting damage-number/dice event, attack result, final Franz response, unrelated events, and text-based attacks remain visible. These local display choices do not stop server responses or reduce their context or credit use. These UI corrections are unpublished and are not in release 0.7.2.7.
+Home navigation includes a **Settings** entry for global sections; the former desktop palette shortcut is removed. In a campaign, the website gear opens unified Settings in a resizable panel. Campaign and Combat sections are available only inside a campaign. Section changes reuse the panel without closing it, navigation scrolls only when needed, and the panel has one close control. Closing the panel preserves its draft. Release 0.8.0 includes campaign controls for Automatic Damage and two separate display options: hide the intermediate Franz response, or hide only the completed linked Damage prompt/card. Both display options require Automatic Damage. The resulting damage-number/dice event, attack result, final Franz response, unrelated events, and text-based attacks remain visible. These local display choices do not stop server responses or reduce their context or credit use. These controls are included in release 0.8.0.
 
 Unified Settings → **General** includes **Hide desktop top bar in fullscreen** (the app menu/window-control strip); **Ctrl+Shift+B** toggles the desktop top bar. **Alt+Enter** and **F11** continue to toggle fullscreen. The fullscreen top-bar option and Ctrl+Shift+B toggle were already present in release 0.7.2.7; right-sidebar spell-slot use/refill while a left panel is open is a current-source correction.
 

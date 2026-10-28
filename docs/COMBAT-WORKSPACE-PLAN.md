@@ -8,7 +8,7 @@ The dice panel opens Favorites first. **All checks** and **Favorites** switch vi
 
 Unified Settings provides campaign-local **Automatic Damage**, **Hide intermediate Franz response**, and **Hide completed Damage prompt** controls. The two hide options require Automatic Damage. The second option hides only the completed Damage prompt/card linked to the automatic attack; it does not hide the actual damage-number/dice event. Attack results, final Franz responses, unrelated events, and text-based attacks remain visible. Hiding is a local display choice: it does not stop server generation or reduce context and credit use. Automatic damage currently handles only a native form with one attack and one target. The flow waits for the native damage prompt and uses its native callback; no supported combined attack-and-damage path has been verified.
 
-The native-dialog docking changes and removal of the duplicate ordinary-check correction block are unpublished current-source changes. The **Hide completed Damage prompt** flag is also new after release 0.7.2.7; Automatic Damage and **Hide intermediate Franz response** were already in release 0.7.2.7.
+Release 0.8.0 includes the native-dialog docking changes, removal of the duplicate ordinary-check correction block, and the **Hide completed Damage prompt** option. Automatic Damage and **Hide intermediate Franz response** first appeared in release 0.7.2.7.
 
 ## Original request and confirmed boundaries
 

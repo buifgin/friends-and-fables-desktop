@@ -31,8 +31,8 @@ The pinned builder's resource editor and portable NSIS target can package this a
 
 Both commands place release files in `out/releases/`:
 
-- `friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage`
-- `friends-and-fables-desktop-0.7.2-7-windows-x64.exe`
+- `friends-and-fables-desktop-0.8.0-linux-x86_64.AppImage`
+- `friends-and-fables-desktop-0.8.0-windows-x64.exe`
 
 The AppImage uses the modern static AppImage runtime. The Windows release is unsigned; it may display a Windows publisher/reputation prompt. Automatic updates are not included in this version.
 
@@ -43,8 +43,8 @@ The AppImage uses the modern static AppImage runtime. The Windows release is uns
 Run the Linux AppImage without root:
 
 ```sh
-chmod +x out/releases/friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage
-./out/releases/friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage
+chmod +x out/releases/friends-and-fables-desktop-0.8.0-linux-x86_64.AppImage
+./out/releases/friends-and-fables-desktop-0.8.0-linux-x86_64.AppImage
 ```
 
 Check login, restart persistence, zoom, Appearance, picture browsing, and context/dice styles. Check light/custom Appearance themes, pin/unpin, panel dragging and remembered width, fullscreen, and built-in Russian settings labels. Check Translation on/off, original-text switching, preserved names and Russian text, editable drafts, streamed messages, cache reuse, and service failure/recovery. Repeat on Windows with the portable EXE, without an installed Python/Docker/service. Enable translation, open menus, restart, and confirm the model starts and exits with the app. Run `npm run test:bundled-model` against the unpacked Windows package for an offline model/authentication smoke test. If AppImage mounting is unavailable, the runtime also supports `--appimage-extract-and-run`.
@@ -73,20 +73,20 @@ Local commits are preserved; a reset or another pull is unnecessary. See [GitHub
 
 ## Publish on GitHub
 
-The first published release is `v0.1.0`; the current package and tag version is `0.7.2-7` (`v0.7.2-7`), with public release title `0.7.2.7`. The four-part public title is a display label; package metadata, tag, and artifact filenames use valid SemVer `0.7.2-7`. For each release, update `package.json`/`package-lock.json`, rebuild, and update the AUR version/checksum. Publish the exact files you checked.
+The first published release is `v0.1.0`; the current package and tag version is `0.8.0` (`v0.8.0`). For each release, update `package.json`/`package-lock.json`, rebuild, and update the AUR version/checksum. Publish the exact files you checked.
 
 From the repository root:
 
 ```sh
-git add package.json package-lock.json src assets tests docs/releases/v0.7.2.7.md
+git add package.json package-lock.json src assets tests docs/releases/v0.8.0.md
 # Stage other release documentation deliberately; preserve unrelated local edits.
-git commit -m "Prepare desktop release v0.7.2-7"
-git tag -a v0.7.2-7 -m "Friends & Fables Desktop 0.7.2.7"
+git commit -m "Prepare desktop release v0.8.0"
+git tag -a v0.8.0 -m "Friends & Fables Desktop 0.8.0"
 git push origin main
-git push origin v0.7.2-7
-gh release create v0.7.2-7 --verify-tag --title "Friends & Fables Desktop 0.7.2.7" --notes-file docs/releases/v0.7.2.7.md --draft
-gh release upload v0.7.2-7 out/releases/friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage out/releases/friends-and-fables-desktop-0.7.2-7-windows-x64.exe out/releases/SHA256SUMS
-gh release edit v0.7.2-7 --draft=false
+git push origin v0.8.0
+gh release create v0.8.0 --verify-tag --title "Friends & Fables Desktop 0.8.0" --notes-file docs/releases/v0.8.0.md --draft
+gh release upload v0.8.0 out/releases/friends-and-fables-desktop-0.8.0-linux-x86_64.AppImage out/releases/friends-and-fables-desktop-0.8.0-windows-x64.exe out/releases/SHA256SUMS
+gh release edit v0.8.0 --draft=false
 ```
 
 For slow local uploads, manually run the **Stage verified release artifacts** workflow with the successful build run ID, existing draft tag, and full tested source SHA. The checkout package version must match the tag. Stable versions are accepted by default; select the explicit `allow_prerelease` workflow option for this prerelease. It verifies the run and draft identity, downloads the two CI artifacts, checks their platform sums, and uploads only missing assets. Existing assets must match their size and SHA-256 digest. It never publishes the draft; verify the final assets before the publication command above.
@@ -141,6 +141,6 @@ Release source: `6c1451d4373fc138fc281ec365a11a76fdc8eb93` (`v0.7.2-7`). [Build 
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
-| friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage | 117336594 | `caa9995158a8bed4c1b77b42c22dfecba3dba701d78c08c856ed45521e8ab22c` |
-| friends-and-fables-desktop-0.7.2-7-windows-x64.exe | 324253527 | `83822ffab658e99f58e3613a67f0b8914c424a401844f736cf9735b136a8a1cb` |
+| friends-and-fables-desktop-0.8.0-linux-x86_64.AppImage | 117336594 | `caa9995158a8bed4c1b77b42c22dfecba3dba701d78c08c856ed45521e8ab22c` |
+| friends-and-fables-desktop-0.8.0-windows-x64.exe | 324253527 | `83822ffab658e99f58e3613a67f0b8914c424a401844f736cf9735b136a8a1cb` |
 | SHA256SUMS | 240 | `0b4e33007ffa80deffa2f5fa30639adaca6a10b0b1102892b79d92c2b3dd8aae` |
