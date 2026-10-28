@@ -315,7 +315,7 @@ function nativePage() {
   state.common = $('#event-message-card-24'); state.commonText = state.common.querySelector('p').firstChild;
   const glyphGeometry = roll => { if (!roll) return null; const range=document.createRange();range.selectNodeContents(roll.glyph);const r=range.getBoundingClientRect();return {top:r.top,bottom:r.bottom,height:r.height,sameText:roll.glyph.firstChild===roll.glyphText}; };
   const priorSnapshot = state.snapshot;
-  state.snapshot = () => ({ ...priorSnapshot(), phase: state.phase, clientHeight: feed.clientHeight, tailGap: feed.scrollHeight - feed.clientHeight - feed.scrollTop,
+  state.snapshot = () => ({ ...priorSnapshot(), phase: state.phase, clientHeight: feed.clientHeight, listGap:parseFloat(getComputedStyle(list).rowGap), tailGap: feed.scrollHeight - feed.clientHeight - feed.scrollTop,
     common: geometry(state.common), attackGlyph:glyphGeometry(state.attack), damageGlyph:glyphGeometry(state.damage), attack: geometry(state.attack?.card), damage: geometry(state.damage?.card),
     intermediate: geometry(state.intermediate?.outer), narration: geometry(state.intermediate?.card), avatar: geometry(state.intermediate?.avatar), feedback: geometry(state.intermediate?.feedback),
     footer: geometry($('#footer')), prompt: geometry($('#native-damage-prompt')),
@@ -331,7 +331,7 @@ function nativePage() {
 }
 const css = `*{box-sizing:border-box}body{margin:0;background:#18202c;color:white;font:14px Arial}button{color:inherit;font:inherit;background:none;border:0}#surface{width:min(950px,100%);margin:auto}#footer{display:flex;justify-content:space-between;gap:8px;padding:0 12px 8px}#right{display:flex;align-items:center;justify-content:flex-end;gap:8px}#left{flex:1}#composer{padding:8px}main{padding:8px}.flex{display:flex}.items-center{align-items:center}.gap-1{gap:4px}.gap-2{gap:8px}.rounded-full{border-radius:9999px}.border{border:1px solid #374151}.h-12{height:48px}.h-10{height:40px}.h-8{height:32px}.w-8{width:32px}.mt-2{margin-top:8px}.pl-1{padding-left:4px}.pr-4{padding-right:16px}.px-3{padding-left:12px;padding-right:12px}.py-2{padding-top:8px;padding-bottom:8px}.bg-gray-800\\/70{background:#1f2937}.bg-blue-600\\/20{background:#163962}.chevrons{font-size:10px}.animate-spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}button:disabled{opacity:.5}#submit{padding:8px;border:1px solid #999}#native-continue{white-space:nowrap}`;
 const layout = `html,body{height:100%;overflow:hidden}#surface{height:100%;display:flex;flex-direction:column}#feed{flex:1;min-height:0;overflow:auto;padding:16px}#events-list>.history{height:90px}#native-stack{flex:none;display:grid;position:relative;grid-template-columns:40px minmax(0,1fr) 30px}#native-middle{min-width:0;position:relative;margin-left:16px}#composer{height:52px}#footer{min-width:0}#right{min-width:0}#right img{flex:none}#left{min-width:0}#hints{height:30px}@media(max-width:767px){#native-stack{grid-template-columns:minmax(0,1fr)}#native-middle{margin-left:0}#hints{display:none}}`;
-const compositionCss = `.native-event-grid{display:grid;grid-template-columns:40px minmax(0,1fr) 30px;column-gap:8px;padding:12px 0}.native-event-avatar{height:160px}.native-event-feedback{height:140px}.native-event-middle{margin-left:16px}.native-narration{min-height:120px}.native-prompt{height:52px}.relative{position:relative}#events-list>.history p{margin:0;padding:12px}#feed{overflow-anchor:auto;scroll-behavior:smooth}#events-list svg{width:84px!important;height:84px!important}`;
+const compositionCss = `#events-list{display:flex;flex-direction:column;gap:8px}.native-event-grid{display:grid;grid-template-columns:40px minmax(0,1fr) 30px;column-gap:8px;padding:12px 0}.native-event-avatar{height:160px}.native-event-feedback{height:140px}.native-event-middle{margin-left:16px}.native-narration{min-height:120px}.native-prompt{height:52px}.relative{position:relative}#events-list>.history p{margin:0;padding:12px}#feed{overflow-anchor:auto;scroll-behavior:smooth}#events-list svg{width:84px!important;height:84px!important}`;
 module.exports = { prepare };
 if (!process.versions.electron) {
   assert.ok(process.argv.includes('--syntax'), 'Use --syntax for offline source-export checks');
@@ -366,6 +366,8 @@ if (!process.versions.electron) {
       if(nativeLatest) await js('fixture.nativeLatest.enable();void 0');
       const before = await js('fixture.snapshot()'); assert.ok(Math.abs(before.tailGap)<=1,'Actual initial tail arrival');
       assert.equal(before.nativeEnd,true,'Validated initial native End host'); assert.equal(before.sameCommon,true);
+      assert.equal(before.listGap,8,'Captured native events-list gap');
+      assert.equal(await js('document.getElementById("event-24").getBoundingClientRect().top-document.getElementById("event-23").getBoundingClientRect().bottom'),8,'Actual native flex row separation');
       await js('fixture.targets.length=0;fixture.record();void 0'); return before;
     };
     const clickAttack = async () => {
