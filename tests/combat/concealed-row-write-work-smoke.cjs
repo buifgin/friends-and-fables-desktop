@@ -5,7 +5,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const root = process.env.FABLES_TEST_APP_ROOT || path.join(__dirname, '../..');
+// Source exports always come from this fixture's checkout, never runtime dist.
+const root = path.resolve(__dirname, '../..');
 function sourceModules() {
   const cache = new Map();
   const load = name => {
@@ -87,7 +88,7 @@ const P = {
   },
   ready() {return document.visibilityState==='visible'&&document.hasFocus();},
   point() {const node=document.querySelector('#submit'),rect=node.getBoundingClientRect();return {x:Math.round(rect.left+rect.width/2),y:Math.round(rect.top+rect.height/2),hit:node.contains(document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2))};},
-  pending() {return submits===1&&result.status==='pending'&&document.querySelector('.native-grid').style.getPropertyValue('display')==='none'&&document.querySelector('.native-grid').parentElement.style.getPropertyValue('display')==='none';},
+  pending() {return submits===1&&result.status==='pending'&&document.querySelector('.native-grid').style.getPropertyValue('display')==='none'&&document.querySelector('.native-grid').parentElement.style.getPropertyValue('display')===window.initialRowPresentation.value;},
   frames() {return new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(Error('Native frame readiness timed out')),2000);requestAnimationFrame(()=>requestAnimationFrame(()=>{clearTimeout(timer);resolve();}));});},
   preferences(patch) {const controller=window.__friendsFablesDesktopCombatFlow;return controller.setPreferences({...controller.getPreferences(),...patch});},
   capture() {
@@ -101,7 +102,7 @@ const P = {
     return {identity:(!n.row.isConnected||(document.getElementById(n.row.id)===n.row&&n.row.parentElement===n.outer))&&n.row.querySelector('[id^=event-message-card-]')===n.card&&n.row.querySelector('#damage-prompt')===n.prompt&&n.row.__reactFiber$fixture===n.host&&currentDM===n.event&&currentChoice===n.choice&&currentDM.rollChoices===n.choices&&document.querySelector('form')===n.form&&document.querySelector('form input')===n.input,
       connected:n.row.isConnected,payload:JSON.stringify(currentChoice),draft:n.input.value,selection:[n.input.selectionStart,n.input.selectionEnd,n.input.selectionDirection],calls,submits,
       nativeContext:{actor:nativeCharacter.id,campaign:nativeCampaign.id,encounter:nativeCampaign.active_encounter_id,request:currentDM.request_id,event:currentDM.id},
-      row:style(n.row),outer:style(n.outer),border:[n.row.style.getPropertyValue('border-top-width'),n.outer.style.getPropertyValue('border-top-width')],
+      row:style(n.row),outer:style(n.outer),nativeOuterStyle:window.initialRowPresentation,outerGeometry:rect(n.outer),border:[n.row.style.getPropertyValue('border-top-width'),n.outer.style.getPropertyValue('border-top-width')],
       rowVisible:visible(n.row),outerVisible:visible(n.outer),cardVisible:visible(n.card),promptVisible:visible(n.prompt),avatarVisible:visible(n.avatar),actionsVisible:visible(n.actions),damageVisible:visible(n.damage),replyVisible:visible(n.reply),
       geometry:[rect(n.attack),rect(n.damage),rect(n.reply)],firstFrame:presentationFrames.find(frame=>frame.sequence===sequence),progress:!!document.querySelector('[data-ff-combat-damage-progress]')};
   },
@@ -168,9 +169,13 @@ if(process.argv.includes('--syntax')){
       assert.equal(snapshot.identity,true,'Native nodes/Fibers/event/choice/form remain identical');assert.equal(snapshot.payload,before.payload,'Native choice payload');assert.deepEqual(snapshot.nativeContext,before.nativeContext,'Native request/actor/campaign/encounter proof');
       assert.equal(snapshot.calls,0,'Pending generation never rolls Damage');assert.equal(snapshot.submits,1);assert.equal(snapshot.draft,'preserved native draft');assert.deepEqual(snapshot.selection,[2,8,'forward']);assert.deepEqual(snapshot.border,['7px','9px']);
     }
-    function assertPending(snapshot){
-      assertStable(snapshot,snapshot);assert.equal(snapshot.connected,true);for(const key of ['row','outer'])assert.deepEqual(snapshot[key],{value:'none',priority:'important'},key+' concealed');
-      for(const key of ['rowVisible','outerVisible','cardVisible','promptVisible','avatarVisible','actionsVisible'])assert.equal(snapshot[key],false,key);
+    function assertPending(snapshot,outerStyle=snapshot.nativeOuterStyle){
+      assertStable(snapshot,snapshot);assert.equal(snapshot.connected,true);assert.deepEqual(snapshot.row,{value:'none',priority:'important'},'Proven inner row concealed');
+      assert.deepEqual(snapshot.outer,outerStyle,'Native outer display and priority remain untouched');
+      assert.equal(snapshot.outerGeometry.height,0,'Captured empty native wrapper has zero layout height');
+      assert.equal(snapshot.outerVisible,outerStyle.value!=='none','Only native outer hiding removes its addressable box');
+      if(outerStyle.value!=='none')assert.ok(snapshot.outerGeometry.y>0,'Native event wrapper keeps its document position');
+      for(const key of ['rowVisible','cardVisible','promptVisible','avatarVisible','actionsVisible'])assert.equal(snapshot[key],false,key);
       assert.equal(snapshot.damageVisible,true);assert.equal(snapshot.replyVisible,true);assert.equal(snapshot.progress,true);assert.equal(snapshot.firstFrame.rowVisible,false);assert.equal(snapshot.firstFrame.promptVisible,false);
     }
     const priorStyles=[{value:'',priority:''},{value:'grid',priority:''},{value:'flex',priority:'important'},{value:'none',priority:''},{value:'none',priority:'important'}];
@@ -188,8 +193,8 @@ if(process.argv.includes('--syntax')){
       if(action==='content'){await run(P.removeContent);await frames();const retained=await run(P.snapshot);assertStable(retained,before);assertPending(retained);}
       reports.push({stage,passed:true});await run(P.cleanup);
     }
-    stage='overwrite-original-lease';const beforeOverwrite=await start('grid','');await run(P.overwrite);await frames();const overwritten=await run(P.snapshot);assertStable(overwritten,beforeOverwrite);assertPending(overwritten);
-    await run(P.release,'auto-off');await frames();const released=await run(P.snapshot);assertStable(released,beforeOverwrite);assert.deepEqual(released.row,{value:'grid',priority:''});assert.deepEqual(released.outer,{value:'grid',priority:''});reports.push({stage,passed:true});await run(P.cleanup);
+    stage='overwrite-original-lease';const beforeOverwrite=await start('grid','');await run(P.overwrite);await frames();const overwritten=await run(P.snapshot);assertStable(overwritten,beforeOverwrite);assertPending(overwritten,{value:'inline-flex',priority:'important'});
+    await run(P.release,'auto-off');await frames();const released=await run(P.snapshot);assertStable(released,beforeOverwrite);assert.deepEqual(released.row,{value:'grid',priority:''});assert.deepEqual(released.outer,{value:'inline-flex',priority:'important'},'Newer native outer display survives inner lease release');reports.push({stage,passed:true});await run(P.cleanup);
     stage='native-callback';await start();await run(P.finish);await until(P.completed);await frames();const completed=await run(P.completedSnapshot);
     assert.deepEqual(completed,{calls:1,submits:1,dice:'1d10',bonus:3,accepted:true,status:'pending',draft:'preserved native draft',damageVisible:true,replyVisible:true});reports.push({stage,passed:true,completed});await run(P.cleanup);
     console.log('CONCEALED_ROW_FUNCTIONAL_JSON='+JSON.stringify({functionalPassed:true,reports}));
@@ -201,7 +206,7 @@ if(process.argv.includes('--syntax')){
     const evidence={functionalPassed:true,root,sourceSHA256:crypto.createHash('sha256').update(fs.readFileSync(path.join(root,'src/combat/combat-flow.ts'))).digest('hex'),before,phases};
     console.log('CONCEALED_ROW_WRITES_JSON='+JSON.stringify(evidence));await run(P.cleanup);
     // Baseline expected RED only here, after every native functional guard.
-    for(const phase of phases)assert.equal(phase.records.length,0,'Unchanged proven concealed row/outer must not restore and reapply display: '+phase.kind+'/'+phase.index);
+    for(const phase of phases)assert.equal(phase.records.length,0,'Unchanged concealed inner/native outer must not receive style rewrites: '+phase.kind+'/'+phase.index);
     console.log('Concealed-row native PASS');clearTimeout(watchdog);window.destroy();app.exit(0);
   })().catch(async error=>{console.error('Concealed-row failure at '+stage,error);if(window&&!window.isDestroyed()){console.error('CONCEALED_ROW_DIAGNOSTIC='+JSON.stringify(await window.webContents.executeJavaScript(serialized(P.diagnostic)).catch(error=>({error:String(error)}))));await window.webContents.executeJavaScript(serialized(P.cleanup)).catch(()=>{});}clearTimeout(watchdog);window?.destroy();app.exit(1);});
 }

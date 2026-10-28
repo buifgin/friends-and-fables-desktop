@@ -887,9 +887,9 @@ export function configureCombatFlow(enabled: boolean, locale: 'en' | 'ru'): void
       for (const [eventId] of new Map([...narrating, ...linked])) {
         const row = document.getElementById(`event-container-${eventId}`);
         if (!row || !narrationLayout.has(row) || !concealed(row)) continue;
-        for (const node of [row, ...(row.parentElement?.id === `event-${eventId}` && row.parentElement.children.length === 1 ? [row.parentElement] : [])]) {
-          desiredRows.add(node);
-        }
+        // Keep the native event-ID wrapper addressable for the site's newest-
+        // event scroll calculation; the concealed inner row has no footprint.
+        desiredRows.add(row);
       }
     }
     for (const [node, previous] of emptyRows) if (!desiredRows.has(node)) {
