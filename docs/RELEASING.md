@@ -89,7 +89,7 @@ gh release upload v0.8.0 out/releases/friends-and-fables-desktop-0.8.0-linux-x86
 gh release edit v0.8.0 --draft=false
 ```
 
-For slow local uploads, manually run the **Stage verified release artifacts** workflow with the successful build run ID, existing draft tag, and full tested source SHA. The checkout package version must match the tag. Stable versions are accepted by default; select the explicit `allow_prerelease` workflow option for this prerelease. It verifies the run and draft identity, downloads the two CI artifacts, checks their platform sums, and uploads only missing assets. Existing assets must match their size and SHA-256 digest. It never publishes the draft; verify the final assets before the publication command above.
+For slow local uploads, manually run the **Stage verified release artifacts** workflow with the successful build run ID, existing draft tag, and full tested source SHA. The checkout package version must match the tag. Stable versions are accepted by default; select the explicit `allow_prerelease` workflow option only when intentionally publishing a prerelease. It verifies the run and draft identity, downloads the two CI artifacts, checks their platform sums, and uploads only missing assets. Existing assets must match their size and SHA-256 digest. It never publishes the draft; verify the final assets before the publication command above.
 
 If a tag/release already exists, upload to it rather than recreating it. Never replace a published AppImage with different bytes under the same name: the AUR checksum is tied to it. Use a new version for changed builds.
 
@@ -141,6 +141,6 @@ Release source: `6c1451d4373fc138fc281ec365a11a76fdc8eb93` (`v0.7.2-7`). [Build 
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
-| friends-and-fables-desktop-0.8.0-linux-x86_64.AppImage | 117336594 | `caa9995158a8bed4c1b77b42c22dfecba3dba701d78c08c856ed45521e8ab22c` |
-| friends-and-fables-desktop-0.8.0-windows-x64.exe | 324253527 | `83822ffab658e99f58e3613a67f0b8914c424a401844f736cf9735b136a8a1cb` |
+| friends-and-fables-desktop-0.7.2-7-linux-x86_64.AppImage | 117336594 | `caa9995158a8bed4c1b77b42c22dfecba3dba701d78c08c856ed45521e8ab22c` |
+| friends-and-fables-desktop-0.7.2-7-windows-x64.exe | 324253527 | `83822ffab658e99f58e3613a67f0b8914c424a401844f736cf9735b136a8a1cb` |
 | SHA256SUMS | 240 | `0b4e33007ffa80deffa2f5fa30639adaca6a10b0b1102892b79d92c2b3dd8aae` |
