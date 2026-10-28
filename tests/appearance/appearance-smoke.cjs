@@ -25,6 +25,17 @@ async function until(contents, expression) {
   throw new Error(`Timed out waiting for ${expression}`);
 }
 
+async function untilWindowFocused(window) {
+  const deadline = Date.now() + 2000;
+  let documentFocused = false;
+  while (Date.now() < deadline) {
+    documentFocused = await window.webContents.executeJavaScript("document.visibilityState === 'visible' && document.hasFocus()");
+    if (window.isVisible() && window.isFocused() && window.webContents.isFocused() && documentFocused) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  throw new Error(`Timed out waiting for visible focused fixture window: ${JSON.stringify({ visible: window.isVisible(), focused: window.isFocused(), webContentsFocused: window.webContents.isFocused(), documentFocused })}`);
+}
+
 async function colors(contents) {
   return contents.executeJavaScript(`({
     background: getComputedStyle(document.body).backgroundColor,
@@ -218,7 +229,8 @@ async function save(settings, window) {
   }
   styleWindow.show();
   styleWindow.focus();
-  await styleWindow.webContents.executeJavaScript(`new Promise(resolve=>requestAnimationFrame(()=>resolve()))`);
+  styleWindow.webContents.focus();
+  await untilWindowFocused(styleWindow);
   assert(styleWindow.isVisible() && styleWindow.isFocused(),'The isolated style fixture is visible and focused before keyboard input.');
   await styleWindow.webContents.executeJavaScript(`document.querySelectorAll('input,button,textarea,[tabindex]').forEach(element=>element.tabIndex=-1);
     document.body.tabIndex=0;document.getElementById('attack-message-field').tabIndex=0;document.body.focus();`);
