@@ -76,7 +76,7 @@ function nativePage() {
     const card = appendElement(container, 'div'); card.id = `event-message-card-${event.id}`;
     const cardOwner = component(function NativeNarrativeCard() { return 'event-message-card-'; }, { eventId: event.id }, native);
     const cardHost = nodeFiber(card, {}, cardOwner);
-    const panel = appendElement(card, 'div', 'relative rounded-2xl border-2 overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4 duration-500 transition-all'); panel.style.cssText = 'height:156px;border:2px solid #999';
+    const panel = appendElement(card, 'div', 'relative py-4 px-3 md:py-6 md:px-6 bg-gradient-to-b from-slate-900/95 to-slate-950/95 rounded-2xl border-2 shadow-2xl backdrop-blur-sm overflow-hidden animate-in fade-in-0 slide-in-from-bottom-4 duration-500 transition-all'); panel.style.cssText = 'height:156px;border:2px solid #999';
     const panelHost = nodeFiber(panel, { className: panel.className }, cardHost);
     const dice = [];
     for (let index = 0; index < (advantage ? 2 : 1); index++) {
